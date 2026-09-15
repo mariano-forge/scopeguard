@@ -21,6 +21,29 @@ const PdfPage = dynamic(() => import("react-pdf").then((module) => module.Page),
   ssr: false,
 });
 
+function parseNumericAmount(amount: number | string | undefined): number {
+  if (typeof amount === "number") return amount;
+  if (!amount) return 0;
+  return Number(String(amount).replace(/[^0-9]/g, "")) || 0;
+}
+
+function parseNumericDays(deadline: number | string | undefined): number {
+  if (typeof deadline === "number") return deadline;
+  if (!deadline) return 0;
+  return Number(String(deadline).replace(/[^0-9]/g, "")) || 0;
+}
+
+function formatProposalAmount(amount: number | string | undefined): string {
+  const num = parseNumericAmount(amount);
+  return `${num.toLocaleString("fr-FR")} €`;
+}
+
+function formatProposalDeadline(deadline: number | string | undefined): string {
+  const num = parseNumericDays(deadline);
+  if (num === 0) return "Aucun impact";
+  return `+ ${num} jour${num > 1 ? "s" : ""}`;
+}
+
 type ReviewLink = {
   token: string;
   active: boolean;
@@ -58,7 +81,7 @@ type ClientComment = {
   time: string;
   message: string;
   location: string;
-  decision?: "À traiter" | "Inclus" | "Hors périmètre";
+  decision?: "À qualifier" | "À traiter" | "Inclus" | "Hors périmètre";
   position?: { x: number; y: number };
   page?: number;
   replies?: Reply[];
@@ -70,8 +93,11 @@ type ProposalStates = Record<number, ProposalState>;
 type ProposalDecisions = Record<number, ProposalDecision>;
 type AdaptationRequest = {
   message: string;
-  budget?: string;
-  deadline?: string;
+  budget?: number | string;
+  deadline?: number | string;
+  decision?: "accepted" | "refused";
+  decisionBy?: string;
+  decisionAt?: string;
   requestedAt: string;
 };
 type AdaptationRequests = Record<number, AdaptationRequest>;
@@ -80,8 +106,8 @@ type ProposalVersion = {
   version: number;
   commentId: number;
   description: string;
-  amount: string;
-  deadline: string;
+  amount: number | string;
+  deadline: number | string;
   status: "draft" | "sent" | "superseded" | "accepted" | "refused";
   createdAt: string;
 };
@@ -114,11 +140,13 @@ export default function ClientReviewPage() {
   const [editingCommentText, setEditingCommentText] = useState("");
   const [editingReply, setEditingReply] = useState<{ commentId: number; replyId: number } | null>(null);
   const [editingReplyText, setEditingReplyText] = useState("");
+  const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
   const [proposalStates, setProposalStates] = useState<ProposalStates>({});
   const [proposalDecisions, setProposalDecisions] = useState<ProposalDecisions>({});
   const [adaptationRequests, setAdaptationRequests] = useState<AdaptationRequests>({});
   const [proposalVersions, setProposalVersions] = useState<ProposalVersions>({});
   const [adaptationCommentId, setAdaptationCommentId] = useState<number | null>(null);
+  const [proposalPreviewCommentId, setProposalPreviewCommentId] = useState<number | null>(null);
   const [adaptationMessage, setAdaptationMessage] = useState("");
   const [adaptationBudget, setAdaptationBudget] = useState("");
   const [adaptationDeadline, setAdaptationDeadline] = useState("");
@@ -131,7 +159,7 @@ export default function ClientReviewPage() {
   const [deliverable, setDeliverable] = useState<Deliverable>({
     name: "northstar-landing-v03.pdf",
     version: 3,
-    status: "En revue",
+    status: "À valider",
   });
 
   useEffect(() => {
@@ -211,9 +239,14 @@ export default function ClientReviewPage() {
 
     try {
       const parsedState = JSON.parse(savedState) as Record<string, unknown>;
+      const targetId = reviewLink?.deliverableId ?? deliverable.id;
+      const targetVersion = reviewLink?.version ?? deliverable.version;
       const sharedDeliverables = Array.isArray(parsedState.deliverables)
-        ? parsedState.deliverables.map((item, index) =>
-            index === 0 && typeof item === "object" && item !== null
+        ? parsedState.deliverables.map((item) =>
+            item &&
+            typeof item === "object" &&
+            (item as Deliverable).id === targetId &&
+            (item as Deliverable).version === targetVersion
               ? {
                   ...(item as Record<string, unknown>),
                   status: reviewStatus === "approved" ? "Approuvée" : (item as Record<string, unknown>).status,
@@ -222,72 +255,64 @@ export default function ClientReviewPage() {
               : item,
           )
         : parsedState.deliverables;
-      window.localStorage.setItem(
-        storageKey,
-        JSON.stringify({ ...parsedState, comments, proposalStates, proposalDecisions, adaptationRequests, proposalVersions, reviewStatus, approved: reviewStatus === "approved", approvedAt, deliverables: sharedDeliverables }),
-      );
+
+      const newSerialized = JSON.stringify({
+        ...parsedState,
+        comments,
+        proposalStates,
+        proposalDecisions,
+        adaptationRequests,
+        proposalVersions,
+        reviewStatus,
+        approved: reviewStatus === "approved",
+        approvedAt,
+        deliverables: sharedDeliverables,
+      });
+
+      if (window.localStorage.getItem(storageKey) === newSerialized) return;
+      window.localStorage.setItem(storageKey, newSerialized);
     } catch {
       // The access check above remains the source of truth for this view.
     }
-  }, [comments, proposalStates, proposalDecisions, adaptationRequests, proposalVersions, reviewStatus, approvedAt, loading, accessState]);
+  }, [comments, proposalStates, proposalDecisions, adaptationRequests, proposalVersions, reviewStatus, approvedAt, loading, accessState, deliverable.id, deliverable.version, reviewLink, stateHydrated]);
 
   useEffect(() => {
-    function syncReviewStatus(event: StorageEvent) {
+    function syncFromStorage(event: StorageEvent) {
       if (event.key !== storageKey || !event.newValue) return;
 
       try {
         const parsedState = JSON.parse(event.newValue) as {
+          reviewLink?: ReviewLink | null;
+          reviewLinks?: ReviewLinks;
           reviewStatus?: "pending" | "changes-requested" | "approved";
           approvedAt?: string | null;
           deliverables?: Deliverable[];
-        };
-        if (parsedState.reviewStatus) setReviewStatus(parsedState.reviewStatus);
-        if (parsedState.reviewStatus !== "approved") setApprovedAt(null);
-        else if (parsedState.approvedAt) setApprovedAt(parsedState.approvedAt);
-        const sharedDeliverable = parsedState.deliverables?.find(
-          (candidate) =>
-            candidate.id === reviewLink?.deliverableId &&
-            candidate.version === reviewLink?.version,
-        ) ?? parsedState.deliverables?.[0];
-        if (sharedDeliverable) setDeliverable(sharedDeliverable);
-      } catch {
-        // Ignore malformed external updates.
-      }
-    }
-
-    window.addEventListener("storage", syncReviewStatus);
-    return () => window.removeEventListener("storage", syncReviewStatus);
-  }, []);
-
-  useEffect(() => {
-    function syncComments(event: StorageEvent) {
-      if (event.key !== storageKey || !event.newValue) return;
-
-      try {
-        const parsedState = JSON.parse(event.newValue) as {
           comments?: ClientComment[];
-        };
-        if (parsedState.comments) setComments(parsedState.comments);
-      } catch {
-        // Ignore malformed external updates.
-      }
-    }
-
-    window.addEventListener("storage", syncComments);
-    return () => window.removeEventListener("storage", syncComments);
-  }, []);
-
-  useEffect(() => {
-    function syncProposalUpdates(event: StorageEvent) {
-      if (event.key !== storageKey || !event.newValue) return;
-
-      try {
-        const parsedState = JSON.parse(event.newValue) as {
           proposalStates?: ProposalStates;
           proposalDecisions?: ProposalDecisions;
           adaptationRequests?: AdaptationRequests;
           proposalVersions?: ProposalVersions;
         };
+
+        if (parsedState.reviewStatus) setReviewStatus(parsedState.reviewStatus);
+        if (parsedState.reviewStatus !== "approved") setApprovedAt(null);
+        else if (parsedState.approvedAt) setApprovedAt(parsedState.approvedAt);
+
+        const savedLinks = Object.values(parsedState.reviewLinks ?? {});
+        const currentLink =
+          savedLinks.find((link) => link.token === params.token) ??
+          (parsedState.reviewLink?.token === params.token ? parsedState.reviewLink : null);
+
+        if (currentLink) {
+          const sharedDeliverable = parsedState.deliverables?.find(
+            (candidate) =>
+              candidate.id === currentLink.deliverableId &&
+              candidate.version === currentLink.version,
+          );
+          if (sharedDeliverable) setDeliverable(sharedDeliverable);
+        }
+
+        if (parsedState.comments) setComments(parsedState.comments);
         if (parsedState.proposalStates) setProposalStates(parsedState.proposalStates);
         if (parsedState.proposalDecisions) setProposalDecisions(parsedState.proposalDecisions);
         if (parsedState.adaptationRequests) setAdaptationRequests(parsedState.adaptationRequests);
@@ -298,9 +323,9 @@ export default function ClientReviewPage() {
       }
     }
 
-    window.addEventListener("storage", syncProposalUpdates);
-    return () => window.removeEventListener("storage", syncProposalUpdates);
-  }, []);
+    window.addEventListener("storage", syncFromStorage);
+    return () => window.removeEventListener("storage", syncFromStorage);
+  }, [params.token]);
 
   function isReadOnlyVersion() {
     return reviewStatus === "approved" || deliverable.locked || deliverable.status === "Approuvée" || deliverable.status === "Remplacée";
@@ -388,7 +413,7 @@ export default function ClientReviewPage() {
     event.preventDefault();
     if (isReadOnlyVersion()) return;
     const message = replyText.trim();
-    if (replyingTo === null || !message) return;
+    if (replyingTo === null || isCommercialDecisionLocked(replyingTo) || !message) return;
 
     const reply: Reply = {
       id: Date.now(),
@@ -409,13 +434,13 @@ export default function ClientReviewPage() {
   }
 
   function startEditComment(comment: ClientComment) {
-    if (isReadOnlyVersion() || comment.initials !== "CM") return;
+    if (isReadOnlyVersion() || isCommercialDecisionLocked(comment.id) || comment.initials !== "CM") return;
     setEditingCommentId(comment.id);
     setEditingCommentText(comment.message);
   }
 
   function saveEditComment(commentId: number) {
-    if (isReadOnlyVersion()) return;
+    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
     const target = comments.find((c) => c.id === commentId);
     if (target?.initials !== "CM") return;
     const message = editingCommentText.trim();
@@ -431,7 +456,7 @@ export default function ClientReviewPage() {
   }
 
   function deleteComment(commentId: number) {
-    if (isReadOnlyVersion()) return;
+    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
     const target = comments.find((c) => c.id === commentId);
     if (target?.initials !== "CM") return;
     setComments((current) => {
@@ -444,13 +469,13 @@ export default function ClientReviewPage() {
   }
 
   function startEditReply(commentId: number, reply: Reply) {
-    if (isReadOnlyVersion() || reply.initials !== "CM") return;
+    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId) || reply.initials !== "CM") return;
     setEditingReply({ commentId, replyId: reply.id });
     setEditingReplyText(reply.message);
   }
 
   function saveEditReply(commentId: number, replyId: number) {
-    if (isReadOnlyVersion()) return;
+    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
     const parent = comments.find((c) => c.id === commentId);
     const target = parent?.replies?.find((r) => r.id === replyId);
     if (target?.initials !== "CM") return;
@@ -474,7 +499,7 @@ export default function ClientReviewPage() {
   }
 
   function deleteReply(commentId: number, replyId: number) {
-    if (isReadOnlyVersion()) return;
+    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
     const parent = comments.find((c) => c.id === commentId);
     const target = parent?.replies?.find((r) => r.id === replyId);
     if (target?.initials !== "CM") return;
@@ -491,17 +516,21 @@ export default function ClientReviewPage() {
   }
 
   function decideProposal(commentId: number, decision: ProposalDecision) {
-    if (isReadOnlyVersion()) return;
-    setProposalDecisions((current) => ({ ...current, [commentId]: decision }));
-    setSelectedCommentId(commentId);
-    setProposalVersions((current) => ({
-      ...current,
-      [commentId]: current[commentId]?.map((proposal) =>
+    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
+    const nextDecisions = { ...proposalDecisions, [commentId]: decision };
+    const nextVersions = {
+      ...proposalVersions,
+      [commentId]: proposalVersions[commentId]?.map((proposal) =>
         proposal.status === "sent" && decision !== "none"
           ? { ...proposal, status: decision }
           : proposal,
-      ) ?? current[commentId],
-    }));
+      ) ?? currentVersionsFor(commentId, decision),
+    };
+
+    setProposalDecisions(nextDecisions);
+    setSelectedCommentId(commentId);
+    setProposalVersions(nextVersions);
+
     if (decision !== "none") {
       const label = decision === "accepted" ? "acceptée" : "refusée";
       notifyAgency(
@@ -509,12 +538,43 @@ export default function ClientReviewPage() {
         `Proposition ${label} par le client`,
         `Le client a ${label} la proposition liée au commentaire #${commentId}`,
         commentId,
+        undefined,
+        undefined,
+        {
+          proposalDecisions: nextDecisions,
+          proposalVersions: nextVersions,
+        },
       );
     }
   }
 
+  function currentVersionsFor(commentId: number, decision: ProposalDecision) {
+    const list = proposalVersions[commentId] ?? [];
+    if (list.length === 0) {
+      return [{
+        id: Date.now(),
+        version: 1,
+        commentId,
+        description: "Section témoignages",
+        amount: "850 €",
+        deadline: "+ 3 jours",
+        status: decision,
+        createdAt: new Date().toLocaleString("fr-FR"),
+      }];
+    }
+    return list.map((p) => p.status === "sent" ? { ...p, status: decision } : p);
+  }
+
   // Direct read-modify-write so the agency sees the event immediately, without waiting for the generic persist effect.
-  function notifyAgency(type: string, auditDescription: string, notificationMessage: string, commentId?: number, nextReviewStatus?: "changes-requested" | "approved", nextApprovedAt?: string) {
+  function notifyAgency(
+    type: string,
+    auditDescription: string,
+    notificationMessage: string,
+    commentId?: number,
+    nextReviewStatus?: "changes-requested" | "approved",
+    nextApprovedAt?: string,
+    overrides?: Record<string, unknown>,
+  ) {
     try {
       const raw = window.localStorage.getItem(storageKey);
       const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
@@ -525,6 +585,7 @@ export default function ClientReviewPage() {
         storageKey,
         JSON.stringify({
           ...parsed,
+          ...(overrides ?? {}),
           ...(nextReviewStatus
             ? {
                 reviewStatus: nextReviewStatus,
@@ -596,8 +657,13 @@ export default function ClientReviewPage() {
     return proposalVersions[commentId]?.find((proposal) => proposal.status === "sent" || proposal.status === "accepted") ?? proposalVersions[commentId]?.at(-1);
   }
 
+  function isCommercialDecisionLocked(commentId: number) {
+    return proposalDecisions[commentId] !== undefined && proposalDecisions[commentId] !== "none"
+      || Boolean(adaptationRequests[commentId]?.decision);
+  }
+
   function openAdaptationRequest(commentId: number) {
-    if (isReadOnlyVersion()) return;
+    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
     setAdaptationCommentId(commentId);
     setAdaptationMessage("");
     setAdaptationBudget("");
@@ -606,24 +672,29 @@ export default function ClientReviewPage() {
 
   function submitAdaptationRequest(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isReadOnlyVersion()) return;
+    if (isReadOnlyVersion() || adaptationCommentId === null || isCommercialDecisionLocked(adaptationCommentId)) return;
     const message = adaptationMessage.trim();
-    if (adaptationCommentId === null || !message) return;
+    if (!message) return;
 
-    setAdaptationRequests((current) => ({
-      ...current,
+    const nextAdaptations = {
+      ...adaptationRequests,
       [adaptationCommentId]: {
         message,
-        budget: adaptationBudget.trim() || undefined,
-        deadline: adaptationDeadline.trim() || undefined,
+        budget: adaptationBudget.trim() ? parseNumericAmount(adaptationBudget) : undefined,
+        deadline: adaptationDeadline.trim() ? parseNumericDays(adaptationDeadline) : undefined,
         requestedAt: new Date().toLocaleString("fr-FR"),
       },
-    }));
+    };
+
+    setAdaptationRequests(nextAdaptations);
     notifyAgency(
       "proposal.adaptation-requested",
       `Adaptation demandée par le client sur la proposition #${adaptationCommentId}`,
       `Le client demande une adaptation de la proposition liée au commentaire #${adaptationCommentId}`,
       adaptationCommentId,
+      undefined,
+      undefined,
+      { adaptationRequests: nextAdaptations },
     );
     setAdaptationCommentId(null);
     setAdaptationMessage("");
@@ -631,14 +702,28 @@ export default function ClientReviewPage() {
     setAdaptationDeadline("");
   }
 
-  const selectedComment = comments.find((comment) => comment.id === selectedCommentId);
   const sharedDeliverableId = reviewLink?.deliverableId ?? deliverable.id;
   const sharedComments = comments.filter(
     (comment) => (comment.deliverableId ?? comments[0]?.deliverableId ?? sharedDeliverableId) === sharedDeliverableId,
   );
+  const displayedComments = (() => {
+    const selectedIndex = sharedComments.findIndex((comment) => comment.id === selectedCommentId);
+    if (selectedIndex <= 0) return sharedComments;
+    return [sharedComments[selectedIndex], ...sharedComments.slice(0, selectedIndex), ...sharedComments.slice(selectedIndex + 1)];
+  })();
+  const selectedComment = sharedComments.find((comment) => comment.id === selectedCommentId);
   const sharedProposalComments = sharedComments.filter(
     (comment) => comment.decision === "Hors périmètre" && proposalStates[comment.id] === "sent",
   );
+  const previewProposal = proposalPreviewCommentId === null
+    ? undefined
+    : activeProposalFor(proposalPreviewCommentId);
+  const previewProposalComment = proposalPreviewCommentId === null
+    ? undefined
+    : sharedComments.find((comment) => comment.id === proposalPreviewCommentId);
+  const previewAdaptationRequest = proposalPreviewCommentId === null
+    ? undefined
+    : adaptationRequests[proposalPreviewCommentId];
 
   if (loading) {
     return <main className="client-review-state">Chargement de la revue...</main>;
@@ -670,19 +755,18 @@ export default function ClientReviewPage() {
         <div className="client-review-heading">
           <div>
             <p className="eyebrow">NORTHSTAR STUDIO · REFONTE SITE</p>
-            <h1>Votre avis sur cette version</h1>
             <p>
               Consultez le livrable et partagez vos retours avec l'équipe.
             </p>
           </div>
           <div className="client-version-badge">
-            Version {String(deliverable.version).padStart(2, "0")} · {reviewStatus === "approved" ? "Approuvée" : reviewStatus === "changes-requested" ? "Modifications demandées" : deliverable.status}
+            Version {String(deliverable.version).padStart(2, "0")} · {reviewStatus === "approved" ? "Approuvée" : reviewStatus === "changes-requested" ? "Modifications demandées" : deliverable.status === "Remplacée" ? "Remplacée" : "À valider"}
           </div>
         </div>
         <section className="client-artboard-panel" ref={clientPanelRef}>
           <div className="client-artboard-toolbar">
             <span>{deliverable.name}</span>
-            <button className="client-add-comment-tool" onClick={startGeneralComment} disabled={isReadOnlyVersion()}>+ Ajouter un commentaire</button>
+            <button className="client-add-comment-tool" onClick={startGeneralComment} disabled={isReadOnlyVersion()}>+ Soumettre une demande</button>
             <div className="client-viewer-controls">
               {deliverable.type === "PDF" && (
                 <div className="client-page-controls">
@@ -705,11 +789,15 @@ export default function ClientReviewPage() {
               minScale={0.5}
               maxScale={3}
               centerOnInit
+              smooth={false}
+              wheel={{ step: 0.1 }}
               onTransform={(_, state) => setPreviewZoom(Math.round(state.scale * 100))}
             >
               <TransformComponent wrapperClass={`client-artboard-transform-wrapper ${previewDragging ? "dragging" : ""}`} contentClass="client-artboard-transform-content">
             <div className="client-artboard" onClick={startComment} onPointerDown={trackPreviewPointerDown} onPointerMove={trackPreviewPointerMove} onPointerUp={trackPreviewPointerUp} onPointerCancel={trackPreviewPointerUp}>
-              {deliverable.fileData && deliverable.type === "PDF" ? (
+              {deliverable.fileData && deliverable.type === "Image" ? (
+                <img className="real-deliverable-image" src={deliverable.fileData} alt={deliverable.name} />
+              ) : deliverable.fileData && deliverable.type === "PDF" ? (
                 <PdfDocument file={deliverable.fileData} onLoadSuccess={({ numPages }) => setPdfPageCount(numPages)} loading="Chargement du PDF...">
                   <PdfPage pageNumber={pdfPage} width={760} renderTextLayer={false} renderAnnotationLayer={false} />
                 </PdfDocument>
@@ -764,16 +852,16 @@ export default function ClientReviewPage() {
         <section className="client-comments-panel">
           <div className="client-comments-heading">
             <div>
-              <p className="eyebrow">DISCUSSION</p>
-              <h2>Retours sur cette version</h2>
+              <p className="eyebrow">ARBITRAGES & DEMANDES</p>
+              <h2>Demandes sur cette version</h2>
             </div>
-            <span>{comments.length} commentaire{comments.length > 1 ? "s" : ""}</span>
+            <span>{comments.length} demande{comments.length > 1 ? "s" : ""}</span>
           </div>
           {comments.length === 0 ? (
-            <p className="client-empty-comments">Aucun commentaire pour le moment.</p>
+            <p className="client-empty-comments">Aucune demande pour le moment.</p>
           ) : (
             <div className="client-comments-list">
-              {sharedComments.map((comment) => (
+              {displayedComments.map((comment) => (
                 <article
                   className={`client-comment-card ${comment.id === selectedCommentId ? "selected-client-comment" : ""}`}
                   key={comment.id}
@@ -784,7 +872,7 @@ export default function ClientReviewPage() {
                     <div><b>{comment.author}</b><small>{comment.time}</small></div>
                     <span className="client-comment-number">#{comment.id}</span>
                   </div>
-                  {editingCommentId === comment.id ? (
+                  {editingCommentId === comment.id && !isCommercialDecisionLocked(comment.id) ? (
                     <form
                       className="edit-form"
                       onSubmit={(event) => {
@@ -821,7 +909,7 @@ export default function ClientReviewPage() {
                     <p>{comment.message}</p>
                   )}
                   <small className="client-comment-location">⌖ {comment.location}</small>
-                  {comment.replies?.map((reply) => (
+                  {(expandedReplies[comment.id] ? (comment.replies ?? []) : (comment.replies ?? []).slice(0, 2)).map((reply) => (
                     <div className="client-reply" key={reply.id}>
                       <span className="avatar reply-avatar">{reply.initials}</span>
                       <div className="reply-content">
@@ -863,7 +951,7 @@ export default function ClientReviewPage() {
                         ) : (
                           <>
                             <p>{reply.message}</p>
-                            {!isReadOnlyVersion() && reply.initials === "CM" && (
+                            {!isReadOnlyVersion() && !isCommercialDecisionLocked(comment.id) && reply.initials === "CM" && (
                               <div className="item-inline-actions">
                                 <button
                                   className="action-link"
@@ -899,8 +987,20 @@ export default function ClientReviewPage() {
                       </div>
                     </div>
                   ))}
+                  {(comment.replies?.length ?? 0) > 2 && (
+                    <button
+                      type="button"
+                      className="replies-toggle"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setExpandedReplies((current) => ({ ...current, [comment.id]: !current[comment.id] }));
+                      }}
+                    >
+                      {expandedReplies[comment.id] ? "↑ Réduire les réponses" : `↓ Afficher les ${(comment.replies?.length ?? 0) - 2} autres réponses`}
+                    </button>
+                  )}
                   <div className="comment-actions">
-                    {!isReadOnlyVersion() && editingCommentId !== comment.id && comment.initials === "CM" && (
+                    {!isReadOnlyVersion() && !isCommercialDecisionLocked(comment.id) && editingCommentId !== comment.id && comment.initials === "CM" && (
                       <>
                         <button
                           className="action-link"
@@ -939,12 +1039,12 @@ export default function ClientReviewPage() {
                         setReplyingTo(comment.id);
                         setReplyText("");
                       }}
-                      disabled={isReadOnlyVersion()}
+                      disabled={isReadOnlyVersion() || isCommercialDecisionLocked(comment.id)}
                     >
                       Répondre
                     </button>
                   </div>
-                  {replyingTo === comment.id && (
+                  {replyingTo === comment.id && !isCommercialDecisionLocked(comment.id) && (
                     <form className="client-reply-form" onSubmit={addReply} onClick={(event) => event.stopPropagation()}>
                       <input autoFocus value={replyText} onChange={(event) => setReplyText(event.target.value)} placeholder="Écrire une réponse..." />
                       <button type="submit" disabled={!replyText.trim()}>Envoyer</button>
@@ -955,7 +1055,7 @@ export default function ClientReviewPage() {
             </div>
           )}
           {selectedComment && (
-            <p className="selected-comment-note">Commentaire sélectionné : {selectedComment.message}</p>
+            <p className="selected-comment-note">Demande sélectionnée : {selectedComment.message}</p>
           )}
         </section>
         {sharedProposalComments.length > 0 && (
@@ -971,16 +1071,25 @@ export default function ClientReviewPage() {
               {sharedProposalComments.map((comment) => (
                 <article className="client-proposal-card" key={comment.id}>
                   <div>
-                    <small>Demande liée au commentaire #{comment.id} · Version {activeProposalFor(comment.id)?.version ?? 1}</small>
+                    <small>Proposition liée à la demande #{comment.id} · Version {activeProposalFor(comment.id)?.version ?? 1}</small>
                     <p>{comment.message}</p>
-                    <div className="client-proposal-summary"><span>{activeProposalFor(comment.id)?.description ?? "Section témoignages"}</span><b>{activeProposalFor(comment.id)?.amount ?? "850 €"} · {activeProposalFor(comment.id)?.deadline ?? "+ 3 jours"}</b></div>
+                    <div className="client-proposal-summary">
+                      <span>{activeProposalFor(comment.id)?.description ?? "Section témoignages"}</span>
+                      <b>
+                        {formatProposalAmount(activeProposalFor(comment.id)?.amount ?? 850)} · {formatProposalDeadline(activeProposalFor(comment.id)?.deadline ?? 3)}
+                      </b>
+                    </div>
                   </div>
                   {proposalDecisions[comment.id] === "accepted" ? (
-                    <span className="client-proposal-accepted">Acceptée ✓</span>
+                    <span className="client-proposal-status"><span className="client-proposal-accepted">Acceptée ✓</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition acceptée pour la demande #${comment.id}`} title="Voir la proposition"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
                   ) : proposalDecisions[comment.id] === "refused" ? (
-                    <span className="client-proposal-refused">Refusée</span>
+                    <span className="client-proposal-status"><span className="client-proposal-refused">Refusée</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition refusée pour la demande #${comment.id}`} title="Voir la proposition"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
+                  ) : adaptationRequests[comment.id]?.decision ? (
+                    <span className="client-proposal-status"><span className={`client-proposal-adaptation ${adaptationRequests[comment.id].decision}`}>{adaptationRequests[comment.id].decision === "accepted" ? "Adaptation acceptée" : "Adaptation refusée"}</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition pour la demande #${comment.id}`} title="Voir la proposition"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
                   ) : adaptationRequests[comment.id] ? (
-                    <span className="client-proposal-adaptation">Adaptation demandée</span>
+                    <span className={`client-proposal-adaptation ${adaptationRequests[comment.id].decision ?? ""}`}>
+                      {adaptationRequests[comment.id].decision === "accepted" ? "Adaptation acceptée par l'agence" : adaptationRequests[comment.id].decision === "refused" ? "Adaptation refusée par l'agence" : "Adaptation demandée"}
+                    </span>
                   ) : (
                     <div className="client-proposal-actions"><button className="client-adapt-action" onClick={() => openAdaptationRequest(comment.id)} disabled={isReadOnlyVersion()}>Demander une adaptation</button><button className="client-refuse-action" onClick={() => decideProposal(comment.id, "refused")} disabled={isReadOnlyVersion()}>Refuser</button><button className="client-accept-action" onClick={() => decideProposal(comment.id, "accepted")} disabled={isReadOnlyVersion()}>Accepter</button></div>
                   )}
@@ -990,7 +1099,7 @@ export default function ClientReviewPage() {
           </section>
         )}
         <div className="client-review-actions">
-          <p>{commentSent ? "Votre commentaire a été envoyé à l'équipe." : "Cliquez sur le livrable pour ajouter un commentaire."}</p>
+          <p>{commentSent ? "Votre demande a été transmise à l'équipe." : "Cliquez sur le livrable pour soumettre une demande."}</p>
           {reviewStatus === "changes-requested" && (
             <div className="client-status-banner"><span className="status-dot changes-dot" />Modifications demandées · en attente d'une nouvelle version de l'agence</div>
           )}
@@ -1000,19 +1109,42 @@ export default function ClientReviewPage() {
           </div>
         </div>
       </section>
+      {proposalPreviewCommentId !== null && previewProposal && (
+        <div className="modal-backdrop" role="presentation">
+          <section className="project-modal proposal-preview-modal">
+            <div className="drawer-header">
+              <div>
+                <div className="eyebrow">PROPOSITION COMPLÉMENTAIRE</div>
+                <h2>Résumé de la proposition</h2>
+              </div>
+              <button type="button" className="close-button" onClick={() => setProposalPreviewCommentId(null)} aria-label="Fermer">×</button>
+            </div>
+            <p className="drawer-intro">Demande #{previewProposalComment?.id} · Version {previewProposal.version}</p>
+            <div className={`proposal-preview-status ${proposalDecisions[previewProposal.commentId] === "refused" || previewAdaptationRequest?.decision === "refused" ? "refused" : "accepted"}`}>
+              {previewAdaptationRequest?.decision === "accepted" ? `Acceptée par l'agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}` : previewAdaptationRequest?.decision === "refused" ? `Refusée par l'agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}` : proposalDecisions[previewProposal.commentId] === "accepted" ? "Acceptée par le client" : "Refusée par le client"}
+            </div>
+            <div className="proposal-summary">
+              <div><span>Prestation</span><b>{previewProposal.description}</b></div>
+              <div><span>Montant</span><b>{formatProposalAmount(previewProposal.amount)}</b></div>
+              <div><span>Impact planning</span><b>{formatProposalDeadline(previewProposal.deadline)}</b></div>
+            </div>
+            {previewAdaptationRequest && <div className="adaptation-request-summary"><span>Demande d'adaptation · {previewAdaptationRequest.requestedAt}</span><p>{previewAdaptationRequest.message}</p></div>}
+          </section>
+        </div>
+      )}
       {commentDraft && clientPanelRef.current && createPortal(
         <div className="modal-backdrop" role="presentation">
           <form className="project-modal comment-modal" onSubmit={addComment}>
             <div className="drawer-header">
               <div>
-                <div className="eyebrow">NOUVEAU RETOUR</div>
-                <h2>Ajouter un commentaire</h2>
+                <div className="eyebrow">NOUVELLE DEMANDE</div>
+                <h2>Soumettre une demande</h2>
               </div>
               <button type="button" className="close-button" onClick={() => setCommentDraft(null)} aria-label="Fermer">×</button>
             </div>
-            <p className="drawer-intro">{generalComment ? "Votre retour sera lié au livrable dans son ensemble." : `Votre commentaire sera attaché à la position ${commentDraft.x}% / ${commentDraft.y}% de la page.`}</p>
-            <label>Commentaire<textarea autoFocus value={commentText} onChange={(event) => setCommentText(event.target.value)} placeholder="Décrivez la modification souhaitée..." /></label>
-            <button className="send-proposal" type="submit" disabled={!commentText.trim()}>Ajouter le commentaire →</button>
+            <p className="drawer-intro">{generalComment ? "Votre demande sera liée au livrable dans son ensemble." : `Votre demande sera attachée à la position ${commentDraft.x}% / ${commentDraft.y}% de la page.`}</p>
+            <label>Description de la demande<textarea autoFocus value={commentText} onChange={(event) => setCommentText(event.target.value)} placeholder="Décrivez précisément la modification souhaitée..." /></label>
+            <button className="send-proposal" type="submit" disabled={!commentText.trim()}>Soumettre la demande →</button>
           </form>
         </div>,
         clientPanelRef.current,
@@ -1025,8 +1157,9 @@ export default function ClientReviewPage() {
               <button type="button" className="close-button" onClick={() => setAdaptationCommentId(null)} aria-label="Fermer">×</button>
             </div>
             <p className="drawer-intro">L'agence reste responsable du chiffrage. Décrivez votre besoin ou vos contraintes, sans modifier directement le prix.</p>
+            <p className="drawer-intro">L'agence reste responsable du chiffrage. Décrivez votre besoin et, si vous le souhaitez, indiquez un budget ou un délai cible.</p>
             <label>Votre demande<textarea autoFocus value={adaptationMessage} onChange={(event) => setAdaptationMessage(event.target.value)} placeholder="Ex. Pouvez-vous proposer une version limitée au formulaire ?" /></label>
-            <div className="field-grid"><label>Budget indicatif <input value={adaptationBudget} onChange={(event) => setAdaptationBudget(event.target.value)} placeholder="Facultatif" /></label><label>Délai souhaité <input value={adaptationDeadline} onChange={(event) => setAdaptationDeadline(event.target.value)} placeholder="Facultatif" /></label></div>
+            <div className="field-grid"><label>Budget indicatif<div className="input-with-addon"><input type="number" min="0" step="10" value={adaptationBudget} onChange={(event) => setAdaptationBudget(event.target.value)} placeholder="Facultatif" /><span className="input-addon">€</span></div></label><label>Délai souhaité<div className="input-with-addon"><input type="number" min="0" step="1" value={adaptationDeadline} onChange={(event) => setAdaptationDeadline(event.target.value)} placeholder="Facultatif" /><span className="input-addon">jours</span></div></label></div>
             <button className="send-proposal" type="submit" disabled={!adaptationMessage.trim()}>Envoyer la demande →</button>
           </form>
         </div>

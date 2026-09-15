@@ -10,6 +10,29 @@ function escapeHtml(value: string) {
     '"': "&quot;",
   })[character] ?? character);
 }
+
+function parseNumericAmount(amount: number | string | undefined): number {
+  if (typeof amount === "number") return amount;
+  if (!amount) return 0;
+  return Number(String(amount).replace(/[^0-9]/g, "")) || 0;
+}
+
+function parseNumericDays(deadline: number | string | undefined): number {
+  if (typeof deadline === "number") return deadline;
+  if (!deadline) return 0;
+  return Number(String(deadline).replace(/[^0-9]/g, "")) || 0;
+}
+
+function formatProposalAmount(amount: number | string | undefined): string {
+  const num = parseNumericAmount(amount);
+  return `${num.toLocaleString("fr-FR")} €`;
+}
+
+function formatProposalDeadline(deadline: number | string | undefined): string {
+  const num = parseNumericDays(deadline);
+  if (num === 0) return "Aucun impact";
+  return `+ ${num} jour${num > 1 ? "s" : ""}`;
+}
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
@@ -34,7 +57,7 @@ const PdfPage = dynamic(() => import("react-pdf").then((module) => module.Page),
   ssr: false,
 });
 
-type Decision = "À traiter" | "Inclus" | "Hors périmètre";
+type Decision = "À qualifier" | "Inclus" | "Hors périmètre";
 
 type Reply = {
   id: number;
@@ -81,7 +104,7 @@ type Deliverable = {
   type: "PDF" | "Image";
   size: number;
   version: number;
-  status: "Brouillon" | "En revue" | "Approuvée" | "Remplacée";
+  status: "Brouillon" | "En attente client" | "En revue" | "Approuvée" | "Remplacée";
   importedAt: string;
   locked: boolean;
   fileData?: string;
@@ -103,8 +126,11 @@ type ProposalStates = Record<number, ProposalState>;
 type ProposalDecisions = Record<number, ProposalDecision>;
 type AdaptationRequest = {
   message: string;
-  budget?: string;
-  deadline?: string;
+  budget?: number | string;
+  deadline?: number | string;
+  decision?: "accepted" | "refused";
+  decisionBy?: string;
+  decisionAt?: string;
   requestedAt: string;
 };
 type AdaptationRequests = Record<number, AdaptationRequest>;
@@ -113,13 +139,13 @@ type ProposalVersion = {
   version: number;
   commentId: number;
   description: string;
-  amount: string;
-  deadline: string;
+  amount: number | string;
+  deadline: number | string;
   status: "draft" | "sent" | "superseded" | "accepted" | "refused";
   createdAt: string;
 };
 type ProposalVersions = Record<number, ProposalVersion[]>;
-type CommentFilter = "all" | "pending" | "outside" | "resolved";
+type CommentFilter = "all" | "pending" | "outside" | "included" | "refused";
 type ImportMode = "version" | "deliverable";
 type Notification = {
   id: number;
@@ -159,7 +185,7 @@ const initialDeliverables: Deliverable[] = [
     type: "PDF",
     size: 2_400_000,
     version: 3,
-    status: "En revue",
+    status: "En attente client",
     importedAt: "Aujourd'hui à 14:32",
     locked: false,
   },
@@ -167,7 +193,8 @@ const initialDeliverables: Deliverable[] = [
 
 const initialComments: Comment[] = [];
 
-const decisionStyles: Record<Decision, string> = {
+const decisionStyles: Record<string, string> = {
+  "À qualifier": "decision-pending",
   "À traiter": "decision-pending",
   Inclus: "decision-included",
   "Hors périmètre": "decision-outside",
@@ -200,8 +227,7 @@ export default function Home() {
   const [proposalCommentId, setProposalCommentId] = useState<number | null>(
     null,
   );
-  const [refusalOpen, setRefusalOpen] = useState(false);
-  const [refusalMessage, setRefusalMessage] = useState("");
+  const [proposalPreviewCommentId, setProposalPreviewCommentId] = useState<number | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
@@ -237,12 +263,14 @@ export default function Home() {
   const [editingCommentText, setEditingCommentText] = useState("");
   const [editingReply, setEditingReply] = useState<{ commentId: number; replyId: number } | null>(null);
   const [editingReplyText, setEditingReplyText] = useState("");
+  const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
   const [showAllComments, setShowAllComments] = useState(false);
   const [commentFilter, setCommentFilter] = useState<CommentFilter>("all");
   const [changesOpen, setChangesOpen] = useState(false);
   const [changesMessage, setChangesMessage] = useState("");
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [proofOpen, setProofOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"review" | "dashboard">("review");
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -313,6 +341,7 @@ export default function Home() {
         setComments(parsedState.comments.map((comment) => ({
           ...comment,
           deliverableId: comment.deliverableId ?? parsedState.deliverables?.[0]?.id ?? 1,
+          decision: ((comment.decision as string) === "À traiter" ? "À qualifier" : comment.decision) ?? "À qualifier",
         })));
       if (typeof parsedState.approved === "boolean")
         setApproved(parsedState.approved || parsedState.reviewStatus === "approved");
@@ -354,10 +383,12 @@ export default function Home() {
           auditEvents?: AuditEvent[];
           notifications?: Notification[];
         };
+
         if (parsedState.comments)
           setComments(parsedState.comments.map((comment) => ({
             ...comment,
             deliverableId: comment.deliverableId ?? deliverables[0]?.id ?? 1,
+            decision: ((comment.decision as string) === "À traiter" ? "À qualifier" : comment.decision) ?? "À qualifier",
           })));
         if (parsedState.proposalStates)
           setProposalStates(parsedState.proposalStates);
@@ -392,30 +423,30 @@ export default function Home() {
   useEffect(() => {
     if (!stateHydrated) return;
 
-    window.localStorage.setItem(
-      storageKey,
-      JSON.stringify({
-        projects,
-        clients,
-        selectedProjectId,
-        selectedClientId,
-        selectedDeliverableId,
-        deliverables,
-        reviewLink,
-        reviewLinks,
-        reviewStatus,
-        comments,
-        approved,
-        approvedAt,
-        proposalStates,
-        proposalDecisions,
-        adaptationRequests,
-        proposalVersions,
-        notifications,
-        lastReminderAt,
-        auditEvents,
-      }),
-    );
+    const newSerialized = JSON.stringify({
+      projects,
+      clients,
+      selectedProjectId,
+      selectedClientId,
+      selectedDeliverableId,
+      deliverables,
+      reviewLink,
+      reviewLinks,
+      reviewStatus,
+      comments,
+      approved,
+      approvedAt,
+      proposalStates,
+      proposalDecisions,
+      adaptationRequests,
+      proposalVersions,
+      notifications,
+      lastReminderAt,
+      auditEvents,
+    });
+
+    if (window.localStorage.getItem(storageKey) === newSerialized) return;
+    window.localStorage.setItem(storageKey, newSerialized);
   }, [
     projects,
     clients,
@@ -436,6 +467,7 @@ export default function Home() {
     notifications,
     lastReminderAt,
     auditEvents,
+    stateHydrated,
   ]);
 
   useEffect(() => {
@@ -444,8 +476,6 @@ export default function Home() {
     };
   }, [previewUrl]);
 
-  const selectedComment =
-    comments.find((comment) => comment.id === selectedId) ?? comments[0];
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0];
   const selectedClient = clients.find((client) => client.id === selectedClientId) ?? clients[0];
   const visibleProjects = projects.filter(
@@ -472,6 +502,9 @@ export default function Home() {
   const activeComments = comments.filter(
     (comment) => (comment.deliverableId ?? deliverables[0]?.id) === currentDeliverable?.id,
   );
+  const selectedComment =
+    activeComments.find((comment) => comment.id === selectedId) ??
+    activeComments[0];
   const activeCommentIds = new Set(activeComments.map((comment) => comment.id));
   const activeAuditEvents = auditEvents.filter(
     (event) => event.commentId === undefined || activeCommentIds.has(event.commentId),
@@ -483,29 +516,99 @@ export default function Home() {
     proposalCommentId === null
       ? undefined
       : adaptationRequests[proposalCommentId];
-  const resolvedComments = activeComments.filter(
-    (comment) =>
-      comment.decision === "Inclus" ||
-      proposalDecisionFor(comment.id) !== "none",
+  const previewProposalComment =
+    proposalPreviewCommentId === null
+      ? undefined
+      : activeComments.find((comment) => comment.id === proposalPreviewCommentId);
+  const previewProposal =
+    proposalPreviewCommentId === null
+      ? undefined
+      : activeProposalFor(proposalPreviewCommentId);
+  const previewAdaptationRequest =
+    proposalPreviewCommentId === null
+      ? undefined
+      : adaptationRequests[proposalPreviewCommentId];
+  const activeIncludedComments = activeComments.filter(
+    (comment) => comment.decision === "Inclus",
   );
-  const filteredComments =
-    commentFilter === "all"
-      ? activeComments
-      : commentFilter === "pending"
-        ? activeComments.filter((comment) => comment.decision === "À traiter")
-        : commentFilter === "outside"
-          ? activeComments.filter((comment) => comment.decision === "Hors périmètre")
-          : resolvedComments;
-  const compactComment =
-    filteredComments.find((comment) => comment.id === selectedId) ??
-    filteredComments[0];
+  const activeRefusedComments = activeComments.filter(
+    (comment) =>
+      comment.decision === "Hors périmètre" &&
+      proposalDecisionFor(comment.id) === "refused",
+  );
+  const filteredComments = (() => {
+    const commentsForFilter =
+      commentFilter === "all"
+        ? [...activeComments].sort((a, b) => b.id - a.id)
+        : commentFilter === "pending"
+          ? activeComments.filter((comment) => comment.decision === "À qualifier" || !comment.decision)
+          : commentFilter === "outside"
+            ? activeComments.filter((comment) => comment.decision === "Hors périmètre")
+            : commentFilter === "included"
+              ? activeIncludedComments
+              : activeRefusedComments;
+    const selectedCommentIndex = commentsForFilter.findIndex((comment) => comment.id === selectedId);
+    if (selectedCommentIndex <= 0) return commentsForFilter;
+    return [commentsForFilter[selectedCommentIndex], ...commentsForFilter.slice(0, selectedCommentIndex), ...commentsForFilter.slice(selectedCommentIndex + 1)];
+  })();
   const visibleComments = showAllComments
     ? filteredComments
-    : compactComment
-      ? [compactComment]
-      : [];
+    : filteredComments.length <= 3
+      ? filteredComments
+      : filteredComments.slice(0, 3);
   const reminderBlocked =
     lastReminderAt !== null && Date.now() - lastReminderAt < 24 * 60 * 60 * 1000;
+
+  // Calculs pour le tableau de bord du projet sélectionné
+  const projectDeliverables = deliverables.filter(
+    (deliverable) => (deliverable.projectId ?? 1) === selectedProjectId,
+  );
+  const projectDeliverableIds = new Set(projectDeliverables.map((d) => d.id));
+  const projectComments = comments.filter((comment) =>
+    projectDeliverableIds.has(comment.deliverableId ?? deliverables[0]?.id ?? 1),
+  );
+  const totalProjectDemands = projectComments.length;
+  const includedDemands = projectComments.filter((c) => c.decision === "Inclus");
+  const outsideDemands = projectComments.filter((c) => c.decision === "Hors périmètre");
+  const pendingDemands = projectComments.filter((c) => c.decision === "À qualifier" || !c.decision);
+
+  let totalQuotedEuros = 0;
+  let totalAcceptedEuros = 0;
+  let totalQuotedDays = 0;
+  let totalAcceptedDays = 0;
+
+  outsideDemands.forEach((comment) => {
+    const proposal = activeProposalFor(comment.id);
+    const decision = proposalDecisionFor(comment.id);
+    if (proposal) {
+      const numAmount = parseNumericAmount(proposal.amount);
+      totalQuotedEuros += numAmount;
+      if (decision === "accepted") {
+        totalAcceptedEuros += numAmount;
+      }
+
+      const numDays = parseNumericDays(proposal.deadline);
+      totalQuotedDays += numDays;
+      if (decision === "accepted") {
+        totalAcceptedDays += numDays;
+      }
+    }
+  });
+
+  const outsideRate =
+    totalProjectDemands > 0
+      ? Math.round((outsideDemands.length / totalProjectDemands) * 100)
+      : 0;
+  const acceptedProposalsCount = outsideDemands.filter(
+    (c) => proposalDecisionFor(c.id) === "accepted",
+  ).length;
+  const refusedProposalsCount = outsideDemands.filter(
+    (c) => proposalDecisionFor(c.id) === "refused",
+  ).length;
+  const pendingProposalsCount = outsideDemands.filter(
+    (c) =>
+      proposalDecisionFor(c.id) === "none" && proposalStateFor(c.id) === "sent",
+  ).length;
 
   useEffect(() => {
     if (visibleProjects.length > 0 && !visibleProjects.some((project) => project.id === selectedProjectId)) {
@@ -538,6 +641,12 @@ export default function Home() {
     setPdfPageCount(1);
   }, [currentDeliverable?.id]);
 
+  useEffect(() => {
+    if (activeComments.length > 0 && !activeComments.some((c) => c.id === selectedId)) {
+      setSelectedId(activeComments[0].id);
+    }
+  }, [currentDeliverable?.id, activeComments, selectedId]);
+
   function selectDeliverableName(name: string) {
     const latestVersion = activeDeliverables
       .filter((deliverable) => deliverable.name === name)
@@ -560,13 +669,13 @@ export default function Home() {
   }
 
   function classifyComment(decision: Decision) {
-    if (isReadOnlyVersion) return;
+    if (isReadOnlyVersion || !selectedComment || isDecisionLocked(selectedComment.id)) return;
     setComments((current) =>
       current.map((comment) =>
-        comment.id === selectedId ? { ...comment, decision } : comment,
+        comment.id === selectedComment.id ? { ...comment, decision } : comment,
       ),
     );
-    recordAudit("scope.classified", `Demande classée « ${decision} »`, selectedId);
+    recordAudit("scope.classified", `Demande classée « ${decision} »`, selectedComment.id);
   }
 
   function selectComment(commentId: number) {
@@ -649,7 +758,7 @@ export default function Home() {
   async function confirmImport(mode: ImportMode) {
     if (!pendingImport) return;
     const { file, type } = pendingImport;
-    const fileData = type === "PDF" ? await readFileAsDataUrl(file) : undefined;
+    const fileData = await readFileAsDataUrl(file);
     const activeDeliverable = currentDeliverable;
     const sameDeliverableVersions = deliverables.filter(
       (deliverable) => deliverable.projectId === selectedProjectId && deliverable.name === activeDeliverable?.name,
@@ -664,7 +773,7 @@ export default function Home() {
       type,
       size: file.size,
       version: nextVersion,
-      status: "Brouillon",
+      status: "En attente client",
       importedAt: "À l'instant",
       locked: false,
       fileData,
@@ -764,13 +873,13 @@ export default function Home() {
       time: "À l'instant",
       message,
       location: `Page ${pdfPage} · position ${commentDraft.x}% / ${commentDraft.y}%`,
-      decision: "À traiter",
+      decision: "À qualifier",
       page: pdfPage,
       position: commentDraft,
     };
 
     setComments((current) => [...current, newComment]);
-    recordAudit("comment.created", "Commentaire agence ajouté", newComment.id);
+    recordAudit("comment.created", "Remarque agence ajoutée", newComment.id);
     setSelectedId(newComment.id);
     setCommentDraft(null);
     setCommentText("");
@@ -781,7 +890,7 @@ export default function Home() {
     if (isReadOnlyVersion) return;
     const message = replyText.trim();
 
-    if (!replyingTo || !message) return;
+    if (!replyingTo || isDecisionLocked(replyingTo) || !message) return;
 
     const reply: Reply = {
       id: Date.now(),
@@ -804,13 +913,13 @@ export default function Home() {
   }
 
   function startEditComment(comment: Comment) {
-    if (isReadOnlyVersion || comment.initials !== "AM") return;
+    if (isReadOnlyVersion || isDecisionLocked(comment.id) || comment.initials !== "AM") return;
     setEditingCommentId(comment.id);
     setEditingCommentText(comment.message);
   }
 
   function saveEditComment(commentId: number) {
-    if (isReadOnlyVersion) return;
+    if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
     const target = comments.find((c) => c.id === commentId);
     if (target?.initials !== "AM") return;
     const message = editingCommentText.trim();
@@ -821,13 +930,13 @@ export default function Home() {
         comment.id === commentId ? { ...comment, message } : comment,
       ),
     );
-    recordAudit("comment.edited", "Commentaire agence modifié", commentId);
+    recordAudit("comment.edited", "Remarque agence modifiée", commentId);
     setEditingCommentId(null);
     setEditingCommentText("");
   }
 
   function deleteComment(commentId: number) {
-    if (isReadOnlyVersion) return;
+    if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
     const target = comments.find((c) => c.id === commentId);
     if (target?.initials !== "AM") return;
     setComments((current) => {
@@ -837,17 +946,17 @@ export default function Home() {
       }
       return updated;
     });
-    recordAudit("comment.deleted", "Commentaire agence supprimé", commentId);
+    recordAudit("comment.deleted", "Remarque agence supprimée", commentId);
   }
 
   function startEditReply(commentId: number, reply: Reply) {
-    if (isReadOnlyVersion || reply.initials !== "AM") return;
+    if (isReadOnlyVersion || isDecisionLocked(commentId) || reply.initials !== "AM") return;
     setEditingReply({ commentId, replyId: reply.id });
     setEditingReplyText(reply.message);
   }
 
   function saveEditReply(commentId: number, replyId: number) {
-    if (isReadOnlyVersion) return;
+    if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
     const parent = comments.find((c) => c.id === commentId);
     const target = parent?.replies?.find((r) => r.id === replyId);
     if (target?.initials !== "AM") return;
@@ -872,7 +981,7 @@ export default function Home() {
   }
 
   function deleteReply(commentId: number, replyId: number) {
-    if (isReadOnlyVersion) return;
+    if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
     const parent = comments.find((c) => c.id === commentId);
     const target = parent?.replies?.find((r) => r.id === replyId);
     if (target?.initials !== "AM") return;
@@ -891,7 +1000,7 @@ export default function Home() {
 
   function approveVersion() {
     const blockingComments = comments.filter(
-      (comment) => comment.decision === "À traiter",
+      (comment) => comment.decision === "À qualifier" || !comment.decision,
     );
 
     if (blockingComments.length > 0) {
@@ -907,9 +1016,9 @@ export default function Home() {
     setApprovedAt(new Date().toLocaleString("fr-FR"));
     setReviewStatus("approved");
     setDeliverables((current) =>
-      current.map((deliverable, index) =>
-        index === 0
-          ? { ...deliverable, status: "En revue", locked: true }
+      current.map((deliverable) =>
+        deliverable.id === currentDeliverable.id
+          ? { ...deliverable, status: "Approuvée", locked: true }
           : deliverable,
       ),
     );
@@ -925,30 +1034,6 @@ export default function Home() {
     setChangesOpen(false);
   }
 
-  function acceptProposal() {
-    if (proposalCommentId === null) return;
-    setProposalDecisions((current) => ({
-      ...current,
-      [proposalCommentId]: "accepted",
-    }));
-    recordAudit("proposal.accepted", "Proposition acceptée", proposalCommentId);
-    setProposalOpen(false);
-  }
-
-  function refuseProposal(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (proposalCommentId !== null) {
-      setProposalDecisions((current) => ({
-        ...current,
-        [proposalCommentId]: "refused",
-      }));
-      recordAudit("proposal.refused", "Proposition refusée", proposalCommentId);
-    }
-    setRefusalOpen(false);
-    setProposalOpen(false);
-    setRefusalMessage("");
-  }
-
   function openProposal(commentId: number) {
     if (isReadOnlyVersion) return;
     setProposalCommentId(commentId);
@@ -957,8 +1042,16 @@ export default function Home() {
       existingProposal?.description ??
         "Conception et intégration d'une section témoignages supplémentaire.",
     );
-    setNewProposalAmount(existingProposal?.amount ?? "850 €");
-    setNewProposalDeadline(existingProposal?.deadline ?? "+ 3 jours");
+    setNewProposalAmount(
+      existingProposal
+        ? String(parseNumericAmount(existingProposal.amount))
+        : "850",
+    );
+    setNewProposalDeadline(
+      existingProposal
+        ? String(parseNumericDays(existingProposal.deadline))
+        : "3",
+    );
     setProposalOpen(true);
   }
 
@@ -970,6 +1063,9 @@ export default function Home() {
       !newProposalDeadline.trim()
     )
       return;
+    const numericAmount = parseNumericAmount(newProposalAmount);
+    const numericDays = parseNumericDays(newProposalDeadline);
+
     setProposalStates((current) => ({
       ...current,
       [proposalCommentId]: "sent",
@@ -984,8 +1080,8 @@ export default function Home() {
             version: 1,
             commentId: proposalCommentId,
             description: newProposalDescription.trim(),
-            amount: newProposalAmount.trim(),
-            deadline: newProposalDeadline.trim(),
+            amount: numericAmount,
+            deadline: numericDays,
             status: "sent",
             createdAt: new Date().toLocaleString("fr-FR"),
           }],
@@ -1007,6 +1103,8 @@ export default function Home() {
       !newProposalDeadline.trim()
     ) return;
 
+    const numericAmount = parseNumericAmount(newProposalAmount);
+    const numericDays = parseNumericDays(newProposalDeadline);
     const currentHistory = proposalVersions[proposalCommentId] ?? [];
     const nextVersion = Math.max(...currentHistory.map((proposal) => proposal.version), 0) + 1;
 
@@ -1025,8 +1123,8 @@ export default function Home() {
             version: nextVersion,
             commentId: proposalCommentId,
             description: newProposalDescription.trim(),
-            amount: newProposalAmount.trim(),
-            deadline: newProposalDeadline.trim(),
+            amount: numericAmount,
+            deadline: numericDays,
             status: "sent",
             createdAt: new Date().toLocaleString("fr-FR"),
           },
@@ -1056,6 +1154,24 @@ export default function Home() {
     return proposalDecisions[commentId] ?? "none";
   }
 
+  function isDecisionLocked(commentId: number) {
+    return proposalDecisionFor(commentId) !== "none" || Boolean(adaptationRequests[commentId]?.decision);
+  }
+
+  function decideAdaptation(commentId: number, decision: "accepted" | "refused") {
+    if (isReadOnlyVersion || !adaptationRequests[commentId]) return;
+    const decisionAt = new Date().toLocaleString("fr-FR");
+    setAdaptationRequests((current) => ({
+      ...current,
+      [commentId]: { ...current[commentId], decision, decisionBy: "Alex Morgan", decisionAt },
+    }));
+    recordAudit(
+      "proposal.adaptation-decision",
+      `Demande d'adaptation ${decision === "accepted" ? "acceptée" : "refusée"}`,
+      commentId,
+    );
+  }
+
   function exportProof() {
     const exportWindow = window.open("", "_blank");
     if (!exportWindow || !currentDeliverable) return;
@@ -1064,7 +1180,7 @@ export default function Home() {
       ? `Version approuvée${approvedAt ? ` le ${approvedAt}` : ""}`
       : reviewStatus === "changes-requested"
         ? "Modifications demandées"
-        : "Validation en cours";
+        : "En attente client";
     const commentsHtml = activeComments.length > 0
       ? activeComments.map((comment) => `
           <li>
@@ -1077,7 +1193,9 @@ export default function Home() {
       .filter((comment) => comment.decision === "Hors périmètre" && proposalDecisionFor(comment.id) !== "none")
       .map((comment) => {
         const proposal = activeProposalFor(comment.id);
-        return `<li><strong>Commentaire #${comment.id} · ${proposalDecisionFor(comment.id) === "accepted" ? "Acceptée" : "Refusée"}</strong><p>${escapeHtml(proposal?.description ?? "Proposition non détaillée")}</p><small>${escapeHtml(proposal?.amount ?? "-")} · ${escapeHtml(proposal?.deadline ?? "-")}</small></li>`;
+        const amountDisplay = proposal ? formatProposalAmount(proposal.amount) : "-";
+        const deadlineDisplay = proposal ? formatProposalDeadline(proposal.deadline) : "-";
+        return `<li><strong>Demande #${comment.id} · ${proposalDecisionFor(comment.id) === "accepted" ? "Acceptée" : "Refusée"}</strong><p>${escapeHtml(proposal?.description ?? "Proposition non détaillée")}</p><small>${escapeHtml(amountDisplay)} · ${escapeHtml(deadlineDisplay)}</small></li>`;
       }).join("");
     const auditHtml = activeAuditEvents.slice(0, 50).map((event) => `
       <li><strong>${escapeHtml(event.description)}</strong><small>${escapeHtml(event.actor)} · ${escapeHtml(event.timestamp)}</small></li>`).join("");
@@ -1156,9 +1274,27 @@ export default function Home() {
           <span className="muted">⌄</span>
         </div>
         <nav className="main-nav" aria-label="Navigation principale">
+          <button
+            className={`nav-item ${activeTab === "review" ? "active" : ""}`}
+            onClick={() => {
+              setActiveTab("review");
+              setSidebarMenu(null);
+            }}
+          >
+            <span>◈</span> Revue & Livrables
+          </button>
+          <button
+            className={`nav-item ${activeTab === "dashboard" ? "active" : ""}`}
+            onClick={() => {
+              setActiveTab("dashboard");
+              setSidebarMenu(null);
+            }}
+          >
+            <span>📊</span> Tableau de bord
+          </button>
           <div className="sidebar-menu-group">
             <button className={`nav-item nav-menu-trigger ${sidebarMenu === "projects" ? "active" : ""}`} onClick={() => setSidebarMenu((current) => current === "projects" ? null : "projects")} aria-expanded={sidebarMenu === "projects"}>
-              <span>◈</span> Projets <strong>{visibleProjects.length}</strong><i>⌄</i>
+              <span>📁</span> Projets <strong>{visibleProjects.length}</strong><i>⌄</i>
             </button>
             {sidebarMenu === "projects" && <div className="sidebar-dropdown">{visibleProjects.map((project) => <button className={`sidebar-dropdown-item ${project.id === selectedProjectId ? "selected" : ""}`} key={project.id} onClick={() => { setSelectedProjectId(project.id); setSidebarMenu(null); }}><span className="dropdown-status" />{project.name}<small>{project.client}</small></button>)}<button className="sidebar-dropdown-action" onClick={() => { setSidebarMenu(null); setNewProjectOpen(true); }}>+ Nouveau projet</button></div>}
           </div>
@@ -1193,6 +1329,12 @@ export default function Home() {
             <span>Projets</span>
             <b>/</b>
             <strong>{selectedProject?.name ?? "Aucun projet"}</strong>
+            {activeTab === "dashboard" && (
+              <>
+                <b>/</b>
+                <span>Tableau de bord</span>
+              </>
+            )}
           </div>
           <div className="top-actions">
             <button
@@ -1225,7 +1367,6 @@ export default function Home() {
                     <span className="notification-dot" />
                     <div>
                       <span>{notification.message}</span>
-                      <small>{notification.time}</small>
                     </div>
                   </div>
                 ))
@@ -1234,6 +1375,267 @@ export default function Home() {
           )}
         </header>
         <div className="content">
+          {activeTab === "dashboard" ? (
+            <div className="dashboard-view">
+              <div className="project-heading">
+                <div>
+                  <div className="eyebrow">PILOTAGE COMMERCIAL · {selectedClient?.name ?? "CLIENT"}</div>
+                  <div className="project-selector-row">
+                    <h1>Tableau de bord : {selectedProject?.name ?? "Aucun projet sélectionné"}</h1>
+                    <select
+                      className="project-select"
+                      value={selectedProjectId}
+                      onChange={(event) => setSelectedProjectId(Number(event.target.value))}
+                      aria-label="Sélectionner un projet"
+                    >
+                      {visibleProjects.map((project) => (
+                        <option value={project.id} key={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p>
+                    Indicateurs de dérive de périmètre (scope creep), revenus supplémentaires contractualisés et registre des décisions.
+                  </p>
+                </div>
+                <div className="heading-actions">
+                  <button className="secondary-button" onClick={() => setActiveTab("review")}>
+                    ← Revenir à la revue
+                  </button>
+                  <button className="secondary-button" onClick={() => setProofOpen(true)}>
+                    Synthèse & export ↗
+                  </button>
+                </div>
+              </div>
+
+              <div className="dashboard-kpi-grid">
+                <div className="kpi-card highlight-green">
+                  <div className="kpi-header">
+                    <span className="kpi-icon">💰</span>
+                    <span className="kpi-title">Revenu supplémentaire accepté</span>
+                  </div>
+                  <div className="kpi-value">{totalAcceptedEuros.toLocaleString("fr-FR")} €</div>
+                  <div className="kpi-sub">
+                    Sur <b>{totalQuotedEuros.toLocaleString("fr-FR")} €</b> de propositions chiffrées
+                  </div>
+                </div>
+
+                <div className="kpi-card highlight-coral">
+                  <div className="kpi-header">
+                    <span className="kpi-icon">🛡️</span>
+                    <span className="kpi-title">Scope creep évité (Planning)</span>
+                  </div>
+                  <div className="kpi-value">+{totalAcceptedDays} jours</div>
+                  <div className="kpi-sub">
+                    Délai supplémentaire formalisé et accepté par le client
+                  </div>
+                </div>
+
+                <div className="kpi-card">
+                  <div className="kpi-header">
+                    <span className="kpi-icon">📑</span>
+                    <span className="kpi-title">Total des demandes</span>
+                  </div>
+                  <div className="kpi-value">{totalProjectDemands}</div>
+                  <div className="kpi-sub">
+                    Dont <b>{outsideDemands.length}</b> hors périmètre ({outsideRate}%)
+                  </div>
+                </div>
+
+                <div className="kpi-card">
+                  <div className="kpi-header">
+                    <span className="kpi-icon">⚖️</span>
+                    <span className="kpi-title">Taux de conversion devis</span>
+                  </div>
+                  <div className="kpi-value">
+                    {outsideDemands.length > 0
+                      ? Math.round((acceptedProposalsCount / outsideDemands.length) * 100)
+                      : 0}%
+                  </div>
+                  <div className="kpi-sub">
+                    <b>{acceptedProposalsCount}</b> acceptée{acceptedProposalsCount > 1 ? "s" : ""}, <b>{refusedProposalsCount}</b> refusée{refusedProposalsCount > 1 ? "s" : ""}, <b>{pendingProposalsCount}</b> en cours
+                  </div>
+                </div>
+              </div>
+
+              <div className="dashboard-sections-grid">
+                <div className="dashboard-section-card">
+                  <div className="section-card-header">
+                    <h3>Répartition des arbitrages de périmètre</h3>
+                    <span>Sur {projectDeliverables.length} livrable{projectDeliverables.length > 1 ? "s" : ""}</span>
+                  </div>
+                  <div className="scope-bar-wrap">
+                    <div className="scope-progress-bar">
+                      {totalProjectDemands > 0 ? (
+                        <>
+                          <div
+                            className="bar-segment included"
+                            style={{ width: `${(includedDemands.length / totalProjectDemands) * 100}%` }}
+                            title={`Incluses: ${includedDemands.length}`}
+                          />
+                          <div
+                            className="bar-segment outside"
+                            style={{ width: `${(outsideDemands.length / totalProjectDemands) * 100}%` }}
+                            title={`Hors périmètre: ${outsideDemands.length}`}
+                          />
+                          <div
+                            className="bar-segment pending"
+                            style={{ width: `${(pendingDemands.length / totalProjectDemands) * 100}%` }}
+                            title={`À qualifier: ${pendingDemands.length}`}
+                          />
+                        </>
+                      ) : (
+                        <div className="bar-segment empty" style={{ width: "100%" }} />
+                      )}
+                    </div>
+                    <div className="scope-legend">
+                      <span className="legend-item"><i className="legend-dot included" /> Incluses ({includedDemands.length})</span>
+                      <span className="legend-item"><i className="legend-dot outside" /> Hors périmètre ({outsideDemands.length})</span>
+                      <span className="legend-item"><i className="legend-dot pending" /> À qualifier ({pendingDemands.length})</span>
+                    </div>
+                  </div>
+
+                  <div className="kpi-mini-stats">
+                    <div className="mini-stat">
+                      <small>Temps non facturé évité</small>
+                      <b>~{totalAcceptedDays * 7}h</b>
+                    </div>
+                    <div className="mini-stat">
+                      <small>Montant moyen / devis</small>
+                      <b>{outsideDemands.length > 0 ? Math.round(totalQuotedEuros / outsideDemands.length) : 0} €</b>
+                    </div>
+                    <div className="mini-stat">
+                      <small>Livrables sous revue</small>
+                      <b>{projectDeliverables.length}</b>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="dashboard-section-card">
+                  <div className="section-card-header">
+                    <h3>Statut des propositions commerciales</h3>
+                    <span>{outsideDemands.length} proposition{outsideDemands.length > 1 ? "s" : ""} au total</span>
+                  </div>
+                  <div className="proposals-status-list">
+                    <div className="status-row">
+                      <span className="status-label"><span className="status-dot approved-dot" /> Acceptées par le client</span>
+                      <b>{acceptedProposalsCount} ({totalAcceptedEuros.toLocaleString("fr-FR")} €)</b>
+                    </div>
+                    <div className="status-row">
+                      <span className="status-label"><span className="status-dot changes-dot" /> Refusées par le client</span>
+                      <b>{refusedProposalsCount}</b>
+                    </div>
+                    <div className="status-row">
+                      <span className="status-label"><span className="status-dot" /> En attente de décision / adaptation</span>
+                      <b>{pendingProposalsCount}</b>
+                    </div>
+                    <div className="status-row highlight">
+                      <span className="status-label"><b>Total valeur commerciale capturée</b></span>
+                      <b>+{totalAcceptedEuros.toLocaleString("fr-FR")} €</b>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="dashboard-table-card">
+                <div className="section-card-header">
+                  <div>
+                    <h3>Registre des demandes et décisions de périmètre</h3>
+                    <p>Historique complet des arbitrages du projet, versions et montants associés.</p>
+                  </div>
+                </div>
+                {projectComments.length === 0 ? (
+                  <p className="empty-table-note">Aucune demande enregistrée sur ce projet pour le moment.</p>
+                ) : (
+                  <div className="arbitrage-table-wrap">
+                    <table className="arbitrage-table">
+                      <thead>
+                        <tr>
+                          <th>Livrable</th>
+                          <th>Demande / Remarque</th>
+                          <th>Auteur</th>
+                          <th>Qualification</th>
+                          <th>Chiffrage & Planning</th>
+                          <th>Accord Client</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {projectComments.map((comment) => {
+                          const deliverableRecord = deliverables.find((d) => d.id === comment.deliverableId);
+                          const proposal = activeProposalFor(comment.id);
+                          const decision = proposalDecisionFor(comment.id);
+                          return (
+                            <tr key={comment.id}>
+                              <td>
+                                <b>{deliverableRecord?.name ?? "Livrable"}</b>
+                                <small>V{deliverableRecord ? String(deliverableRecord.version).padStart(2, "0") : "01"}</small>
+                              </td>
+                              <td className="demand-cell">
+                                <p>{comment.message}</p>
+                                <small>#{comment.id} · {comment.location}</small>
+                              </td>
+                              <td>
+                                <span className={`avatar light-avatar ${comment.initials === "AM" ? "agency-avatar" : "client-avatar"}`}>
+                                  {comment.initials}
+                                </span>
+                              </td>
+                              <td>
+                                <span className={`decision-badge ${decisionStyles[comment.decision]}`}>
+                                  {comment.decision}
+                                </span>
+                              </td>
+                              <td>
+                                {comment.decision === "Hors périmètre" && proposal ? (
+                                  <div>
+                                    <b>{formatProposalAmount(proposal.amount)}</b>
+                                    <small>{formatProposalDeadline(proposal.deadline)}</small>
+                                  </div>
+                                ) : (
+                                  <span className="text-muted">—</span>
+                                )}
+                              </td>
+                              <td>
+                                {comment.decision === "Hors périmètre" ? (
+                                  <span
+                                    className={`decision-badge ${
+                                      decision === "accepted"
+                                        ? "decision-included"
+                                        : decision === "refused"
+                                          ? "decision-outside"
+                                          : "decision-pending"
+                                    }`}
+                                  >
+                                    {decision === "accepted" ? "Acceptée ✓" : decision === "refused" ? "Refusée" : "En attente"}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted">Inclus au devis</span>
+                                )}
+                              </td>
+                              <td>
+                                <button
+                                  className="action-link"
+                                  onClick={() => {
+                                    if (comment.deliverableId) setSelectedDeliverableId(comment.deliverableId);
+                                    setSelectedId(comment.id);
+                                    setActiveTab("review");
+                                  }}
+                                >
+                                  Ouvrir ↗
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
           <div className="project-heading">
             <div>
               <div className="eyebrow">PROJET · {selectedClient?.name ?? "CLIENT"}</div>
@@ -1249,9 +1651,7 @@ export default function Home() {
               <p>
                 {currentDeliverable.name} · Version{" "}
                 {String(currentDeliverable.version).padStart(2, "0")} ·{" "}
-                {currentDeliverable.status === "Brouillon"
-                  ? "Importée à l'instant"
-                  : "Envoyée en revue il y a 2 h"}
+                {currentDeliverable.importedAt}
               </p>
             </div>
             <div className="heading-actions">
@@ -1294,11 +1694,11 @@ export default function Home() {
                 ? "Modifications demandées"
                 : approved
                   ? "Version approuvée"
-                  : "En attente de validation client"}
+                  : "En attente client"}
             </div>
             <span className="status-divider" />
             <div>
-              {activeComments.length} commentaires{" "}
+              {activeComments.length} demande{activeComments.length > 1 ? "s" : ""}{" "}
               <span className="strip-muted">·</span>{" "}
               {
                 comments.filter(
@@ -1317,16 +1717,16 @@ export default function Home() {
               <div className="panel-toolbar">
                 <div className="toolbar-left">
                   <button className="tool-button selected">
-                    ↖ <span>Commentaires</span>
+                    ↖ <span>Demandes</span>
                   </button>
                   <button
                     className="add-comment-tool"
                     onClick={startCommentAtCenter}
                     disabled={isReadOnlyVersion}
-                    title="Ajouter un commentaire"
-                    aria-label="Ajouter un commentaire"
+                    title="Ajouter une remarque"
+                    aria-label="Ajouter une remarque"
                   >
-                    + Ajouter un commentaire
+                    + Ajouter une remarque
                   </button>
                   <button className="tool-button">⊞</button>
                 </div>
@@ -1353,12 +1753,14 @@ export default function Home() {
                   minScale={0.5}
                   maxScale={3}
                   centerOnInit
+                  smooth={false}
+                  wheel={{ step: 0.1 }}
                   onTransform={(_, state) => setPreviewZoom(Math.round(state.scale * 100))}
                 >
                   <TransformComponent wrapperClass={`artboard-transform-wrapper ${previewDragging ? "dragging" : ""}`} contentClass="artboard-transform-content">
                     <div className="artboard" onClick={startComment} onPointerDown={trackPreviewPointerDown} onPointerMove={trackPreviewPointerMove} onPointerUp={trackPreviewPointerUp} onPointerCancel={trackPreviewPointerUp}>
-                  {previewUrl && previewType === "Image" ? (
-                    <img className="real-deliverable-image" src={previewUrl} alt={currentDeliverable.name} />
+                  {(previewUrl && previewType === "Image") || (currentDeliverable.fileData && currentDeliverable.type === "Image") ? (
+                    <img className="real-deliverable-image" src={currentDeliverable.fileData ?? previewUrl ?? undefined} alt={currentDeliverable.name} />
                   ) : currentDeliverable.fileData && currentDeliverable.type === "PDF" ? (
                     <PdfDocument file={currentDeliverable.fileData} onLoadSuccess={({ numPages }) => setPdfPageCount(numPages)} loading="Chargement du PDF...">
                       <PdfPage pageNumber={pdfPage} width={760} renderTextLayer={false} renderAnnotationLayer={false} />
@@ -1442,15 +1844,15 @@ export default function Home() {
             <aside className="comments-panel">
               <div className="comments-heading">
                 <div>
-                  <h2>Retours client</h2>
+                  <h2>Demandes à qualifier</h2>
                   <p>
-                    {activeComments.length} commentaires ·{" "}
+                    {activeComments.length} demande{activeComments.length > 1 ? "s" : ""} ·{" "}
                     {
                       activeComments.filter(
-                        (comment) => comment.decision === "À traiter",
+                        (comment) => comment.decision === "À qualifier" || !comment.decision,
                       ).length
                     }{" "}
-                    à traiter
+                    à qualifier
                   </p>
                 </div>
                 <button className="more-button" aria-label="Plus d'options">
@@ -1465,7 +1867,7 @@ export default function Home() {
                     setShowAllComments(false);
                   }}
                 >
-                  Tous <span>{activeComments.length}</span>
+                  Toutes <span>{activeComments.length}</span>
                 </button>
                 <button
                   className={`filter ${commentFilter === "pending" ? "active-filter" : ""}`}
@@ -1474,11 +1876,11 @@ export default function Home() {
                     setShowAllComments(false);
                   }}
                 >
-                  À traiter{" "}
+                  À qualifier{" "}
                   <span>
                     {
                         activeComments.filter(
-                        (comment) => comment.decision === "À traiter",
+                        (comment) => comment.decision === "À qualifier" || !comment.decision,
                       ).length
                     }
                   </span>
@@ -1500,13 +1902,22 @@ export default function Home() {
                   </span>
                 </button>
                 <button
-                  className={`filter ${commentFilter === "resolved" ? "active-filter" : ""}`}
+                  className={`filter ${commentFilter === "included" ? "active-filter" : ""}`}
                   onClick={() => {
-                    setCommentFilter("resolved");
+                    setCommentFilter("included");
                     setShowAllComments(false);
                   }}
                 >
-                  Résolus <span>{resolvedComments.length}</span>
+                  Incluses <span>{activeIncludedComments.length}</span>
+                </button>
+                <button
+                  className={`filter ${commentFilter === "refused" ? "active-filter" : ""}`}
+                  onClick={() => {
+                    setCommentFilter("refused");
+                    setShowAllComments(false);
+                  }}
+                >
+                  Refusées <span>{activeRefusedComments.length}</span>
                 </button>
               </div>
               <div className={`comment-list ${showAllComments ? "expanded-comment-list" : ""}`}>
@@ -1566,7 +1977,7 @@ export default function Home() {
                       <div className="comment-location">
                         ⌖ {comment.location}
                       </div>
-                      {comment.replies?.map((reply) => (
+                      {(expandedReplies[comment.id] ? (comment.replies ?? []) : (comment.replies ?? []).slice(0, 2)).map((reply) => (
                         <div className="reply" key={reply.id}>
                           <span className={`avatar reply-avatar ${reply.initials === "AM" ? "agency-avatar" : "client-avatar"}`}>
                             {reply.initials}
@@ -1611,7 +2022,7 @@ export default function Home() {
                             ) : (
                               <>
                                 <p>{reply.message}</p>
-                                {!isReadOnlyVersion && reply.initials === "AM" && (
+                                {!isReadOnlyVersion && !isDecisionLocked(comment.id) && reply.initials === "AM" && (
                                   <div className="item-inline-actions">
                                     <button
                                       className="action-link"
@@ -1647,21 +2058,33 @@ export default function Home() {
                           </div>
                         </div>
                       ))}
+                      {(comment.replies?.length ?? 0) > 2 && (
+                        <button
+                          type="button"
+                          className="replies-toggle"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setExpandedReplies((current) => ({ ...current, [comment.id]: !current[comment.id] }));
+                          }}
+                        >
+                          {expandedReplies[comment.id] ? "↑ Réduire les réponses" : `↓ Afficher les ${(comment.replies?.length ?? 0) - 2} autres réponses`}
+                        </button>
+                      )}
                       <div className="comment-decision">
                         <span className={`decision-badge ${decisionStyles[comment.decision]}`}>
                           {comment.decision}
                         </span>
                         <div className="comment-actions">
-                              {comment.decision === "Hors périmètre" && (proposalDecisionFor(comment.id) === "accepted" ? (
+                              {comment.decision === "Hors périmètre" && (proposalDecisionFor(comment.id) === "accepted" || adaptationRequests[comment.id]?.decision === "accepted" ? (
                                 <span className="proposal-accepted">Proposition acceptée ✓</span>
-                              ) : proposalDecisionFor(comment.id) === "refused" ? (
+                              ) : proposalDecisionFor(comment.id) === "refused" || adaptationRequests[comment.id]?.decision === "refused" ? (
                                 <span className="proposal-refused">Proposition refusée</span>
                               ) : proposalStateFor(comment.id) === "sent" ? (
                                 <button className="proposal-link" onClick={(event) => { event.stopPropagation(); openProposal(comment.id); }} disabled={isReadOnlyVersion}>Voir la proposition →</button>
                               ) : (
                                 <button className="proposal-link" onClick={(event) => { event.stopPropagation(); openProposal(comment.id); }} disabled={isReadOnlyVersion}>Créer une proposition →</button>
                               ))}
-                          {!isReadOnlyVersion && editingCommentId !== comment.id && comment.initials === "AM" && (
+                          {!isReadOnlyVersion && !isDecisionLocked(comment.id) && editingCommentId !== comment.id && comment.initials === "AM" && (
                             <>
                               <button
                                 className="action-link"
@@ -1692,7 +2115,7 @@ export default function Home() {
                               </button>
                             </>
                           )}
-                          <button
+                          {!isDecisionLocked(comment.id) && <button
                             className="reply-link"
                             onClick={(event) => {
                               event.stopPropagation();
@@ -1701,10 +2124,10 @@ export default function Home() {
                             }}
                           >
                             Répondre
-                          </button>
+                          </button>}
                         </div>
                       </div>
-                      {replyingTo === comment.id && (
+                      {replyingTo === comment.id && !isDecisionLocked(comment.id) && (
                         <form
                           className="reply-form"
                           onSubmit={addReply}
@@ -1727,14 +2150,14 @@ export default function Home() {
                   ),
                 )}
               </div>
-              {filteredComments.length > 1 && (
+              {filteredComments.length > 3 && (
                 <button
                   className="show-comments-button"
                   onClick={() => setShowAllComments((current) => !current)}
                 >
                   {showAllComments
-                    ? "Réduire les commentaires ↑"
-                    : `Voir les ${filteredComments.length - 1} autres commentaires ↓`}
+                    ? "Réduire les demandes ↑"
+                    : `Voir les ${filteredComments.length - 3} autres demandes ↓`}
                 </button>
               )}
               <div className="comments-footer">
@@ -1759,7 +2182,7 @@ export default function Home() {
                   className="proof-button"
                   onClick={() => setProofOpen(true)}
                 >
-                  Voir la preuve de validation ↗
+                  Synthèse du périmètre & décisions ↗
                 </button>
               </div>
             </aside>
@@ -1795,17 +2218,19 @@ export default function Home() {
                 </button>
                 <button
                   className={
-                    selectedComment.decision === "À traiter"
+                    selectedComment.decision === "À qualifier" || !selectedComment.decision
                       ? "active-decision"
                       : ""
                   }
-                  onClick={() => classifyComment("À traiter")}
+                  onClick={() => classifyComment("À qualifier")}
                 >
-                  À clarifier
+                  À qualifier
                 </button>
               </div>
             </div>
           )}
+          </>
+        )}
           {proposalOpen && (
             <div className="proposal-drawer">
               <div className="drawer-header">
@@ -1835,10 +2260,10 @@ export default function Home() {
                     <div className="adaptation-request-summary">
                       <span>Demande du client · {selectedAdaptationRequest.requestedAt}</span>
                       <p>{selectedAdaptationRequest.message}</p>
-                      {(selectedAdaptationRequest.budget || selectedAdaptationRequest.deadline) && (
+                      {(selectedAdaptationRequest.budget !== undefined || selectedAdaptationRequest.deadline !== undefined) && (
                         <div>
-                          {selectedAdaptationRequest.budget && <b>Budget indicatif : {selectedAdaptationRequest.budget}</b>}
-                          {selectedAdaptationRequest.deadline && <b>Délai souhaité : {selectedAdaptationRequest.deadline}</b>}
+                          {selectedAdaptationRequest.budget !== undefined && <b>Budget indicatif : {formatProposalAmount(selectedAdaptationRequest.budget)}</b>}
+                          {selectedAdaptationRequest.deadline !== undefined && <b>Délai souhaité : {formatProposalDeadline(selectedAdaptationRequest.deadline)}</b>}
                         </div>
                       )}
                     </div>
@@ -1855,38 +2280,65 @@ export default function Home() {
                     </div>
                     <div>
                       <span>Montant</span>
-                      <b>{activeProposalFor(proposalCommentId ?? 0)?.amount ?? "850 €"}</b>
+                      <b>{formatProposalAmount(activeProposalFor(proposalCommentId ?? 0)?.amount ?? 850)}</b>
                     </div>
                     <div>
                       <span>Impact planning</span>
-                      <b>{activeProposalFor(proposalCommentId ?? 0)?.deadline ?? "+ 3 jours"}</b>
+                      <b>{formatProposalDeadline(activeProposalFor(proposalCommentId ?? 0)?.deadline ?? 3)}</b>
                     </div>
                   </div>
-                  <button className="send-proposal" onClick={acceptProposal}>
-                    Accepter la proposition
-                  </button>
-                  {selectedAdaptationRequest && (
+                  {proposalDecisionFor(proposalCommentId ?? 0) === "accepted" ? (
+                    <div className="proposal-status-banner accepted">
+                      <span>✓ Proposition acceptée par le client</span>
+                    </div>
+                  ) : proposalDecisionFor(proposalCommentId ?? 0) === "refused" ? (
+                    <div className="proposal-status-banner refused">
+                      <span>✗ Proposition refusée par le client</span>
+                    </div>
+                  ) : selectedAdaptationRequest?.decision ? (
+                    <div className={`proposal-status-banner ${selectedAdaptationRequest.decision}`}>
+                      <span>{selectedAdaptationRequest.decision === "accepted" ? "✓ Adaptation acceptée par l'agence" : "✗ Adaptation refusée par l'agence"}</span>
+                    </div>
+                  ) : selectedAdaptationRequest ? (
+                    <>
+                      {selectedAdaptationRequest.budget !== undefined && (
+                        <div className="proposal-action-row">
+                          <button className="approve-button" onClick={() => decideAdaptation(proposalCommentId ?? 0, "accepted")} disabled={isReadOnlyVersion}>Accepter l'adaptation</button>
+                          <button className="refuse-submit" onClick={() => decideAdaptation(proposalCommentId ?? 0, "refused")} disabled={isReadOnlyVersion}>Refuser l'adaptation</button>
+                        </div>
+                      )}
+                      <button
+                        className="new-version-button"
+                        onClick={() => {
+                          const existing = activeProposalFor(proposalCommentId ?? 0);
+                          setNewProposalDescription(existing?.description ?? "");
+                          setNewProposalAmount(existing ? String(parseNumericAmount(existing.amount)) : "");
+                          setNewProposalDeadline(existing ? String(parseNumericDays(existing.deadline)) : "");
+                          setNewProposalVersionOpen(true);
+                        }}
+                      >
+                        Répondre avec une nouvelle proposition
+                      </button>
+                    </>
+                  ) : (
+                    <div className="proposal-status-banner pending">
+                      <span>⏳ Transmise au client · En attente de décision</span>
+                    </div>
+                  )}
+                  {!isReadOnlyVersion && proposalDecisionFor(proposalCommentId ?? 0) !== "accepted" && !selectedAdaptationRequest && (
                     <button
                       className="new-version-button"
                       onClick={() => {
-                        setNewProposalDescription(activeProposalFor(proposalCommentId ?? 0)?.description ?? "");
-                        setNewProposalAmount(activeProposalFor(proposalCommentId ?? 0)?.amount ?? "");
-                        setNewProposalDeadline(activeProposalFor(proposalCommentId ?? 0)?.deadline ?? "");
+                        const existing = activeProposalFor(proposalCommentId ?? 0);
+                        setNewProposalDescription(existing?.description ?? "");
+                        setNewProposalAmount(existing ? String(parseNumericAmount(existing.amount)) : "");
+                        setNewProposalDeadline(existing ? String(parseNumericDays(existing.deadline)) : "");
                         setNewProposalVersionOpen(true);
                       }}
                     >
-                      Répondre avec une nouvelle proposition
+                      Modifier la proposition (nouvelle version)
                     </button>
                   )}
-                  <button
-                    className="refuse-proposal"
-                    onClick={() => {
-                      setRefusalMessage("");
-                      setRefusalOpen(true);
-                    }}
-                  >
-                    Refuser la proposition
-                  </button>
                 </>
               ) : (
                 <>
@@ -1904,17 +2356,31 @@ export default function Home() {
                   <div className="field-grid">
                     <label>
                       Montant
-                      <input
-                        value={newProposalAmount}
-                        onChange={(event) => setNewProposalAmount(event.target.value)}
-                      />
+                      <div className="input-with-addon">
+                        <input
+                          type="number"
+                          min="0"
+                          step="10"
+                          placeholder="850"
+                          value={newProposalAmount}
+                          onChange={(event) => setNewProposalAmount(event.target.value)}
+                        />
+                        <span className="input-addon">€</span>
+                      </div>
                     </label>
                     <label>
                       Impact planning
-                      <input
-                        value={newProposalDeadline}
-                        onChange={(event) => setNewProposalDeadline(event.target.value)}
-                      />
+                      <div className="input-with-addon">
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="3"
+                          value={newProposalDeadline}
+                          onChange={(event) => setNewProposalDeadline(event.target.value)}
+                        />
+                        <span className="input-addon">jours</span>
+                      </div>
                     </label>
                   </div>
                   <button
@@ -1947,10 +2413,10 @@ export default function Home() {
                     <span>
                       #{comment.id} {comment.message}
                     </span>
-                    {proposalDecisionFor(comment.id) === "accepted" ? (
-                      <span className="proposal-accepted">Acceptée ✓</span>
-                    ) : proposalDecisionFor(comment.id) === "refused" ? (
-                      <span className="proposal-refused">Refusée</span>
+                    {proposalDecisionFor(comment.id) === "accepted" || adaptationRequests[comment.id]?.decision === "accepted" ? (
+                      <span className="proposal-queue-status"><span className="proposal-accepted">Acceptée ✓</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition acceptée pour la demande #${comment.id}`} title="Voir la proposition"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
+                    ) : proposalDecisionFor(comment.id) === "refused" || adaptationRequests[comment.id]?.decision === "refused" ? (
+                      <span className="proposal-queue-status"><span className="proposal-refused">Refusée</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition refusée pour la demande #${comment.id}`} title="Voir la proposition"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
                     ) : (
                       <button
                         className="proposal-link"
@@ -1965,43 +2431,27 @@ export default function Home() {
                 ))}
             </div>
           )}
-          {refusalOpen && (
+          {proposalPreviewCommentId !== null && previewProposal && (
             <div className="modal-backdrop" role="presentation">
-              <form
-                className="project-modal comment-modal"
-                onSubmit={refuseProposal}
-              >
+              <section className="project-modal proposal-preview-modal">
                 <div className="drawer-header">
                   <div>
-                    <div className="eyebrow">DÉCISION CLIENT</div>
-                    <h2>Refuser la proposition</h2>
+                    <div className="eyebrow">PROPOSITION COMPLÉMENTAIRE</div>
+                    <h2>Résumé de la proposition</h2>
                   </div>
-                  <button
-                    type="button"
-                    className="close-button"
-                    onClick={() => setRefusalOpen(false)}
-                    aria-label="Fermer"
-                  >
-                    ×
-                  </button>
+                  <button type="button" className="close-button" onClick={() => setProposalPreviewCommentId(null)} aria-label="Fermer">×</button>
                 </div>
-                <p className="drawer-intro">
-                  Le motif est facultatif, mais il aidera l'agence à comprendre
-                  votre décision.
-                </p>
-                <label>
-                  Motif du refus
-                  <textarea
-                    autoFocus
-                    value={refusalMessage}
-                    onChange={(event) => setRefusalMessage(event.target.value)}
-                    placeholder="Ex. Nous préférons reporter cette prestation..."
-                  />
-                </label>
-                <button className="refuse-submit" type="submit">
-                  Confirmer le refus
-                </button>
-              </form>
+                <p className="drawer-intro">Demande #{previewProposalComment?.id} · Version {previewProposal.version}</p>
+                <div className={`proposal-preview-status ${previewAdaptationRequest?.decision === "refused" || proposalDecisionFor(previewProposal.commentId) === "refused" ? "refused" : "accepted"}`}>
+                  {previewAdaptationRequest?.decision === "accepted" ? `Acceptée par l'agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}` : previewAdaptationRequest?.decision === "refused" ? `Refusée par l'agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}` : proposalDecisionFor(previewProposal.commentId) === "accepted" ? "Acceptée par le client" : "Refusée par le client"}
+                </div>
+                <div className="proposal-summary">
+                  <div><span>Prestation</span><b>{previewProposal.description}</b></div>
+                  <div><span>Montant</span><b>{formatProposalAmount(previewProposal.amount)}</b></div>
+                  <div><span>Impact planning</span><b>{formatProposalDeadline(previewProposal.deadline)}</b></div>
+                </div>
+                {previewAdaptationRequest && <div className="adaptation-request-summary"><span>Demande d'adaptation · {previewAdaptationRequest.requestedAt}</span><p>{previewAdaptationRequest.message}</p></div>}
+              </section>
             </div>
           )}
           {approvalOpen && (
@@ -2024,7 +2474,7 @@ export default function Home() {
                 <p className="drawer-intro">
                   {
                     comments.filter(
-                      (comment) => comment.decision === "À traiter",
+                      (comment) => comment.decision === "À qualifier" || !comment.decision,
                     ).length
                   }{" "}
                   demande(s) n'ont pas encore été qualifiée(s). L'approbation
@@ -2032,7 +2482,7 @@ export default function Home() {
                 </p>
                 <div className="blocking-list">
                   {comments
-                    .filter((comment) => comment.decision === "À traiter")
+                    .filter((comment) => comment.decision === "À qualifier" || !comment.decision)
                     .map((comment) => (
                       <div className="blocking-item" key={comment.id}>
                         <span className="blocking-dot" />
@@ -2068,8 +2518,8 @@ export default function Home() {
               <section className="project-modal proof-modal">
                 <div className="drawer-header">
                   <div>
-                    <div className="eyebrow">PREUVE DE VALIDATION</div>
-                    <h2>Récapitulatif du projet</h2>
+                    <div className="eyebrow">REGISTRE D'ARBITRAGE & PREUVE</div>
+                    <h2>Synthèse du périmètre & décisions</h2>
                   </div>
                   <button
                     type="button"
@@ -2086,11 +2536,11 @@ export default function Home() {
                 <div className="proof-header">
                   <div>
                     <span>Projet</span>
-                    <b>Refonte site Northstar</b>
+                    <b>{selectedProject?.name ?? "Projet"}</b>
                   </div>
                   <div>
                     <span>Client</span>
-                    <b>Northstar Studio</b>
+                    <b>{selectedClient?.name ?? "Client"}</b>
                   </div>
                   <div>
                     <span>Version</span>
@@ -2103,12 +2553,44 @@ export default function Home() {
                   <span
                     className={`status-dot ${approved ? "approved-dot" : ""}`}
                   />{" "}
-                  {approved ? "Version approuvée" : "Validation en cours"}
+                  {approved ? "Version approuvée" : "En attente client"}
                   {approvedAt && <small> le {approvedAt}</small>}
                 </div>
-                <h3>Décisions sur les retours</h3>
+
+                <div className="scope-summary-grid">
+                  <div className="scope-summary-card">
+                    <span className="scope-card-label">Demandes incluses</span>
+                    <b>
+                      {activeComments.filter((c) => c.decision === "Inclus").length}
+                    </b>
+                    <small>0 € (compris au forfait)</small>
+                  </div>
+                  <div className="scope-summary-card">
+                    <span className="scope-card-label">Hors périmètre</span>
+                    <b>
+                      {activeComments.filter((c) => c.decision === "Hors périmètre").length}
+                    </b>
+                    <small>
+                      {activeComments.filter(
+                        (c) =>
+                          c.decision === "Hors périmètre" &&
+                          proposalDecisionFor(c.id) === "accepted",
+                      ).length}{" "}
+                      acceptée(s)
+                    </small>
+                  </div>
+                  <div className="scope-summary-card highlight">
+                    <span className="scope-card-label">À qualifier</span>
+                    <b>
+                      {activeComments.filter((c) => c.decision === "À qualifier" || !c.decision).length}
+                    </b>
+                    <small>en attente d'arbitrage</small>
+                  </div>
+                </div>
+
+                <h3>Décisions et qualifications sur les demandes</h3>
                 <div className="proof-comments">
-                  {comments.map((comment) => (
+                  {activeComments.map((comment) => (
                     <div className="proof-comment" key={comment.id}>
                       <span
                         className={`decision-badge ${decisionStyles[comment.decision]}`}
@@ -2119,22 +2601,50 @@ export default function Home() {
                     </div>
                   ))}
                 </div>
-                {activeComments
-                  .filter(
-                    (comment) =>
-                      comment.decision === "Hors périmètre" &&
-                      proposalDecisionFor(comment.id) !== "none",
-                  )
-                  .map((comment) => (
-                    <div className="proof-proposal" key={comment.id}>
-                      <b>Proposition #{comment.id}</b>
-                      <span>
-                        {proposalDecisionFor(comment.id) === "accepted"
-                          ? `Acceptée · ${activeProposalFor(comment.id)?.amount ?? ""} · ${activeProposalFor(comment.id)?.deadline ?? ""}`
-                          : "Refusée par le client"}
-                      </span>
+                {activeComments.some(
+                  (comment) =>
+                    comment.decision === "Hors périmètre" &&
+                    proposalStateFor(comment.id) === "sent",
+                ) && (
+                  <>
+                    <h3>Propositions commerciales associées</h3>
+                    <div className="proof-proposals-list">
+                      {activeComments
+                        .filter(
+                          (comment) =>
+                            comment.decision === "Hors périmètre" &&
+                            proposalStateFor(comment.id) === "sent",
+                        )
+                        .map((comment) => {
+                          const proposal = activeProposalFor(comment.id);
+                          const decision = proposalDecisionFor(comment.id);
+                          return (
+                            <div className="proof-proposal-item" key={comment.id}>
+                              <div>
+                                <b>Demande #{comment.id} : {proposal?.description || comment.message}</b>
+                                <small>{proposal ? `${formatProposalAmount(proposal.amount)} · ${formatProposalDeadline(proposal.deadline)}` : "Montant et délai à définir"}</small>
+                              </div>
+                              <span
+                                className={`decision-badge ${
+                                  decision === "accepted"
+                                    ? "decision-included"
+                                    : decision === "refused"
+                                      ? "decision-outside"
+                                      : "decision-pending"
+                                }`}
+                              >
+                                {decision === "accepted"
+                                  ? "Acceptée ✓"
+                                  : decision === "refused"
+                                    ? "Refusée"
+                                    : "En attente"}
+                              </span>
+                            </div>
+                          );
+                        })}
                     </div>
-                  ))}
+                  </>
+                )}
                 <div className="proof-footer">
                   <span>Validé par Alex Morgan</span>
                   <span>
@@ -2411,8 +2921,8 @@ export default function Home() {
               >
                 <div className="drawer-header">
                   <div>
-                    <div className="eyebrow">NOUVEAU RETOUR</div>
-                    <h2>Ajouter un commentaire</h2>
+                    <div className="eyebrow">NOUVELLE REMARQUE</div>
+                    <h2>Ajouter une remarque</h2>
                   </div>
                   <button
                     type="button"
@@ -2424,16 +2934,16 @@ export default function Home() {
                   </button>
                 </div>
                 <p className="drawer-intro">
-                  Votre commentaire sera attaché à la position {commentDraft.x}%
+                  Votre remarque sera attachée à la position {commentDraft.x}%
                   / {commentDraft.y}% de la page.
                 </p>
                 <label>
-                  Commentaire
+                  Remarque interne
                   <textarea
                     autoFocus
                     value={commentText}
                     onChange={(event) => setCommentText(event.target.value)}
-                    placeholder="Décrivez la modification souhaitée..."
+                    placeholder="Décrivez la consigne ou le point à qualifier..."
                   />
                 </label>
                 <button
@@ -2441,7 +2951,7 @@ export default function Home() {
                   type="submit"
                   disabled={!commentText.trim()}
                 >
-                  Ajouter le commentaire →
+                  Ajouter la remarque →
                 </button>
               </form>
             </div>,
@@ -2499,7 +3009,36 @@ export default function Home() {
                 <p className="drawer-intro">La proposition actuelle deviendra remplacée. Cette nouvelle version sera la seule proposition active pour le client.</p>
                 {selectedAdaptationRequest && <div className="adaptation-request-summary"><span>Demande du client · {selectedAdaptationRequest.requestedAt}</span><p>{selectedAdaptationRequest.message}</p></div>}
                 <label>Description de la prestation<textarea autoFocus value={newProposalDescription} onChange={(event) => setNewProposalDescription(event.target.value)} /></label>
-                <div className="field-grid"><label>Montant<input value={newProposalAmount} onChange={(event) => setNewProposalAmount(event.target.value)} /></label><label>Impact planning<input value={newProposalDeadline} onChange={(event) => setNewProposalDeadline(event.target.value)} /></label></div>
+                <div className="field-grid">
+                  <label>
+                    Montant
+                    <div className="input-with-addon">
+                      <input
+                        type="number"
+                        min="0"
+                        step="10"
+                        placeholder="850"
+                        value={newProposalAmount}
+                        onChange={(event) => setNewProposalAmount(event.target.value)}
+                      />
+                      <span className="input-addon">€</span>
+                    </div>
+                  </label>
+                  <label>
+                    Impact planning
+                    <div className="input-with-addon">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        placeholder="3"
+                        value={newProposalDeadline}
+                        onChange={(event) => setNewProposalDeadline(event.target.value)}
+                      />
+                      <span className="input-addon">jours</span>
+                    </div>
+                  </label>
+                </div>
                 <button className="send-proposal" type="submit" disabled={!newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>Envoyer la nouvelle proposition →</button>
               </form>
             </div>
