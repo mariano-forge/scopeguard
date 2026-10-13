@@ -5,6 +5,20 @@ import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Crosshair,
+  Eye,
+  Maximize,
+  Minus,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 
 const PdfDocument = dynamic(
   async () => {
@@ -775,10 +789,10 @@ export default function ClientReviewPage() {
                   <button className="client-viewer-button" onClick={() => setPdfPage((page) => Math.min(pdfPageCount, page + 1))} disabled={pdfPage >= pdfPageCount} aria-label="Page suivante">›</button>
                 </div>
               )}
-              <button className="client-viewer-button" onClick={() => transformRef.current?.zoomOut(0.1)} disabled={previewZoom <= 50} aria-label="Réduire le zoom">−</button>
+              <button className="client-viewer-button" onClick={() => transformRef.current?.zoomOut(0.1)} disabled={previewZoom <= 50} aria-label="Réduire le zoom"><Minus /></button>
               <button className="client-viewer-zoom" onClick={() => transformRef.current?.resetTransform()} aria-label="Réinitialiser le zoom">{previewZoom}%</button>
-              <button className="client-viewer-button" onClick={() => transformRef.current?.zoomIn(0.1)} disabled={previewZoom >= 300} aria-label="Augmenter le zoom">+</button>
-              <button className="client-viewer-button" onClick={togglePreviewFullscreen} aria-label="Plein écran">⛶</button>
+              <button className="client-viewer-button" onClick={() => transformRef.current?.zoomIn(0.1)} disabled={previewZoom >= 300} aria-label="Augmenter le zoom"><Plus /></button>
+              <button className="client-viewer-button" onClick={togglePreviewFullscreen} aria-label="Plein écran"><Maximize /></button>
             </div>
             <span>Expire le {reviewLink?.expiresAt}</span>
           </div>
@@ -908,7 +922,7 @@ export default function ClientReviewPage() {
                   ) : (
                     <p>{comment.message}</p>
                   )}
-                  <small className="client-comment-location">⌖ {comment.location}</small>
+                  <small className="client-comment-location"><Crosshair /> {comment.location}</small>
                   {(expandedReplies[comment.id] ? (comment.replies ?? []) : (comment.replies ?? []).slice(0, 2)).map((reply) => (
                     <div className="client-reply" key={reply.id}>
                       <span className="avatar reply-avatar">{reply.initials}</span>
@@ -962,9 +976,7 @@ export default function ClientReviewPage() {
                                     startEditReply(comment.id, reply);
                                   }}
                                 >
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                                  </svg>
+                                  <Pencil />
                                 </button>
                                 <button
                                   className="action-link delete-link"
@@ -975,10 +987,7 @@ export default function ClientReviewPage() {
                                     deleteReply(comment.id, reply.id);
                                   }}
                                 >
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="3 6 5 6 21 6" />
-                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                  </svg>
+                                  <Trash2 />
                                 </button>
                               </div>
                             )}
@@ -996,7 +1005,7 @@ export default function ClientReviewPage() {
                         setExpandedReplies((current) => ({ ...current, [comment.id]: !current[comment.id] }));
                       }}
                     >
-                      {expandedReplies[comment.id] ? "↑ Réduire les réponses" : `↓ Afficher les ${(comment.replies?.length ?? 0) - 2} autres réponses`}
+                      {expandedReplies[comment.id] ? <><ChevronUp /> Réduire les réponses</> : <><ChevronDown /> Afficher les {(comment.replies?.length ?? 0) - 2} autres réponses</>}
                     </button>
                   )}
                   <div className="comment-actions">
@@ -1011,9 +1020,7 @@ export default function ClientReviewPage() {
                             startEditComment(comment);
                           }}
                         >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                          </svg>
+                          <Pencil />
                         </button>
                         <button
                           className="action-link delete-link"
@@ -1024,10 +1031,7 @@ export default function ClientReviewPage() {
                             deleteComment(comment.id);
                           }}
                         >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          </svg>
+                          <Trash2 />
                         </button>
                       </>
                     )}
@@ -1081,11 +1085,11 @@ export default function ClientReviewPage() {
                     </div>
                   </div>
                   {proposalDecisions[comment.id] === "accepted" ? (
-                    <span className="client-proposal-status"><span className="client-proposal-accepted">Acceptée ✓</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition acceptée pour la demande #${comment.id}`} title="Voir la proposition"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
+                    <span className="client-proposal-status"><span className="client-proposal-accepted">Acceptée <Check /></span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition acceptée pour la demande #${comment.id}`} title="Voir la proposition"><Eye /></button></span>
                   ) : proposalDecisions[comment.id] === "refused" ? (
-                    <span className="client-proposal-status"><span className="client-proposal-refused">Refusée</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition refusée pour la demande #${comment.id}`} title="Voir la proposition"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
+                    <span className="client-proposal-status"><span className="client-proposal-refused">Refusée</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition refusée pour la demande #${comment.id}`} title="Voir la proposition"><Eye /></button></span>
                   ) : adaptationRequests[comment.id]?.decision ? (
-                    <span className="client-proposal-status"><span className={`client-proposal-adaptation ${adaptationRequests[comment.id].decision}`}>{adaptationRequests[comment.id].decision === "accepted" ? "Adaptation acceptée" : "Adaptation refusée"}</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition pour la demande #${comment.id}`} title="Voir la proposition"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
+                    <span className="client-proposal-status"><span className={`client-proposal-adaptation ${adaptationRequests[comment.id].decision}`}>{adaptationRequests[comment.id].decision === "accepted" ? "Adaptation acceptée" : "Adaptation refusée"}</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition pour la demande #${comment.id}`} title="Voir la proposition"><Eye /></button></span>
                   ) : adaptationRequests[comment.id] ? (
                     <span className={`client-proposal-adaptation ${adaptationRequests[comment.id].decision ?? ""}`}>
                       {adaptationRequests[comment.id].decision === "accepted" ? "Adaptation acceptée par l'agence" : adaptationRequests[comment.id].decision === "refused" ? "Adaptation refusée par l'agence" : "Adaptation demandée"}
@@ -1117,7 +1121,7 @@ export default function ClientReviewPage() {
                 <div className="eyebrow">PROPOSITION COMPLÉMENTAIRE</div>
                 <h2>Résumé de la proposition</h2>
               </div>
-              <button type="button" className="close-button" onClick={() => setProposalPreviewCommentId(null)} aria-label="Fermer">×</button>
+              <button type="button" className="close-button" onClick={() => setProposalPreviewCommentId(null)} aria-label="Fermer"><X /></button>
             </div>
             <p className="drawer-intro">Demande #{previewProposalComment?.id} · Version {previewProposal.version}</p>
             <div className={`proposal-preview-status ${proposalDecisions[previewProposal.commentId] === "refused" || previewAdaptationRequest?.decision === "refused" ? "refused" : "accepted"}`}>
@@ -1140,11 +1144,11 @@ export default function ClientReviewPage() {
                 <div className="eyebrow">NOUVELLE DEMANDE</div>
                 <h2>Soumettre une demande</h2>
               </div>
-              <button type="button" className="close-button" onClick={() => setCommentDraft(null)} aria-label="Fermer">×</button>
+              <button type="button" className="close-button" onClick={() => setCommentDraft(null)} aria-label="Fermer"><X /></button>
             </div>
             <p className="drawer-intro">{generalComment ? "Votre demande sera liée au livrable dans son ensemble." : `Votre demande sera attachée à la position ${commentDraft.x}% / ${commentDraft.y}% de la page.`}</p>
             <label>Description de la demande<textarea autoFocus value={commentText} onChange={(event) => setCommentText(event.target.value)} placeholder="Décrivez précisément la modification souhaitée..." /></label>
-            <button className="send-proposal" type="submit" disabled={!commentText.trim()}>Soumettre la demande →</button>
+            <button className="send-proposal" type="submit" disabled={!commentText.trim()}>Soumettre la demande <ArrowRight /></button>
           </form>
         </div>,
         clientPanelRef.current,
@@ -1154,13 +1158,13 @@ export default function ClientReviewPage() {
           <form className="project-modal comment-modal" onSubmit={submitAdaptationRequest}>
             <div className="drawer-header">
               <div><div className="eyebrow">PROPOSITION COMPLÉMENTAIRE</div><h2>Demander une adaptation</h2></div>
-              <button type="button" className="close-button" onClick={() => setAdaptationCommentId(null)} aria-label="Fermer">×</button>
+              <button type="button" className="close-button" onClick={() => setAdaptationCommentId(null)} aria-label="Fermer"><X /></button>
             </div>
             <p className="drawer-intro">L'agence reste responsable du chiffrage. Décrivez votre besoin ou vos contraintes, sans modifier directement le prix.</p>
             <p className="drawer-intro">L'agence reste responsable du chiffrage. Décrivez votre besoin et, si vous le souhaitez, indiquez un budget ou un délai cible.</p>
             <label>Votre demande<textarea autoFocus value={adaptationMessage} onChange={(event) => setAdaptationMessage(event.target.value)} placeholder="Ex. Pouvez-vous proposer une version limitée au formulaire ?" /></label>
             <div className="field-grid"><label>Budget indicatif<div className="input-with-addon"><input type="number" min="0" step="10" value={adaptationBudget} onChange={(event) => setAdaptationBudget(event.target.value)} placeholder="Facultatif" /><span className="input-addon">€</span></div></label><label>Délai souhaité<div className="input-with-addon"><input type="number" min="0" step="1" value={adaptationDeadline} onChange={(event) => setAdaptationDeadline(event.target.value)} placeholder="Facultatif" /><span className="input-addon">jours</span></div></label></div>
-            <button className="send-proposal" type="submit" disabled={!adaptationMessage.trim()}>Envoyer la demande →</button>
+            <button className="send-proposal" type="submit" disabled={!adaptationMessage.trim()}>Envoyer la demande <ArrowRight /></button>
           </form>
         </div>
       )}
@@ -1169,18 +1173,18 @@ export default function ClientReviewPage() {
           <form className="project-modal comment-modal" onSubmit={submitChangesRequest}>
             <div className="drawer-header">
               <div><div className="eyebrow">RETOUR GLOBAL</div><h2>Demander des modifications</h2></div>
-              <button type="button" className="close-button" onClick={() => setChangesRequestOpen(false)} aria-label="Fermer">×</button>
+              <button type="button" className="close-button" onClick={() => setChangesRequestOpen(false)} aria-label="Fermer"><X /></button>
             </div>
             <p className="drawer-intro">Cette version ne sera pas approuvable tant que l'agence n'aura pas soumis une nouvelle version.</p>
             <label>Votre demande<textarea autoFocus value={changesRequestMessage} onChange={(event) => setChangesRequestMessage(event.target.value)} placeholder="Décrivez ce qui doit être revu avant validation..." /></label>
-            <button className="send-proposal" type="submit" disabled={!changesRequestMessage.trim()}>Envoyer la demande →</button>
+            <button className="send-proposal" type="submit" disabled={!changesRequestMessage.trim()}>Envoyer la demande <ArrowRight /></button>
           </form>
         </div>
       )}
       {approvalOpen && (
         <div className="modal-backdrop" role="presentation">
           <section className="project-modal approval-modal">
-            <div className="drawer-header"><div><div className="eyebrow">CONFIRMATION CLIENT</div><h2>Approuver cette version ?</h2></div><button type="button" className="close-button" onClick={() => setApprovalOpen(false)} aria-label="Fermer">×</button></div>
+            <div className="drawer-header"><div><div className="eyebrow">CONFIRMATION CLIENT</div><h2>Approuver cette version ?</h2></div><button type="button" className="close-button" onClick={() => setApprovalOpen(false)} aria-label="Fermer"><X /></button></div>
             <p className="drawer-intro">Vous confirmez que cette version peut être considérée comme validée par Northstar Studio.</p>
             <div className="approval-actions"><button className="changes-button" onClick={() => setApprovalOpen(false)}>Annuler</button><button className="approve-button" onClick={confirmApproval}>Confirmer l'approbation</button></div>
           </section>

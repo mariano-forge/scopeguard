@@ -18,6 +18,14 @@ textarea {
 button {
   cursor: pointer;
 }
+/* Lucide icons follow the surrounding text size and color */
+.lucide {
+  display: inline-block;
+  width: 1.15em;
+  height: 1.15em;
+  flex-shrink: 0;
+  vertical-align: -0.2em;
+}
 .app-shell {
   display: flex;
   min-height: 100vh;
@@ -37,8 +45,14 @@ button {
   align-items: center;
   gap: 9px;
   font: 700 19px var(--font-display);
-  letter-spacing: -0.7px;
+  letter-spacing: 0.14em;
+  color: var(--ink);
   padding: 0 12px 31px;
+}
+.brand-logo {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
 }
 .brand-mark {
   width: 25px;

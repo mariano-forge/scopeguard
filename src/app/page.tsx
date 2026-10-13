@@ -41,6 +41,38 @@ import {
   TransformWrapper,
   type ReactZoomPanPinchRef,
 } from "react-zoom-pan-pinch";
+import {
+  ArrowLeft,
+  ArrowRight,
+  ArrowUpRight,
+  Bell,
+  Building2,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  CircleHelp,
+  Coins,
+  Crosshair,
+  Ellipsis,
+  Eye,
+  FileText,
+  Folder,
+  Hourglass,
+  Layers,
+  LayoutDashboard,
+  LayoutGrid,
+  Maximize,
+  Minus,
+  MousePointer2,
+  Pencil,
+  Plus,
+  Scale,
+  ShieldCheck,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
+import { KoraMark } from "@/components/KoraMark";
 
 const PdfDocument = dynamic(
   async () => {
@@ -1201,9 +1233,9 @@ export default function Home() {
       <li><strong>${escapeHtml(event.description)}</strong><small>${escapeHtml(event.actor)} · ${escapeHtml(event.timestamp)}</small></li>`).join("");
 
     // Opened in a separate window where tokens.css is not loaded: Kora token values are inlined (ink, border, graphite, action-ui, status-resolved-bg).
-    const proofHtml = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Preuve ScopeGuard - ${escapeHtml(currentDeliverable.name)}</title><style>
+    const proofHtml = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Preuve Kora - ${escapeHtml(currentDeliverable.name)}</title><style>
       body{font-family:Arial,sans-serif;color:#111111;max-width:820px;margin:40px auto;padding:0 24px;line-height:1.5}h1{font-size:26px;margin-bottom:4px}h2{font-size:16px;border-bottom:1px solid #ddd9d1;padding-bottom:8px;margin-top:28px}p{margin:4px 0}small{display:block;color:#4c4c48;margin-top:4px}ul{list-style:none;padding:0}li{border:1px solid #ddd9d1;border-radius:5px;padding:12px;margin:8px 0}strong{font-size:12px}header{border-bottom:2px solid #0079d1;padding-bottom:18px}.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;color:#4c4c48;font-size:12px}.status{background:#ddf4e4;border-radius:5px;padding:10px;font-weight:bold;margin-top:18px}@media print{body{margin:0}.no-print{display:none}}
-    </style></head><body><header><p>PREUVE DE VALIDATION</p><h1>${escapeHtml(selectedProject?.name ?? "Projet")}</h1><div class="meta"><span>Client<br><strong>${escapeHtml(selectedClient?.name ?? "-")}</strong></span><span>Livrable<br><strong>${escapeHtml(currentDeliverable.name)}</strong></span><span>Version<br><strong>V${String(currentDeliverable.version).padStart(2, "0")}</strong></span></div><div class="status">${escapeHtml(status)}</div></header><main><h2>Décisions sur les retours</h2><ul>${commentsHtml}</ul>${proposalHtml ? `<h2>Propositions complémentaires</h2><ul>${proposalHtml}</ul>` : ""}<h2>Journal d'activité</h2><ul>${auditHtml || "<li>Aucun événement enregistré.</li>"}</ul></main><p><small>Identifiant : SG-${currentDeliverable.id}-${currentDeliverable.version}</small></p><button class="no-print" onclick="window.print()">Imprimer ou enregistrer en PDF</button></body></html>`;
+    </style></head><body><header><p>PREUVE DE VALIDATION</p><h1>${escapeHtml(selectedProject?.name ?? "Projet")}</h1><div class="meta"><span>Client<br><strong>${escapeHtml(selectedClient?.name ?? "-")}</strong></span><span>Livrable<br><strong>${escapeHtml(currentDeliverable.name)}</strong></span><span>Version<br><strong>V${String(currentDeliverable.version).padStart(2, "0")}</strong></span></div><div class="status">${escapeHtml(status)}</div></header><main><h2>Décisions sur les retours</h2><ul>${commentsHtml}</ul>${proposalHtml ? `<h2>Propositions complémentaires</h2><ul>${proposalHtml}</ul>` : ""}<h2>Journal d'activité</h2><ul>${auditHtml || "<li>Aucun événement enregistré.</li>"}</ul></main><p><small>Identifiant : KR-${currentDeliverable.id}-${currentDeliverable.version}</small></p><button class="no-print" onclick="window.print()">Imprimer ou enregistrer en PDF</button></body></html>`;
     const parsedDocument = new DOMParser().parseFromString(proofHtml, "text/html");
     const importedDocument = exportWindow.document.importNode(
       parsedDocument.documentElement,
@@ -1264,15 +1296,15 @@ export default function Home() {
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">S</span>
-          <span>scopeguard</span>
+          <KoraMark className="brand-logo" />
+          <span>KORA</span>
         </div>
         <div className="workspace-switcher">
           <span className="workspace-dot">N</span>
           <select className="workspace-select" value={selectedClientId} onChange={(event) => setSelectedClientId(Number(event.target.value))} aria-label="Sélectionner un client">
             {clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}
           </select>
-          <span className="muted">⌄</span>
+          <span className="muted"><ChevronDown /></span>
         </div>
         <nav className="main-nav" aria-label="Navigation principale">
           <button
@@ -1282,7 +1314,7 @@ export default function Home() {
               setSidebarMenu(null);
             }}
           >
-            <span>◈</span> Revue & Livrables
+            <span><Layers /></span> Revue & Livrables
           </button>
           <button
             className={`nav-item ${activeTab === "dashboard" ? "active" : ""}`}
@@ -1291,27 +1323,27 @@ export default function Home() {
               setSidebarMenu(null);
             }}
           >
-            <span>📊</span> Tableau de bord
+            <span><LayoutDashboard /></span> Tableau de bord
           </button>
           <div className="sidebar-menu-group">
             <button className={`nav-item nav-menu-trigger ${sidebarMenu === "projects" ? "active" : ""}`} onClick={() => setSidebarMenu((current) => current === "projects" ? null : "projects")} aria-expanded={sidebarMenu === "projects"}>
-              <span>📁</span> Projets <strong>{visibleProjects.length}</strong><i>⌄</i>
+              <span><Folder /></span> Projets <strong>{visibleProjects.length}</strong><i><ChevronDown /></i>
             </button>
             {sidebarMenu === "projects" && <div className="sidebar-dropdown">{visibleProjects.map((project) => <button className={`sidebar-dropdown-item ${project.id === selectedProjectId ? "selected" : ""}`} key={project.id} onClick={() => { setSelectedProjectId(project.id); setSidebarMenu(null); }}><span className="dropdown-status" />{project.name}<small>{project.client}</small></button>)}<button className="sidebar-dropdown-action" onClick={() => { setSidebarMenu(null); setNewProjectOpen(true); }}>+ Nouveau projet</button></div>}
           </div>
           <div className="sidebar-menu-group">
             <button className={`nav-item nav-menu-trigger ${sidebarMenu === "clients" ? "active" : ""}`} onClick={() => setSidebarMenu((current) => current === "clients" ? null : "clients")} aria-expanded={sidebarMenu === "clients"}>
-              <span>◌</span> Clients <strong>{clients.length}</strong><i>⌄</i>
+              <span><Building2 /></span> Clients <strong>{clients.length}</strong><i><ChevronDown /></i>
             </button>
             {sidebarMenu === "clients" && <div className="sidebar-dropdown">{clients.map((client) => <button className={`sidebar-dropdown-item ${client.id === selectedClientId ? "selected" : ""}`} key={client.id} onClick={() => { setSelectedClientId(client.id); setSidebarMenu(null); }}><span className="client-dropdown-avatar">{client.name.charAt(0)}</span>{client.name}<small>{client.email}</small></button>)}<button className="sidebar-dropdown-action" onClick={() => { setSidebarMenu(null); setNewClientOpen(true); }}>+ Nouveau client</button></div>}
           </div>
           <a className="nav-item" href="#equipe">
-            <span>♧</span> Équipe
+            <span><Users /></span> Équipe
           </a>
         </nav>
         <div className="sidebar-bottom">
           <a className="nav-item" href="#aide">
-            <span>?</span> Aide
+            <span><CircleHelp /></span> Aide
           </a>
           <div className="profile">
             <span className="avatar dark-avatar">AM</span>
@@ -1319,7 +1351,7 @@ export default function Home() {
               <b>Alex Morgan</b>
               <small>Administrateur</small>
             </span>
-            <span className="muted">⋯</span>
+            <span className="muted"><Ellipsis /></span>
           </div>
         </div>
       </aside>
@@ -1343,7 +1375,7 @@ export default function Home() {
               aria-label="Notifications"
               onClick={() => setNotificationsOpen((current) => !current)}
             >
-              ♧
+              <Bell />
               {notifications.length > 0 && (
                 <span className="notification-count">
                   {notifications.length}
@@ -1402,10 +1434,10 @@ export default function Home() {
                 </div>
                 <div className="heading-actions">
                   <button className="secondary-button" onClick={() => setActiveTab("review")}>
-                    ← Revenir à la revue
+                    <ArrowLeft /> Revenir à la revue
                   </button>
                   <button className="secondary-button" onClick={() => setProofOpen(true)}>
-                    Synthèse & export ↗
+                    Synthèse & export <ArrowUpRight />
                   </button>
                 </div>
               </div>
@@ -1413,7 +1445,7 @@ export default function Home() {
               <div className="dashboard-kpi-grid">
                 <div className="kpi-card highlight-green">
                   <div className="kpi-header">
-                    <span className="kpi-icon">💰</span>
+                    <span className="kpi-icon"><Coins /></span>
                     <span className="kpi-title">Revenu supplémentaire accepté</span>
                   </div>
                   <div className="kpi-value">{totalAcceptedEuros.toLocaleString("fr-FR")} €</div>
@@ -1424,7 +1456,7 @@ export default function Home() {
 
                 <div className="kpi-card highlight-coral">
                   <div className="kpi-header">
-                    <span className="kpi-icon">🛡️</span>
+                    <span className="kpi-icon"><ShieldCheck /></span>
                     <span className="kpi-title">Scope creep évité (Planning)</span>
                   </div>
                   <div className="kpi-value">+{totalAcceptedDays} jours</div>
@@ -1435,7 +1467,7 @@ export default function Home() {
 
                 <div className="kpi-card">
                   <div className="kpi-header">
-                    <span className="kpi-icon">📑</span>
+                    <span className="kpi-icon"><FileText /></span>
                     <span className="kpi-title">Total des demandes</span>
                   </div>
                   <div className="kpi-value">{totalProjectDemands}</div>
@@ -1446,7 +1478,7 @@ export default function Home() {
 
                 <div className="kpi-card">
                   <div className="kpi-header">
-                    <span className="kpi-icon">⚖️</span>
+                    <span className="kpi-icon"><Scale /></span>
                     <span className="kpi-title">Taux de conversion devis</span>
                   </div>
                   <div className="kpi-value">
@@ -1608,7 +1640,7 @@ export default function Home() {
                                           : "decision-pending"
                                     }`}
                                   >
-                                    {decision === "accepted" ? "Acceptée ✓" : decision === "refused" ? "Refusée" : "En attente"}
+                                    {decision === "accepted" ? <>Acceptée <Check /></> : decision === "refused" ? "Refusée" : "En attente"}
                                   </span>
                                 ) : (
                                   <span className="text-muted">Inclus au devis</span>
@@ -1623,7 +1655,7 @@ export default function Home() {
                                     setActiveTab("review");
                                   }}
                                 >
-                                  Ouvrir ↗
+                                  Ouvrir <ArrowUpRight />
                                 </button>
                               </td>
                             </tr>
@@ -1677,7 +1709,7 @@ export default function Home() {
                 Nouveau projet +
               </button>
               <button className="secondary-button" onClick={openShareDialog}>
-                Partager la revue ↗
+                Partager la revue <ArrowUpRight />
               </button>
             </div>
           </div>
@@ -1718,7 +1750,7 @@ export default function Home() {
               <div className="panel-toolbar">
                 <div className="toolbar-left">
                   <button className="tool-button selected">
-                    ↖ <span>Demandes</span>
+                    <MousePointer2 /> <span>Demandes</span>
                   </button>
                   <button
                     className="add-comment-tool"
@@ -1727,9 +1759,9 @@ export default function Home() {
                     title="Ajouter une remarque"
                     aria-label="Ajouter une remarque"
                   >
-                    + Ajouter une remarque
+                    <Plus /> Ajouter une remarque
                   </button>
-                  <button className="tool-button">⊞</button>
+                  <button className="tool-button" aria-label="Grille"><LayoutGrid /></button>
                 </div>
                 <div className="page-counter">
                   {currentDeliverable.type === "PDF" ? (
@@ -1741,10 +1773,10 @@ export default function Home() {
                   ) : "1 / 1"}
                 </div>
                 <div className="toolbar-left">
-                  <button className="tool-button" onClick={() => transformRef.current?.zoomOut(0.1)} disabled={previewZoom <= 50} title="Réduire le zoom" aria-label="Réduire le zoom">−</button>
+                  <button className="tool-button" onClick={() => transformRef.current?.zoomOut(0.1)} disabled={previewZoom <= 50} title="Réduire le zoom" aria-label="Réduire le zoom"><Minus /></button>
                   <button className="zoom" onClick={() => transformRef.current?.resetTransform()} title="Réinitialiser le zoom">{previewZoom}%</button>
-                  <button className="tool-button" onClick={() => transformRef.current?.zoomIn(0.1)} disabled={previewZoom >= 300} title="Augmenter le zoom" aria-label="Augmenter le zoom">+</button>
-                  <button className="tool-button" onClick={togglePreviewFullscreen} title="Plein écran" aria-label="Plein écran">⛶</button>
+                  <button className="tool-button" onClick={() => transformRef.current?.zoomIn(0.1)} disabled={previewZoom >= 300} title="Augmenter le zoom" aria-label="Augmenter le zoom"><Plus /></button>
+                  <button className="tool-button" onClick={togglePreviewFullscreen} title="Plein écran" aria-label="Plein écran"><Maximize /></button>
                 </div>
               </div>
               <div className="artboard-wrap">
@@ -1837,7 +1869,7 @@ export default function Home() {
                   className="text-button"
                   onClick={() => setHistoryOpen(true)}
                 >
-                  Voir l’historique →
+                  Voir l’historique <ArrowRight />
                 </button>
               </div>
             </section>
@@ -1976,7 +2008,7 @@ export default function Home() {
                         <p>{comment.message}</p>
                       )}
                       <div className="comment-location">
-                        ⌖ {comment.location}
+                        <Crosshair /> {comment.location}
                       </div>
                       {(expandedReplies[comment.id] ? (comment.replies ?? []) : (comment.replies ?? []).slice(0, 2)).map((reply) => (
                         <div className="reply" key={reply.id}>
@@ -2034,9 +2066,7 @@ export default function Home() {
                                         startEditReply(comment.id, reply);
                                       }}
                                     >
-                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                                      </svg>
+                                      <Pencil />
                                     </button>
                                     <button
                                       className="action-link delete-link"
@@ -2047,10 +2077,7 @@ export default function Home() {
                                         deleteReply(comment.id, reply.id);
                                       }}
                                     >
-                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <polyline points="3 6 5 6 21 6" />
-                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                      </svg>
+                                      <Trash2 />
                                     </button>
                                   </div>
                                 )}
@@ -2068,7 +2095,7 @@ export default function Home() {
                             setExpandedReplies((current) => ({ ...current, [comment.id]: !current[comment.id] }));
                           }}
                         >
-                          {expandedReplies[comment.id] ? "↑ Réduire les réponses" : `↓ Afficher les ${(comment.replies?.length ?? 0) - 2} autres réponses`}
+                          {expandedReplies[comment.id] ? <><ChevronUp /> Réduire les réponses</> : <><ChevronDown /> Afficher les {(comment.replies?.length ?? 0) - 2} autres réponses</>}
                         </button>
                       )}
                       <div className="comment-decision">
@@ -2077,13 +2104,13 @@ export default function Home() {
                         </span>
                         <div className="comment-actions">
                               {comment.decision === "Hors périmètre" && (proposalDecisionFor(comment.id) === "accepted" || adaptationRequests[comment.id]?.decision === "accepted" ? (
-                                <span className="proposal-accepted">Proposition acceptée ✓</span>
+                                <span className="proposal-accepted">Proposition acceptée <Check /></span>
                               ) : proposalDecisionFor(comment.id) === "refused" || adaptationRequests[comment.id]?.decision === "refused" ? (
                                 <span className="proposal-refused">Proposition refusée</span>
                               ) : proposalStateFor(comment.id) === "sent" ? (
-                                <button className="proposal-link" onClick={(event) => { event.stopPropagation(); openProposal(comment.id); }} disabled={isReadOnlyVersion}>Voir la proposition →</button>
+                                <button className="proposal-link" onClick={(event) => { event.stopPropagation(); openProposal(comment.id); }} disabled={isReadOnlyVersion}>Voir la proposition <ArrowRight /></button>
                               ) : (
-                                <button className="proposal-link" onClick={(event) => { event.stopPropagation(); openProposal(comment.id); }} disabled={isReadOnlyVersion}>Créer une proposition →</button>
+                                <button className="proposal-link" onClick={(event) => { event.stopPropagation(); openProposal(comment.id); }} disabled={isReadOnlyVersion}>Créer une proposition <ArrowRight /></button>
                               ))}
                           {!isReadOnlyVersion && !isDecisionLocked(comment.id) && editingCommentId !== comment.id && comment.initials === "AM" && (
                             <>
@@ -2096,9 +2123,7 @@ export default function Home() {
                                   startEditComment(comment);
                                 }}
                               >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                                </svg>
+                                <Pencil />
                               </button>
                               <button
                                 className="action-link delete-link"
@@ -2109,10 +2134,7 @@ export default function Home() {
                                   deleteComment(comment.id);
                                 }}
                               >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <polyline points="3 6 5 6 21 6" />
-                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                </svg>
+                                <Trash2 />
                               </button>
                             </>
                           )}
@@ -2157,8 +2179,8 @@ export default function Home() {
                   onClick={() => setShowAllComments((current) => !current)}
                 >
                   {showAllComments
-                    ? "Réduire les demandes ↑"
-                    : `Voir les ${filteredComments.length - 3} autres demandes ↓`}
+                    ? <>Réduire les demandes <ChevronUp /></>
+                    : <>Voir les {filteredComments.length - 3} autres demandes <ChevronDown /></>}
                 </button>
               )}
               <div className="comments-footer">
@@ -2183,7 +2205,7 @@ export default function Home() {
                   className="proof-button"
                   onClick={() => setProofOpen(true)}
                 >
-                  Synthèse du périmètre & décisions ↗
+                  Synthèse du périmètre & décisions <ArrowUpRight />
                 </button>
               </div>
             </aside>
@@ -2246,8 +2268,9 @@ export default function Home() {
                 <button
                   className="close-button"
                   onClick={() => setProposalOpen(false)}
+                  aria-label="Fermer"
                 >
-                  ×
+                  <X />
                 </button>
               </div>
               {proposalStateFor(proposalCommentId ?? 0) === "sent" ? (
@@ -2290,15 +2313,15 @@ export default function Home() {
                   </div>
                   {proposalDecisionFor(proposalCommentId ?? 0) === "accepted" ? (
                     <div className="proposal-status-banner accepted">
-                      <span>✓ Proposition acceptée par le client</span>
+                      <span><Check /> Proposition acceptée par le client</span>
                     </div>
                   ) : proposalDecisionFor(proposalCommentId ?? 0) === "refused" ? (
                     <div className="proposal-status-banner refused">
-                      <span>✗ Proposition refusée par le client</span>
+                      <span><X /> Proposition refusée par le client</span>
                     </div>
                   ) : selectedAdaptationRequest?.decision ? (
                     <div className={`proposal-status-banner ${selectedAdaptationRequest.decision}`}>
-                      <span>{selectedAdaptationRequest.decision === "accepted" ? "✓ Adaptation acceptée par l'agence" : "✗ Adaptation refusée par l'agence"}</span>
+                      <span>{selectedAdaptationRequest.decision === "accepted" ? <><Check /> {"Adaptation acceptée par l'agence"}</> : <><X /> {"Adaptation refusée par l'agence"}</>}</span>
                     </div>
                   ) : selectedAdaptationRequest ? (
                     <>
@@ -2323,7 +2346,7 @@ export default function Home() {
                     </>
                   ) : (
                     <div className="proposal-status-banner pending">
-                      <span>⏳ Transmise au client · En attente de décision</span>
+                      <span><Hourglass /> Transmise au client · En attente de décision</span>
                     </div>
                   )}
                   {!isReadOnlyVersion && proposalDecisionFor(proposalCommentId ?? 0) !== "accepted" && !selectedAdaptationRequest && (
@@ -2393,7 +2416,7 @@ export default function Home() {
                       !newProposalDeadline.trim()
                     }
                   >
-                    Envoyer au client ↗
+                    Envoyer au client <ArrowUpRight />
                   </button>
                 </>
               )}
@@ -2415,17 +2438,17 @@ export default function Home() {
                       #{comment.id} {comment.message}
                     </span>
                     {proposalDecisionFor(comment.id) === "accepted" || adaptationRequests[comment.id]?.decision === "accepted" ? (
-                      <span className="proposal-queue-status"><span className="proposal-accepted">Acceptée ✓</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition acceptée pour la demande #${comment.id}`} title="Voir la proposition"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
+                      <span className="proposal-queue-status"><span className="proposal-accepted">Acceptée <Check /></span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition acceptée pour la demande #${comment.id}`} title="Voir la proposition"><Eye /></button></span>
                     ) : proposalDecisionFor(comment.id) === "refused" || adaptationRequests[comment.id]?.decision === "refused" ? (
-                      <span className="proposal-queue-status"><span className="proposal-refused">Refusée</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition refusée pour la demande #${comment.id}`} title="Voir la proposition"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
+                      <span className="proposal-queue-status"><span className="proposal-refused">Refusée</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition refusée pour la demande #${comment.id}`} title="Voir la proposition"><Eye /></button></span>
                     ) : (
                       <button
                         className="proposal-link"
                         onClick={() => openProposal(comment.id)}
                       >
                         {proposalStateFor(comment.id) === "sent"
-                          ? "Voir la proposition →"
-                          : "Créer une proposition →"}
+                          ? <>Voir la proposition <ArrowRight /></>
+                          : <>Créer une proposition <ArrowRight /></>}
                       </button>
                     )}
                   </div>
@@ -2440,7 +2463,7 @@ export default function Home() {
                     <div className="eyebrow">PROPOSITION COMPLÉMENTAIRE</div>
                     <h2>Résumé de la proposition</h2>
                   </div>
-                  <button type="button" className="close-button" onClick={() => setProposalPreviewCommentId(null)} aria-label="Fermer">×</button>
+                  <button type="button" className="close-button" onClick={() => setProposalPreviewCommentId(null)} aria-label="Fermer"><X /></button>
                 </div>
                 <p className="drawer-intro">Demande #{previewProposalComment?.id} · Version {previewProposal.version}</p>
                 <div className={`proposal-preview-status ${previewAdaptationRequest?.decision === "refused" || proposalDecisionFor(previewProposal.commentId) === "refused" ? "refused" : "accepted"}`}>
@@ -2469,7 +2492,7 @@ export default function Home() {
                     onClick={() => setApprovalOpen(false)}
                     aria-label="Fermer"
                   >
-                    ×
+                    <X />
                   </button>
                 </div>
                 <p className="drawer-intro">
@@ -2528,7 +2551,7 @@ export default function Home() {
                     onClick={() => setProofOpen(false)}
                     aria-label="Fermer"
                   >
-                    ×
+                    <X />
                   </button>
                 </div>
                 <button className="proof-export-button" onClick={exportProof}>
@@ -2635,7 +2658,7 @@ export default function Home() {
                                 }`}
                               >
                                 {decision === "accepted"
-                                  ? "Acceptée ✓"
+                                  ? <>Acceptée <Check /></>
                                   : decision === "refused"
                                     ? "Refusée"
                                     : "En attente"}
@@ -2649,7 +2672,7 @@ export default function Home() {
                 <div className="proof-footer">
                   <span>Validé par Alex Morgan</span>
                   <span>
-                    Identifiant : SG-{currentDeliverable.id}-
+                    Identifiant : KR-{currentDeliverable.id}-
                     {currentDeliverable.version}
                   </span>
                 </div>
@@ -2659,7 +2682,7 @@ export default function Home() {
           {pendingImport && (
             <div className="modal-backdrop" role="presentation">
               <section className="project-modal import-choice-modal">
-                <div className="drawer-header"><div><div className="eyebrow">NOUVEL IMPORT</div><h2>Que souhaitez-vous ajouter ?</h2></div><button type="button" className="close-button" onClick={() => setPendingImport(null)} aria-label="Fermer">×</button></div>
+                <div className="drawer-header"><div><div className="eyebrow">NOUVEL IMPORT</div><h2>Que souhaitez-vous ajouter ?</h2></div><button type="button" className="close-button" onClick={() => setPendingImport(null)} aria-label="Fermer"><X /></button></div>
                 <p className="drawer-intro">{pendingImport.file.name} est prêt à être ajouté au projet.</p>
                 <div className="import-choice-list"><button className="import-choice" onClick={() => confirmImport("version")}><b>Nouvelle version</b><small>Conserver le livrable « {currentDeliverable?.name} » et créer V{(currentDeliverable?.version ?? 0) + 1}.</small></button><button className="import-choice" onClick={() => confirmImport("deliverable")}><b>Nouveau livrable</b><small>Créer un document indépendant en version 01.</small></button></div>
               </section>
@@ -2679,7 +2702,7 @@ export default function Home() {
                     onClick={() => setNewProjectOpen(false)}
                     aria-label="Fermer"
                   >
-                    ×
+                    <X />
                   </button>
                 </div>
                 <p className="drawer-intro">
@@ -2708,7 +2731,7 @@ export default function Home() {
                   </p>
                 )}
                 <button className="send-proposal" type="submit">
-                  Créer le projet →
+                  Créer le projet <ArrowRight />
                 </button>
               </form>
             </div>
@@ -2727,7 +2750,7 @@ export default function Home() {
                     onClick={() => setNewClientOpen(false)}
                     aria-label="Fermer"
                   >
-                    ×
+                    <X />
                   </button>
                 </div>
                 <p className="drawer-intro">
@@ -2758,7 +2781,7 @@ export default function Home() {
                   </p>
                 )}
                 <button className="send-proposal" type="submit">
-                  Ajouter le client →
+                  Ajouter le client <ArrowRight />
                 </button>
               </form>
             </div>
@@ -2777,7 +2800,7 @@ export default function Home() {
                     onClick={() => setHistoryOpen(false)}
                     aria-label="Fermer"
                   >
-                    ×
+                    <X />
                   </button>
                 </div>
                 <p className="drawer-intro">
@@ -2833,7 +2856,7 @@ export default function Home() {
                     onClick={() => setShareOpen(false)}
                     aria-label="Fermer"
                   >
-                    ×
+                    <X />
                   </button>
                 </div>
                 <p className="drawer-intro">
@@ -2869,11 +2892,11 @@ export default function Home() {
                       Révoquer automatiquement après 7 jours
                     </label>
                     <button className="send-proposal" onClick={copyReviewLink}>
-                      {linkCopied ? "Lien copié ✓" : "Copier le lien"}
+                      {linkCopied ? <>Lien copié <Check /></> : "Copier le lien"}
                     </button>
                     <button className="notify-button" onClick={notifyClient} disabled={isReadOnlyVersion}>
                       {notificationSent
-                        ? "Client notifié ✓"
+                        ? <>Client notifié <Check /></>
                         : "Notifier le client par e-mail"}
                     </button>
                     <div className="reminder-row">
@@ -2931,7 +2954,7 @@ export default function Home() {
                     onClick={() => setCommentDraft(null)}
                     aria-label="Fermer"
                   >
-                    ×
+                    <X />
                   </button>
                 </div>
                 <p className="drawer-intro">
@@ -2952,7 +2975,7 @@ export default function Home() {
                   type="submit"
                   disabled={!commentText.trim()}
                 >
-                  Ajouter la remarque →
+                  Ajouter la remarque <ArrowRight />
                 </button>
               </form>
             </div>,
@@ -2975,7 +2998,7 @@ export default function Home() {
                     onClick={() => setChangesOpen(false)}
                     aria-label="Fermer"
                   >
-                    ×
+                    <X />
                   </button>
                 </div>
                 <p className="drawer-intro">
@@ -2995,7 +3018,7 @@ export default function Home() {
                   type="submit"
                   disabled={!changesMessage.trim()}
                 >
-                  Envoyer la demande →
+                  Envoyer la demande <ArrowRight />
                 </button>
               </form>
             </div>
@@ -3005,7 +3028,7 @@ export default function Home() {
               <form className="project-modal comment-modal" onSubmit={sendNewProposalVersion}>
                 <div className="drawer-header">
                   <div><div className="eyebrow">NOUVELLE VERSION</div><h2>Répondre à la demande d'adaptation</h2></div>
-                  <button type="button" className="close-button" onClick={() => setNewProposalVersionOpen(false)} aria-label="Fermer">×</button>
+                  <button type="button" className="close-button" onClick={() => setNewProposalVersionOpen(false)} aria-label="Fermer"><X /></button>
                 </div>
                 <p className="drawer-intro">La proposition actuelle deviendra remplacée. Cette nouvelle version sera la seule proposition active pour le client.</p>
                 {selectedAdaptationRequest && <div className="adaptation-request-summary"><span>Demande du client · {selectedAdaptationRequest.requestedAt}</span><p>{selectedAdaptationRequest.message}</p></div>}
@@ -3040,7 +3063,7 @@ export default function Home() {
                     </div>
                   </label>
                 </div>
-                <button className="send-proposal" type="submit" disabled={!newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>Envoyer la nouvelle proposition →</button>
+                <button className="send-proposal" type="submit" disabled={!newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>Envoyer la nouvelle proposition <ArrowRight /></button>
               </form>
             </div>
           )}
