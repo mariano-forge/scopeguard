@@ -299,7 +299,12 @@ export function AgencyApp() {
       .sort((left, right) => right.version - left.version)[0]?.id ??
     0;
   const activeTab = view.kind === "dashboard" ? "dashboard" : "review";
-  const isBrowserView = view.kind === "home" || view.kind === "todo" || view.kind === "client" || view.kind === "project" || view.kind === "not-found";
+  const isBrowserView =
+    view.kind === "home" ||
+    view.kind === "todo" ||
+    view.kind === "recents" ||
+    view.kind === "shared" ||
+    view.kind === "spaces" || view.kind === "client" || view.kind === "project" || view.kind === "not-found";
 
   function openRecord(recordId: number) {
     const record = deliverables.find((deliverable) => deliverable.id === recordId);
@@ -872,7 +877,7 @@ export function AgencyApp() {
     const projectClient = clients.find((client) => client.id === (newProjectClientId ?? selectedClientId));
 
     if (!projectName || !projectClient) {
-      setProjectError("Renseignez le nom du projet et choisissez un client.");
+      setProjectError("Renseignez le nom du projet et choisissez un espace.");
       return;
     }
 
@@ -914,6 +919,16 @@ export function AgencyApp() {
     setNewClientEmail("");
     setClientError("");
     setNewClientOpen(false);
+  }
+
+  function renameClient(clientId: number, name: string) {
+    setClients((current) => current.map((client) => (client.id === clientId ? { ...client, name } : client)));
+    // Projects keep a copy of their client name (used by the proof export).
+    setProjects((current) => current.map((project) => ((project.clientId ?? 1) === clientId ? { ...project, client: name } : project)));
+  }
+
+  function renameProject(projectId: number, name: string) {
+    setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, name } : project)));
   }
 
   function importDeliverable(event: React.ChangeEvent<HTMLInputElement>) {
@@ -1541,7 +1556,7 @@ export function AgencyApp() {
   const paletteActions: PaletteItem[] = [
     { id: "action-todo", group: "Actions", label: "À traiter", hint: `${agencyActionCount} décision${agencyActionCount > 1 ? "s" : ""} en attente`, href: href.todo(), icon: Inbox },
     { id: "action-home", group: "Actions", label: "Accueil", href: href.home(), icon: House },
-    { id: "action-client", group: "Actions", label: "Nouveau client", run: () => setNewClientOpen(true) },
+    { id: "action-client", group: "Actions", label: "Nouvel espace", run: () => setNewClientOpen(true) },
     { id: "action-project", group: "Actions", label: "Nouveau projet", run: () => setNewProjectOpen(true) },
   ];
   const paletteItems: PaletteItem[] = [
@@ -1560,7 +1575,7 @@ export function AgencyApp() {
       hint: clients.find((client) => client.id === (project.clientId ?? 1))?.name,
       href: href.project(project.id),
     })),
-    ...clients.map((client) => ({ id: `client-${client.id}`, group: "Clients" as const, label: client.name, hint: client.email, href: href.client(client.id) })),
+    ...clients.map((client) => ({ id: `client-${client.id}`, group: "Espaces" as const, label: client.name, hint: client.email, href: href.client(client.id) })),
     ...latestRecords.flatMap((record) =>
       comments
         .filter((comment) => comment.deliverableId === record.id)
@@ -1979,7 +1994,6 @@ export function AgencyApp() {
         <HomeSidebar
           view={view}
           clients={clients}
-          projects={projects}
           agencyActionCount={agencyActionCount}
           notifications={notifications}
           onSearch={() => setPaletteOpen(true)}
@@ -2002,6 +2016,8 @@ export function AgencyApp() {
               onNewClient={() => setNewClientOpen(true)}
               onNewProject={() => setNewProjectOpen(true)}
               onImport={importNewDeliverable}
+              onRenameClient={renameClient}
+              onRenameProject={renameProject}
             />
           ) : activeTab === "dashboard" ? (
             <div className="dashboard-view">
@@ -2877,7 +2893,7 @@ export function AgencyApp() {
                   />
                 </label>
                 <label>
-                  Client
+                  Espace
                   <select
                     value={newProjectClientId ?? selectedClientId}
                     onChange={(event) => setNewProjectClientId(Number(event.target.value))}
@@ -2905,8 +2921,8 @@ export function AgencyApp() {
               <form className="project-modal" onSubmit={createClient}>
                 <div className="drawer-header">
                   <div>
-                    <div className="eyebrow">NOUVEAU CLIENT</div>
-                    <h2>Ajouter un client</h2>
+                    <div className="eyebrow">NOUVEL ESPACE</div>
+                    <h2>Créer un espace client</h2>
                   </div>
                   <button
                     type="button"
@@ -2918,11 +2934,10 @@ export function AgencyApp() {
                   </button>
                 </div>
                 <p className="drawer-intro">
-                  Ces informations serviront à rattacher les projets et les
-                  validations.
+                  Un espace regroupe tous les projets d’un même client.
                 </p>
                 <label>
-                  Nom du client
+                  Nom de l’espace
                   <input
                     autoFocus
                     value={newClientName}
@@ -2931,7 +2946,7 @@ export function AgencyApp() {
                   />
                 </label>
                 <label>
-                  Adresse e-mail
+                  E-mail du contact client
                   <input
                     type="email"
                     value={newClientEmail}
@@ -2945,7 +2960,7 @@ export function AgencyApp() {
                   </p>
                 )}
                 <button className="send-proposal" type="submit">
-                  Ajouter le client <ArrowRight />
+                  Créer l’espace <ArrowRight />
                 </button>
               </form>
             </div>

@@ -2,7 +2,10 @@
 //
 //   /                                              home
 //   /a-traiter                                     pending decisions across all projects
-//   /clients/:clientId                             projects of a client
+//   /recents                                       recently opened projects and deliverables
+//   /partages                                      shared with me
+//   /espaces                                       all client spaces
+//   /espaces/:clientId                             projects of a client space
 //   /projets/:projectId                            deliverables of a project
 //   /projets/:projectId/tableau-de-bord            project dashboard
 //   /projets/:projectId/livrables/:livrableId      latest version of a deliverable
@@ -12,6 +15,9 @@
 export type AgencyView =
   | { kind: "home" }
   | { kind: "todo" }
+  | { kind: "recents" }
+  | { kind: "shared" }
+  | { kind: "spaces" }
   | { kind: "client"; clientId: number }
   | { kind: "project"; projectId: number }
   | { kind: "dashboard"; projectId: number }
@@ -24,8 +30,11 @@ export function parseAgencyPath(pathname: string): AgencyView {
   const [first, second, third, fourth, fifth, sixth, extra] = pathname.split("/").filter(Boolean);
   if (!first) return { kind: "home" };
   if (first === "a-traiter" && !second) return { kind: "todo" };
+  if (first === "recents" && !second) return { kind: "recents" };
+  if (first === "partages" && !second) return { kind: "shared" };
 
-  if (first === "clients") {
+  if (first === "espaces") {
+    if (!second) return { kind: "spaces" };
     const clientId = id(second);
     return clientId !== null && !third ? { kind: "client", clientId } : { kind: "not-found" };
   }
@@ -50,7 +59,11 @@ export function parseAgencyPath(pathname: string): AgencyView {
 export const href = {
   home: () => "/",
   todo: () => "/a-traiter",
-  client: (clientId: number) => `/clients/${clientId}`,
+  recents: () => "/recents",
+  shared: () => "/partages",
+  spaces: () => "/espaces",
+  /** A client space ("espace"). */
+  client: (clientId: number) => `/espaces/${clientId}`,
   project: (projectId: number) => `/projets/${projectId}`,
   dashboard: (projectId: number) => `/projets/${projectId}/tableau-de-bord`,
   deliverable: (projectId: number, livrableId: number, version?: number) =>

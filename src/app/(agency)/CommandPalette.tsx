@@ -7,7 +7,7 @@ import { Building2, CornerDownLeft, FileText, Folder, MessageSquareText, Plus, S
 
 export type PaletteItem = {
   id: string;
-  group: "Actions" | "Livrables" | "Projets" | "Clients" | "Demandes";
+  group: "Actions" | "Livrables" | "Projets" | "Espaces" | "Demandes";
   label: string;
   /** Secondary text, also searched (client, project, version…). */
   hint?: string;
@@ -16,12 +16,12 @@ export type PaletteItem = {
   icon?: LucideIcon;
 };
 
-const groupOrder: PaletteItem["group"][] = ["Actions", "Livrables", "Projets", "Clients", "Demandes"];
+const groupOrder: PaletteItem["group"][] = ["Actions", "Livrables", "Projets", "Espaces", "Demandes"];
 const icons = {
   Actions: Plus,
   Livrables: FileText,
   Projets: Folder,
-  Clients: Building2,
+  Espaces: Building2,
   Demandes: MessageSquareText,
 };
 
@@ -122,7 +122,7 @@ function PaletteDialog({ onClose, items, suggestions }: Omit<PaletteProps, "open
               setQuery(event.target.value);
               setActiveIndex(0);
             }}
-            placeholder="Rechercher un client, un projet, un livrable, une demande…"
+            placeholder="Rechercher un espace, un projet, un livrable, une demande…"
             role="combobox"
             aria-expanded="true"
             aria-controls={listId}

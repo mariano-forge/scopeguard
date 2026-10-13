@@ -4,11 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Bell,
-  Building2,
   ChevronDown,
+  Clock,
   CircleHelp,
   FileText,
-  Folder,
   House,
   Image as ImageIcon,
   Inbox,
@@ -17,14 +16,16 @@ import {
   PanelLeftClose,
   Plus,
   Search,
+  Share2,
   Users,
 } from "lucide-react";
 import { KoraMark } from "@/components/KoraMark";
 import { StatusMark, type TabStatus } from "./TabBar";
 import { href, type AgencyView } from "./routes";
+import { SpaceAvatar } from "./BrowserView";
 
 type Notification = { id: number; message: string };
-type Client = { id: number; name: string };
+type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId?: number };
 
 /** Bell + popover. The popover opens beside the sidebar. */
@@ -79,11 +80,10 @@ function Notifications({ notifications, compact }: { notifications: Notification
   );
 }
 
-/** Home, to-do, client and project pages: account, search, shortcuts and the clients > projects tree (Figma home). */
+/** Home pages (Figma home): account, search, shortcuts, starred, all client spaces. */
 export function HomeSidebar({
   view,
   clients,
-  projects,
   agencyActionCount,
   notifications,
   onSearch,
@@ -91,13 +91,18 @@ export function HomeSidebar({
 }: {
   view: AgencyView;
   clients: Client[];
-  projects: Project[];
   agencyActionCount: number;
   notifications: Notification[];
   onSearch: () => void;
   onNewClient: () => void;
 }) {
-  const projectId = view.kind === "project" ? view.projectId : null;
+  const navLink = (target: string, active: boolean, icon: React.ReactNode, label: string, extra?: React.ReactNode) => (
+    <Link className={`nav-item ${active ? "active" : ""}`} href={target} aria-current={active ? "page" : undefined}>
+      <span>{icon}</span>
+      <span className="nav-label">{label}</span>
+      {extra}
+    </Link>
+  );
   return (
     <aside className="sidebar home-sidebar" aria-label="Navigation">
       <div className="sidebar-account">
@@ -107,23 +112,33 @@ export function HomeSidebar({
         </span>
         <Notifications notifications={notifications} />
       </div>
-      <button className="sidebar-search" onClick={onSearch}>
-        <Search />
-        <span>Rechercher</span>
-        <kbd>Ctrl K</kbd>
-      </button>
       <nav className="sidebar-scroll">
-        <Link className={`nav-item ${view.kind === "home" ? "active" : ""}`} href={href.home()}>
-          <span><House /></span> Accueil
-        </Link>
-        <Link className={`nav-item ${view.kind === "todo" ? "active" : ""}`} href={href.todo()}>
-          <span><Inbox /></span> À traiter
-          {agencyActionCount > 0 && <strong className="nav-count">{agencyActionCount}</strong>}
-        </Link>
-        <hr />
+        <button className="nav-item" onClick={onSearch}>
+          <span><Search /></span>
+          <span className="nav-label">Rechercher</span>
+          <kbd className="nav-kbd">Ctrl K</kbd>
+        </button>
+        {navLink(href.home(), view.kind === "home", <House />, "Accueil")}
+        {navLink(
+          href.todo(),
+          view.kind === "todo",
+          <Inbox />,
+          "À traiter",
+          agencyActionCount > 0 ? <strong className="nav-count">{agencyActionCount}</strong> : undefined,
+        )}
+        {navLink(href.recents(), view.kind === "recents", <Clock />, "Récents")}
+        {navLink(href.shared(), view.kind === "shared", <Share2 />, "Partagés avec moi")}
+
         <div className="nav-section">
-          <span>Clients</span>
-          <button className="nav-section-action" onClick={onNewClient} aria-label="Nouveau client" title="Nouveau client">
+          <span>Favoris</span>
+        </div>
+        <p className="nav-empty">Ajoutez un projet en favori pour le retrouver ici.</p>
+
+        <div className="nav-section">
+          <Link href={href.spaces()} className={view.kind === "spaces" ? "is-active" : ""}>
+            Tous les espaces
+          </Link>
+          <button className="nav-section-action" onClick={onNewClient} aria-label="Nouvel espace" title="Nouvel espace">
             <Plus />
           </button>
         </div>
@@ -133,34 +148,23 @@ export function HomeSidebar({
               <Link
                 className={`nav-item ${view.kind === "client" && view.clientId === client.id ? "active" : ""}`}
                 href={href.client(client.id)}
+                title={client.name}
               >
-                <span><Building2 /></span> {client.name}
+                <SpaceAvatar client={client} size="sm" />
+                <span className="nav-label">{client.name}</span>
               </Link>
-              <ul>
-                {projects
-                  .filter((project) => (project.clientId ?? 1) === client.id)
-                  .map((project) => (
-                    <li key={project.id}>
-                      <Link
-                        className={`nav-item nav-tree-leaf ${projectId === project.id ? "active" : ""}`}
-                        href={href.project(project.id)}
-                      >
-                        <span><Folder /></span> {project.name}
-                      </Link>
-                    </li>
-                  ))}
-              </ul>
             </li>
           ))}
         </ul>
-        <hr />
-        <a className="nav-item" href="#equipe">
-          <span><Users /></span> Équipe
-        </a>
       </nav>
       <div className="sidebar-bottom">
+        <a className="nav-item" href="#equipe">
+          <span><Users /></span>
+          <span className="nav-label">Équipe</span>
+        </a>
         <a className="nav-item" href="#aide">
-          <span><CircleHelp /></span> Aide
+          <span><CircleHelp /></span>
+          <span className="nav-label">Aide</span>
         </a>
       </div>
     </aside>
