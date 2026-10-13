@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, FileText, FolderOpen, Image as ImageIcon, LayoutDashboard, Plus } from "lucide-react";
+import { ArrowUpRight, FolderOpen, LayoutDashboard, Plus } from "lucide-react";
+import { DeliverableThumbnail } from "@/components/DeliverableThumbnail";
 import { href, hrefForRecord, livrableIdOf, versionsOfLivrable, type AgencyView } from "./routes";
 import { TodoList, isAgencyAction, type TodoItem } from "./TodoList";
 
@@ -67,16 +68,7 @@ export function BrowserView({
     ).length;
     return (
       <Link className="browser-card" href={hrefForRecord(latest, deliverables)} key={livrableId}>
-        <span className="browser-thumb">
-          {latest.type === "Image" && latest.fileData ? (
-            // eslint-disable-next-line @next/next/no-img-element -- local data URL preview
-            <img src={latest.fileData} alt="" />
-          ) : latest.type === "Image" ? (
-            <ImageIcon />
-          ) : (
-            <FileText />
-          )}
-        </span>
+        <DeliverableThumbnail type={latest.type} fileData={latest.fileData} />
         <span className="browser-card-body">
           <b>{latest.name}</b>
           <small>
@@ -92,12 +84,19 @@ export function BrowserView({
   }
 
   function projectCard(project: Project) {
-    const count = livrableIds(project.id).length;
+    const ids = livrableIds(project.id);
+    const count = ids.length;
+    // Cover: latest version of the most recently created deliverable.
+    const cover = versionsOfLivrable(Math.max(...ids), deliverables)[0];
     return (
       <Link className="browser-card" href={href.project(project.id)} key={project.id}>
-        <span className="browser-thumb">
-          <FolderOpen />
-        </span>
+        {cover ? (
+          <DeliverableThumbnail type={cover.type} fileData={cover.fileData} />
+        ) : (
+          <span className="thumbnail thumbnail-empty">
+            <FolderOpen />
+          </span>
+        )}
         <span className="browser-card-body">
           <b>{project.name}</b>
           <small>{plural(count, "livrable")}</small>

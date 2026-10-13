@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import {
@@ -19,21 +18,9 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { MockArtboard } from "@/components/MockArtboard";
+import { PdfDocument, PdfPage } from "@/components/Pdf";
 
-const PdfDocument = dynamic(
-  async () => {
-    const module = await import("react-pdf");
-    module.pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-      "pdfjs-dist/build/pdf.worker.min.mjs",
-      import.meta.url,
-    ).toString();
-    return module.Document;
-  },
-  { ssr: false },
-);
-const PdfPage = dynamic(() => import("react-pdf").then((module) => module.Page), {
-  ssr: false,
-});
 
 function parseNumericAmount(amount: number | string | undefined): number {
   if (typeof amount === "number") return amount;
@@ -835,35 +822,7 @@ export default function ClientReviewPage() {
                 <PdfDocument file={deliverable.fileData} onLoadSuccess={({ numPages }) => setPdfPageCount(numPages)} loading="Chargement du PDF...">
                   <PdfPage pageNumber={pdfPage} width={760} renderTextLayer={false} renderAnnotationLayer={false} />
                 </PdfDocument>
-              ) : <><div className="mock-nav">
-                <b>northstar<span>.</span></b>
-                <span>Solutions</span>
-                <span>À propos</span>
-                <span>Ressources</span>
-                <button onClick={(event) => event.stopPropagation()}>Nous contacter →</button>
-              </div>
-              <div className="mock-hero">
-                <div className="hero-copy">
-                  <small>CONSTRUIRE MIEUX, ENSEMBLE</small>
-                  <h2>
-                    Des idées qui<br /><em>avancent.</em>
-                  </h2>
-                  <p>
-                    Nous aidons les équipes ambitieuses à transformer leurs défis complexes en opportunités durables.
-                  </p>
-                  <button onClick={(event) => event.stopPropagation()}>Découvrir notre approche <span>→</span></button>
-                </div>
-                <div className="hero-shape">
-                  <div className="shape-line line-one" />
-                  <div className="shape-line line-two" />
-                  <div className="shape-core">N</div>
-                </div>
-              </div>
-              <div className="mock-footer">
-                <span>Northstar Studio · 2026</span>
-                <span>01 — Introduction</span>
-              </div>
-              </>}
+              ) : <MockArtboard />}
               {sharedComments.filter((comment) => (!comment.page || comment.page === pdfPage) && comment.position).map((comment) => (
                 <button
                   key={comment.id}

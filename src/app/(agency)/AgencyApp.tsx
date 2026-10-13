@@ -33,10 +33,8 @@ function formatProposalDeadline(deadline: number | string | undefined): string {
   if (num === 0) return "Aucun impact";
   return `+ ${num} jour${num > 1 ? "s" : ""}`;
 }
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import dynamic from "next/dynamic";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   TransformComponent,
@@ -47,23 +45,16 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
-  Bell,
-  Building2,
   Check,
   ChevronDown,
   ChevronUp,
-  CircleHelp,
   Coins,
   Crosshair,
-  Ellipsis,
   Eye,
   FileText,
-  Folder,
   Hourglass,
   House,
   Inbox,
-  Search,
-  LayoutDashboard,
   LayoutGrid,
   Maximize,
   Minus,
@@ -73,29 +64,17 @@ import {
   Scale,
   ShieldCheck,
   Trash2,
-  Users,
   X,
 } from "lucide-react";
 import { BrowserView } from "./BrowserView";
 import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
 import { isAgencyAction, todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
+import { HomeSidebar, ProjectSidebar, type SidebarLivrable, type SidebarVersion } from "./Sidebars";
 import { href, hrefForRecord, livrableIdOf, parseAgencyPath, versionsOfLivrable } from "./routes";
+import { MockArtboard } from "@/components/MockArtboard";
+import { PdfDocument, PdfPage } from "@/components/Pdf";
 
-const PdfDocument = dynamic(
-  async () => {
-    const module = await import("react-pdf");
-    module.pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-      "pdfjs-dist/build/pdf.worker.min.mjs",
-      import.meta.url,
-    ).toString();
-    return module.Document;
-  },
-  { ssr: false },
-);
-const PdfPage = dynamic(() => import("react-pdf").then((module) => module.Page), {
-  ssr: false,
-});
 
 type Decision = "À qualifier" | "Inclus" | "Hors périmètre";
 
@@ -208,6 +187,7 @@ const storageKey = "scopeguard-review-state";
 const recentsKey = "kora-recent-deliverables";
 const tabsKey = "kora-open-tabs";
 const maxTabs = 12;
+const sidebarKey = "kora-sidebar";
 
 const initialProjects: Project[] = [
   {
@@ -277,6 +257,7 @@ export function AgencyApp() {
   const [deliverables, setDeliverables] = useState(initialDeliverables);
   const [recentLivrableIds, setRecentLivrableIds] = useState<number[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [openTabs, setOpenTabs] = useState<{ livrableId: number; href: string }[]>([]);
 
   // Selection comes from the URL (see routes.ts); outside a project the first project is the fallback.
@@ -383,7 +364,6 @@ export function AgencyApp() {
   const [proofOpen, setProofOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationSent, setNotificationSent] = useState(false);
   const [lastReminderAt, setLastReminderAt] = useState<number | null>(null);
   const [stateHydrated, setStateHydrated] = useState(false);
@@ -728,11 +708,34 @@ export function AgencyApp() {
     });
   }, [viewLivrableId]);
 
+  // Project panel open/closed is remembered per browser; Ctrl+\ toggles it like in Figma.
+  useEffect(() => {
+    try {
+      setSidebarCollapsed(window.localStorage.getItem(sidebarKey) === "collapsed");
+    } catch {
+      // Keep the panel open when storage is unavailable.
+    }
+  }, []);
+  function toggleSidebar() {
+    setSidebarCollapsed((collapsed) => {
+      try {
+        window.localStorage.setItem(sidebarKey, collapsed ? "open" : "collapsed");
+      } catch {
+        // Ignore storage failures (private mode, quota).
+      }
+      return !collapsed;
+    });
+  }
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setPaletteOpen((open) => !open);
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === "\\") {
+        event.preventDefault();
+        toggleSidebar();
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -1436,12 +1439,8 @@ export function AgencyApp() {
     setLinkCopied(true);
   }
 
-  // Tab status reflects the latest version: what needs the agency first, then what waits on the client.
-  const tabInfos: TabInfo[] = openTabs.flatMap((tab) => {
-    const latest = versionsOfLivrable(tab.livrableId, deliverables)[0];
-    if (!latest) return [];
-    const project = projects.find((candidate) => candidate.id === (latest.projectId ?? 1));
-    const client = clients.find((candidate) => candidate.id === (project?.clientId ?? 1));
+  // Deliverable status = its latest version: what needs the agency first, then what waits on the client.
+  function statusOf(latest: Deliverable): TabStatus {
     const latestComments = comments.filter((comment) => comment.deliverableId === latest.id);
     const toQualify = latestComments.filter((comment) => comment.decision === "À qualifier" || !comment.decision).length;
     const awaitingClient = latestComments.filter(
@@ -1450,8 +1449,7 @@ export function AgencyApp() {
         proposalStateFor(comment.id) === "sent" &&
         proposalDecisionFor(comment.id) === "none",
     ).length;
-    const status: TabStatus =
-      latest.reviewStatus === "changes-requested"
+    return latest.reviewStatus === "changes-requested"
         ? { kind: "changes-requested" }
         : toQualify > 0
           ? { kind: "to-qualify", count: toQualify }
@@ -1460,13 +1458,21 @@ export function AgencyApp() {
             : latest.reviewStatus === "approved"
               ? { kind: "approved" }
               : { kind: "none" };
+  }
+
+  const tabInfos: TabInfo[] = openTabs.flatMap((tab) => {
+    const latest = versionsOfLivrable(tab.livrableId, deliverables)[0];
+    if (!latest) return [];
+    const project = projects.find((candidate) => candidate.id === (latest.projectId ?? 1));
+    const client = clients.find((candidate) => candidate.id === (project?.clientId ?? 1));
     return [
       {
         livrableId: tab.livrableId,
         href: tab.href,
         name: latest.name,
+        type: latest.type,
         context: [client?.name, project?.name].filter(Boolean).join(" / "),
-        status,
+        status: statusOf(latest),
       },
     ];
   });
@@ -1557,22 +1563,43 @@ export function AgencyApp() {
     ...paletteActions.slice(2),
   ];
 
-  const breadcrumbs: { label: string; href: string }[] = [{ label: "Accueil", href: href.home() }];
-  const crumbClient = clients.find((client) => client.id === selectedClientId);
-  if (view.kind === "todo") breadcrumbs.push({ label: "À traiter", href: href.todo() });
-  if ((view.kind === "client" || viewProjectId !== null) && crumbClient)
-    breadcrumbs.push({ label: crumbClient.name, href: href.client(crumbClient.id) });
-  if (viewProjectId !== null && selectedProject)
-    breadcrumbs.push({ label: selectedProject.name, href: href.project(selectedProject.id) });
-  if (view.kind === "dashboard")
-    breadcrumbs.push({ label: "Tableau de bord", href: href.dashboard(view.projectId) });
-  if (view.kind === "deliverable" && viewRecord) {
-    breadcrumbs.push({ label: viewRecord.name, href: href.deliverable(view.projectId, view.livrableId) });
-    breadcrumbs.push({
-      label: `V${String(viewRecord.version).padStart(2, "0")}`,
-      href: hrefForRecord(viewRecord, deliverables),
+  // Project workspace panel: deliverables of the project, versions of the open one.
+  const inProject = (view.kind === "deliverable" || view.kind === "dashboard") && Boolean(selectedProject);
+  const sidebarLivrables: SidebarLivrable[] = latestRecords
+    .filter((record) => (record.projectId ?? 1) === selectedProjectId)
+    .map((record) => {
+      const livrableId = livrableIdOf(record, deliverables);
+      return {
+        livrableId,
+        name: record.name,
+        type: record.type,
+        href: openTabs.find((tab) => tab.livrableId === livrableId)?.href ?? hrefForRecord(record, deliverables),
+        status: statusOf(record),
+        active: livrableId === viewLivrableId,
+      };
     });
-  }
+  const sidebarVersions: SidebarVersion[] =
+    view.kind === "deliverable"
+      ? viewVersions.map((record) => ({
+          id: record.id,
+          label: `V${String(record.version).padStart(2, "0")}`,
+          meta: [record.importedAt, record.reviewStatus === "approved" ? "approuvée" : record.status === "Remplacée" ? "remplacée" : null]
+            .filter(Boolean)
+            .join(" · "),
+          href: hrefForRecord(record, deliverables),
+          active: record.id === viewRecord?.id,
+        }))
+      : [];
+  const versionChip =
+    view.kind !== "deliverable" || !viewRecord
+      ? undefined
+      : viewRecord.reviewStatus === "approved"
+        ? { label: "Approuvée", tone: "resolved" as const }
+        : viewRecord.reviewStatus === "changes-requested"
+          ? { label: "Modifications demandées", tone: "high" as const }
+          : viewRecord.status === "Remplacée"
+            ? { label: "Remplacée · lecture seule", tone: "neutral" as const }
+            : { label: "En attente client", tone: "medium" as const };
 
   return (
     <div className="app-frame">
@@ -1582,120 +1609,37 @@ export function AgencyApp() {
       activeLivrableId={viewLivrableId}
       homeActive={view.kind !== "deliverable"}
       onClose={closeTab}
+      onOpen={() => setPaletteOpen(true)}
     />
     <main className="app-shell">
-      {view.kind !== "deliverable" && (
-      <aside className="sidebar">
-        <nav className="main-nav" aria-label="Navigation principale">
-          <Link className={`nav-item ${view.kind === "home" ? "active" : ""}`} href={href.home()}>
-            <span><House /></span> Accueil
-          </Link>
-          <button className="nav-item nav-search" onClick={() => setPaletteOpen(true)}>
-            <span><Search /></span> Rechercher <kbd>Ctrl K</kbd>
-          </button>
-          <Link className={`nav-item ${view.kind === "todo" ? "active" : ""}`} href={href.todo()}>
-            <span><Inbox /></span> À traiter
-            {agencyActionCount > 0 && <strong className="nav-count">{agencyActionCount}</strong>}
-          </Link>
-          {viewProjectId !== null && (
-            <Link className={`nav-item ${view.kind === "dashboard" ? "active" : ""}`} href={href.dashboard(viewProjectId)}>
-              <span><LayoutDashboard /></span> Tableau de bord
-            </Link>
-          )}
-          <div className="nav-section">
-            <span>Clients</span>
-            <button className="nav-section-action" onClick={() => setNewClientOpen(true)} aria-label="Nouveau client" title="Nouveau client"><Plus /></button>
-          </div>
-          <ul className="nav-tree">
-            {clients.map((client) => (
-              <li key={client.id}>
-                <Link className={`nav-item ${view.kind === "client" && view.clientId === client.id ? "active" : ""}`} href={href.client(client.id)}>
-                  <span><Building2 /></span> {client.name}
-                </Link>
-                <ul>
-                  {projects.filter((project) => (project.clientId ?? 1) === client.id).map((project) => (
-                    <li key={project.id}>
-                      <Link className={`nav-item nav-tree-leaf ${viewProjectId === project.id ? "active" : ""}`} href={href.project(project.id)}>
-                        <span><Folder /></span> {project.name}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            ))}
-          </ul>
-          <a className="nav-item" href="#equipe">
-            <span><Users /></span> Équipe
-          </a>
-        </nav>
-        <div className="sidebar-bottom">
-          <a className="nav-item" href="#aide">
-            <span><CircleHelp /></span> Aide
-          </a>
-          <div className="profile">
-            <span className="avatar dark-avatar">AM</span>
-            <span>
-              <b>Alex Morgan</b>
-              <small>Administrateur</small>
-            </span>
-            <span className="muted"><Ellipsis /></span>
-          </div>
-        </div>
-      </aside>
+      {inProject && selectedProject ? (
+        <ProjectSidebar
+          project={selectedProject}
+          client={clients.find((client) => client.id === (selectedProject.clientId ?? 1))}
+          livrables={sidebarLivrables}
+          versions={sidebarVersions}
+          versionChip={versionChip}
+          view={view}
+          collapsed={sidebarCollapsed}
+          onToggle={toggleSidebar}
+          onSearch={() => setPaletteOpen(true)}
+          onImport={importNewDeliverable}
+          agencyActionCount={agencyActionCount}
+          notifications={notifications}
+        />
+      ) : (
+        <HomeSidebar
+          view={view}
+          clients={clients}
+          projects={projects}
+          agencyActionCount={agencyActionCount}
+          notifications={notifications}
+          onSearch={() => setPaletteOpen(true)}
+          onNewClient={() => setNewClientOpen(true)}
+        />
       )}
 
       <section className="workspace" id="projet">
-        <header className="topbar">
-          <nav className="breadcrumbs" aria-label="Fil d’Ariane">
-            {breadcrumbs.map((crumb, index) => (
-              <Fragment key={crumb.label + index}>
-                {index > 0 && <b>/</b>}
-                {index === breadcrumbs.length - 1 ? (
-                  <strong aria-current="page">{crumb.label}</strong>
-                ) : (
-                  <Link href={crumb.href}>{crumb.label}</Link>
-                )}
-              </Fragment>
-            ))}
-          </nav>
-          <div className="top-actions">
-            <button
-              className="icon-button notification-trigger"
-              aria-label="Notifications"
-              onClick={() => setNotificationsOpen((current) => !current)}
-            >
-              <Bell />
-              {notifications.length > 0 && (
-                <span className="notification-count">
-                  {notifications.length}
-                </span>
-              )}
-            </button>
-            <button
-              className="avatar coral-avatar"
-              aria-label="Profil Alex Morgan"
-            >
-              AM
-            </button>
-          </div>
-          {notificationsOpen && (
-            <div className="notification-panel">
-              <b>Notifications</b>
-              {notifications.length === 0 ? (
-                <p>Aucune notification pour le moment.</p>
-              ) : (
-                notifications.slice(0, 5).map((notification) => (
-                  <div className="notification-item" key={notification.id}>
-                    <span className="notification-dot" />
-                    <div>
-                      <span>{notification.message}</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </header>
         <div className="content">
           {isBrowserView ? (
             <BrowserView
@@ -1973,9 +1917,10 @@ export function AgencyApp() {
             <>
           <div className="project-heading">
             <div>
-              <div className="eyebrow">PROJET · {selectedClient?.name ?? "CLIENT"}</div>
-              <div className="project-selector-row"><h1>{selectedProject?.name ?? "Aucun projet sélectionné"}</h1></div>
-              <div className="deliverable-selectors">
+              <div className="eyebrow">{[selectedClient?.name, selectedProject?.name].filter(Boolean).join(" · ")}</div>
+              <div className="project-selector-row"><h1>{currentDeliverable.name}</h1></div>
+              {/* Mobile only: on desktop the project panel lists deliverables and versions. */}
+              <div className="deliverable-selectors mobile-only">
                 <select className="deliverable-select" value={activeDeliverableName ?? ""} onChange={(event) => selectDeliverableName(event.target.value)} aria-label="Sélectionner un livrable">
                   {deliverableNames.map((name) => <option value={name} key={name}>{name}</option>)}
                 </select>
@@ -1984,9 +1929,7 @@ export function AgencyApp() {
                 </select>
               </div>
               <p>
-                {currentDeliverable.name} · Version{" "}
-                {String(currentDeliverable.version).padStart(2, "0")} ·{" "}
-                {currentDeliverable.importedAt}
+                Version {String(currentDeliverable.version).padStart(2, "0")} · {currentDeliverable.importedAt}
               </p>
             </div>
             <div className="heading-actions">
@@ -2039,7 +1982,7 @@ export function AgencyApp() {
             <section className="preview-panel" ref={previewPanelRef}>
               <div className="panel-toolbar">
                 <div className="toolbar-left">
-                  <button className="tool-button selected">
+                  <button className="tool-button selected" aria-label="Demandes" title="Demandes">
                     <MousePointer2 /> <span>Demandes</span>
                   </button>
                   <button
@@ -2049,7 +1992,7 @@ export function AgencyApp() {
                     title="Ajouter une remarque"
                     aria-label="Ajouter une remarque"
                   >
-                    <Plus /> Ajouter une remarque
+                    <Plus /> <span>Ajouter une remarque</span>
                   </button>
                   <button className="tool-button" aria-label="Grille"><LayoutGrid /></button>
                 </div>
@@ -2090,44 +2033,7 @@ export function AgencyApp() {
                     </PdfDocument>
                   ) : previewUrl && previewType === "PDF" ? (
                     <iframe className="real-deliverable-pdf" src={previewUrl} title={currentDeliverable.name} />
-                  ) : <><div className="mock-nav">
-                    <b>
-                      northstar<span>.</span>
-                    </b>
-                    <span>Solutions</span>
-                    <span>À propos</span>
-                    <span>Ressources</span>
-                    <button onClick={(event) => event.stopPropagation()}>
-                      Nous contacter →
-                    </button>
-                  </div>
-                  <div className="mock-hero">
-                    <div className="hero-copy">
-                      <small>CONSTRUIRE MIEUX, ENSEMBLE</small>
-                      <h2>
-                        Des idées qui
-                        <br />
-                        <em>avancent.</em>
-                      </h2>
-                      <p>
-                        Nous aidons les équipes ambitieuses à transformer leurs
-                        défis complexes en opportunités durables.
-                      </p>
-                      <button onClick={(event) => event.stopPropagation()}>
-                        Découvrir notre approche <span>→</span>
-                      </button>
-                    </div>
-                    <div className="hero-shape">
-                      <div className="shape-line line-one" />
-                      <div className="shape-line line-two" />
-                      <div className="shape-core">N</div>
-                    </div>
-                  </div>
-                  <div className="mock-footer">
-                    <span>Northstar Studio · 2026</span>
-                    <span>01 — Introduction</span>
-                  </div>
-                  </>}
+                  ) : <MockArtboard />}
                   {activeComments
                     .filter((comment) => !comment.page || comment.page === pdfPage)
                     .filter((comment) => comment.position)

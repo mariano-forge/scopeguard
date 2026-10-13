@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Check, Clock, House, PenLine, X } from "lucide-react";
-import { KoraMark } from "@/components/KoraMark";
+import { Check, Clock, FileText, House, Image as ImageIcon, PenLine, Plus, X } from "lucide-react";
 import { href } from "./routes";
 
 export type TabStatus =
@@ -16,6 +15,7 @@ export type TabInfo = {
   livrableId: number;
   href: string;
   name: string;
+  type: "PDF" | "Image";
   /** "Client / Projet", shown as tooltip to tell same-named files apart. */
   context: string;
   status: TabStatus;
@@ -38,7 +38,7 @@ function statusLabel(status: TabStatus) {
   }
 }
 
-function StatusMark({ status }: { status: TabStatus }) {
+export function StatusMark({ status }: { status: TabStatus }) {
   if (status.kind === "none") return null;
   const label = statusLabel(status);
   return (
@@ -63,17 +63,17 @@ export function TabBar({
   activeLivrableId,
   homeActive,
   onClose,
+  onOpen,
 }: {
   tabs: TabInfo[];
   activeLivrableId: number | null;
   homeActive: boolean;
   onClose: (livrableId: number) => void;
+  /** "+" button: pick a deliverable to open (command palette). */
+  onOpen: () => void;
 }) {
   return (
     <div className="tab-bar">
-      <Link className="tab-bar-brand" href={href.home()} aria-label="Kora, accueil">
-        <KoraMark />
-      </Link>
       <nav className="tab-list" aria-label="Livrables ouverts">
         <Link
           className={`tab tab-home ${homeActive ? "is-active" : ""}`}
@@ -98,6 +98,7 @@ export function TabBar({
               }}
             >
               <Link className="tab-link" href={tab.href} aria-current={active ? "page" : undefined} title={`${tab.context} / ${tab.name}`}>
+                {tab.type === "Image" ? <ImageIcon /> : <FileText />}
                 <span className="tab-name">{tab.name}</span>
                 <StatusMark status={tab.status} />
               </Link>
@@ -113,6 +114,9 @@ export function TabBar({
             </div>
           );
         })}
+        <button type="button" className="tab-new" onClick={onOpen} aria-label="Ouvrir un livrable" title="Ouvrir un livrable (Ctrl K)">
+          <Plus />
+        </button>
       </nav>
     </div>
   );
