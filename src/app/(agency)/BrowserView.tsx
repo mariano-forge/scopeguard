@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, FolderClosed, LayoutDashboard, LayoutGrid, List, Pencil, Plus, Share2, Star } from "lucide-react";
-import { DeliverableThumbnail } from "@/components/DeliverableThumbnail";
+import { DeliverableCover } from "@/components/DeliverableCover";
 import { Select } from "@/components/Select";
 import { href, hrefForRecord, livrableIdOf, versionsOfLivrable, type AgencyView } from "./routes";
 import { TodoList, isAgencyAction, type TodoItem } from "./TodoList";
@@ -285,7 +285,7 @@ export function BrowserView({
       "file-card",
       record.name,
       <>
-        <DeliverableThumbnail type={record.type} fileData={record.fileData} />
+        <DeliverableCover type={record.type} />
         <span className="file-card-body">
           <span className="file-card-title">
             <b>{record.name}</b>
@@ -312,9 +312,9 @@ export function BrowserView({
         <span className="folder-thumbs">
           {[0, 1, 2].map((index) =>
             latest[index] ? (
-              <DeliverableThumbnail key={latest[index].id} type={latest[index].type} fileData={latest[index].fileData} />
+              <DeliverableCover key={latest[index].id} type={latest[index].type} />
             ) : (
-              <span className="thumbnail thumbnail-empty" key={`empty-${index}`} />
+              <span className="cover cover-empty" key={`empty-${index}`} />
             ),
           )}
         </span>

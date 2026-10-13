@@ -4862,3 +4862,89 @@ a.page-nav-label:hover {
   color: var(--graphite);
   font-weight: 400;
 }
+
+/* Uniform deliverable cover (replaces real file previews on cards) */
+.cover {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  container-type: inline-size;
+  background: var(--mist);
+}
+.folder-thumbs .cover {
+  border-radius: var(--r-button);
+}
+.cover-empty {
+  background: var(--canvas);
+  outline: 1px dashed var(--border);
+  outline-offset: -1px;
+}
+.cover-sheet {
+  position: relative;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--paper);
+  /* folded top-right corner */
+  clip-path: polygon(0 0, calc(100% - 14cqi) 0, 100% 14cqi, 100% 100%, 0 100%);
+}
+.cover-pdf .cover-sheet {
+  width: 34%;
+  aspect-ratio: 3 / 4;
+}
+.cover-image .cover-sheet {
+  width: 48%;
+  aspect-ratio: 4 / 3;
+}
+.cover-lines {
+  display: grid;
+  gap: 5cqi;
+  width: 62%;
+}
+.cover-lines i {
+  height: 2.6cqi;
+  border-radius: var(--r-full);
+  background: var(--mist);
+}
+.cover-lines i:first-child {
+  width: 70%;
+  background: var(--border);
+}
+.cover-lines i:last-child {
+  width: 45%;
+}
+.cover-glyph {
+  width: 30%;
+  height: auto;
+  color: var(--border-input);
+}
+.cover-format,
+.cover-version {
+  position: absolute;
+  border-radius: var(--r-field);
+  font: 500 var(--t-mono) var(--font-mono);
+}
+.cover-format {
+  left: var(--s-2);
+  bottom: var(--s-2);
+  padding: 0 var(--s-1);
+  background: var(--ink);
+  color: var(--paper);
+}
+.cover-version {
+  top: var(--s-3);
+  left: var(--s-3);
+  padding: 0 var(--s-2);
+  background: var(--paper);
+  color: var(--graphite);
+}
+/* Small covers (project folder strip): sheet only, no labels below the 12px floor */
+@container (max-width: 160px) {
+  .cover-format,
+  .cover-version {
+    display: none;
+  }
+}
