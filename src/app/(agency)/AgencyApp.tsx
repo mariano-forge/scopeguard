@@ -62,6 +62,7 @@ import {
   Hourglass,
   House,
   Inbox,
+  Search,
   LayoutDashboard,
   LayoutGrid,
   Maximize,
@@ -78,6 +79,7 @@ import {
 import { BrowserView } from "./BrowserView";
 import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
 import { isAgencyAction, todoOrder, type TodoItem } from "./TodoList";
+import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { href, hrefForRecord, livrableIdOf, parseAgencyPath, versionsOfLivrable } from "./routes";
 
 const PdfDocument = dynamic(
@@ -274,6 +276,7 @@ export function AgencyApp() {
   const [clients, setClients] = useState(initialClients);
   const [deliverables, setDeliverables] = useState(initialDeliverables);
   const [recentLivrableIds, setRecentLivrableIds] = useState<number[]>([]);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [openTabs, setOpenTabs] = useState<{ livrableId: number; href: string }[]>([]);
 
   // Selection comes from the URL (see routes.ts); outside a project the first project is the fallback.
@@ -724,6 +727,17 @@ export function AgencyApp() {
       return next;
     });
   }, [viewLivrableId]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // Open tabs (per browser). Opening a deliverable adds its tab; a tab remembers the version last viewed.
   useEffect(() => {
@@ -1493,6 +1507,56 @@ export function AgencyApp() {
   todoItems.sort((left, right) => todoOrder.indexOf(left.kind) - todoOrder.indexOf(right.kind));
   const agencyActionCount = todoItems.filter(isAgencyAction).length;
 
+  // ⌘K palette index: everything reachable, plus a few actions.
+  const contextOf = (record: Deliverable) => {
+    const project = projects.find((candidate) => candidate.id === (record.projectId ?? 1));
+    const client = clients.find((candidate) => candidate.id === (project?.clientId ?? 1));
+    return [client?.name, project?.name].filter(Boolean).join(" / ");
+  };
+  const latestRecords = deliverables.filter(
+    (record) => versionsOfLivrable(livrableIdOf(record, deliverables), deliverables)[0]?.id === record.id,
+  );
+  const paletteActions: PaletteItem[] = [
+    { id: "action-todo", group: "Actions", label: "À traiter", hint: `${agencyActionCount} décision${agencyActionCount > 1 ? "s" : ""} en attente`, href: href.todo(), icon: Inbox },
+    { id: "action-home", group: "Actions", label: "Accueil", href: href.home(), icon: House },
+    { id: "action-client", group: "Actions", label: "Nouveau client", run: () => setNewClientOpen(true) },
+    { id: "action-project", group: "Actions", label: "Nouveau projet", run: () => setNewProjectOpen(true) },
+  ];
+  const paletteItems: PaletteItem[] = [
+    ...paletteActions,
+    ...latestRecords.map((record) => ({
+      id: `livrable-${record.id}`,
+      group: "Livrables" as const,
+      label: record.name,
+      hint: `${contextOf(record)} · V${String(record.version).padStart(2, "0")}`,
+      href: hrefForRecord(record, deliverables),
+    })),
+    ...projects.map((project) => ({
+      id: `project-${project.id}`,
+      group: "Projets" as const,
+      label: project.name,
+      hint: clients.find((client) => client.id === (project.clientId ?? 1))?.name,
+      href: href.project(project.id),
+    })),
+    ...clients.map((client) => ({ id: `client-${client.id}`, group: "Clients" as const, label: client.name, hint: client.email, href: href.client(client.id) })),
+    ...latestRecords.flatMap((record) =>
+      comments
+        .filter((comment) => comment.deliverableId === record.id)
+        .map((comment) => ({
+          id: `comment-${comment.id}`,
+          group: "Demandes" as const,
+          label: comment.message,
+          hint: `#${comment.id} · ${comment.decision} · ${record.name}`,
+          href: `${hrefForRecord(record, deliverables)}?demande=${comment.id}`,
+        })),
+    ),
+  ];
+  const paletteSuggestions: PaletteItem[] = [
+    paletteActions[0],
+    ...tabInfos.map((tab) => ({ id: `tab-${tab.livrableId}`, group: "Livrables" as const, label: tab.name, hint: tab.context, href: tab.href })),
+    ...paletteActions.slice(2),
+  ];
+
   const breadcrumbs: { label: string; href: string }[] = [{ label: "Accueil", href: href.home() }];
   const crumbClient = clients.find((client) => client.id === selectedClientId);
   if (view.kind === "todo") breadcrumbs.push({ label: "À traiter", href: href.todo() });
@@ -1512,6 +1576,7 @@ export function AgencyApp() {
 
   return (
     <div className="app-frame">
+    <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={paletteItems} suggestions={paletteSuggestions} />
     <TabBar
       tabs={tabInfos}
       activeLivrableId={viewLivrableId}
@@ -1525,6 +1590,9 @@ export function AgencyApp() {
           <Link className={`nav-item ${view.kind === "home" ? "active" : ""}`} href={href.home()}>
             <span><House /></span> Accueil
           </Link>
+          <button className="nav-item nav-search" onClick={() => setPaletteOpen(true)}>
+            <span><Search /></span> Rechercher <kbd>Ctrl K</kbd>
+          </button>
           <Link className={`nav-item ${view.kind === "todo" ? "active" : ""}`} href={href.todo()}>
             <span><Inbox /></span> À traiter
             {agencyActionCount > 0 && <strong className="nav-count">{agencyActionCount}</strong>}
