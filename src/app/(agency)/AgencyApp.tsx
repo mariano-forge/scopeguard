@@ -35,6 +35,7 @@ function formatProposalDeadline(deadline: number | string | undefined): string {
 }
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   TransformComponent,
@@ -54,6 +55,7 @@ import {
   Hourglass,
   House,
   Inbox,
+  LayoutDashboard,
   LayoutGrid,
   Maximize,
   Minus,
@@ -76,8 +78,9 @@ import { isAgencyAction, todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { HomeSidebar, ProjectSidebar, type PanelMode, type SidebarFavorite, type SidebarLivrable, type SidebarVersion } from "./Sidebars";
 import { href, hrefForRecord, livrableIdOf, parseAgencyPath, versionsOfLivrable } from "./routes";
-import { MockArtboard } from "@/components/MockArtboard";
-import { PdfDocument, PdfPage } from "@/components/Pdf";
+import { DeliverableContent } from "@/components/DeliverableContent";
+import { MAX_FILE_BYTES, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
+import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialog";
 
 
 type Decision = "À qualifier" | "Inclus" | "Hors périmètre";
@@ -124,13 +127,17 @@ type Deliverable = {
   id: number;
   projectId?: number;
   name: string;
-  type: "PDF" | "Image";
+  type: DeliverableType;
   size: number;
   version: number;
   status: "Brouillon" | "En attente client" | "En revue" | "Approuvée" | "Remplacée";
   importedAt: string;
   locked: boolean;
   fileData?: string;
+  /** Web page address (type "Link"). */
+  url?: string;
+  /** Optional cover image shown on cards instead of the default template. */
+  coverData?: string;
   /** Client decision on this version (each version has its own review). */
   reviewStatus?: ReviewStatus;
   approvedAt?: string;
@@ -268,6 +275,7 @@ export function AgencyApp() {
   const [deliverables, setDeliverables] = useState(initialDeliverables);
   const [recentLivrableIds, setRecentLivrableIds] = useState<number[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [newDeliverableOpen, setNewDeliverableOpen] = useState(false);
   const isMobile = useSyncExternalStore(subscribeMobile, () => window.matchMedia(mobileQuery).matches, () => false);
   const [sidebarPanel, setSidebarPanel] = useState<PanelMode | null>("demandes");
   // Last open mode, read by the Ctrl+\ handler (a ref, so the listener never sees a stale value).
@@ -288,9 +296,11 @@ export function AgencyApp() {
       ? view.clientId
       : (projects.find((project) => project.id === selectedProjectId)?.clientId ?? clients[0]?.id ?? 0);
   const viewVersions =
-    view.kind === "deliverable" ? versionsOfLivrable(view.livrableId, deliverables) : [];
+    view.kind === "deliverable" || view.kind === "dashboard" ? versionsOfLivrable(view.livrableId, deliverables) : [];
   const viewRecord =
-    view.kind === "deliverable"
+    view.kind === "dashboard"
+      ? viewVersions[0]
+      : view.kind === "deliverable"
       ? view.version
         ? viewVersions.find((record) => record.version === view.version)
         : viewVersions[0]
@@ -312,15 +322,6 @@ export function AgencyApp() {
   function openRecord(recordId: number) {
     const record = deliverables.find((deliverable) => deliverable.id === recordId);
     if (record) router.push(hrefForRecord(record, deliverables));
-  }
-  function openProject(projectId: number) {
-    const latest = deliverables
-      .filter((deliverable) => (deliverable.projectId ?? 1) === projectId)
-      .sort((left, right) => right.version - left.version)[0];
-    router.push(latest ? hrefForRecord(latest, deliverables) : href.project(projectId));
-  }
-  function openReview() {
-    openProject(selectedProjectId);
   }
 
   const [comments, setComments] = useState(initialComments);
@@ -350,9 +351,7 @@ export function AgencyApp() {
   const [newClientEmail, setNewClientEmail] = useState("");
   const [clientError, setClientError] = useState("");
   const [deliverableError, setDeliverableError] = useState("");
-  const [pendingImport, setPendingImport] = useState<{ file: File; type: "PDF" | "Image" } | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewType, setPreviewType] = useState<"PDF" | "Image" | null>(null);
+  const [pendingImport, setPendingImport] = useState<{ file: File; type: DeliverableType } | null>(null);
   const [previewZoom, setPreviewZoom] = useState(100);
   const [pdfPage, setPdfPage] = useState(1);
   const [pdfPageCount, setPdfPageCount] = useState(1);
@@ -535,7 +534,12 @@ export function AgencyApp() {
     });
 
     if (window.localStorage.getItem(storageKey) === newSerialized) return;
-    window.localStorage.setItem(storageKey, newSerialized);
+    try {
+      window.localStorage.setItem(storageKey, newSerialized);
+    } catch {
+      // Browser storage is full (files are kept as data URLs in this prototype).
+      setDeliverableError("Le stockage du navigateur est plein : les derniers changements ne seront pas conservés. Retirez des fichiers lourds.");
+    }
   }, [
     projects,
     clients,
@@ -553,17 +557,9 @@ export function AgencyApp() {
     stateHydrated,
   ]);
 
-  useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-    };
-  }, [previewUrl]);
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0];
   const selectedClient = clients.find((client) => client.id === selectedClientId) ?? clients[0];
-  const visibleProjects = projects.filter(
-    (project) => (project.clientId ?? 1) === selectedClientId,
-  );
   const activeDeliverables = deliverables.filter(
     (deliverable) => (deliverable.projectId ?? 1) === selectedProjectId,
   );
@@ -637,10 +633,8 @@ export function AgencyApp() {
   const reminderBlocked =
     lastReminderAt !== null && Date.now() - lastReminderAt < 24 * 60 * 60 * 1000;
 
-  // Calculs pour le tableau de bord du projet sélectionné
-  const projectDeliverables = deliverables.filter(
-    (deliverable) => (deliverable.projectId ?? 1) === selectedProjectId,
-  );
+  // Dashboard figures: every version of the deliverable being looked at.
+  const projectDeliverables = viewVersions;
   const projectDeliverableIds = new Set(projectDeliverables.map((d) => d.id));
   const projectComments = comments.filter((comment) =>
     projectDeliverableIds.has(comment.deliverableId ?? deliverables[0]?.id ?? 1),
@@ -965,34 +959,44 @@ export function AgencyApp() {
 
     if (!file) return;
 
-    const isPdf =
-      file.type === "application/pdf" ||
-      file.name.toLowerCase().endsWith(".pdf");
-    const isImage = file.type.startsWith("image/");
-
-    if (!isPdf && !isImage) {
-      setDeliverableError(
-        "Format non pris en charge. Choisissez un PDF ou une image.",
-      );
+    const type = kindFromFile(file);
+    if (!type) {
+      setDeliverableError("Format non pris en charge. Choisissez une image, un PDF, une vidéo ou un document.");
+      return;
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      setDeliverableError(`Fichier trop lourd pour la démo : ${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).`);
       return;
     }
 
-    setPendingImport({ file, type: isPdf ? "PDF" : "Image" });
+    setPendingImport({ file, type });
     setDeliverableError("");
   }
 
-  /** Import from a project page: always a new deliverable, no version/deliverable choice. */
-  function importNewDeliverable(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-    if (!isPdf && !file.type.startsWith("image/")) {
-      setDeliverableError("Format non pris en charge. Choisissez un PDF ou une image.");
-      return;
-    }
+  /** "Nouveau livrable" dialog: a new deliverable (version 1) in the current project. */
+  async function createDeliverable(input: NewDeliverable) {
+    const [fileData, coverData] = await Promise.all([
+      input.file ? readFileAsDataUrl(input.file) : Promise.resolve(undefined),
+      input.cover ? readFileAsDataUrl(input.cover) : Promise.resolve(undefined),
+    ]);
+    const created: Deliverable = {
+      id: Date.now(),
+      projectId: selectedProjectId,
+      name: input.name,
+      type: input.type,
+      size: input.file?.size ?? 0,
+      version: 1,
+      status: "En attente client",
+      importedAt: "À l'instant",
+      locked: false,
+      fileData,
+      url: input.url,
+      coverData,
+    };
+    setDeliverables((current) => [created, ...current]);
+    setNewDeliverableOpen(false);
     setDeliverableError("");
-    void confirmImport("deliverable", { file, type: isPdf ? "PDF" : "Image" });
+    router.push(hrefForRecord(created, [created, ...deliverables]));
   }
 
   async function confirmImport(mode: ImportMode, source = pendingImport) {
@@ -1019,8 +1023,6 @@ export function AgencyApp() {
       fileData,
     };
 
-    setPreviewUrl(URL.createObjectURL(file));
-    setPreviewType(type);
     setPdfPage(1);
     setPdfPageCount(1);
     router.push(hrefForRecord(importedDeliverable, [importedDeliverable, ...deliverables]));
@@ -2045,6 +2047,13 @@ export function AgencyApp() {
 
   return (
     <div className="app-frame">
+    {newDeliverableOpen && (
+      <NewDeliverableDialog
+        existingNames={deliverables.filter((record) => (record.projectId ?? 1) === selectedProjectId).map((record) => record.name)}
+        onClose={() => setNewDeliverableOpen(false)}
+        onCreate={createDeliverable}
+      />
+    )}
     <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} items={paletteItems} suggestions={paletteSuggestions} />
     <TabBar
       tabs={tabInfos}
@@ -2063,11 +2072,12 @@ export function AgencyApp() {
           versionChip={versionChip}
           view={view}
           panel={view.kind === "dashboard" && sidebarPanel === "demandes" ? "livrables" : sidebarPanel}
+          dashboardHref={view.kind === "deliverable" || view.kind === "dashboard" ? href.dashboard(view.projectId, view.livrableId) : undefined}
           onPanel={showPanel}
           demandes={demandesList}
           demandesBadge={activeComments.filter((comment) => comment.decision === "À qualifier" || !comment.decision).length}
           onSearch={() => setPaletteOpen(true)}
-          onImport={importNewDeliverable}
+          onNewDeliverable={() => setNewDeliverableOpen(true)}
           agencyActionCount={agencyActionCount}
           notifications={notifications}
         />
@@ -2096,7 +2106,7 @@ export function AgencyApp() {
               error={deliverableError}
               onNewClient={() => setNewClientOpen(true)}
               onNewProject={() => setNewProjectOpen(true)}
-              onImport={importNewDeliverable}
+              onNewDeliverable={() => setNewDeliverableOpen(true)}
               onRenameClient={renameClient}
               onRenameProject={renameProject}
               overview={overview}
@@ -2111,28 +2121,19 @@ export function AgencyApp() {
             <div className="dashboard-view">
               <div className="project-heading">
                 <div>
-                  <div className="eyebrow">PILOTAGE COMMERCIAL · {selectedClient?.name ?? "CLIENT"}</div>
+                  <div className="eyebrow">PILOTAGE COMMERCIAL · {selectedProject?.name ?? "PROJET"}</div>
                   <div className="project-selector-row">
-                    <h1>Tableau de bord : {selectedProject?.name ?? "Aucun projet sélectionné"}</h1>
-                    <select
-                      className="project-select"
-                      value={selectedProjectId}
-                      onChange={(event) => router.push(href.dashboard(Number(event.target.value)))}
-                      aria-label="Sélectionner un projet"
-                    >
-                      {visibleProjects.map((project) => (
-                        <option value={project.id} key={project.id}>
-                          {project.name}
-                        </option>
-                      ))}
-                    </select>
+                    <h1>Tableau de bord : {viewRecord?.name ?? "Livrable"}</h1>
                   </div>
                   <p>
                     Indicateurs de dérive de périmètre (scope creep), revenus supplémentaires contractualisés et registre des décisions.
                   </p>
                 </div>
                 <div className="heading-actions">
-                  <button className="secondary-button" onClick={openReview}>
+                  <button
+                    className="secondary-button"
+                    onClick={() => view.kind === "dashboard" && router.push(href.deliverable(view.projectId, view.livrableId))}
+                  >
                     <ArrowLeft /> Revenir à la revue
                   </button>
                   <button className="secondary-button" onClick={() => setProofOpen(true)}>
@@ -2195,7 +2196,7 @@ export function AgencyApp() {
                 <div className="dashboard-section-card">
                   <div className="section-card-header">
                     <h3>Répartition des arbitrages de périmètre</h3>
-                    <span>Sur {projectDeliverables.length} livrable{projectDeliverables.length > 1 ? "s" : ""}</span>
+                    <span>Sur {projectDeliverables.length} version{projectDeliverables.length > 1 ? "s" : ""}</span>
                   </div>
                   <div className="scope-bar-wrap">
                     <div className="scope-progress-bar">
@@ -2238,7 +2239,7 @@ export function AgencyApp() {
                       <b>{outsideDemands.length > 0 ? Math.round(totalQuotedEuros / outsideDemands.length) : 0} €</b>
                     </div>
                     <div className="mini-stat">
-                      <small>Livrables sous revue</small>
+                      <small>Versions</small>
                       <b>{projectDeliverables.length}</b>
                     </div>
                   </div>
@@ -2382,15 +2383,7 @@ export function AgencyApp() {
                 >
                   <TransformComponent wrapperClass={`artboard-transform-wrapper ${previewDragging ? "dragging" : ""}`} contentClass="artboard-transform-content">
                     <div className="artboard" onClick={startComment} onPointerDown={trackPreviewPointerDown} onPointerMove={trackPreviewPointerMove} onPointerUp={trackPreviewPointerUp} onPointerCancel={trackPreviewPointerUp}>
-                  {(previewUrl && previewType === "Image") || (currentDeliverable.fileData && currentDeliverable.type === "Image") ? (
-                    <img className="real-deliverable-image" src={currentDeliverable.fileData ?? previewUrl ?? undefined} alt={currentDeliverable.name} />
-                  ) : currentDeliverable.fileData && currentDeliverable.type === "PDF" ? (
-                    <PdfDocument file={currentDeliverable.fileData} onLoadSuccess={({ numPages }) => setPdfPageCount(numPages)} loading="Chargement du PDF...">
-                      <PdfPage pageNumber={pdfPage} width={760} renderTextLayer={false} renderAnnotationLayer={false} />
-                    </PdfDocument>
-                  ) : previewUrl && previewType === "PDF" ? (
-                    <iframe className="real-deliverable-pdf" src={previewUrl} title={currentDeliverable.name} />
-                  ) : <MockArtboard />}
+                  <DeliverableContent deliverable={currentDeliverable} pdfPage={pdfPage} onPdfLoad={setPdfPageCount} />
                   {activeComments
                     .filter((comment) => !comment.page || comment.page === pdfPage)
                     .filter((comment) => comment.position)
@@ -2482,6 +2475,11 @@ export function AgencyApp() {
                   <button className="inspector-action" onClick={() => setProofOpen(true)}>
                     <FileCheck /> Synthèse & export
                   </button>
+                  {view.kind === "deliverable" && (
+                    <Link className="inspector-action" href={href.dashboard(view.projectId, view.livrableId)}>
+                      <LayoutDashboard /> Tableau de bord du livrable
+                    </Link>
+                  )}
                   <button className="inspector-action" onClick={() => setHistoryOpen(true)}>
                     <ScrollText /> Historique et journal
                   </button>

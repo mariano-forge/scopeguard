@@ -4871,7 +4871,6 @@ a.page-nav-label:hover {
   aspect-ratio: 16 / 10;
   overflow: hidden;
   container-type: inline-size;
-  background: var(--mist);
 }
 .folder-thumbs .cover {
   border-radius: var(--r-button);
@@ -4891,11 +4890,11 @@ a.page-nav-label:hover {
   /* folded top-right corner */
   clip-path: polygon(0 0, calc(100% - 14cqi) 0, 100% 14cqi, 100% 100%, 0 100%);
 }
-.cover-pdf .cover-sheet {
+.cover-portrait .cover-sheet {
   width: 34%;
   aspect-ratio: 3 / 4;
 }
-.cover-image .cover-sheet {
+.cover-landscape .cover-sheet {
   width: 48%;
   aspect-ratio: 4 / 3;
 }
@@ -4919,7 +4918,7 @@ a.page-nav-label:hover {
 .cover-glyph {
   width: 30%;
   height: auto;
-  color: var(--border-input);
+  color: currentColor; /* the kind tone text color, ≥ 7:1 on white */
 }
 .cover-format,
 .cover-version {
@@ -4947,4 +4946,207 @@ a.page-nav-label:hover {
   .cover-version {
     display: none;
   }
+}
+
+/* Cover: kind-tinted lines, uploaded cover image */
+.cover-lines i {
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+.cover-lines i:first-child {
+  background: color-mix(in srgb, currentColor 32%, transparent);
+}
+.cover-custom {
+  background: var(--mist);
+}
+.cover-custom img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cover-custom .cover-format {
+  left: var(--s-2);
+  bottom: var(--s-2);
+}
+
+/* "Nouveau livrable" dialog */
+.deliverable-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+.kind-picker {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.kind-picker legend {
+  margin-bottom: var(--s-2);
+  padding: 0;
+  font-weight: 600;
+}
+.kind-options {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--s-2);
+}
+.kind-option {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: var(--s-1);
+  padding: var(--s-3) var(--s-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--paper);
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+  font-weight: 500;
+  cursor: pointer;
+}
+.kind-option:hover {
+  background: var(--canvas);
+}
+.kind-option.is-selected {
+  border-color: var(--action-ui);
+  background: var(--status-low-bg);
+  color: var(--status-low-text);
+}
+.kind-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.kind-option:has(input:focus-visible) {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 2px;
+}
+.upload-field {
+  display: grid;
+  gap: var(--s-2);
+}
+.upload-label {
+  font-weight: 600;
+}
+.dropzone {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 64px;
+  padding: var(--s-3) var(--s-4);
+  border: 1px dashed var(--border-input);
+  border-radius: var(--r-button);
+  background: var(--canvas);
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+  cursor: pointer;
+}
+.dropzone:hover {
+  background: var(--mist);
+}
+.dropzone b {
+  color: var(--ink);
+}
+.dropzone input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.dropzone:has(input:focus-visible) {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 2px;
+}
+.cover-field {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  align-items: center;
+  gap: var(--s-4);
+}
+.cover-field-preview {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+}
+.cover-field-actions {
+  display: grid;
+  justify-items: start;
+  gap: var(--s-1);
+}
+.cover-field-actions small {
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+.deliverable-dialog .primary-button {
+  width: 100%;
+}
+.deliverable-dialog .primary-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Canvas content for video / link / document */
+.real-deliverable-video {
+  width: 100%;
+  height: 100%;
+  background: var(--ink);
+  object-fit: contain;
+}
+.deliverable-placeholder {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  height: 100%;
+  padding: var(--s-6);
+  background: var(--paper);
+  text-align: center;
+}
+.deliverable-placeholder-cover {
+  width: min(280px, 60%);
+  overflow: hidden;
+  border-radius: var(--r-button);
+}
+.deliverable-placeholder b {
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.deliverable-placeholder small {
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+@media (max-width: 680px) {
+  .kind-options {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .cover-field {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Dialog rhythm: section titles look like field labels, even spacing */
+.deliverable-dialog {
+  display: grid;
+  gap: var(--s-4);
+}
+.deliverable-dialog > label,
+.deliverable-dialog .upload-field {
+  margin-bottom: 0;
+}
+.deliverable-dialog .kind-picker legend,
+.deliverable-dialog .upload-label {
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+  font-weight: 600;
+}
+.deliverable-dialog .drawer-header {
+  margin-bottom: 0;
+}
+.deliverable-dialog .drawer-header h2 {
+  margin: 0;
+}
+.cover-field-actions .ghost-button {
+  height: 32px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--border);
 }

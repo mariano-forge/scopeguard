@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, FolderClosed, LayoutDashboard, LayoutGrid, List, Pencil, Plus, Share2, Star } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderClosed, LayoutGrid, List, Pencil, Plus, Share2, Star } from "lucide-react";
 import { DeliverableCover } from "@/components/DeliverableCover";
 import { Select } from "@/components/Select";
 import { href, hrefForRecord, livrableIdOf, versionsOfLivrable, type AgencyView } from "./routes";
 import { TodoList, isAgencyAction, type TodoItem } from "./TodoList";
 import { StatusMark, type TabStatus } from "./TabBar";
+import type { DeliverableType } from "@/components/deliverableKinds";
 
 type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId?: number; status: string };
@@ -16,11 +17,12 @@ type Deliverable = {
   id: number;
   projectId?: number;
   name: string;
-  type: "PDF" | "Image";
+  type: DeliverableType;
   version: number;
   status: string;
   importedAt: string;
   fileData?: string;
+  coverData?: string;
 };
 type Comment = { deliverableId?: number; decision: string };
 
@@ -53,7 +55,7 @@ type BrowserViewProps = {
   error?: string;
   onNewClient: () => void;
   onNewProject: () => void;
-  onImport: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onNewDeliverable: () => void;
   onRenameClient: (clientId: number, name: string) => void;
   onRenameProject: (projectId: number, name: string) => void;
   onToggleFavorite: (key: string) => void;
@@ -200,7 +202,7 @@ export function BrowserView({
   error,
   onNewClient,
   onNewProject,
-  onImport,
+  onNewDeliverable,
   onRenameClient,
   onRenameProject,
   onToggleFavorite,
@@ -285,7 +287,7 @@ export function BrowserView({
       "file-card",
       record.name,
       <>
-        <DeliverableCover type={record.type} />
+        <DeliverableCover type={record.type} coverData={record.coverData} />
         <span className="file-card-body">
           <span className="file-card-title">
             <b>{record.name}</b>
@@ -312,7 +314,7 @@ export function BrowserView({
         <span className="folder-thumbs">
           {[0, 1, 2].map((index) =>
             latest[index] ? (
-              <DeliverableCover key={latest[index].id} type={latest[index].type} />
+              <DeliverableCover key={latest[index].id} type={latest[index].type} coverData={latest[index].coverData} />
             ) : (
               <span className="cover cover-empty" key={`empty-${index}`} />
             ),
@@ -438,13 +440,9 @@ export function BrowserView({
             <RenamableTitle value={project.name} label="Renommer le projet" onRename={(name) => onRenameProject(project.id, name)} />
           </div>
           <div className="page-actions">
-            <Link className="ghost-button" href={href.dashboard(project.id)}>
-              <LayoutDashboard /> Tableau de bord
-            </Link>
-            <label className="primary-button file-button">
+            <button className="primary-button" onClick={onNewDeliverable}>
               <Plus /> Livrable
-              <input type="file" accept="application/pdf,image/*" onChange={onImport} aria-label="Importer un livrable (PDF ou image)" />
-            </label>
+            </button>
           </div>
         </header>
         {error && (

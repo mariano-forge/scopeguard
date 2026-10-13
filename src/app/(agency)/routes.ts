@@ -7,9 +7,9 @@
 //   /espaces                                       all client spaces
 //   /espaces/:clientId                             projects of a client space
 //   /projets/:projectId                            deliverables of a project
-//   /projets/:projectId/tableau-de-bord            project dashboard
 //   /projets/:projectId/livrables/:livrableId      latest version of a deliverable
 //   /projets/:projectId/livrables/:livrableId/versions/:version
+//   /projets/:projectId/livrables/:livrableId/tableau-de-bord   deliverable dashboard
 //   ?demande=:commentId on a deliverable URL focuses that comment
 
 export type AgencyView =
@@ -20,7 +20,7 @@ export type AgencyView =
   | { kind: "spaces" }
   | { kind: "client"; clientId: number }
   | { kind: "project"; projectId: number }
-  | { kind: "dashboard"; projectId: number }
+  | { kind: "dashboard"; projectId: number; livrableId: number }
   | { kind: "deliverable"; projectId: number; livrableId: number; version?: number }
   | { kind: "not-found" };
 
@@ -43,10 +43,10 @@ export function parseAgencyPath(pathname: string): AgencyView {
     const projectId = id(second);
     if (projectId === null) return { kind: "not-found" };
     if (!third) return { kind: "project", projectId };
-    if (third === "tableau-de-bord" && !fourth) return { kind: "dashboard", projectId };
     const livrableId = id(fourth);
     if (third === "livrables" && livrableId !== null) {
       if (!fifth) return { kind: "deliverable", projectId, livrableId };
+      if (fifth === "tableau-de-bord" && !sixth) return { kind: "dashboard", projectId, livrableId };
       const version = id(sixth);
       if (fifth === "versions" && version !== null && !extra)
         return { kind: "deliverable", projectId, livrableId, version };
@@ -65,7 +65,7 @@ export const href = {
   /** A client space ("espace"). */
   client: (clientId: number) => `/espaces/${clientId}`,
   project: (projectId: number) => `/projets/${projectId}`,
-  dashboard: (projectId: number) => `/projets/${projectId}/tableau-de-bord`,
+  dashboard: (projectId: number, livrableId: number) => `/projets/${projectId}/livrables/${livrableId}/tableau-de-bord`,
   deliverable: (projectId: number, livrableId: number, version?: number) =>
     `/projets/${projectId}/livrables/${livrableId}${version ? `/versions/${version}` : ""}`,
 };

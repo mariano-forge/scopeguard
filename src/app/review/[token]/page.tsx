@@ -18,8 +18,8 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { MockArtboard } from "@/components/MockArtboard";
-import { PdfDocument, PdfPage } from "@/components/Pdf";
+import { DeliverableContent } from "@/components/DeliverableContent";
+import type { DeliverableType } from "@/components/deliverableKinds";
 
 
 function parseNumericAmount(amount: number | string | undefined): number {
@@ -62,7 +62,9 @@ type Deliverable = {
   status: string;
   locked?: boolean;
   importedAt?: string;
-  type?: "PDF" | "Image";
+  type?: DeliverableType;
+  url?: string;
+  coverData?: string;
   fileData?: string;
   reviewStatus?: ReviewStatus;
   approvedAt?: string;
@@ -816,13 +818,7 @@ export default function ClientReviewPage() {
             >
               <TransformComponent wrapperClass={`client-artboard-transform-wrapper ${previewDragging ? "dragging" : ""}`} contentClass="client-artboard-transform-content">
             <div className="client-artboard" onClick={startComment} onPointerDown={trackPreviewPointerDown} onPointerMove={trackPreviewPointerMove} onPointerUp={trackPreviewPointerUp} onPointerCancel={trackPreviewPointerUp}>
-              {deliverable.fileData && deliverable.type === "Image" ? (
-                <img className="real-deliverable-image" src={deliverable.fileData} alt={deliverable.name} />
-              ) : deliverable.fileData && deliverable.type === "PDF" ? (
-                <PdfDocument file={deliverable.fileData} onLoadSuccess={({ numPages }) => setPdfPageCount(numPages)} loading="Chargement du PDF...">
-                  <PdfPage pageNumber={pdfPage} width={760} renderTextLayer={false} renderAnnotationLayer={false} />
-                </PdfDocument>
-              ) : <MockArtboard />}
+              <DeliverableContent deliverable={{ ...deliverable, type: deliverable.type ?? "PDF" }} pdfPage={pdfPage} onPdfLoad={setPdfPageCount} />
               {sharedComments.filter((comment) => (!comment.page || comment.page === pdfPage) && comment.position).map((comment) => (
                 <button
                   key={comment.id}

@@ -10,7 +10,6 @@ import {
   FileText,
   FolderClosed,
   House,
-  Image as ImageIcon,
   Inbox,
   LayoutDashboard,
   MessageSquareText,
@@ -24,6 +23,8 @@ import { KoraMark } from "@/components/KoraMark";
 import { StatusMark, type TabStatus } from "./TabBar";
 import { href, type AgencyView } from "./routes";
 import { SpaceAvatar } from "./BrowserView";
+import type { DeliverableType } from "@/components/deliverableKinds";
+import { DeliverableIcon } from "@/components/DeliverableIcon";
 
 type Notification = { id: number; message: string };
 type Client = { id: number; name: string; email: string };
@@ -183,7 +184,7 @@ export function HomeSidebar({
 export type SidebarLivrable = {
   livrableId: number;
   name: string;
-  type: "PDF" | "Image";
+  type: DeliverableType;
   href: string;
   status: TabStatus;
   active: boolean;
@@ -206,8 +207,9 @@ export function ProjectSidebar({
   onPanel,
   demandes,
   demandesBadge,
+  dashboardHref,
   onSearch,
-  onImport,
+  onNewDeliverable,
   agencyActionCount,
   notifications,
 }: {
@@ -224,8 +226,10 @@ export function ProjectSidebar({
   demandes?: React.ReactNode;
   /** Requests still to qualify, shown on the rail button. */
   demandesBadge?: number;
+  /** Dashboard of the open deliverable (the dashboard belongs to a deliverable). */
+  dashboardHref?: string;
   onSearch: () => void;
-  onImport: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onNewDeliverable: () => void;
   agencyActionCount: number;
   notifications: Notification[];
 }) {
@@ -256,14 +260,16 @@ export function ProjectSidebar({
             {Boolean(demandesBadge) && <span className="rail-badge">{demandesBadge}</span>}
           </button>
         )}
-        <Link
-          className={`rail-button ${view.kind === "dashboard" ? "is-active" : ""}`}
-          href={href.dashboard(project.id)}
-          aria-label="Tableau de bord"
-          title="Tableau de bord"
-        >
-          <LayoutDashboard />
-        </Link>
+        {dashboardHref && (
+          <Link
+            className={`rail-button ${view.kind === "dashboard" ? "is-active" : ""}`}
+            href={dashboardHref}
+            aria-label="Tableau de bord du livrable"
+            title="Tableau de bord du livrable"
+          >
+            <LayoutDashboard />
+          </Link>
+        )}
         <Link className="rail-button" href={href.todo()} aria-label={`À traiter (${agencyActionCount})`} title="À traiter">
           <Inbox />
           {agencyActionCount > 0 && <span className="rail-dot" />}
@@ -304,11 +310,9 @@ export function ProjectSidebar({
             <section className="panel-section" aria-label="Livrables">
               <div className="panel-section-header">
                 <h2>Livrables</h2>
-                <label className="sidebar-icon-button" title="Importer un livrable">
+                <button className="sidebar-icon-button" onClick={onNewDeliverable} aria-label="Nouveau livrable" title="Nouveau livrable">
                   <Plus />
-                  <span className="sr-only">Importer un livrable</span>
-                  <input type="file" accept="application/pdf,image/*" onChange={onImport} />
-                </label>
+                </button>
               </div>
               <ul>
                 {livrables.map((livrable) => (
@@ -318,7 +322,7 @@ export function ProjectSidebar({
                       href={livrable.href}
                       aria-current={livrable.active ? "page" : undefined}
                     >
-                      {livrable.type === "Image" ? <ImageIcon /> : <FileText />}
+                      <DeliverableIcon type={livrable.type} />
                       <span className="panel-item-label">{livrable.name}</span>
                       <StatusMark status={livrable.status} />
                     </Link>

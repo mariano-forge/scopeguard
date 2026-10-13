@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Check, Clock, FileText, House, Image as ImageIcon, PenLine, Plus, X } from "lucide-react";
+import { Check, Clock, House, PenLine, Plus, X } from "lucide-react";
 import { href } from "./routes";
+import type { DeliverableType } from "@/components/deliverableKinds";
+import { DeliverableIcon } from "@/components/DeliverableIcon";
 
 export type TabStatus =
   | { kind: "changes-requested" }
@@ -15,7 +17,7 @@ export type TabInfo = {
   livrableId: number;
   href: string;
   name: string;
-  type: "PDF" | "Image";
+  type: DeliverableType;
   /** "Client / Projet", shown as tooltip to tell same-named files apart. */
   context: string;
   status: TabStatus;
@@ -98,7 +100,7 @@ export function TabBar({
               }}
             >
               <Link className="tab-link" href={tab.href} aria-current={active ? "page" : undefined} title={`${tab.context} / ${tab.name}`}>
-                {tab.type === "Image" ? <ImageIcon /> : <FileText />}
+                <DeliverableIcon type={tab.type} />
                 <span className="tab-name">{tab.name}</span>
                 <StatusMark status={tab.status} />
               </Link>
