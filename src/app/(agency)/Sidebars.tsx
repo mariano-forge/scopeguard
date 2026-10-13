@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
   Inbox,
   LayoutDashboard,
+  MessageSquareText,
   PanelLeftClose,
   Plus,
   Search,
@@ -175,8 +176,12 @@ export type SidebarLivrable = {
   active: boolean;
 };
 export type SidebarVersion = { id: number; label: string; meta: string; href: string; active: boolean };
+export type PanelMode = "livrables" | "demandes";
 
-/** Inside a project (deliverable, dashboard): icon rail + collapsible panel (Figma file view). */
+/**
+ * Inside a project (deliverable, dashboard): icon rail + collapsible panel (Figma file view).
+ * Rail buttons pick what the panel shows; clicking the active one collapses the panel.
+ */
 export function ProjectSidebar({
   project,
   client,
@@ -184,8 +189,10 @@ export function ProjectSidebar({
   versions,
   versionChip,
   view,
-  collapsed,
-  onToggle,
+  panel,
+  onPanel,
+  demandes,
+  demandesBadge,
   onSearch,
   onImport,
   agencyActionCount,
@@ -197,28 +204,45 @@ export function ProjectSidebar({
   versions: SidebarVersion[];
   versionChip?: { label: string; tone: "resolved" | "high" | "medium" | "neutral" };
   view: AgencyView;
-  collapsed: boolean;
-  onToggle: () => void;
+  /** Panel content, or null when collapsed. */
+  panel: PanelMode | null;
+  onPanel: (mode: PanelMode | null) => void;
+  /** Requests list of the open deliverable (deliverable view only). */
+  demandes?: React.ReactNode;
+  /** Requests still to qualify, shown on the rail button. */
+  demandesBadge?: number;
   onSearch: () => void;
   onImport: (event: React.ChangeEvent<HTMLInputElement>) => void;
   agencyActionCount: number;
   notifications: Notification[];
 }) {
   return (
-    <aside className={`sidebar project-sidebar ${collapsed ? "is-collapsed" : ""}`} aria-label="Navigation du projet">
+    <aside className={`sidebar project-sidebar ${panel ? "" : "is-collapsed"}`} aria-label="Navigation du projet">
       <nav className="rail" aria-label="Outils">
         <Link className="rail-logo" href={href.home()} aria-label="Kora, accueil" title="Accueil">
           <KoraMark />
         </Link>
         <button
-          className={`rail-button ${!collapsed && view.kind === "deliverable" ? "is-active" : ""}`}
-          onClick={onToggle}
-          aria-label={collapsed ? "Afficher les livrables" : "Masquer le panneau"}
-          aria-expanded={!collapsed}
-          title="Livrables"
+          className={`rail-button ${panel === "livrables" ? "is-active" : ""}`}
+          onClick={() => onPanel(panel === "livrables" ? null : "livrables")}
+          aria-label="Livrables et versions"
+          aria-pressed={panel === "livrables"}
+          title="Livrables et versions"
         >
           <FileText />
         </button>
+        {demandes && (
+          <button
+            className={`rail-button ${panel === "demandes" ? "is-active" : ""}`}
+            onClick={() => onPanel(panel === "demandes" ? null : "demandes")}
+            aria-label={`Demandes${demandesBadge ? ` (${demandesBadge} à qualifier)` : ""}`}
+            aria-pressed={panel === "demandes"}
+            title="Demandes"
+          >
+            <MessageSquareText />
+            {Boolean(demandesBadge) && <span className="rail-badge">{demandesBadge}</span>}
+          </button>
+        )}
         <Link
           className={`rail-button ${view.kind === "dashboard" ? "is-active" : ""}`}
           href={href.dashboard(project.id)}
@@ -244,14 +268,14 @@ export function ProjectSidebar({
         </span>
       </nav>
 
-      {!collapsed && (
+      {panel && (
         <div className="panel">
           <div className="panel-header">
             <Link className="panel-title" href={href.project(project.id)} title="Voir tous les livrables du projet">
               <span>{project.name}</span>
               <ChevronDown />
             </Link>
-            <button className="sidebar-icon-button" onClick={onToggle} aria-label="Masquer le panneau" title="Masquer le panneau">
+            <button className="sidebar-icon-button" onClick={() => onPanel(null)} aria-label="Masquer le panneau" title="Masquer le panneau (Ctrl \)">
               <PanelLeftClose />
             </button>
           </div>
@@ -260,6 +284,9 @@ export function ProjectSidebar({
             {versionChip && <span className={`chip chip-${versionChip.tone}`}>{versionChip.label}</span>}
           </div>
 
+          {panel === "demandes" && demandes ? (
+            <div className="panel-scroll">{demandes}</div>
+          ) : (
           <div className="panel-scroll">
             <section className="panel-section" aria-label="Livrables">
               <div className="panel-section-header">
@@ -309,6 +336,7 @@ export function ProjectSidebar({
               </section>
             )}
           </div>
+          )}
         </div>
       )}
     </aside>

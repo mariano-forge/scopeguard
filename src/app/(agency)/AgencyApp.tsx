@@ -33,7 +33,7 @@ function formatProposalDeadline(deadline: number | string | undefined): string {
   if (num === 0) return "Aucun impact";
   return `+ ${num} jour${num > 1 ? "s" : ""}`;
 }
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -50,7 +50,6 @@ import {
   ChevronUp,
   Coins,
   Crosshair,
-  Eye,
   FileText,
   Hourglass,
   House,
@@ -62,7 +61,12 @@ import {
   Pencil,
   Plus,
   Scale,
+  RotateCcw,
+  ScrollText,
+  Share2,
   ShieldCheck,
+  FileCheck,
+  Upload,
   Trash2,
   X,
 } from "lucide-react";
@@ -70,7 +74,7 @@ import { BrowserView } from "./BrowserView";
 import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
 import { isAgencyAction, todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
-import { HomeSidebar, ProjectSidebar, type SidebarLivrable, type SidebarVersion } from "./Sidebars";
+import { HomeSidebar, ProjectSidebar, type PanelMode, type SidebarLivrable, type SidebarVersion } from "./Sidebars";
 import { href, hrefForRecord, livrableIdOf, parseAgencyPath, versionsOfLivrable } from "./routes";
 import { MockArtboard } from "@/components/MockArtboard";
 import { PdfDocument, PdfPage } from "@/components/Pdf";
@@ -188,6 +192,12 @@ const recentsKey = "kora-recent-deliverables";
 const tabsKey = "kora-open-tabs";
 const maxTabs = 12;
 const sidebarKey = "kora-sidebar";
+const mobileQuery = "(max-width: 680px)";
+function subscribeMobile(onChange: () => void) {
+  const query = window.matchMedia(mobileQuery);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
 
 const initialProjects: Project[] = [
   {
@@ -257,7 +267,10 @@ export function AgencyApp() {
   const [deliverables, setDeliverables] = useState(initialDeliverables);
   const [recentLivrableIds, setRecentLivrableIds] = useState<number[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const isMobile = useSyncExternalStore(subscribeMobile, () => window.matchMedia(mobileQuery).matches, () => false);
+  const [sidebarPanel, setSidebarPanel] = useState<PanelMode | null>("demandes");
+  // Last open mode, read by the Ctrl+\ handler (a ref, so the listener never sees a stale value).
+  const lastPanelRef = useRef<PanelMode>("demandes");
   const [openTabs, setOpenTabs] = useState<{ livrableId: number; href: string }[]>([]);
 
   // Selection comes from the URL (see routes.ts); outside a project the first project is the fallback.
@@ -356,7 +369,6 @@ export function AgencyApp() {
   const [editingReply, setEditingReply] = useState<{ commentId: number; replyId: number } | null>(null);
   const [editingReplyText, setEditingReplyText] = useState("");
   const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
-  const [showAllComments, setShowAllComments] = useState(false);
   const [commentFilter, setCommentFilter] = useState<CommentFilter>("all");
   const [changesOpen, setChangesOpen] = useState(false);
   const [changesMessage, setChangesMessage] = useState("");
@@ -575,9 +587,6 @@ export function AgencyApp() {
   const activeAuditEvents = auditEvents.filter(
     (event) => event.commentId === undefined || activeCommentIds.has(event.commentId),
   );
-  const activeProposalCommentIds = activeComments
-    .filter((comment) => comment.decision === "Hors périmètre")
-    .map((comment) => comment.id);
   const selectedAdaptationRequest =
     proposalCommentId === null
       ? undefined
@@ -617,11 +626,6 @@ export function AgencyApp() {
     if (selectedCommentIndex <= 0) return commentsForFilter;
     return [commentsForFilter[selectedCommentIndex], ...commentsForFilter.slice(0, selectedCommentIndex), ...commentsForFilter.slice(selectedCommentIndex + 1)];
   })();
-  const visibleComments = showAllComments
-    ? filteredComments
-    : filteredComments.length <= 3
-      ? filteredComments
-      : filteredComments.slice(0, 3);
   const reminderBlocked =
     lastReminderAt !== null && Date.now() - lastReminderAt < 24 * 60 * 60 * 1000;
 
@@ -708,22 +712,36 @@ export function AgencyApp() {
     });
   }, [viewLivrableId]);
 
-  // Project panel open/closed is remembered per browser; Ctrl+\ toggles it like in Figma.
+  // Project panel mode (or collapsed) is remembered per browser; Ctrl+\ toggles it like in Figma.
   useEffect(() => {
     try {
-      setSidebarCollapsed(window.localStorage.getItem(sidebarKey) === "collapsed");
+      const saved = window.localStorage.getItem(sidebarKey);
+      if (saved === "collapsed") setSidebarPanel(null);
+      else if (saved === "livrables" || saved === "demandes") {
+        setSidebarPanel(saved);
+        lastPanelRef.current = saved;
+      }
     } catch {
-      // Keep the panel open when storage is unavailable.
+      // Keep the default panel when storage is unavailable.
     }
   }, []);
+  function savePanel(mode: PanelMode | null) {
+    try {
+      window.localStorage.setItem(sidebarKey, mode ?? "collapsed");
+    } catch {
+      // Ignore storage failures (private mode, quota).
+    }
+  }
+  function showPanel(mode: PanelMode | null) {
+    setSidebarPanel(mode);
+    if (mode) lastPanelRef.current = mode;
+    savePanel(mode);
+  }
   function toggleSidebar() {
-    setSidebarCollapsed((collapsed) => {
-      try {
-        window.localStorage.setItem(sidebarKey, collapsed ? "open" : "collapsed");
-      } catch {
-        // Ignore storage failures (private mode, quota).
-      }
-      return !collapsed;
+    setSidebarPanel((current) => {
+      const next = current ? null : lastPanelRef.current;
+      savePanel(next);
+      return next;
     });
   }
 
@@ -809,7 +827,6 @@ export function AgencyApp() {
   useEffect(() => {
     if (focusedCommentId === null || !activeComments.some((comment) => comment.id === focusedCommentId)) return;
     setSelectedId(focusedCommentId);
-    setShowAllComments(true);
     router.replace(pathname, { scroll: false });
     requestAnimationFrame(() => document.querySelector(".selected-card")?.scrollIntoView({ block: "nearest" }));
   }, [focusedCommentId, activeComments, pathname, router]);
@@ -847,7 +864,6 @@ export function AgencyApp() {
 
   function selectComment(commentId: number) {
     setSelectedId(commentId);
-    setShowAllComments(false);
   }
 
   function createProject(event: React.FormEvent<HTMLFormElement>) {
@@ -1563,6 +1579,336 @@ export function AgencyApp() {
     ...paletteActions.slice(2),
   ];
 
+  // Full thread of a request (inspector): message, replies, proposal state, edit/reply actions.
+  const renderCommentThread = (comment: Comment) => (
+        <article
+          className={`comment-card ${comment.initials === "AM" ? "agency-comment" : "client-comment"} ${comment.id === selectedId ? "selected-card" : ""}`}
+          key={comment.id}
+          onClick={() => selectComment(comment.id)}
+        >
+          <div className="comment-top">
+          <span className={`avatar light-avatar ${comment.initials === "AM" ? "agency-avatar" : "client-avatar"}`}>
+              {comment.initials}
+            </span>
+            <div>
+              <b>{comment.author}</b>
+              <small>{comment.time}</small>
+            </div>
+            <span className="comment-number">{comment.id}</span>
+          </div>
+          {editingCommentId === comment.id ? (
+            <form
+              className="edit-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                saveEditComment(comment.id);
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <textarea
+                autoFocus
+                value={editingCommentText}
+                onChange={(event) =>
+                  setEditingCommentText(event.target.value)
+                }
+              />
+              <div className="edit-actions">
+                <button
+                  type="button"
+                  className="action-link"
+                  onClick={() => setEditingCommentId(null)}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="save-button"
+                  disabled={!editingCommentText.trim()}
+                >
+                  Enregistrer
+                </button>
+              </div>
+            </form>
+          ) : (
+            <p>{comment.message}</p>
+          )}
+          <div className="comment-location">
+            <Crosshair /> {comment.location}
+          </div>
+          {(expandedReplies[comment.id] ? (comment.replies ?? []) : (comment.replies ?? []).slice(0, 2)).map((reply) => (
+            <div className="reply" key={reply.id}>
+              <span className={`avatar reply-avatar ${reply.initials === "AM" ? "agency-avatar" : "client-avatar"}`}>
+                {reply.initials}
+              </span>
+              <div>
+                <b>{reply.author}</b>
+                <small>{reply.time}</small>
+                {editingReply?.commentId === comment.id &&
+                editingReply?.replyId === reply.id ? (
+                  <form
+                    className="edit-reply-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      saveEditReply(comment.id, reply.id);
+                    }}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <input
+                      autoFocus
+                      value={editingReplyText}
+                      onChange={(event) =>
+                        setEditingReplyText(event.target.value)
+                      }
+                    />
+                    <div className="edit-actions">
+                      <button
+                        type="button"
+                        className="action-link"
+                        onClick={() => setEditingReply(null)}
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        type="submit"
+                        className="save-button"
+                        disabled={!editingReplyText.trim()}
+                      >
+                        Enregistrer
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <p>{reply.message}</p>
+                    {!isReadOnlyVersion && !isDecisionLocked(comment.id) && reply.initials === "AM" && (
+                      <div className="item-inline-actions">
+                        <button
+                          className="action-link"
+                          title="Modifier"
+                          aria-label="Modifier la réponse"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            startEditReply(comment.id, reply);
+                          }}
+                        >
+                          <Pencil />
+                        </button>
+                        <button
+                          className="action-link delete-link"
+                          title="Supprimer"
+                          aria-label="Supprimer la réponse"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            deleteReply(comment.id, reply.id);
+                          }}
+                        >
+                          <Trash2 />
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+          {(comment.replies?.length ?? 0) > 2 && (
+            <button
+              type="button"
+              className="replies-toggle"
+              onClick={(event) => {
+                event.stopPropagation();
+                setExpandedReplies((current) => ({ ...current, [comment.id]: !current[comment.id] }));
+              }}
+            >
+              {expandedReplies[comment.id] ? <><ChevronUp /> Réduire les réponses</> : <><ChevronDown /> Afficher les {(comment.replies?.length ?? 0) - 2} autres réponses</>}
+            </button>
+          )}
+          <div className="comment-decision">
+            <span className={`decision-badge ${decisionStyles[comment.decision]}`}>
+              {comment.decision}
+            </span>
+            <div className="comment-actions">
+                  {comment.decision === "Hors périmètre" && (proposalDecisionFor(comment.id) === "accepted" || adaptationRequests[comment.id]?.decision === "accepted" ? (
+                    <span className="proposal-accepted">Proposition acceptée <Check /></span>
+                  ) : proposalDecisionFor(comment.id) === "refused" || adaptationRequests[comment.id]?.decision === "refused" ? (
+                    <span className="proposal-refused">Proposition refusée</span>
+                  ) : proposalStateFor(comment.id) === "sent" ? (
+                    <button className="proposal-link" onClick={(event) => { event.stopPropagation(); openProposal(comment.id); }} disabled={isReadOnlyVersion}>Voir la proposition <ArrowRight /></button>
+                  ) : (
+                    <button className="proposal-link" onClick={(event) => { event.stopPropagation(); openProposal(comment.id); }} disabled={isReadOnlyVersion}>Créer une proposition <ArrowRight /></button>
+                  ))}
+              {!isReadOnlyVersion && !isDecisionLocked(comment.id) && editingCommentId !== comment.id && comment.initials === "AM" && (
+                <>
+                  <button
+                    className="action-link"
+                    title="Modifier"
+                    aria-label="Modifier le commentaire"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      startEditComment(comment);
+                    }}
+                  >
+                    <Pencil />
+                  </button>
+                  <button
+                    className="action-link delete-link"
+                    title="Supprimer"
+                    aria-label="Supprimer le commentaire"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      deleteComment(comment.id);
+                    }}
+                  >
+                    <Trash2 />
+                  </button>
+                </>
+              )}
+              {!isDecisionLocked(comment.id) && <button
+                className="reply-link"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setReplyingTo(comment.id);
+                  setReplyText("");
+                }}
+              >
+                Répondre
+              </button>}
+            </div>
+          </div>
+          {replyingTo === comment.id && !isDecisionLocked(comment.id) && (
+            <form
+              className="reply-form"
+              onSubmit={addReply}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <input
+                autoFocus
+                value={replyText}
+                onChange={(event) =>
+                  setReplyText(event.target.value)
+                }
+                placeholder="Écrire une réponse..."
+              />
+              <button type="submit" disabled={!replyText.trim()}>
+                Envoyer
+              </button>
+            </form>
+          )}
+        </article>
+  );
+
+  const proposalLabel = (comment: Comment) =>
+    comment.decision !== "Hors périmètre"
+      ? null
+      : proposalDecisionFor(comment.id) === "accepted" || adaptationRequests[comment.id]?.decision === "accepted"
+        ? "Proposition acceptée"
+        : proposalDecisionFor(comment.id) === "refused" || adaptationRequests[comment.id]?.decision === "refused"
+          ? "Proposition refusée"
+          : adaptationRequests[comment.id] && !adaptationRequests[comment.id].decision
+            ? "Adaptation demandée"
+            : proposalStateFor(comment.id) === "sent"
+              ? "Proposition envoyée"
+              : "Proposition à créer";
+
+  // Requests of the open version, in the left panel (and in the inspector on mobile).
+  const demandesList =
+    view.kind === "deliverable" ? (
+      <div className="demandes">
+        <div className="filter-row">
+          <button
+            className={`filter ${commentFilter === "all" ? "active-filter" : ""}`}
+            onClick={() => {
+              setCommentFilter("all");
+            }}
+          >
+            Toutes <span>{activeComments.length}</span>
+          </button>
+          <button
+            className={`filter ${commentFilter === "pending" ? "active-filter" : ""}`}
+            onClick={() => {
+              setCommentFilter("pending");
+            }}
+          >
+            À qualifier{" "}
+            <span>
+              {
+                  activeComments.filter(
+                  (comment) => comment.decision === "À qualifier" || !comment.decision,
+                ).length
+              }
+            </span>
+          </button>
+          <button
+            className={`filter ${commentFilter === "outside" ? "active-filter" : ""}`}
+            onClick={() => {
+              setCommentFilter("outside");
+            }}
+          >
+            Hors périmètre{" "}
+            <span>
+              {
+                activeComments.filter(
+                  (comment) => comment.decision === "Hors périmètre",
+                ).length
+              }
+            </span>
+          </button>
+          <button
+            className={`filter ${commentFilter === "included" ? "active-filter" : ""}`}
+            onClick={() => {
+              setCommentFilter("included");
+            }}
+          >
+            Incluses <span>{activeIncludedComments.length}</span>
+          </button>
+          <button
+            className={`filter ${commentFilter === "refused" ? "active-filter" : ""}`}
+            onClick={() => {
+              setCommentFilter("refused");
+            }}
+          >
+            Refusées <span>{activeRefusedComments.length}</span>
+          </button>
+        </div>
+        {filteredComments.length === 0 ? (
+          <p className="panel-empty">
+            {activeComments.length === 0 ? "Aucune demande sur cette version." : "Aucune demande pour ce filtre."}
+          </p>
+        ) : (
+          <ul className="demande-list">
+            {filteredComments.map((comment) => (
+              <li key={comment.id}>
+                <button
+                  type="button"
+                  className={`demande-row ${comment.id === selectedId ? "selected-card" : ""}`}
+                  aria-current={comment.id === selectedId ? "true" : undefined}
+                  onClick={() => selectComment(comment.id)}
+                >
+                  <span className={`demande-number ${comment.initials === "AM" ? "agency-pin" : "client-pin"}`}>{comment.id}</span>
+                  <span className="demande-body">
+                    <span className="demande-meta">
+                      <b>{comment.author}</b>
+                      <small>{comment.time}</small>
+                    </span>
+                    <span className="demande-excerpt">{comment.message}</span>
+                    <span className="demande-tags">
+                      <span className={`decision-badge ${decisionStyles[comment.decision]}`}>{comment.decision}</span>
+                      {proposalLabel(comment) && <small>{proposalLabel(comment)}</small>}
+                      {(comment.replies?.length ?? 0) > 0 && (
+                        <small>
+                          {comment.replies?.length} réponse{(comment.replies?.length ?? 0) > 1 ? "s" : ""}
+                        </small>
+                      )}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    ) : undefined;
+
   // Project workspace panel: deliverables of the project, versions of the open one.
   const inProject = (view.kind === "deliverable" || view.kind === "dashboard") && Boolean(selectedProject);
   const sidebarLivrables: SidebarLivrable[] = latestRecords
@@ -1620,8 +1966,10 @@ export function AgencyApp() {
           versions={sidebarVersions}
           versionChip={versionChip}
           view={view}
-          collapsed={sidebarCollapsed}
-          onToggle={toggleSidebar}
+          panel={view.kind === "dashboard" && sidebarPanel === "demandes" ? "livrables" : sidebarPanel}
+          onPanel={showPanel}
+          demandes={demandesList}
+          demandesBadge={activeComments.filter((comment) => comment.decision === "À qualifier" || !comment.decision).length}
           onSearch={() => setPaletteOpen(true)}
           onImport={importNewDeliverable}
           agencyActionCount={agencyActionCount}
@@ -1640,7 +1988,7 @@ export function AgencyApp() {
       )}
 
       <section className="workspace" id="projet">
-        <div className="content">
+        <div className={`content ${view.kind === "deliverable" ? "is-editor" : ""}`}>
           {isBrowserView ? (
             <BrowserView
               view={view}
@@ -1915,103 +2263,8 @@ export function AgencyApp() {
             </div>
           ) : (
             <>
-          <div className="project-heading">
-            <div>
-              <div className="eyebrow">{[selectedClient?.name, selectedProject?.name].filter(Boolean).join(" · ")}</div>
-              <div className="project-selector-row"><h1>{currentDeliverable.name}</h1></div>
-              {/* Mobile only: on desktop the project panel lists deliverables and versions. */}
-              <div className="deliverable-selectors mobile-only">
-                <select className="deliverable-select" value={activeDeliverableName ?? ""} onChange={(event) => selectDeliverableName(event.target.value)} aria-label="Sélectionner un livrable">
-                  {deliverableNames.map((name) => <option value={name} key={name}>{name}</option>)}
-                </select>
-                <select className="version-select" value={currentDeliverable?.id ?? ""} onChange={(event) => openRecord(Number(event.target.value))} aria-label="Sélectionner une version">
-                  {activeVersions.map((deliverable) => <option value={deliverable.id} key={deliverable.id}>Version {String(deliverable.version).padStart(2, "0")}</option>)}
-                </select>
-              </div>
-              <p>
-                Version {String(currentDeliverable.version).padStart(2, "0")} · {currentDeliverable.importedAt}
-              </p>
-            </div>
-            <div className="heading-actions">
-              <label className="secondary-button file-button">
-                Importer un livrable +
-                <input
-                  type="file"
-                  accept="application/pdf,image/*"
-                  onChange={importDeliverable}
-                />
-              </label>
-              <button className="secondary-button" onClick={openShareDialog}>
-                Partager la revue <ArrowUpRight />
-              </button>
-            </div>
-          </div>
-          {deliverableError && (
-            <div className="inline-error" role="alert">
-              {deliverableError}
-            </div>
-          )}
-          <div className="status-strip">
-            <div>
-              <span
-                className={`status-dot ${reviewStatus === "changes-requested" ? "changes-dot" : approved ? "approved-dot" : ""}`}
-              />{" "}
-              {reviewStatus === "changes-requested"
-                ? "Modifications demandées"
-                : approved
-                  ? "Version approuvée"
-                  : "En attente client"}
-            </div>
-            <span className="status-divider" />
-            <div>
-              {activeComments.length} demande{activeComments.length > 1 ? "s" : ""}{" "}
-              <span className="strip-muted">·</span>{" "}
-              {
-                comments.filter(
-                  (comment) => comment.decision === "Hors périmètre",
-                ).length
-              }{" "}
-              hors périmètre
-            </div>
-            <div className="strip-spacer" />
-            <span className="due-label">Échéance</span>
-            <b>24 sept. 2026</b>
-          </div>
-
-          <div className="review-layout">
-            <section className="preview-panel" ref={previewPanelRef}>
-              <div className="panel-toolbar">
-                <div className="toolbar-left">
-                  <button className="tool-button selected" aria-label="Demandes" title="Demandes">
-                    <MousePointer2 /> <span>Demandes</span>
-                  </button>
-                  <button
-                    className="add-comment-tool"
-                    onClick={startCommentAtCenter}
-                    disabled={isReadOnlyVersion}
-                    title="Ajouter une remarque"
-                    aria-label="Ajouter une remarque"
-                  >
-                    <Plus /> <span>Ajouter une remarque</span>
-                  </button>
-                  <button className="tool-button" aria-label="Grille"><LayoutGrid /></button>
-                </div>
-                <div className="page-counter">
-                  {currentDeliverable.type === "PDF" ? (
-                    <>
-                      <button className="page-button" onClick={() => setPdfPage((page) => Math.max(1, page - 1))} disabled={pdfPage <= 1} aria-label="Page précédente">‹</button>
-                      {pdfPage} / {pdfPageCount}
-                      <button className="page-button" onClick={() => setPdfPage((page) => Math.min(pdfPageCount, page + 1))} disabled={pdfPage >= pdfPageCount} aria-label="Page suivante">›</button>
-                    </>
-                  ) : "1 / 1"}
-                </div>
-                <div className="toolbar-left">
-                  <button className="tool-button" onClick={() => transformRef.current?.zoomOut(0.1)} disabled={previewZoom <= 50} title="Réduire le zoom" aria-label="Réduire le zoom"><Minus /></button>
-                  <button className="zoom" onClick={() => transformRef.current?.resetTransform()} title="Réinitialiser le zoom">{previewZoom}%</button>
-                  <button className="tool-button" onClick={() => transformRef.current?.zoomIn(0.1)} disabled={previewZoom >= 300} title="Augmenter le zoom" aria-label="Augmenter le zoom"><Plus /></button>
-                  <button className="tool-button" onClick={togglePreviewFullscreen} title="Plein écran" aria-label="Plein écran"><Maximize /></button>
-                </div>
-              </div>
+          <div className="editor">
+            <section className="preview-panel canvas" ref={previewPanelRef} aria-label="Canevas">
               <div className="artboard-wrap">
                 <TransformWrapper
                   ref={transformRef}
@@ -2057,397 +2310,140 @@ export function AgencyApp() {
                   </TransformComponent>
                 </TransformWrapper>
               </div>
-              <div className="preview-footer">
-                <span>
-                  Dernière modification par Alex Morgan, aujourd’hui à 14:32
-                </span>
-                <button
-                  className="text-button"
-                  onClick={() => setHistoryOpen(true)}
-                >
-                  Voir l’historique <ArrowRight />
-                </button>
+              <div className="panel-toolbar canvas-toolbar" role="toolbar" aria-label="Outils du canevas">
+                <div className="toolbar-left">
+                  <button className="tool-button selected" aria-label="Demandes" title="Demandes">
+                    <MousePointer2 /> <span>Demandes</span>
+                  </button>
+                  <button
+                    className="add-comment-tool"
+                    onClick={startCommentAtCenter}
+                    disabled={isReadOnlyVersion}
+                    title="Ajouter une remarque"
+                    aria-label="Ajouter une remarque"
+                  >
+                    <Plus /> <span>Ajouter une remarque</span>
+                  </button>
+                  <button className="tool-button" aria-label="Grille"><LayoutGrid /></button>
+                </div>
+                <div className="page-counter">
+                  {currentDeliverable.type === "PDF" ? (
+                    <>
+                      <button className="page-button" onClick={() => setPdfPage((page) => Math.max(1, page - 1))} disabled={pdfPage <= 1} aria-label="Page précédente">‹</button>
+                      {pdfPage} / {pdfPageCount}
+                      <button className="page-button" onClick={() => setPdfPage((page) => Math.min(pdfPageCount, page + 1))} disabled={pdfPage >= pdfPageCount} aria-label="Page suivante">›</button>
+                    </>
+                  ) : "1 / 1"}
+                </div>
+                <div className="toolbar-left">
+                  <button className="tool-button" onClick={() => transformRef.current?.zoomOut(0.1)} disabled={previewZoom <= 50} title="Réduire le zoom" aria-label="Réduire le zoom"><Minus /></button>
+                  <button className="zoom" onClick={() => transformRef.current?.resetTransform()} title="Réinitialiser le zoom">{previewZoom}%</button>
+                  <button className="tool-button" onClick={() => transformRef.current?.zoomIn(0.1)} disabled={previewZoom >= 300} title="Augmenter le zoom" aria-label="Augmenter le zoom"><Plus /></button>
+                  <button className="tool-button" onClick={togglePreviewFullscreen} title="Plein écran" aria-label="Plein écran"><Maximize /></button>
+                </div>
               </div>
             </section>
 
-            <aside className="comments-panel">
-              <div className="comments-heading">
-                <div>
-                  <h2>Demandes à qualifier</h2>
-                  <p>
-                    {activeComments.length} demande{activeComments.length > 1 ? "s" : ""} ·{" "}
-                    {
-                      activeComments.filter(
-                        (comment) => comment.decision === "À qualifier" || !comment.decision,
-                      ).length
-                    }{" "}
-                    à qualifier
-                  </p>
+            <aside className="inspector" aria-label="Version et demande sélectionnée">
+              <section className="inspector-section">
+                <div className="inspector-heading">
+                  <h2>Version {String(currentDeliverable.version).padStart(2, "0")}</h2>
+                  {versionChip && <span className={`chip chip-${versionChip.tone}`}>{versionChip.label}</span>}
                 </div>
-                <button className="more-button" aria-label="Plus d'options">
-                  •••
-                </button>
-              </div>
-              <div className="filter-row">
-                <button
-                  className={`filter ${commentFilter === "all" ? "active-filter" : ""}`}
-                  onClick={() => {
-                    setCommentFilter("all");
-                    setShowAllComments(false);
-                  }}
-                >
-                  Toutes <span>{activeComments.length}</span>
-                </button>
-                <button
-                  className={`filter ${commentFilter === "pending" ? "active-filter" : ""}`}
-                  onClick={() => {
-                    setCommentFilter("pending");
-                    setShowAllComments(false);
-                  }}
-                >
-                  À qualifier{" "}
-                  <span>
-                    {
-                        activeComments.filter(
-                        (comment) => comment.decision === "À qualifier" || !comment.decision,
-                      ).length
-                    }
-                  </span>
-                </button>
-                <button
-                  className={`filter ${commentFilter === "outside" ? "active-filter" : ""}`}
-                  onClick={() => {
-                    setCommentFilter("outside");
-                    setShowAllComments(false);
-                  }}
-                >
-                  Hors périmètre{" "}
-                  <span>
-                    {
-                      activeComments.filter(
-                        (comment) => comment.decision === "Hors périmètre",
-                      ).length
-                    }
-                  </span>
-                </button>
-                <button
-                  className={`filter ${commentFilter === "included" ? "active-filter" : ""}`}
-                  onClick={() => {
-                    setCommentFilter("included");
-                    setShowAllComments(false);
-                  }}
-                >
-                  Incluses <span>{activeIncludedComments.length}</span>
-                </button>
-                <button
-                  className={`filter ${commentFilter === "refused" ? "active-filter" : ""}`}
-                  onClick={() => {
-                    setCommentFilter("refused");
-                    setShowAllComments(false);
-                  }}
-                >
-                  Refusées <span>{activeRefusedComments.length}</span>
-                </button>
-              </div>
-              <div className={`comment-list ${showAllComments ? "expanded-comment-list" : ""}`}>
-                {visibleComments.map(
-                  (comment) => (
-                    <article
-                      className={`comment-card ${comment.initials === "AM" ? "agency-comment" : "client-comment"} ${comment.id === selectedId ? "selected-card" : ""}`}
-                      key={comment.id}
-                      onClick={() => selectComment(comment.id)}
-                    >
-                      <div className="comment-top">
-                      <span className={`avatar light-avatar ${comment.initials === "AM" ? "agency-avatar" : "client-avatar"}`}>
-                          {comment.initials}
-                        </span>
-                        <div>
-                          <b>{comment.author}</b>
-                          <small>{comment.time}</small>
-                        </div>
-                        <span className="comment-number">{comment.id}</span>
-                      </div>
-                      {editingCommentId === comment.id ? (
-                        <form
-                          className="edit-form"
-                          onSubmit={(event) => {
-                            event.preventDefault();
-                            saveEditComment(comment.id);
-                          }}
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <textarea
-                            autoFocus
-                            value={editingCommentText}
-                            onChange={(event) =>
-                              setEditingCommentText(event.target.value)
-                            }
-                          />
-                          <div className="edit-actions">
-                            <button
-                              type="button"
-                              className="action-link"
-                              onClick={() => setEditingCommentId(null)}
-                            >
-                              Annuler
-                            </button>
-                            <button
-                              type="submit"
-                              className="save-button"
-                              disabled={!editingCommentText.trim()}
-                            >
-                              Enregistrer
-                            </button>
-                          </div>
-                        </form>
-                      ) : (
-                        <p>{comment.message}</p>
-                      )}
-                      <div className="comment-location">
-                        <Crosshair /> {comment.location}
-                      </div>
-                      {(expandedReplies[comment.id] ? (comment.replies ?? []) : (comment.replies ?? []).slice(0, 2)).map((reply) => (
-                        <div className="reply" key={reply.id}>
-                          <span className={`avatar reply-avatar ${reply.initials === "AM" ? "agency-avatar" : "client-avatar"}`}>
-                            {reply.initials}
-                          </span>
-                          <div>
-                            <b>{reply.author}</b>
-                            <small>{reply.time}</small>
-                            {editingReply?.commentId === comment.id &&
-                            editingReply?.replyId === reply.id ? (
-                              <form
-                                className="edit-reply-form"
-                                onSubmit={(event) => {
-                                  event.preventDefault();
-                                  saveEditReply(comment.id, reply.id);
-                                }}
-                                onClick={(event) => event.stopPropagation()}
-                              >
-                                <input
-                                  autoFocus
-                                  value={editingReplyText}
-                                  onChange={(event) =>
-                                    setEditingReplyText(event.target.value)
-                                  }
-                                />
-                                <div className="edit-actions">
-                                  <button
-                                    type="button"
-                                    className="action-link"
-                                    onClick={() => setEditingReply(null)}
-                                  >
-                                    Annuler
-                                  </button>
-                                  <button
-                                    type="submit"
-                                    className="save-button"
-                                    disabled={!editingReplyText.trim()}
-                                  >
-                                    Enregistrer
-                                  </button>
-                                </div>
-                              </form>
-                            ) : (
-                              <>
-                                <p>{reply.message}</p>
-                                {!isReadOnlyVersion && !isDecisionLocked(comment.id) && reply.initials === "AM" && (
-                                  <div className="item-inline-actions">
-                                    <button
-                                      className="action-link"
-                                      title="Modifier"
-                                      aria-label="Modifier la réponse"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        startEditReply(comment.id, reply);
-                                      }}
-                                    >
-                                      <Pencil />
-                                    </button>
-                                    <button
-                                      className="action-link delete-link"
-                                      title="Supprimer"
-                                      aria-label="Supprimer la réponse"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        deleteReply(comment.id, reply.id);
-                                      }}
-                                    >
-                                      <Trash2 />
-                                    </button>
-                                  </div>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                      {(comment.replies?.length ?? 0) > 2 && (
-                        <button
-                          type="button"
-                          className="replies-toggle"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setExpandedReplies((current) => ({ ...current, [comment.id]: !current[comment.id] }));
-                          }}
-                        >
-                          {expandedReplies[comment.id] ? <><ChevronUp /> Réduire les réponses</> : <><ChevronDown /> Afficher les {(comment.replies?.length ?? 0) - 2} autres réponses</>}
-                        </button>
-                      )}
-                      <div className="comment-decision">
-                        <span className={`decision-badge ${decisionStyles[comment.decision]}`}>
-                          {comment.decision}
-                        </span>
-                        <div className="comment-actions">
-                              {comment.decision === "Hors périmètre" && (proposalDecisionFor(comment.id) === "accepted" || adaptationRequests[comment.id]?.decision === "accepted" ? (
-                                <span className="proposal-accepted">Proposition acceptée <Check /></span>
-                              ) : proposalDecisionFor(comment.id) === "refused" || adaptationRequests[comment.id]?.decision === "refused" ? (
-                                <span className="proposal-refused">Proposition refusée</span>
-                              ) : proposalStateFor(comment.id) === "sent" ? (
-                                <button className="proposal-link" onClick={(event) => { event.stopPropagation(); openProposal(comment.id); }} disabled={isReadOnlyVersion}>Voir la proposition <ArrowRight /></button>
-                              ) : (
-                                <button className="proposal-link" onClick={(event) => { event.stopPropagation(); openProposal(comment.id); }} disabled={isReadOnlyVersion}>Créer une proposition <ArrowRight /></button>
-                              ))}
-                          {!isReadOnlyVersion && !isDecisionLocked(comment.id) && editingCommentId !== comment.id && comment.initials === "AM" && (
-                            <>
-                              <button
-                                className="action-link"
-                                title="Modifier"
-                                aria-label="Modifier le commentaire"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  startEditComment(comment);
-                                }}
-                              >
-                                <Pencil />
-                              </button>
-                              <button
-                                className="action-link delete-link"
-                                title="Supprimer"
-                                aria-label="Supprimer le commentaire"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  deleteComment(comment.id);
-                                }}
-                              >
-                                <Trash2 />
-                              </button>
-                            </>
-                          )}
-                          {!isDecisionLocked(comment.id) && <button
-                            className="reply-link"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setReplyingTo(comment.id);
-                              setReplyText("");
-                            }}
-                          >
-                            Répondre
-                          </button>}
-                        </div>
-                      </div>
-                      {replyingTo === comment.id && !isDecisionLocked(comment.id) && (
-                        <form
-                          className="reply-form"
-                          onSubmit={addReply}
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <input
-                            autoFocus
-                            value={replyText}
-                            onChange={(event) =>
-                              setReplyText(event.target.value)
-                            }
-                            placeholder="Écrire une réponse..."
-                          />
-                          <button type="submit" disabled={!replyText.trim()}>
-                            Envoyer
-                          </button>
-                        </form>
-                      )}
-                    </article>
-                  ),
+                <p className="inspector-meta">
+                  Importée {currentDeliverable.importedAt} · Échéance 24 sept. 2026
+                </p>
+                {/* Mobile only: on desktop the project panel lists deliverables and versions. */}
+                <div className="deliverable-selectors mobile-only">
+                <select className="deliverable-select" value={activeDeliverableName ?? ""} onChange={(event) => selectDeliverableName(event.target.value)} aria-label="Sélectionner un livrable">
+                  {deliverableNames.map((name) => <option value={name} key={name}>{name}</option>)}
+                </select>
+                <select className="version-select" value={currentDeliverable?.id ?? ""} onChange={(event) => openRecord(Number(event.target.value))} aria-label="Sélectionner une version">
+                  {activeVersions.map((deliverable) => <option value={deliverable.id} key={deliverable.id}>Version {String(deliverable.version).padStart(2, "0")}</option>)}
+                </select>
+                </div>
+                {deliverableError && (
+                  <div className="inline-error" role="alert">
+                    {deliverableError}
+                  </div>
                 )}
-              </div>
-              {filteredComments.length > 3 && (
-                <button
-                  className="show-comments-button"
-                  onClick={() => setShowAllComments((current) => !current)}
-                >
-                  {showAllComments
-                    ? <>Réduire les demandes <ChevronUp /></>
-                    : <>Voir les {filteredComments.length - 3} autres demandes <ChevronDown /></>}
+                <button className="inspector-primary" onClick={openShareDialog}>
+                  <Share2 /> Partager la revue
                 </button>
-              )}
-              <div className="comments-footer">
-                <div className={`agency-validation-status ${approved ? "is-approved" : ""}`}>
-                  <span className="status-dot" />
-                    {reviewStatus === "changes-requested"
-                      ? "Modifications demandées par le client"
-                      : approved
-                    ? `Version approuvée par le client${approvedAt ? ` · ${approvedAt}` : ""}`
-                    : "En attente de validation client"}
+                <div className="inspector-actions">
+                  <label className="inspector-action">
+                    <Upload /> Importer un fichier
+                    <input type="file" accept="application/pdf,image/*" onChange={importDeliverable} />
+                  </label>
+                  <button className="inspector-action" onClick={() => setProofOpen(true)}>
+                    <FileCheck /> Synthèse & export
+                  </button>
+                  <button className="inspector-action" onClick={() => setHistoryOpen(true)}>
+                    <ScrollText /> Historique et journal
+                  </button>
+                  <button
+                    className="inspector-action"
+                    onClick={() => {
+                      setChangesMessage("");
+                      setChangesOpen(true);
+                    }}
+                  >
+                    <RotateCcw /> Rouvrir la validation
+                  </button>
                 </div>
-                <button
-                  className="changes-button"
-                  onClick={() => {
-                    setChangesMessage("");
-                    setChangesOpen(true);
-                  }}
-                >
-                  Rouvrir la validation
-                </button>
-                <button
-                  className="proof-button"
-                  onClick={() => setProofOpen(true)}
-                >
-                  Synthèse du périmètre & décisions <ArrowUpRight />
-                </button>
-              </div>
+                <p className={`agency-validation-status ${approved ? "is-approved" : ""}`}>
+                  <span className="status-dot" />
+                  {reviewStatus === "changes-requested"
+                    ? "Modifications demandées par le client"
+                    : approved
+                      ? `Version approuvée par le client${approvedAt ? ` · ${approvedAt}` : ""}`
+                      : "En attente de validation client"}
+                </p>
+              </section>
+
+              <section className="inspector-section">
+                {selectedComment ? (
+                  <>
+                    <h2>Demande #{selectedComment.id}</h2>
+                    <div className="decision-actions" role="group" aria-label="Qualifier la demande">
+                      <button
+                        className={selectedComment.decision === "Inclus" ? "active-decision" : ""}
+                        aria-pressed={selectedComment.decision === "Inclus"}
+                        onClick={() => classifyComment("Inclus")}
+                      >
+                        Incluse
+                      </button>
+                      <button
+                        className={selectedComment.decision === "Hors périmètre" ? "active-decision outside" : ""}
+                        aria-pressed={selectedComment.decision === "Hors périmètre"}
+                        onClick={() => classifyComment("Hors périmètre")}
+                      >
+                        Hors périmètre
+                      </button>
+                      <button
+                        className={selectedComment.decision === "À qualifier" || !selectedComment.decision ? "active-decision" : ""}
+                        aria-pressed={selectedComment.decision === "À qualifier" || !selectedComment.decision}
+                        onClick={() => classifyComment("À qualifier")}
+                      >
+                        À qualifier
+                      </button>
+                    </div>
+                    {renderCommentThread(selectedComment)}
+                  </>
+                ) : (
+                  <>
+                    <h2>Demande</h2>
+                    <p className="inspector-empty">
+                      Cliquez sur le livrable pour ajouter une remarque, ou choisissez une demande dans la liste.
+                    </p>
+                  </>
+                )}
+              </section>
+
+              {/* On mobile the side panel is hidden, so the requests list lives here. */}
+              {isMobile && <section className="inspector-section">{demandesList}</section>}
             </aside>
           </div>
-
-          {selectedComment && (
-            <div className="decision-bar">
-              <div>
-                <span className="selected-indicator" /> Demande sélectionnée :{" "}
-                <b>{selectedComment.message}</b>
-              </div>
-              <div className="decision-actions">
-                <span>Qualifier :</span>
-                <button
-                  className={
-                    selectedComment.decision === "Inclus"
-                      ? "active-decision"
-                      : ""
-                  }
-                  onClick={() => classifyComment("Inclus")}
-                >
-                  Incluse
-                </button>
-                <button
-                  className={
-                    selectedComment.decision === "Hors périmètre"
-                      ? "active-decision outside"
-                      : ""
-                  }
-                  onClick={() => classifyComment("Hors périmètre")}
-                >
-                  Hors périmètre
-                </button>
-                <button
-                  className={
-                    selectedComment.decision === "À qualifier" || !selectedComment.decision
-                      ? "active-decision"
-                      : ""
-                  }
-                  onClick={() => classifyComment("À qualifier")}
-                >
-                  À qualifier
-                </button>
-              </div>
-            </div>
-          )}
           </>
         )}
           {proposalOpen && (
@@ -2618,39 +2614,6 @@ export function AgencyApp() {
               )}
             </div>
           )}
-          {activeProposalCommentIds.length > 0 && (
-            <div className="proposal-queue">
-              <div>
-                <b>Demandes hors périmètre</b>
-                <small>
-                  Une proposition peut être créée pour chaque demande.
-                </small>
-              </div>
-              {activeComments
-                .filter((comment) => comment.decision === "Hors périmètre")
-                .map((comment) => (
-                  <div className="proposal-queue-item" key={comment.id}>
-                    <span>
-                      #{comment.id} {comment.message}
-                    </span>
-                    {proposalDecisionFor(comment.id) === "accepted" || adaptationRequests[comment.id]?.decision === "accepted" ? (
-                      <span className="proposal-queue-status"><span className="proposal-accepted">Acceptée <Check /></span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition acceptée pour la demande #${comment.id}`} title="Voir la proposition"><Eye /></button></span>
-                    ) : proposalDecisionFor(comment.id) === "refused" || adaptationRequests[comment.id]?.decision === "refused" ? (
-                      <span className="proposal-queue-status"><span className="proposal-refused">Refusée</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition refusée pour la demande #${comment.id}`} title="Voir la proposition"><Eye /></button></span>
-                    ) : (
-                      <button
-                        className="proposal-link"
-                        onClick={() => openProposal(comment.id)}
-                      >
-                        {proposalStateFor(comment.id) === "sent"
-                          ? <>Voir la proposition <ArrowRight /></>
-                          : <>Créer une proposition <ArrowRight /></>}
-                      </button>
-                    )}
-                  </div>
-                ))}
-            </div>
-          )}
           {proposalPreviewCommentId !== null && previewProposal && (
             <div className="modal-backdrop" role="presentation">
               <section className="project-modal proposal-preview-modal">
@@ -2715,7 +2678,7 @@ export function AgencyApp() {
                     className="changes-button"
                     onClick={() => {
                       setApprovalOpen(false);
-                      setShowAllComments(true);
+                      showPanel("demandes");
                     }}
                   >
                     Revenir aux retours
