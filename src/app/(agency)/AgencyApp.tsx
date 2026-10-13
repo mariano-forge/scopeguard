@@ -33,9 +33,11 @@ function formatProposalDeadline(deadline: number | string | undefined): string {
   if (num === 0) return "Aucun impact";
   return `+ ${num} jour${num > 1 ? "s" : ""}`;
 }
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import {
   TransformComponent,
   TransformWrapper,
@@ -58,7 +60,7 @@ import {
   FileText,
   Folder,
   Hourglass,
-  Layers,
+  House,
   LayoutDashboard,
   LayoutGrid,
   Maximize,
@@ -73,6 +75,8 @@ import {
   X,
 } from "lucide-react";
 import { KoraMark } from "@/components/KoraMark";
+import { BrowserView } from "./BrowserView";
+import { href, hrefForRecord, parseAgencyPath, versionsOfLivrable } from "./routes";
 
 const PdfDocument = dynamic(
   async () => {
@@ -194,6 +198,7 @@ type AuditEvent = {
 };
 
 const storageKey = "scopeguard-review-state";
+const recentsKey = "kora-recent-deliverables";
 
 const initialProjects: Project[] = [
   {
@@ -232,14 +237,56 @@ const decisionStyles: Record<string, string> = {
   "Hors périmètre": "decision-outside",
 };
 
-export default function Home() {
+export function AgencyApp() {
+  const router = useRouter();
+  const view = parseAgencyPath(usePathname());
   const [projects, setProjects] = useState(initialProjects);
   const [clients, setClients] = useState(initialClients);
-  const [selectedProjectId, setSelectedProjectId] = useState(1);
-  const [selectedClientId, setSelectedClientId] = useState(1);
-  const [selectedDeliverableId, setSelectedDeliverableId] = useState(1);
-  const [sidebarMenu, setSidebarMenu] = useState<"projects" | "clients" | null>(null);
   const [deliverables, setDeliverables] = useState(initialDeliverables);
+  const [recentLivrableIds, setRecentLivrableIds] = useState<number[]>([]);
+
+  // Selection comes from the URL (see routes.ts); outside a project the first project is the fallback.
+  const viewProjectId = "projectId" in view ? view.projectId : null;
+  const selectedProjectId =
+    viewProjectId ??
+    (view.kind === "client" ? projects.find((project) => (project.clientId ?? 1) === view.clientId)?.id : undefined) ??
+    projects[0]?.id ??
+    0;
+  const selectedClientId =
+    view.kind === "client"
+      ? view.clientId
+      : (projects.find((project) => project.id === selectedProjectId)?.clientId ?? clients[0]?.id ?? 0);
+  const viewVersions =
+    view.kind === "deliverable" ? versionsOfLivrable(view.livrableId, deliverables) : [];
+  const viewRecord =
+    view.kind === "deliverable"
+      ? view.version
+        ? viewVersions.find((record) => record.version === view.version)
+        : viewVersions[0]
+      : undefined;
+  const selectedDeliverableId =
+    viewRecord?.id ??
+    deliverables
+      .filter((deliverable) => (deliverable.projectId ?? 1) === selectedProjectId)
+      .sort((left, right) => right.version - left.version)[0]?.id ??
+    0;
+  const activeTab = view.kind === "dashboard" ? "dashboard" : "review";
+  const isBrowserView = view.kind === "home" || view.kind === "client" || view.kind === "project" || view.kind === "not-found";
+
+  function openRecord(recordId: number) {
+    const record = deliverables.find((deliverable) => deliverable.id === recordId);
+    if (record) router.push(hrefForRecord(record, deliverables));
+  }
+  function openProject(projectId: number) {
+    const latest = deliverables
+      .filter((deliverable) => (deliverable.projectId ?? 1) === projectId)
+      .sort((left, right) => right.version - left.version)[0];
+    router.push(latest ? hrefForRecord(latest, deliverables) : href.project(projectId));
+  }
+  function openReview() {
+    openProject(selectedProjectId);
+  }
+
   const [comments, setComments] = useState(initialComments);
   const [selectedId, setSelectedId] = useState(1);
   const [proposalOpen, setProposalOpen] = useState(false);
@@ -264,6 +311,7 @@ export default function Home() {
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [newClientName, setNewClientName] = useState("");
+  const [newProjectClientId, setNewProjectClientId] = useState<number | null>(null);
   const [projectError, setProjectError] = useState("");
   const [newClientOpen, setNewClientOpen] = useState(false);
   const [newClientEmail, setNewClientEmail] = useState("");
@@ -302,7 +350,6 @@ export default function Home() {
   const [changesMessage, setChangesMessage] = useState("");
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [proofOpen, setProofOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"review" | "dashboard">("review");
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -347,9 +394,6 @@ export default function Home() {
           clientId: project.clientId ?? clients.find((client) => client.name === project.client)?.id ?? 1,
         })));
       if (parsedState.clients) setClients(parsedState.clients);
-      if (parsedState.selectedProjectId) setSelectedProjectId(parsedState.selectedProjectId);
-      if (parsedState.selectedClientId) setSelectedClientId(parsedState.selectedClientId);
-      if (parsedState.selectedDeliverableId) setSelectedDeliverableId(parsedState.selectedDeliverableId);
       if (parsedState.deliverables)
         setDeliverables(parsedState.deliverables.map((deliverable) => ({
           ...deliverable,
@@ -458,9 +502,6 @@ export default function Home() {
     const newSerialized = JSON.stringify({
       projects,
       clients,
-      selectedProjectId,
-      selectedClientId,
-      selectedDeliverableId,
       deliverables,
       reviewLink,
       reviewLinks,
@@ -482,9 +523,6 @@ export default function Home() {
   }, [
     projects,
     clients,
-    selectedProjectId,
-    selectedClientId,
-    selectedDeliverableId,
     deliverables,
     reviewLink,
     reviewLinks,
@@ -642,17 +680,37 @@ export default function Home() {
       proposalDecisionFor(c.id) === "none" && proposalStateFor(c.id) === "sent",
   ).length;
 
+  // A deliverable URL that no longer matches the data (deleted, wrong project, unknown version)
+  // falls back to its project page, or to its latest version when only the version is wrong.
   useEffect(() => {
-    if (visibleProjects.length > 0 && !visibleProjects.some((project) => project.id === selectedProjectId)) {
-      setSelectedProjectId(visibleProjects[0].id);
-    }
-  }, [selectedClientId, visibleProjects, selectedProjectId]);
+    if (!stateHydrated || view.kind !== "deliverable") return;
+    const root = deliverables.find((deliverable) => deliverable.id === view.livrableId);
+    if (!root || (root.projectId ?? 1) !== view.projectId) router.replace(href.project(view.projectId));
+    else if (!viewRecord) router.replace(href.deliverable(view.projectId, view.livrableId));
+  }, [stateHydrated, view, deliverables, viewRecord, router]);
 
+  // Recently opened deliverables, most recent first (per browser, like Figma's "Recents").
+  const viewLivrableId = view.kind === "deliverable" && viewRecord ? view.livrableId : null;
   useEffect(() => {
-    if (activeVersions.length > 0 && !activeVersions.some((deliverable) => deliverable.id === selectedDeliverableId)) {
-      setSelectedDeliverableId(activeVersions[0].id);
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(recentsKey) ?? "[]");
+      if (Array.isArray(saved)) setRecentLivrableIds(saved.filter((value) => typeof value === "number"));
+    } catch {
+      // Recents are a convenience: ignore unreadable storage.
     }
-  }, [activeVersions, selectedDeliverableId, selectedProjectId]);
+  }, []);
+  useEffect(() => {
+    if (viewLivrableId === null) return;
+    setRecentLivrableIds((current) => {
+      const next = [viewLivrableId, ...current.filter((value) => value !== viewLivrableId)].slice(0, 8);
+      try {
+        window.localStorage.setItem(recentsKey, JSON.stringify(next));
+      } catch {
+        // Ignore storage failures (private mode, quota).
+      }
+      return next;
+    });
+  }, [viewLivrableId]);
 
   useEffect(() => {
     if (!currentDeliverable) return;
@@ -683,7 +741,7 @@ export default function Home() {
     const latestVersion = activeDeliverables
       .filter((deliverable) => deliverable.name === name)
       .sort((left, right) => right.version - left.version)[0];
-    if (latestVersion) setSelectedDeliverableId(latestVersion.id);
+    if (latestVersion) openRecord(latestVersion.id);
   }
 
   function recordAudit(type: string, description: string, commentId?: number) {
@@ -718,27 +776,27 @@ export default function Home() {
   function createProject(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const projectName = newProjectName.trim();
-    const clientName = newClientName.trim();
+    const projectClient = clients.find((client) => client.id === (newProjectClientId ?? selectedClientId));
 
-    if (!projectName || !clientName) {
-      setProjectError("Renseignez le nom du projet et celui du client.");
+    if (!projectName || !projectClient) {
+      setProjectError("Renseignez le nom du projet et choisissez un client.");
       return;
     }
 
     const createdProject = {
       id: Date.now(),
       name: projectName,
-      client: clientName,
-      clientId: selectedClientId,
+      client: projectClient.name,
+      clientId: projectClient.id,
       status: "Brouillon" as const,
     };
     setProjects((current) => [
       ...current,
       createdProject,
     ]);
-    setSelectedProjectId(createdProject.id);
+    router.push(href.project(createdProject.id));
     setNewProjectName("");
-    setNewClientName("");
+    setNewProjectClientId(null);
     setProjectError("");
     setNewProjectOpen(false);
   }
@@ -758,7 +816,7 @@ export default function Home() {
       ...current,
       createdClient,
     ]);
-    setSelectedClientId(createdClient.id);
+    router.push(href.client(createdClient.id));
     setNewClientName("");
     setNewClientEmail("");
     setClientError("");
@@ -787,9 +845,23 @@ export default function Home() {
     setDeliverableError("");
   }
 
-  async function confirmImport(mode: ImportMode) {
-    if (!pendingImport) return;
-    const { file, type } = pendingImport;
+  /** Import from a project page: always a new deliverable, no version/deliverable choice. */
+  function importNewDeliverable(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf && !file.type.startsWith("image/")) {
+      setDeliverableError("Format non pris en charge. Choisissez un PDF ou une image.");
+      return;
+    }
+    setDeliverableError("");
+    void confirmImport("deliverable", { file, type: isPdf ? "PDF" : "Image" });
+  }
+
+  async function confirmImport(mode: ImportMode, source = pendingImport) {
+    if (!source) return;
+    const { file, type } = source;
     const fileData = await readFileAsDataUrl(file);
     const activeDeliverable = currentDeliverable;
     const sameDeliverableVersions = deliverables.filter(
@@ -818,7 +890,7 @@ export default function Home() {
     setPreviewType(type);
     setPdfPage(1);
     setPdfPageCount(1);
-    setSelectedDeliverableId(importedDeliverable.id);
+    router.push(hrefForRecord(importedDeliverable, [importedDeliverable, ...deliverables]));
     setDeliverables((current) => [
       importedDeliverable,
       ...current.map((deliverable) =>
@@ -1292,6 +1364,22 @@ export default function Home() {
     setLinkCopied(true);
   }
 
+  const breadcrumbs: { label: string; href: string }[] = [{ label: "Accueil", href: href.home() }];
+  const crumbClient = clients.find((client) => client.id === selectedClientId);
+  if ((view.kind === "client" || viewProjectId !== null) && crumbClient)
+    breadcrumbs.push({ label: crumbClient.name, href: href.client(crumbClient.id) });
+  if (viewProjectId !== null && selectedProject)
+    breadcrumbs.push({ label: selectedProject.name, href: href.project(selectedProject.id) });
+  if (view.kind === "dashboard")
+    breadcrumbs.push({ label: "Tableau de bord", href: href.dashboard(view.projectId) });
+  if (view.kind === "deliverable" && viewRecord) {
+    breadcrumbs.push({ label: viewRecord.name, href: href.deliverable(view.projectId, view.livrableId) });
+    breadcrumbs.push({
+      label: `V${String(viewRecord.version).padStart(2, "0")}`,
+      href: hrefForRecord(viewRecord, deliverables),
+    });
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -1299,44 +1387,37 @@ export default function Home() {
           <KoraMark className="brand-logo" />
           <span>KORA</span>
         </div>
-        <div className="workspace-switcher">
-          <span className="workspace-dot">N</span>
-          <select className="workspace-select" value={selectedClientId} onChange={(event) => setSelectedClientId(Number(event.target.value))} aria-label="Sélectionner un client">
-            {clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}
-          </select>
-          <span className="muted"><ChevronDown /></span>
-        </div>
         <nav className="main-nav" aria-label="Navigation principale">
-          <button
-            className={`nav-item ${activeTab === "review" ? "active" : ""}`}
-            onClick={() => {
-              setActiveTab("review");
-              setSidebarMenu(null);
-            }}
-          >
-            <span><Layers /></span> Revue & Livrables
-          </button>
-          <button
-            className={`nav-item ${activeTab === "dashboard" ? "active" : ""}`}
-            onClick={() => {
-              setActiveTab("dashboard");
-              setSidebarMenu(null);
-            }}
-          >
-            <span><LayoutDashboard /></span> Tableau de bord
-          </button>
-          <div className="sidebar-menu-group">
-            <button className={`nav-item nav-menu-trigger ${sidebarMenu === "projects" ? "active" : ""}`} onClick={() => setSidebarMenu((current) => current === "projects" ? null : "projects")} aria-expanded={sidebarMenu === "projects"}>
-              <span><Folder /></span> Projets <strong>{visibleProjects.length}</strong><i><ChevronDown /></i>
-            </button>
-            {sidebarMenu === "projects" && <div className="sidebar-dropdown">{visibleProjects.map((project) => <button className={`sidebar-dropdown-item ${project.id === selectedProjectId ? "selected" : ""}`} key={project.id} onClick={() => { setSelectedProjectId(project.id); setSidebarMenu(null); }}><span className="dropdown-status" />{project.name}<small>{project.client}</small></button>)}<button className="sidebar-dropdown-action" onClick={() => { setSidebarMenu(null); setNewProjectOpen(true); }}>+ Nouveau projet</button></div>}
+          <Link className={`nav-item ${view.kind === "home" ? "active" : ""}`} href={href.home()}>
+            <span><House /></span> Accueil
+          </Link>
+          {viewProjectId !== null && (
+            <Link className={`nav-item ${view.kind === "dashboard" ? "active" : ""}`} href={href.dashboard(viewProjectId)}>
+              <span><LayoutDashboard /></span> Tableau de bord
+            </Link>
+          )}
+          <div className="nav-section">
+            <span>Clients</span>
+            <button className="nav-section-action" onClick={() => setNewClientOpen(true)} aria-label="Nouveau client" title="Nouveau client"><Plus /></button>
           </div>
-          <div className="sidebar-menu-group">
-            <button className={`nav-item nav-menu-trigger ${sidebarMenu === "clients" ? "active" : ""}`} onClick={() => setSidebarMenu((current) => current === "clients" ? null : "clients")} aria-expanded={sidebarMenu === "clients"}>
-              <span><Building2 /></span> Clients <strong>{clients.length}</strong><i><ChevronDown /></i>
-            </button>
-            {sidebarMenu === "clients" && <div className="sidebar-dropdown">{clients.map((client) => <button className={`sidebar-dropdown-item ${client.id === selectedClientId ? "selected" : ""}`} key={client.id} onClick={() => { setSelectedClientId(client.id); setSidebarMenu(null); }}><span className="client-dropdown-avatar">{client.name.charAt(0)}</span>{client.name}<small>{client.email}</small></button>)}<button className="sidebar-dropdown-action" onClick={() => { setSidebarMenu(null); setNewClientOpen(true); }}>+ Nouveau client</button></div>}
-          </div>
+          <ul className="nav-tree">
+            {clients.map((client) => (
+              <li key={client.id}>
+                <Link className={`nav-item ${view.kind === "client" && view.clientId === client.id ? "active" : ""}`} href={href.client(client.id)}>
+                  <span><Building2 /></span> {client.name}
+                </Link>
+                <ul>
+                  {projects.filter((project) => (project.clientId ?? 1) === client.id).map((project) => (
+                    <li key={project.id}>
+                      <Link className={`nav-item nav-tree-leaf ${viewProjectId === project.id ? "active" : ""}`} href={href.project(project.id)}>
+                        <span><Folder /></span> {project.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
           <a className="nav-item" href="#equipe">
             <span><Users /></span> Équipe
           </a>
@@ -1358,17 +1439,18 @@ export default function Home() {
 
       <section className="workspace" id="projet">
         <header className="topbar">
-          <div className="breadcrumbs">
-            <span>Projets</span>
-            <b>/</b>
-            <strong>{selectedProject?.name ?? "Aucun projet"}</strong>
-            {activeTab === "dashboard" && (
-              <>
-                <b>/</b>
-                <span>Tableau de bord</span>
-              </>
-            )}
-          </div>
+          <nav className="breadcrumbs" aria-label="Fil d’Ariane">
+            {breadcrumbs.map((crumb, index) => (
+              <Fragment key={crumb.label + index}>
+                {index > 0 && <b>/</b>}
+                {index === breadcrumbs.length - 1 ? (
+                  <strong aria-current="page">{crumb.label}</strong>
+                ) : (
+                  <Link href={crumb.href}>{crumb.label}</Link>
+                )}
+              </Fragment>
+            ))}
+          </nav>
           <div className="top-actions">
             <button
               className="icon-button notification-trigger"
@@ -1408,7 +1490,20 @@ export default function Home() {
           )}
         </header>
         <div className="content">
-          {activeTab === "dashboard" ? (
+          {isBrowserView ? (
+            <BrowserView
+              view={view}
+              clients={clients}
+              projects={projects}
+              deliverables={deliverables}
+              comments={comments}
+              recentLivrableIds={recentLivrableIds}
+              error={deliverableError}
+              onNewClient={() => setNewClientOpen(true)}
+              onNewProject={() => setNewProjectOpen(true)}
+              onImport={importNewDeliverable}
+            />
+          ) : activeTab === "dashboard" ? (
             <div className="dashboard-view">
               <div className="project-heading">
                 <div>
@@ -1418,7 +1513,7 @@ export default function Home() {
                     <select
                       className="project-select"
                       value={selectedProjectId}
-                      onChange={(event) => setSelectedProjectId(Number(event.target.value))}
+                      onChange={(event) => router.push(href.dashboard(Number(event.target.value)))}
                       aria-label="Sélectionner un projet"
                     >
                       {visibleProjects.map((project) => (
@@ -1433,7 +1528,7 @@ export default function Home() {
                   </p>
                 </div>
                 <div className="heading-actions">
-                  <button className="secondary-button" onClick={() => setActiveTab("review")}>
+                  <button className="secondary-button" onClick={openReview}>
                     <ArrowLeft /> Revenir à la revue
                   </button>
                   <button className="secondary-button" onClick={() => setProofOpen(true)}>
@@ -1650,9 +1745,8 @@ export default function Home() {
                                 <button
                                   className="action-link"
                                   onClick={() => {
-                                    if (comment.deliverableId) setSelectedDeliverableId(comment.deliverableId);
                                     setSelectedId(comment.id);
-                                    setActiveTab("review");
+                                    if (comment.deliverableId) openRecord(comment.deliverableId);
                                   }}
                                 >
                                   Ouvrir <ArrowUpRight />
@@ -1672,12 +1766,12 @@ export default function Home() {
           <div className="project-heading">
             <div>
               <div className="eyebrow">PROJET · {selectedClient?.name ?? "CLIENT"}</div>
-              <div className="project-selector-row"><h1>{selectedProject?.name ?? "Aucun projet sélectionné"}</h1><select className="project-select" value={selectedProjectId} onChange={(event) => setSelectedProjectId(Number(event.target.value))} aria-label="Sélectionner un projet">{visibleProjects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}</select></div>
+              <div className="project-selector-row"><h1>{selectedProject?.name ?? "Aucun projet sélectionné"}</h1></div>
               <div className="deliverable-selectors">
                 <select className="deliverable-select" value={activeDeliverableName ?? ""} onChange={(event) => selectDeliverableName(event.target.value)} aria-label="Sélectionner un livrable">
                   {deliverableNames.map((name) => <option value={name} key={name}>{name}</option>)}
                 </select>
-                <select className="version-select" value={currentDeliverable?.id ?? ""} onChange={(event) => setSelectedDeliverableId(Number(event.target.value))} aria-label="Sélectionner une version">
+                <select className="version-select" value={currentDeliverable?.id ?? ""} onChange={(event) => openRecord(Number(event.target.value))} aria-label="Sélectionner une version">
                   {activeVersions.map((deliverable) => <option value={deliverable.id} key={deliverable.id}>Version {String(deliverable.version).padStart(2, "0")}</option>)}
                 </select>
               </div>
@@ -1696,18 +1790,6 @@ export default function Home() {
                   onChange={importDeliverable}
                 />
               </label>
-              <button
-                className="secondary-button"
-                onClick={() => setNewClientOpen(true)}
-              >
-                Nouveau client +
-              </button>
-              <button
-                className="secondary-button"
-                onClick={() => setNewProjectOpen(true)}
-              >
-                Nouveau projet +
-              </button>
               <button className="secondary-button" onClick={openShareDialog}>
                 Partager la revue <ArrowUpRight />
               </button>
@@ -2718,12 +2800,17 @@ export default function Home() {
                   />
                 </label>
                 <label>
-                  Nom du client
-                  <input
-                    value={newClientName}
-                    onChange={(event) => setNewClientName(event.target.value)}
-                    placeholder="Ex. Atelier Horizon"
-                  />
+                  Client
+                  <select
+                    value={newProjectClientId ?? selectedClientId}
+                    onChange={(event) => setNewProjectClientId(Number(event.target.value))}
+                  >
+                    {clients.map((client) => (
+                      <option value={client.id} key={client.id}>
+                        {client.name}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 {projectError && (
                   <p className="form-error" role="alert">

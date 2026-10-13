@@ -805,7 +805,8 @@ button {
 }
 .proposal-drawer textarea,
 .proposal-drawer input,
-.project-modal input {
+.project-modal input,
+.project-modal select {
   border: 1px solid var(--border-input);
   border-radius: 5px;
   padding: 10px;
@@ -3117,5 +3118,189 @@ button {
 @media (max-width: 680px) {
   .dashboard-kpi-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Sidebar tree: clients > projects */
+.nav-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: var(--s-4) 0 var(--s-1);
+  padding: 0 var(--s-3);
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+  font-weight: 600;
+}
+.nav-section-action {
+  display: grid;
+  place-items: center;
+  width: var(--s-6);
+  height: var(--s-6);
+  border: 0;
+  border-radius: var(--r-field);
+  background: transparent;
+  color: var(--graphite);
+}
+.nav-section-action:hover {
+  background: var(--mist);
+  color: var(--ink);
+}
+.nav-tree,
+.nav-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.nav-tree ul {
+  padding-left: var(--s-4);
+}
+.nav-item.nav-tree-leaf {
+  min-height: 32px;
+  font-weight: 500;
+}
+.nav-item:focus-visible,
+.nav-section-action:focus-visible,
+.breadcrumbs a:focus-visible,
+.browser-card:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 2px;
+}
+
+/* Breadcrumb links */
+.breadcrumbs a {
+  color: inherit;
+  text-decoration: none;
+}
+.breadcrumbs a:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+/* Browser views: home, client, project */
+.browser {
+  display: grid;
+  gap: var(--s-8);
+}
+.browser-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--s-4);
+}
+.browser-heading h1 {
+  font: 600 var(--t-h2) var(--font-display);
+  letter-spacing: var(--t-h2-tracking);
+  margin: 0 0 var(--s-1);
+}
+.browser-heading p:not(.eyebrow) {
+  margin: 0;
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+.browser-heading .eyebrow a {
+  color: var(--action-text);
+}
+.browser-heading .secondary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  text-decoration: none;
+}
+.browser-section {
+  display: grid;
+  gap: var(--s-3);
+}
+.browser-section h2 {
+  margin: 0;
+  font: 600 var(--t-ui) var(--font-ui);
+  color: var(--ink);
+}
+.browser-section h2 a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  color: inherit;
+  text-decoration: none;
+}
+.browser-section h2 a:hover {
+  color: var(--action-text);
+}
+.browser-empty {
+  margin: 0;
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+.browser-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--s-4);
+}
+.browser-card {
+  display: grid;
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  background: var(--paper);
+  color: var(--ink);
+  text-decoration: none;
+  overflow: hidden;
+  transition: border-color var(--d-fast) var(--ease-out);
+}
+.browser-card:hover {
+  border-color: var(--border-input);
+}
+.browser-thumb {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 10;
+  background: var(--mist);
+  color: var(--graphite);
+  font-size: 28px;
+}
+.browser-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.browser-card-body {
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-3);
+}
+.browser-card-body b {
+  font: 600 var(--t-ui) var(--font-ui);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-card-body small {
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+.browser-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+  margin-top: var(--s-1);
+}
+.browser-status,
+.browser-badge {
+  border-radius: var(--r-field);
+  padding: 2px var(--s-2);
+  font-size: var(--t-caption-size);
+  font-weight: 500;
+}
+.browser-status {
+  background: var(--mist);
+  color: var(--ink);
+}
+.browser-badge {
+  background: var(--status-clarify-bg);
+  color: var(--status-clarify-text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .browser-card {
+    transition: none;
   }
 }

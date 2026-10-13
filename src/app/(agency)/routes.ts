@@ -1,0 +1,80 @@
+// URL scheme of the agency workspace. Ids (not names) keep links stable when things are renamed.
+//
+//   /                                              home
+//   /clients/:clientId                             projects of a client
+//   /projets/:projectId                            deliverables of a project
+//   /projets/:projectId/tableau-de-bord            project dashboard
+//   /projets/:projectId/livrables/:livrableId      latest version of a deliverable
+//   /projets/:projectId/livrables/:livrableId/versions/:version
+
+export type AgencyView =
+  | { kind: "home" }
+  | { kind: "client"; clientId: number }
+  | { kind: "project"; projectId: number }
+  | { kind: "dashboard"; projectId: number }
+  | { kind: "deliverable"; projectId: number; livrableId: number; version?: number }
+  | { kind: "not-found" };
+
+const id = (value: string | undefined) => (value && /^\d+$/.test(value) ? Number(value) : null);
+
+export function parseAgencyPath(pathname: string): AgencyView {
+  const [first, second, third, fourth, fifth, sixth, extra] = pathname.split("/").filter(Boolean);
+  if (!first) return { kind: "home" };
+
+  if (first === "clients") {
+    const clientId = id(second);
+    return clientId !== null && !third ? { kind: "client", clientId } : { kind: "not-found" };
+  }
+
+  if (first === "projets") {
+    const projectId = id(second);
+    if (projectId === null) return { kind: "not-found" };
+    if (!third) return { kind: "project", projectId };
+    if (third === "tableau-de-bord" && !fourth) return { kind: "dashboard", projectId };
+    const livrableId = id(fourth);
+    if (third === "livrables" && livrableId !== null) {
+      if (!fifth) return { kind: "deliverable", projectId, livrableId };
+      const version = id(sixth);
+      if (fifth === "versions" && version !== null && !extra)
+        return { kind: "deliverable", projectId, livrableId, version };
+    }
+  }
+
+  return { kind: "not-found" };
+}
+
+export const href = {
+  home: () => "/",
+  client: (clientId: number) => `/clients/${clientId}`,
+  project: (projectId: number) => `/projets/${projectId}`,
+  dashboard: (projectId: number) => `/projets/${projectId}/tableau-de-bord`,
+  deliverable: (projectId: number, livrableId: number, version?: number) =>
+    `/projets/${projectId}/livrables/${livrableId}${version ? `/versions/${version}` : ""}`,
+};
+
+// A deliverable ("livrable") is the group of version records sharing a project and a name.
+// Its stable id is the id of its oldest record.
+type VersionRecord = { id: number; projectId?: number; name: string; version: number };
+
+export function livrableIdOf<T extends VersionRecord>(record: T, records: T[]) {
+  return Math.min(
+    ...records
+      .filter((other) => (other.projectId ?? 1) === (record.projectId ?? 1) && other.name === record.name)
+      .map((other) => other.id),
+  );
+}
+
+export function versionsOfLivrable<T extends VersionRecord>(livrableId: number, records: T[]) {
+  const root = records.find((record) => record.id === livrableId);
+  if (!root) return [];
+  return records
+    .filter((record) => (record.projectId ?? 1) === (root.projectId ?? 1) && record.name === root.name)
+    .sort((left, right) => right.version - left.version);
+}
+
+/** URL of a given version record: the latest version gets the short form. */
+export function hrefForRecord<T extends VersionRecord>(record: T, records: T[]) {
+  const livrableId = livrableIdOf(record, records);
+  const latest = versionsOfLivrable(livrableId, records)[0];
+  return href.deliverable(record.projectId ?? 1, livrableId, latest?.id === record.id ? undefined : record.version);
+}
