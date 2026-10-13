@@ -927,8 +927,13 @@ export function AgencyApp() {
     const clientName = newClientName.trim();
     const clientEmail = newClientEmail.trim();
 
-    if (!clientName || !clientEmail || !clientEmail.includes("@")) {
-      setClientError("Renseignez un nom et une adresse e-mail valide.");
+    if (!clientName) {
+      setClientError("Donnez un nom à l’espace.");
+      return;
+    }
+    // Inviting a collaborator is optional; when filled in, the address must look like one.
+    if (clientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) {
+      setClientError("Cette adresse e-mail ne semble pas valide.");
       return;
     }
 
@@ -3001,11 +3006,10 @@ export function AgencyApp() {
           )}
           {newClientOpen && (
             <div className="modal-backdrop" role="presentation">
-              <form className="project-modal" onSubmit={createClient}>
+              <form className="project-modal" onSubmit={createClient} noValidate>
                 <div className="drawer-header">
                   <div>
-                    <div className="eyebrow">NOUVEL ESPACE</div>
-                    <h2>Créer un espace client</h2>
+                    <h2>Créer un espace</h2>
                   </div>
                   <button
                     type="button"
@@ -3017,7 +3021,7 @@ export function AgencyApp() {
                   </button>
                 </div>
                 <p className="drawer-intro">
-                  Un espace regroupe tous les projets d’un même client.
+                  Un espace regroupe des projets. Vous pourrez y inviter vos collaborateurs, et votre client.
                 </p>
                 <label>
                   Nom de l’espace
@@ -3029,12 +3033,14 @@ export function AgencyApp() {
                   />
                 </label>
                 <label>
-                  E-mail du contact client
+                  <span>
+                    Inviter un collaborateur <span className="field-optional">(facultatif)</span>
+                  </span>
                   <input
                     type="email"
                     value={newClientEmail}
                     onChange={(event) => setNewClientEmail(event.target.value)}
-                    placeholder="contact@atelier-horizon.fr"
+                    placeholder="prenom@votre-agence.fr"
                   />
                 </label>
                 {clientError && (

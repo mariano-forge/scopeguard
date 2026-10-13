@@ -623,7 +623,7 @@ button {
   resize: vertical;
 }
 .project-modal input::placeholder {
-  color: var(--graphite);
+  color: var(--border-input);
 }
 .share-url {
   background: var(--canvas);
@@ -777,7 +777,7 @@ button {
   resize: vertical;
 }
 .project-modal textarea::placeholder {
-  color: var(--graphite);
+  color: var(--border-input);
 }
 .send-proposal:disabled {
   cursor: not-allowed;
@@ -844,7 +844,7 @@ button {
   font-size: var(--t-caption-size);
 }
 .reply-form input::placeholder {
-  color: var(--graphite);
+  color: var(--border-input);
 }
 .reply-form button {
   border: 0;
@@ -1362,7 +1362,7 @@ button {
   font-size: var(--t-caption-size);
 }
 .client-reply-form input::placeholder {
-  color: var(--graphite);
+  color: var(--border-input);
 }
 .client-reply-form button {
   border: 0;
@@ -3128,7 +3128,7 @@ button {
   font: var(--t-body) var(--font-ui);
 }
 .palette-search input::placeholder {
-  color: var(--graphite);
+  color: var(--border-input);
 }
 .palette kbd {
   border: 1px solid var(--border);
@@ -4842,4 +4842,25 @@ a.page-nav-label:hover {
 .page-nav-button:disabled:hover {
   background: transparent;
   color: var(--graphite);
+}
+
+/* Text fields: Kora focus (blue border + ring) instead of the browser default; quieter placeholders.
+   Placeholders are examples only (every field has a visible label), so they may sit below text contrast. */
+:where(
+  input:not([type="checkbox"], [type="radio"], [type="file"]),
+  textarea,
+  select
+):focus {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 0;
+  border-color: var(--action-ui);
+}
+::placeholder {
+  color: var(--border-input);
+  opacity: 1;
+}
+
+.field-optional {
+  color: var(--graphite);
+  font-weight: 400;
 }
