@@ -4419,12 +4419,10 @@ button {
   filter: brightness(0.94);
 }
 
-/* Orange accent (feedback): project icon */
+/* Project icon: neutral (feedback) */
 .page-icon {
-  background: var(--attention-fill);
-  color: var(
-    --paper
-  ); /* decorative icon, the title beside it carries the meaning */
+  background: var(--ink);
+  color: var(--paper);
 }
 
 /* Home sidebar: search back to a field, a little more air */
