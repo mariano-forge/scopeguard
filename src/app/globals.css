@@ -4405,26 +4405,21 @@ button {
   flex: 1;
 }
 
-/* Primary actions: white on a deep Kora blue (7.06:1). The brand blue #30A8FF only reaches 2.57:1 with white. */
+/* Primary actions: Kora CTA blue with Ink text (7.35:1); hover darkens by 6% (DESIGN.md) */
 .primary-button,
 .inspector-primary {
-  background: var(--action-strong);
-  color: var(--paper);
+  background: var(--action-fill);
+  color: var(--ink);
   filter: none;
-  transition: background var(--d-fast) var(--ease-out);
+  transition: filter var(--d-fast) var(--ease-out);
 }
 .primary-button:hover,
 .inspector-primary:hover {
-  background: var(--action-strong-hover);
-  filter: none;
+  background: var(--action-fill);
+  filter: brightness(0.94);
 }
 
-/* Orange accents (feedback): account avatar, project icon */
-.sidebar-account .avatar,
-.rail-avatar {
-  background: var(--attention-fill);
-  color: var(--ink);
-}
+/* Orange accent (feedback): project icon */
 .page-icon {
   background: var(--attention-fill);
   color: var(
