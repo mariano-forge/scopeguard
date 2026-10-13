@@ -144,23 +144,43 @@ function EmptyState({ icon: Icon, title, text }: { icon: typeof Star; title: str
   );
 }
 
-/** Figma-like top line: history back/forward, then where you are (a link when it leads somewhere). */
-function PageNav({ label, target }: { label: string; target?: string }) {
+type NavigationHistory = { canGoBack?: boolean; canGoForward?: boolean; addEventListener?: (type: string, listener: () => void) => void; removeEventListener?: (type: string, listener: () => void) => void };
+const historyOf = () => (typeof window === "undefined" ? undefined : (window as unknown as { navigation?: NavigationHistory }).navigation);
+
+/**
+ * Figma-like top line: history back/forward, then the parent to go up to (when there is one).
+ * Arrows are disabled when the browser reports nothing to go back/forward to (Navigation API).
+ */
+function PageNav({ label, target }: { label?: string; target?: string }) {
   const router = useRouter();
+  const [canGo, setCanGo] = useState({ back: true, forward: false });
+  useEffect(() => {
+    const navigation = historyOf();
+    if (!navigation || navigation.canGoBack === undefined) return;
+    // Deferred: the router changes history from an insertion effect, where React forbids state updates.
+    let frame = requestAnimationFrame(() => setCanGo({ back: Boolean(navigation.canGoBack), forward: Boolean(navigation.canGoForward) }));
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => setCanGo({ back: Boolean(navigation.canGoBack), forward: Boolean(navigation.canGoForward) }));
+    };
+    navigation.addEventListener?.("currententrychange", update);
+    return () => {
+      cancelAnimationFrame(frame);
+      navigation.removeEventListener?.("currententrychange", update);
+    };
+  }, []);
   return (
     <nav className="page-nav" aria-label="Historique">
-      <button type="button" className="page-nav-button" onClick={() => router.back()} aria-label="Page précédente" title="Page précédente">
+      <button type="button" className="page-nav-button" onClick={() => router.back()} disabled={!canGo.back} aria-label="Page précédente" title="Page précédente">
         <ChevronLeft />
       </button>
-      <button type="button" className="page-nav-button" onClick={() => router.forward()} aria-label="Page suivante" title="Page suivante">
+      <button type="button" className="page-nav-button" onClick={() => router.forward()} disabled={!canGo.forward} aria-label="Page suivante" title="Page suivante">
         <ChevronRight />
       </button>
-      {target ? (
+      {label && target && (
         <Link className="page-nav-label" href={target}>
           {label}
         </Link>
-      ) : (
-        <span className="page-nav-label">{label}</span>
       )}
     </nav>
   );
@@ -186,12 +206,9 @@ export function BrowserView({
   onToggleFavorite,
   livrableStatus,
 }: BrowserViewProps) {
-  const router = useRouter();
   const [sort, setSort] = useState<SortKey>("recent");
   const [layout, setLayout] = useState<Layout>("grid");
   const [recentFilter, setRecentFilter] = useState<RecentFilter>("all");
-  // Figma: a click selects a card (blue outline), a second click or a double-click opens it.
-  const [selectedCard, setSelectedCard] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -200,14 +217,6 @@ export function BrowserView({
       // Grid by default.
     }
   }, []);
-  useEffect(() => {
-    if (!selectedCard) return;
-    function clear(event: MouseEvent) {
-      if (!(event.target as Element).closest?.(".card-wrap")) setSelectedCard(null);
-    }
-    document.addEventListener("mousedown", clear);
-    return () => document.removeEventListener("mousedown", clear);
-  }, [selectedCard]);
   function changeLayout(next: Layout) {
     setLayout(next);
     try {
@@ -245,22 +254,12 @@ export function BrowserView({
   const toQualify = (record: Deliverable) =>
     comments.filter((comment) => comment.deliverableId === record.id && comment.decision === "À qualifier").length;
 
-  /** Selectable, starrable card wrapper (the star sits beside the link: no button inside a link). */
+  /** Starrable card wrapper (the star sits beside the link: no button inside a link). */
   function card(key: string, target: string, className: string, label: string, children: React.ReactNode) {
     const starred = favorites.includes(key);
     return (
-      <div className={`card-wrap ${selectedCard === key ? "is-selected" : ""}`} key={key}>
-        <Link
-          className={className}
-          href={target}
-          onClick={(event) => {
-            if (selectedCard !== key && !event.metaKey && !event.ctrlKey) {
-              event.preventDefault();
-              setSelectedCard(key);
-            }
-          }}
-          onDoubleClick={() => router.push(target)}
-        >
+      <div className="card-wrap" key={key}>
+        <Link className={className} href={target}>
           {children}
         </Link>
         <button
@@ -430,7 +429,7 @@ export function BrowserView({
     const sorted = sort === "name" ? [...latest].sort((left, right) => left.name.localeCompare(right.name, "fr")) : latest;
     return (
       <div className="browser">
-        {client ? <PageNav label={client.name} target={href.client(client.id)} /> : <PageNav label="Projet" />}
+        {client ? <PageNav label={client.name} target={href.client(client.id)} /> : <PageNav />}
         <header className="page-header">
           <div className="page-identity">
             <span className="page-icon">
@@ -484,7 +483,7 @@ export function BrowserView({
     const sorted = [...clients].sort((left, right) => left.name.localeCompare(right.name, "fr"));
     return (
       <div className="browser">
-        <PageNav label="Tous les espaces" />
+        <PageNav />
         <header className="page-header">
           <h1 className="page-title">Tous les espaces</h1>
           <button className="primary-button" onClick={onNewClient}>
@@ -503,7 +502,7 @@ export function BrowserView({
   if (view.kind === "shared")
     return (
       <div className="browser">
-        <PageNav label="Partagés avec moi" />
+        <PageNav />
         <header className="page-header">
           <h1 className="page-title">Partagés avec moi</h1>
         </header>
@@ -540,7 +539,7 @@ export function BrowserView({
     const shown = recentRecords.filter((record) => matches(record, recentFilter));
     return (
       <div className="browser">
-        <PageNav label="Récents" />
+        <PageNav />
         <header className="page-header">
           <h1 className="page-title">Récents</h1>
           <div className="filter-chips" role="group" aria-label="Filtrer les livrables récents">
@@ -577,7 +576,7 @@ export function BrowserView({
   if (view.kind === "todo") {
     return (
       <div className="browser">
-        <PageNav label="À traiter" />
+        <PageNav />
         <header className="page-header">
           <div>
             <h1 className="page-title">À traiter</h1>
@@ -617,7 +616,7 @@ export function BrowserView({
   ];
   return (
     <div className="browser">
-      <PageNav label="Accueil" />
+      <PageNav />
       <header className="page-header">
         <h1 className="page-title">Vue d’ensemble</h1>
         <button className="primary-button" onClick={onNewProject}>

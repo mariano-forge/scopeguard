@@ -4561,11 +4561,6 @@ button {
 .card-wrap > a {
   height: 100%;
 }
-.card-wrap.is-selected > a,
-.card-wrap.is-selected > a:hover {
-  border-color: var(--action-ui);
-  box-shadow: 0 0 0 1px var(--action-ui);
-}
 .star-button {
   position: absolute;
   top: var(--s-2);
@@ -4804,4 +4799,47 @@ a.page-nav-label:hover {
 .file-card-title b {
   flex: 1;
   min-width: 0;
+}
+
+/* Recents filters: soft chips, active = very light blue (feedback) */
+.filter-chips .filter {
+  border: 0;
+  background: transparent;
+  color: var(--graphite);
+}
+.filter-chips .filter:hover {
+  background: var(--mist);
+  color: var(--ink);
+}
+.filter-chips .filter.active-filter {
+  border: 0;
+  background: var(--status-low-bg);
+  color: var(--status-low-text);
+}
+.filter-chips .filter.active-filter span {
+  background: var(--paper);
+  color: var(--status-low-text);
+}
+
+/* Starred: yellow star */
+.star-button.is-starred {
+  color: var(--status-medium-text);
+}
+.star-button.is-starred .lucide {
+  fill: var(--favorite-fill);
+}
+
+/* Cards: blue outline only while pressing (and on keyboard focus) */
+.card-wrap > a:active {
+  border-color: var(--action-ui);
+  box-shadow: 0 0 0 1px var(--action-ui);
+}
+
+.page-nav-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.page-nav-button:disabled:hover {
+  background: transparent;
+  color: var(--graphite);
 }

@@ -20,6 +20,8 @@
   --attention-fill: #ff795c;
   --attention-text: #a21d00;
   --danger: #8d2615;
+  /* Starred items: yellow fill, outlined with --status-medium-text so the star keeps 3:1 on white */
+  --favorite-fill: #ffc233;
 
   /* Statuses (background / text), always paired with a label or icon */
   --status-high-bg: #ffe1da;
