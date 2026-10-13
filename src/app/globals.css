@@ -3441,3 +3441,113 @@ button {
     transition: none;
   }
 }
+
+/* "À traiter": pending decisions across projects */
+.nav-item .nav-count {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--attention-fill);
+  color: var(--ink);
+  font-size: var(--t-caption-size);
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+}
+.todo-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  background: var(--paper);
+  overflow: hidden;
+}
+.todo-list li + li {
+  border-top: 1px solid var(--border);
+}
+.todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background var(--d-fast) var(--ease-out);
+}
+.todo-item:hover {
+  background: var(--canvas);
+}
+.todo-item:focus-visible,
+.browser-more:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: -2px;
+}
+.todo-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-button);
+}
+.todo-changes-requested {
+  background: var(--status-high-bg);
+  color: var(--status-high-text);
+}
+.todo-adaptation {
+  background: var(--status-scope-bg);
+  color: var(--status-scope-text);
+}
+.todo-to-qualify {
+  background: var(--status-clarify-bg);
+  color: var(--status-clarify-text);
+}
+.todo-awaiting-client {
+  background: var(--status-medium-bg);
+  color: var(--status-medium-text);
+}
+.todo-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.todo-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--s-2);
+}
+.todo-title b {
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.todo-title small,
+.todo-meta {
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+.todo-excerpt {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--t-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.todo-arrow {
+  align-self: center;
+  color: var(--graphite);
+}
+.browser-more {
+  justify-self: start;
+  color: var(--action-text);
+  font-size: var(--t-caption-size);
+  font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+  .todo-item {
+    transition: none;
+  }
+}

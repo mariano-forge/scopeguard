@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowUpRight, FileText, FolderOpen, Image as ImageIcon, LayoutDashboard, Plus } from "lucide-react";
 import { href, hrefForRecord, livrableIdOf, versionsOfLivrable, type AgencyView } from "./routes";
+import { TodoList, isAgencyAction, type TodoItem } from "./TodoList";
 
 type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId?: number; status: string };
@@ -25,6 +26,7 @@ type BrowserViewProps = {
   deliverables: Deliverable[];
   comments: Comment[];
   recentLivrableIds: number[];
+  todoItems: TodoItem[];
   error?: string;
   onNewClient: () => void;
   onNewProject: () => void;
@@ -41,6 +43,7 @@ export function BrowserView({
   deliverables,
   comments,
   recentLivrableIds,
+  todoItems,
   error,
   onNewClient,
   onNewProject,
@@ -191,6 +194,39 @@ export function BrowserView({
 
   if (view.kind === "not-found") return <NotFound />;
 
+  const agencyActions = todoItems.filter(isAgencyAction);
+  const awaitingClient = todoItems.filter((item) => !isAgencyAction(item));
+
+  if (view.kind === "todo") {
+    return (
+      <div className="browser">
+        <header className="browser-heading">
+          <div>
+            <p className="eyebrow">Tous les projets</p>
+            <h1>À traiter</h1>
+            <p>Les décisions en attente, sur la dernière version de chaque livrable.</p>
+          </div>
+        </header>
+        <section className="browser-section">
+          <h2>À vous de jouer · {agencyActions.length}</h2>
+          {agencyActions.length === 0 ? (
+            <p className="browser-empty">Rien à traiter : chaque demande est qualifiée.</p>
+          ) : (
+            <TodoList items={agencyActions} />
+          )}
+        </section>
+        <section className="browser-section">
+          <h2>En attente du client · {awaitingClient.length}</h2>
+          {awaitingClient.length === 0 ? (
+            <p className="browser-empty">Aucune proposition en attente de réponse.</p>
+          ) : (
+            <TodoList items={awaitingClient} />
+          )}
+        </section>
+      </div>
+    );
+  }
+
   const recents = recentLivrableIds.filter((id) => deliverables.some((deliverable) => deliverable.id === id));
   return (
     <div className="browser">
@@ -208,6 +244,25 @@ export function BrowserView({
           </button>
         </div>
       </header>
+      <section className="browser-section">
+        <h2>
+          <Link href={href.todo()}>
+            À traiter · {agencyActions.length} <ArrowUpRight />
+          </Link>
+        </h2>
+        {agencyActions.length === 0 ? (
+          <p className="browser-empty">
+            Rien à traiter{awaitingClient.length > 0 ? ` · ${plural(awaitingClient.length, "proposition")} en attente du client` : ""}.
+          </p>
+        ) : (
+          <TodoList items={agencyActions.slice(0, 5)} />
+        )}
+        {agencyActions.length > 5 && (
+          <Link className="browser-more" href={href.todo()}>
+            Voir les {agencyActions.length} décisions
+          </Link>
+        )}
+      </section>
       {recents.length > 0 && (
         <section className="browser-section">
           <h2>Récents</h2>

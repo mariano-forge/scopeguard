@@ -1,14 +1,17 @@
 // URL scheme of the agency workspace. Ids (not names) keep links stable when things are renamed.
 //
 //   /                                              home
+//   /a-traiter                                     pending decisions across all projects
 //   /clients/:clientId                             projects of a client
 //   /projets/:projectId                            deliverables of a project
 //   /projets/:projectId/tableau-de-bord            project dashboard
 //   /projets/:projectId/livrables/:livrableId      latest version of a deliverable
 //   /projets/:projectId/livrables/:livrableId/versions/:version
+//   ?demande=:commentId on a deliverable URL focuses that comment
 
 export type AgencyView =
   | { kind: "home" }
+  | { kind: "todo" }
   | { kind: "client"; clientId: number }
   | { kind: "project"; projectId: number }
   | { kind: "dashboard"; projectId: number }
@@ -20,6 +23,7 @@ const id = (value: string | undefined) => (value && /^\d+$/.test(value) ? Number
 export function parseAgencyPath(pathname: string): AgencyView {
   const [first, second, third, fourth, fifth, sixth, extra] = pathname.split("/").filter(Boolean);
   if (!first) return { kind: "home" };
+  if (first === "a-traiter" && !second) return { kind: "todo" };
 
   if (first === "clients") {
     const clientId = id(second);
@@ -45,6 +49,7 @@ export function parseAgencyPath(pathname: string): AgencyView {
 
 export const href = {
   home: () => "/",
+  todo: () => "/a-traiter",
   client: (clientId: number) => `/clients/${clientId}`,
   project: (projectId: number) => `/projets/${projectId}`,
   dashboard: (projectId: number) => `/projets/${projectId}/tableau-de-bord`,

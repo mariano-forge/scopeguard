@@ -37,7 +37,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   TransformComponent,
   TransformWrapper,
@@ -61,6 +61,7 @@ import {
   Folder,
   Hourglass,
   House,
+  Inbox,
   LayoutDashboard,
   LayoutGrid,
   Maximize,
@@ -76,7 +77,8 @@ import {
 } from "lucide-react";
 import { BrowserView } from "./BrowserView";
 import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
-import { href, hrefForRecord, parseAgencyPath, versionsOfLivrable } from "./routes";
+import { isAgencyAction, todoOrder, type TodoItem } from "./TodoList";
+import { href, hrefForRecord, livrableIdOf, parseAgencyPath, versionsOfLivrable } from "./routes";
 
 const PdfDocument = dynamic(
   async () => {
@@ -267,6 +269,7 @@ export function AgencyApp() {
   const router = useRouter();
   const pathname = usePathname();
   const view = parseAgencyPath(pathname);
+  const focusedCommentId = Number(useSearchParams().get("demande")) || null;
   const [projects, setProjects] = useState(initialProjects);
   const [clients, setClients] = useState(initialClients);
   const [deliverables, setDeliverables] = useState(initialDeliverables);
@@ -299,7 +302,7 @@ export function AgencyApp() {
       .sort((left, right) => right.version - left.version)[0]?.id ??
     0;
   const activeTab = view.kind === "dashboard" ? "dashboard" : "review";
-  const isBrowserView = view.kind === "home" || view.kind === "client" || view.kind === "project" || view.kind === "not-found";
+  const isBrowserView = view.kind === "home" || view.kind === "todo" || view.kind === "client" || view.kind === "project" || view.kind === "not-found";
 
   function openRecord(recordId: number) {
     const record = deliverables.find((deliverable) => deliverable.id === recordId);
@@ -784,6 +787,15 @@ export function AgencyApp() {
       setSelectedId(activeComments[0].id);
     }
   }, [currentDeliverable?.id, activeComments, selectedId]);
+
+  // ?demande=ID (from "À traiter"): select that comment once, then drop the param so clicks work normally.
+  useEffect(() => {
+    if (focusedCommentId === null || !activeComments.some((comment) => comment.id === focusedCommentId)) return;
+    setSelectedId(focusedCommentId);
+    setShowAllComments(true);
+    router.replace(pathname, { scroll: false });
+    requestAnimationFrame(() => document.querySelector(".selected-card")?.scrollIntoView({ block: "nearest" }));
+  }, [focusedCommentId, activeComments, pathname, router]);
 
   function selectDeliverableName(name: string) {
     const latestVersion = activeDeliverables
@@ -1445,8 +1457,45 @@ export function AgencyApp() {
     ];
   });
 
+  // Pending decisions across all projects, on the latest version of each deliverable.
+  const todoItems: TodoItem[] = [];
+  for (const record of deliverables) {
+    const latest = versionsOfLivrable(livrableIdOf(record, deliverables), deliverables)[0];
+    if (latest?.id !== record.id) continue;
+    const project = projects.find((candidate) => candidate.id === (record.projectId ?? 1));
+    const client = clients.find((candidate) => candidate.id === (project?.clientId ?? 1));
+    const version = `V${String(record.version).padStart(2, "0")}`;
+    const context = [client?.name, project?.name, `${record.name} ${version}`].filter(Boolean).join(" / ");
+    const recordHref = hrefForRecord(record, deliverables);
+    if (record.reviewStatus === "changes-requested")
+      todoItems.push({ key: `changes-${record.id}`, kind: "changes-requested", title: "Modifications demandées par le client", context, meta: "Préparez une nouvelle version", href: recordHref });
+    for (const comment of comments.filter((candidate) => candidate.deliverableId === record.id)) {
+      const commentHref = `${recordHref}?demande=${comment.id}`;
+      const adaptation = adaptationRequests[comment.id];
+      if (comment.decision === "À qualifier" || !comment.decision)
+        todoItems.push({ key: `qualify-${comment.id}`, kind: "to-qualify", title: "Demande à qualifier", excerpt: comment.message, context, meta: [comment.author, comment.time].filter(Boolean).join(" · "), href: commentHref });
+      else if (comment.decision === "Hors périmètre" && adaptation && !adaptation.decision)
+        todoItems.push({ key: `adapt-${comment.id}`, kind: "adaptation", title: "Adaptation de proposition demandée", excerpt: adaptation.message, context, meta: `Demandée le ${adaptation.requestedAt}`, href: commentHref });
+      else if (comment.decision === "Hors périmètre" && proposalStateFor(comment.id) === "sent" && proposalDecisionFor(comment.id) === "none") {
+        const proposal = activeProposalFor(comment.id);
+        todoItems.push({
+          key: `awaiting-${comment.id}`,
+          kind: "awaiting-client",
+          title: "Proposition sans réponse du client",
+          excerpt: proposal?.description,
+          context,
+          meta: [proposal ? formatProposalAmount(proposal.amount) : null, proposal?.createdAt ? `envoyée le ${proposal.createdAt}` : null].filter(Boolean).join(" · "),
+          href: commentHref,
+        });
+      }
+    }
+  }
+  todoItems.sort((left, right) => todoOrder.indexOf(left.kind) - todoOrder.indexOf(right.kind));
+  const agencyActionCount = todoItems.filter(isAgencyAction).length;
+
   const breadcrumbs: { label: string; href: string }[] = [{ label: "Accueil", href: href.home() }];
   const crumbClient = clients.find((client) => client.id === selectedClientId);
+  if (view.kind === "todo") breadcrumbs.push({ label: "À traiter", href: href.todo() });
   if ((view.kind === "client" || viewProjectId !== null) && crumbClient)
     breadcrumbs.push({ label: crumbClient.name, href: href.client(crumbClient.id) });
   if (viewProjectId !== null && selectedProject)
@@ -1475,6 +1524,10 @@ export function AgencyApp() {
         <nav className="main-nav" aria-label="Navigation principale">
           <Link className={`nav-item ${view.kind === "home" ? "active" : ""}`} href={href.home()}>
             <span><House /></span> Accueil
+          </Link>
+          <Link className={`nav-item ${view.kind === "todo" ? "active" : ""}`} href={href.todo()}>
+            <span><Inbox /></span> À traiter
+            {agencyActionCount > 0 && <strong className="nav-count">{agencyActionCount}</strong>}
           </Link>
           {viewProjectId !== null && (
             <Link className={`nav-item ${view.kind === "dashboard" ? "active" : ""}`} href={href.dashboard(viewProjectId)}>
@@ -1584,6 +1637,7 @@ export function AgencyApp() {
               deliverables={deliverables}
               comments={comments}
               recentLivrableIds={recentLivrableIds}
+              todoItems={todoItems}
               error={deliverableError}
               onNewClient={() => setNewClientOpen(true)}
               onNewProject={() => setNewProjectOpen(true)}
