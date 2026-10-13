@@ -70,11 +70,11 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { BrowserView } from "./BrowserView";
+import { BrowserView, type HomeOverview } from "./BrowserView";
 import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
 import { isAgencyAction, todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
-import { HomeSidebar, ProjectSidebar, type PanelMode, type SidebarLivrable, type SidebarVersion } from "./Sidebars";
+import { HomeSidebar, ProjectSidebar, type PanelMode, type SidebarFavorite, type SidebarLivrable, type SidebarVersion } from "./Sidebars";
 import { href, hrefForRecord, livrableIdOf, parseAgencyPath, versionsOfLivrable } from "./routes";
 import { MockArtboard } from "@/components/MockArtboard";
 import { PdfDocument, PdfPage } from "@/components/Pdf";
@@ -192,6 +192,7 @@ const recentsKey = "kora-recent-deliverables";
 const tabsKey = "kora-open-tabs";
 const maxTabs = 12;
 const sidebarKey = "kora-sidebar";
+const favoritesKey = "kora-favorites";
 const mobileQuery = "(max-width: 680px)";
 function subscribeMobile(onChange: () => void) {
   const query = window.matchMedia(mobileQuery);
@@ -271,6 +272,8 @@ export function AgencyApp() {
   const [sidebarPanel, setSidebarPanel] = useState<PanelMode | null>("demandes");
   // Last open mode, read by the Ctrl+\ handler (a ref, so the listener never sees a stale value).
   const lastPanelRef = useRef<PanelMode>("demandes");
+  /** Starred items, "p:<projectId>" or "l:<livrableId>" (per browser for now). */
+  const [favorites, setFavorites] = useState<string[]>([]);
   const [openTabs, setOpenTabs] = useState<{ livrableId: number; href: string }[]>([]);
 
   // Selection comes from the URL (see routes.ts); outside a project the first project is the fallback.
@@ -764,6 +767,26 @@ export function AgencyApp() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(favoritesKey) ?? "[]");
+      if (Array.isArray(saved)) setFavorites(saved.filter((key) => typeof key === "string"));
+    } catch {
+      // Favorites are a convenience: ignore unreadable storage.
+    }
+  }, []);
+  function toggleFavorite(key: string) {
+    setFavorites((current) => {
+      const next = current.includes(key) ? current.filter((item) => item !== key) : [...current, key];
+      try {
+        window.localStorage.setItem(favoritesKey, JSON.stringify(next));
+      } catch {
+        // Ignore storage failures (private mode, quota).
+      }
+      return next;
+    });
+  }
 
   // Open tabs (per browser). Opening a deliverable adds its tab; a tab remembers the version last viewed.
   useEffect(() => {
@@ -1544,6 +1567,48 @@ export function AgencyApp() {
   todoItems.sort((left, right) => todoOrder.indexOf(left.kind) - todoOrder.indexOf(right.kind));
   const agencyActionCount = todoItems.filter(isAgencyAction).length;
 
+  // Home overview: figures across every space (proposals count whatever version they were raised on).
+  const outsideComments = comments.filter((comment) => comment.decision === "Hors périmètre");
+  const sumAmounts = (list: Comment[]) =>
+    list.reduce((total, comment) => total + parseNumericAmount(activeProposalFor(comment.id)?.amount), 0);
+  const acceptedComments = outsideComments.filter((comment) => proposalDecisionFor(comment.id) === "accepted");
+  const pendingComments = outsideComments.filter(
+    (comment) => proposalStateFor(comment.id) === "sent" && proposalDecisionFor(comment.id) === "none",
+  );
+  const latestIds = new Set(
+    deliverables
+      .filter((record) => versionsOfLivrable(livrableIdOf(record, deliverables), deliverables)[0]?.id === record.id)
+      .map((record) => record.id),
+  );
+  const latestComments = comments.filter((comment) => latestIds.has(comment.deliverableId ?? -1));
+  const qualified = latestComments.filter((comment) => comment.decision && comment.decision !== "À qualifier");
+  const projectsOfClient = (clientId: number) => projects.filter((project) => (project.clientId ?? 1) === clientId);
+  const overview: HomeOverview = {
+    acceptedEuros: sumAmounts(acceptedComments),
+    acceptedCount: acceptedComments.length,
+    acceptedDays: acceptedComments.reduce((total, comment) => total + parseNumericDays(activeProposalFor(comment.id)?.deadline), 0),
+    pendingEuros: sumAmounts(pendingComments),
+    pendingCount: pendingComments.length,
+    toQualify: latestComments.length - qualified.length,
+    outsideRate: qualified.length ? Math.round((qualified.filter((comment) => comment.decision === "Hors périmètre").length / qualified.length) * 100) : null,
+    approved: deliverables.filter((record) => latestIds.has(record.id) && record.reviewStatus === "approved").length,
+    livrables: latestIds.size,
+    spaces: clients.map((client) => {
+      const projectIds = new Set(projectsOfClient(client.id).map((project) => project.id));
+      const recordIds = new Set(deliverables.filter((record) => projectIds.has(record.projectId ?? 1)).map((record) => record.id));
+      const spaceComments = comments.filter((comment) => recordIds.has(comment.deliverableId ?? -1));
+      return {
+        client,
+        projects: projectIds.size,
+        livrables: [...latestIds].filter((id) => recordIds.has(id)).length,
+        toQualify: latestComments.filter((comment) => recordIds.has(comment.deliverableId ?? -1) && (comment.decision === "À qualifier" || !comment.decision)).length,
+        outside: spaceComments.filter((comment) => comment.decision === "Hors périmètre").length,
+        acceptedEuros: sumAmounts(acceptedComments.filter((comment) => recordIds.has(comment.deliverableId ?? -1))),
+      };
+    }),
+    activity: auditEvents.slice(0, 5).map((event) => ({ id: event.id, description: event.description, actor: event.actor, timestamp: event.timestamp })),
+  };
+
   // ⌘K palette index: everything reachable, plus a few actions.
   const contextOf = (record: Deliverable) => {
     const project = projects.find((candidate) => candidate.id === (record.projectId ?? 1));
@@ -1924,6 +1989,17 @@ export function AgencyApp() {
       </div>
     ) : undefined;
 
+  const sidebarFavorites = favorites.flatMap((key): SidebarFavorite[] => {
+    const [kind, rawId] = key.split(":");
+    const itemId = Number(rawId);
+    if (kind === "p") {
+      const project = projects.find((candidate) => candidate.id === itemId);
+      return project ? [{ key, label: project.name, href: href.project(project.id), kind: "project" as const }] : [];
+    }
+    const latest = versionsOfLivrable(itemId, deliverables)[0];
+    return latest ? [{ key, label: latest.name, href: hrefForRecord(latest, deliverables), kind: "livrable" as const }] : [];
+  });
+
   // Project workspace panel: deliverables of the project, versions of the open one.
   const inProject = (view.kind === "deliverable" || view.kind === "dashboard") && Boolean(selectedProject);
   const sidebarLivrables: SidebarLivrable[] = latestRecords
@@ -1994,6 +2070,7 @@ export function AgencyApp() {
         <HomeSidebar
           view={view}
           clients={clients}
+          favorites={sidebarFavorites}
           agencyActionCount={agencyActionCount}
           notifications={notifications}
           onSearch={() => setPaletteOpen(true)}
@@ -2018,6 +2095,9 @@ export function AgencyApp() {
               onImport={importNewDeliverable}
               onRenameClient={renameClient}
               onRenameProject={renameProject}
+              overview={overview}
+              favorites={favorites}
+              onToggleFavorite={toggleFavorite}
             />
           ) : activeTab === "dashboard" ? (
             <div className="dashboard-view">

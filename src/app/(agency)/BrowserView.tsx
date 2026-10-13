@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { FolderClosed, LayoutDashboard, LayoutGrid, List, Pencil, Plus, Share2, Star } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight, FolderClosed, LayoutDashboard, LayoutGrid, List, Pencil, Plus, Share2, Star } from "lucide-react";
 import { DeliverableThumbnail } from "@/components/DeliverableThumbnail";
+import { Select } from "@/components/Select";
 import { href, hrefForRecord, livrableIdOf, versionsOfLivrable, type AgencyView } from "./routes";
 import { TodoList, isAgencyAction, type TodoItem } from "./TodoList";
 
@@ -21,6 +23,22 @@ type Deliverable = {
 };
 type Comment = { deliverableId?: number; decision: string };
 
+/** Figures for the home overview, computed by AgencyApp across every space. */
+export type HomeOverview = {
+  acceptedEuros: number;
+  acceptedCount: number;
+  acceptedDays: number;
+  pendingEuros: number;
+  pendingCount: number;
+  toQualify: number;
+  /** Share of qualified requests that are out of scope, null when nothing is qualified yet. */
+  outsideRate: number | null;
+  approved: number;
+  livrables: number;
+  spaces: { client: Client; projects: number; livrables: number; toQualify: number; outside: number; acceptedEuros: number }[];
+  activity: { id: number; description: string; actor: string; timestamp: string }[];
+};
+
 type BrowserViewProps = {
   view: AgencyView;
   clients: Client[];
@@ -29,18 +47,23 @@ type BrowserViewProps = {
   comments: Comment[];
   recentLivrableIds: number[];
   todoItems: TodoItem[];
+  overview: HomeOverview;
+  favorites: string[];
   error?: string;
   onNewClient: () => void;
   onNewProject: () => void;
   onImport: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onRenameClient: (clientId: number, name: string) => void;
   onRenameProject: (projectId: number, name: string) => void;
+  onToggleFavorite: (key: string) => void;
 };
 
 type SortKey = "recent" | "name";
 type Layout = "grid" | "list";
 
 const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "s" : ""}`;
+// Narrow no-break spaces (fr-FR grouping) are invisible in some fonts: use a regular no-break space.
+const euros = (value: number) => `${value.toLocaleString("fr-FR").replace(/\u202f/g, "\u00a0")}\u00a0€`;
 const layoutKey = "kora-browser-layout";
 
 /** Space avatar colors: status pairs, all ≥ 7:1 (see tokens.css). */
@@ -117,6 +140,28 @@ function EmptyState({ icon: Icon, title, text }: { icon: typeof Star; title: str
   );
 }
 
+/** Figma-like top line: history back/forward, then where you are (a link when it leads somewhere). */
+function PageNav({ label, target }: { label: string; target?: string }) {
+  const router = useRouter();
+  return (
+    <nav className="page-nav" aria-label="Historique">
+      <button type="button" className="page-nav-button" onClick={() => router.back()} aria-label="Page précédente" title="Page précédente">
+        <ChevronLeft />
+      </button>
+      <button type="button" className="page-nav-button" onClick={() => router.forward()} aria-label="Page suivante" title="Page suivante">
+        <ChevronRight />
+      </button>
+      {target ? (
+        <Link className="page-nav-label" href={target}>
+          {label}
+        </Link>
+      ) : (
+        <span className="page-nav-label">{label}</span>
+      )}
+    </nav>
+  );
+}
+
 /** Home, spaces, space, project, recents and shared pages: the "file browser" half of the navigation (Figma-like). */
 export function BrowserView({
   view,
@@ -126,15 +171,21 @@ export function BrowserView({
   comments,
   recentLivrableIds,
   todoItems,
+  overview,
+  favorites,
   error,
   onNewClient,
   onNewProject,
   onImport,
   onRenameClient,
   onRenameProject,
+  onToggleFavorite,
 }: BrowserViewProps) {
+  const router = useRouter();
   const [sort, setSort] = useState<SortKey>("recent");
   const [layout, setLayout] = useState<Layout>("grid");
+  // Figma: a click selects a card (blue outline), a second click or a double-click opens it.
+  const [selectedCard, setSelectedCard] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -143,6 +194,14 @@ export function BrowserView({
       // Grid by default.
     }
   }, []);
+  useEffect(() => {
+    if (!selectedCard) return;
+    function clear(event: MouseEvent) {
+      if (!(event.target as Element).closest?.(".card-wrap")) setSelectedCard(null);
+    }
+    document.addEventListener("mousedown", clear);
+    return () => document.removeEventListener("mousedown", clear);
+  }, [selectedCard]);
   function changeLayout(next: Layout) {
     setLayout(next);
     try {
@@ -180,11 +239,47 @@ export function BrowserView({
   const toQualify = (record: Deliverable) =>
     comments.filter((comment) => comment.deliverableId === record.id && comment.decision === "À qualifier").length;
 
+  /** Selectable, starrable card wrapper (the star sits beside the link: no button inside a link). */
+  function card(key: string, target: string, className: string, label: string, children: React.ReactNode) {
+    const starred = favorites.includes(key);
+    return (
+      <div className={`card-wrap ${selectedCard === key ? "is-selected" : ""}`} key={key}>
+        <Link
+          className={className}
+          href={target}
+          onClick={(event) => {
+            if (selectedCard !== key && !event.metaKey && !event.ctrlKey) {
+              event.preventDefault();
+              setSelectedCard(key);
+            }
+          }}
+          onDoubleClick={() => router.push(target)}
+        >
+          {children}
+        </Link>
+        <button
+          type="button"
+          className={`star-button ${starred ? "is-starred" : ""}`}
+          aria-pressed={starred}
+          aria-label={starred ? `Retirer ${label} des favoris` : `Ajouter ${label} aux favoris`}
+          title={starred ? "Retirer des favoris" : "Ajouter aux favoris"}
+          onClick={() => onToggleFavorite(key)}
+        >
+          <Star />
+        </button>
+      </div>
+    );
+  }
+
   function livrableCard(record: Deliverable, showProject = false) {
     const project = projects.find((candidate) => candidate.id === (record.projectId ?? 1));
     const pending = toQualify(record);
-    return (
-      <Link className="file-card" href={hrefForRecord(record, deliverables)} key={record.id}>
+    return card(
+      `l:${livrableIdOf(record, deliverables)}`,
+      hrefForRecord(record, deliverables),
+      "file-card",
+      record.name,
+      <>
         <DeliverableThumbnail type={record.type} fileData={record.fileData} />
         <span className="file-card-body">
           <b>{record.name}</b>
@@ -193,15 +288,19 @@ export function BrowserView({
           </small>
           {pending > 0 && <span className="browser-badge">{plural(pending, "demande")} à qualifier</span>}
         </span>
-      </Link>
+      </>,
     );
   }
 
   /** Folder card (Figma): a strip of the project's latest deliverables, then the folder name. */
   function projectCard(project: Project) {
     const latest = latestOf(project.id);
-    return (
-      <Link className="folder-card" href={href.project(project.id)} key={project.id}>
+    return card(
+      `p:${project.id}`,
+      href.project(project.id),
+      "folder-card",
+      project.name,
+      <>
         <span className="folder-thumbs">
           {[0, 1, 2].map((index) =>
             latest[index] ? (
@@ -220,7 +319,7 @@ export function BrowserView({
             </small>
           </span>
         </span>
-      </Link>
+      </>,
     );
   }
 
@@ -265,13 +364,15 @@ export function BrowserView({
 
   const viewControls = (
     <div className="view-controls">
-      <label className="sort-select">
-        <span className="sr-only">Trier par</span>
-        <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
-          <option value="recent">Dernière modification</option>
-          <option value="name">Nom</option>
-        </select>
-      </label>
+      <Select
+        label="Trier par"
+        value={sort}
+        onChange={setSort}
+        options={[
+          { value: "recent", label: "Dernière modification" },
+          { value: "name", label: "Nom" },
+        ]}
+      />
       <div className="segmented" role="group" aria-label="Affichage">
         <button type="button" aria-pressed={layout === "grid"} aria-label="Grille" title="Grille" onClick={() => changeLayout("grid")}>
           <LayoutGrid />
@@ -290,13 +391,11 @@ export function BrowserView({
     const list = projectsOf(client.id);
     return (
       <div className="browser">
+        <PageNav label="Tous les espaces" target={href.spaces()} />
         <header className="page-header">
           <div className="page-identity">
             <SpaceAvatar client={client} size="lg" />
-            <div>
-              <RenamableTitle value={client.name} label="Renommer l’espace" onRename={(name) => onRenameClient(client.id, name)} />
-              <p className="page-subtitle">{client.email}</p>
-            </div>
+            <RenamableTitle value={client.name} label="Renommer l’espace" onRename={(name) => onRenameClient(client.id, name)} />
           </div>
           <button className="primary-button" onClick={onNewProject}>
             <Plus /> Projet
@@ -322,19 +421,13 @@ export function BrowserView({
     const sorted = sort === "name" ? [...latest].sort((left, right) => left.name.localeCompare(right.name, "fr")) : latest;
     return (
       <div className="browser">
+        {client ? <PageNav label={client.name} target={href.client(client.id)} /> : <PageNav label="Projet" />}
         <header className="page-header">
           <div className="page-identity">
             <span className="page-icon">
               <FolderClosed />
             </span>
-            <div>
-              <RenamableTitle value={project.name} label="Renommer le projet" onRename={(name) => onRenameProject(project.id, name)} />
-              {client && (
-                <Link className="page-subtitle page-subtitle-link" href={href.client(client.id)}>
-                  {client.name}
-                </Link>
-              )}
-            </div>
+            <RenamableTitle value={project.name} label="Renommer le projet" onRename={(name) => onRenameProject(project.id, name)} />
           </div>
           <div className="page-actions">
             <Link className="ghost-button" href={href.dashboard(project.id)}>
@@ -382,6 +475,7 @@ export function BrowserView({
     const sorted = [...clients].sort((left, right) => left.name.localeCompare(right.name, "fr"));
     return (
       <div className="browser">
+        <PageNav label="Tous les espaces" />
         <header className="page-header">
           <h1 className="page-title">Tous les espaces</h1>
           <button className="primary-button" onClick={onNewClient}>
@@ -400,6 +494,7 @@ export function BrowserView({
   if (view.kind === "shared")
     return (
       <div className="browser">
+        <PageNav label="Partagés avec moi" />
         <header className="page-header">
           <h1 className="page-title">Partagés avec moi</h1>
         </header>
@@ -421,6 +516,7 @@ export function BrowserView({
   if (view.kind === "recents")
     return (
       <div className="browser">
+        <PageNav label="Récents" />
         <header className="page-header">
           <h1 className="page-title">Récents</h1>
         </header>
@@ -449,6 +545,7 @@ export function BrowserView({
   if (view.kind === "todo") {
     return (
       <div className="browser">
+        <PageNav label="À traiter" />
         <header className="page-header">
           <div>
             <h1 className="page-title">À traiter</h1>
@@ -475,46 +572,115 @@ export function BrowserView({
     );
   }
 
-  // ----- Home
+  // ----- Home: global overview (figures, pending decisions, spaces breakdown, activity)
+  const tiles = [
+    { label: "En attente du client", value: euros(overview.pendingEuros), note: plural(overview.pendingCount, "proposition") },
+    { label: "Demandes à qualifier", value: String(overview.toQualify), note: "sur les dernières versions" },
+    {
+      label: "Part hors périmètre",
+      value: overview.outsideRate === null ? "—" : `${overview.outsideRate} %`,
+      note: "des demandes qualifiées",
+    },
+    { label: "Versions approuvées", value: `${overview.approved} / ${overview.livrables}`, note: "livrables validés par le client" },
+  ];
   return (
     <div className="browser">
+      <PageNav label="Accueil" />
       <header className="page-header">
-        <h1 className="page-title">Accueil</h1>
+        <h1 className="page-title">Vue d’ensemble</h1>
         <button className="primary-button" onClick={onNewProject}>
           <Plus /> Projet
         </button>
       </header>
-      <section className="browser-section">
-        <h2>
-          <Link href={href.todo()}>À traiter · {agencyActions.length}</Link>
-        </h2>
-        {agencyActions.length === 0 ? (
-          <p className="browser-empty">
-            Rien à traiter{awaitingClient.length > 0 ? ` · ${plural(awaitingClient.length, "proposition")} en attente du client` : ""}.
-          </p>
-        ) : (
-          <TodoList items={agencyActions.slice(0, 5)} />
-        )}
-        {agencyActions.length > 5 && (
-          <Link className="browser-more" href={href.todo()}>
-            Voir les {agencyActions.length} décisions
-          </Link>
-        )}
+
+      <section className="overview" aria-label="Indicateurs">
+        <div className="hero-stat">
+          <span className="stat-label">Revenu supplémentaire accepté</span>
+          <span className="hero-value">{euros(overview.acceptedEuros)}</span>
+          <span className="stat-note">
+            {overview.acceptedCount} proposition{overview.acceptedCount > 1 ? "s acceptées" : " acceptée"}
+            {overview.acceptedDays > 0 ? ` · ${plural(overview.acceptedDays, "jour")} de délai accordé` : ""}
+          </span>
+        </div>
+        <div className="stat-row">
+          {tiles.map((tile) => (
+            <div className="stat-tile" key={tile.label}>
+              <span className="stat-label">{tile.label}</span>
+              <span className="stat-value">{tile.value}</span>
+              <span className="stat-note">{tile.note}</span>
+            </div>
+          ))}
+        </div>
       </section>
-      {recentRecords.length > 0 && (
+
+      {agencyActions.length > 0 && (
         <section className="browser-section">
           <h2>
-            <Link href={href.recents()}>Récents</Link>
+            <Link href={href.todo()}>À traiter · {agencyActions.length}</Link>
           </h2>
-          <div className="file-grid">{recentRecords.slice(0, 4).map((record) => livrableCard(record, true))}</div>
+          <TodoList items={agencyActions.slice(0, 5)} />
+          {agencyActions.length > 5 && (
+            <Link className="browser-more" href={href.todo()}>
+              Voir les {agencyActions.length} décisions
+            </Link>
+          )}
         </section>
       )}
-      <section className="browser-section">
-        <h2>
-          <Link href={href.spaces()}>Espaces</Link>
-        </h2>
-        <div className="space-grid">{clients.map(spaceCard)}</div>
-      </section>
+
+      {overview.spaces.length > 0 && (
+        <section className="browser-section">
+          <h2>
+            <Link href={href.spaces()}>Par espace</Link>
+          </h2>
+          <div className="overview-table-wrap">
+            <table className="overview-table">
+              <thead>
+                <tr>
+                  <th scope="col">Espace</th>
+                  <th scope="col">Projets</th>
+                  <th scope="col">Livrables</th>
+                  <th scope="col">À qualifier</th>
+                  <th scope="col">Hors périmètre</th>
+                  <th scope="col">Revenu accepté</th>
+                </tr>
+              </thead>
+              <tbody>
+                {overview.spaces.map((row) => (
+                  <tr key={row.client.id}>
+                    <th scope="row">
+                      <Link href={href.client(row.client.id)}>
+                        <SpaceAvatar client={row.client} size="sm" />
+                        <span>{row.client.name}</span>
+                      </Link>
+                    </th>
+                    <td>{row.projects}</td>
+                    <td>{row.livrables}</td>
+                    <td>{row.toQualify}</td>
+                    <td>{row.outside}</td>
+                    <td>{euros(row.acceptedEuros)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {overview.activity.length > 0 && (
+        <section className="browser-section">
+          <h2>Activité récente</h2>
+          <ul className="activity-list">
+            {overview.activity.map((event) => (
+              <li key={event.id}>
+                <span>{event.description}</span>
+                <small>
+                  {event.actor} · {event.timestamp}
+                </small>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

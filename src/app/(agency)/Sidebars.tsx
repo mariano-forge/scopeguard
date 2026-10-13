@@ -8,6 +8,7 @@ import {
   Clock,
   CircleHelp,
   FileText,
+  FolderClosed,
   House,
   Image as ImageIcon,
   Inbox,
@@ -81,9 +82,12 @@ function Notifications({ notifications, compact }: { notifications: Notification
 }
 
 /** Home pages (Figma home): account, search, shortcuts, starred, all client spaces. */
+export type SidebarFavorite = { key: string; label: string; href: string; kind: "project" | "livrable" };
+
 export function HomeSidebar({
   view,
   clients,
+  favorites,
   agencyActionCount,
   notifications,
   onSearch,
@@ -91,6 +95,7 @@ export function HomeSidebar({
 }: {
   view: AgencyView;
   clients: Client[];
+  favorites: SidebarFavorite[];
   agencyActionCount: number;
   notifications: Notification[];
   onSearch: () => void;
@@ -112,12 +117,12 @@ export function HomeSidebar({
         </span>
         <Notifications notifications={notifications} />
       </div>
+      <button className="sidebar-search" onClick={onSearch}>
+        <Search />
+        <span>Rechercher</span>
+        <kbd>Ctrl K</kbd>
+      </button>
       <nav className="sidebar-scroll">
-        <button className="nav-item" onClick={onSearch}>
-          <span><Search /></span>
-          <span className="nav-label">Rechercher</span>
-          <kbd className="nav-kbd">Ctrl K</kbd>
-        </button>
         {navLink(href.home(), view.kind === "home", <House />, "Accueil")}
         {navLink(
           href.todo(),
@@ -132,7 +137,20 @@ export function HomeSidebar({
         <div className="nav-section">
           <span>Favoris</span>
         </div>
-        <p className="nav-empty">Ajoutez un projet en favori pour le retrouver ici.</p>
+        {favorites.length === 0 ? (
+          <p className="nav-empty">Survolez un projet ou un livrable et cliquez sur l’étoile pour le retrouver ici.</p>
+        ) : (
+          <ul className="nav-tree">
+            {favorites.map((favorite) => (
+              <li key={favorite.key}>
+                <Link className="nav-item" href={favorite.href} title={favorite.label}>
+                  <span>{favorite.kind === "project" ? <FolderClosed /> : <FileText />}</span>
+                  <span className="nav-label">{favorite.label}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
 
         <div className="nav-section">
           <Link href={href.spaces()} className={view.kind === "spaces" ? "is-active" : ""}>
