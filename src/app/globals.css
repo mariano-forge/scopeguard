@@ -70,7 +70,7 @@ button {
   background: var(--mist);
   color: var(--ink);
   border-radius: 6px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
 }
 .muted {
   color: var(--graphite);
@@ -108,7 +108,7 @@ button {
 .nav-item strong {
   margin-left: auto;
   color: var(--graphite);
-  font-size: 11px;
+  font-size: var(--t-caption-size);
 }
 .sidebar-bottom {
   margin-top: auto;
@@ -121,7 +121,7 @@ button {
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
 }
 .profile small,
 .profile b {
@@ -135,7 +135,7 @@ button {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
   flex-shrink: 0;
 }
@@ -218,7 +218,7 @@ button {
 }
 .eyebrow {
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
   letter-spacing: 1.4px;
   margin-bottom: 8px;
@@ -266,7 +266,7 @@ button {
   background: var(--status-high-bg);
   color: var(--danger);
   padding: 9px 12px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
 }
 .status-strip {
   display: flex;
@@ -276,7 +276,7 @@ button {
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   color: var(--graphite);
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   margin-bottom: 20px;
 }
 .status-dot {
@@ -356,7 +356,7 @@ button {
 }
 .zoom,
 .page-counter {
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   color: var(--graphite);
 }
 .artboard-wrap {
@@ -497,7 +497,7 @@ button {
   border-radius: 50%;
   width: 24px;
   height: 24px;
-  font: 600 10px var(--font-ui);
+  font: 600 var(--t-caption-size) var(--font-ui);
 }
 .pin-one {
   top: 56%;
@@ -518,7 +518,7 @@ button {
   justify-content: space-between;
   padding: 13px 17px;
   border-top: 1px solid var(--border);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   color: var(--graphite);
 }
 .text-button {
@@ -526,7 +526,7 @@ button {
   padding: 0;
   color: var(--graphite);
   background: transparent;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .comments-panel {
   display: flex;
@@ -545,7 +545,7 @@ button {
 .comments-heading p {
   margin: 0;
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .more-button {
   font-size: 14px;
@@ -561,7 +561,7 @@ button {
   border: 0;
   background: transparent;
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   padding: 6px 8px;
   border-radius: 4px;
 }
@@ -599,28 +599,28 @@ button {
 }
 .comment-top b {
   display: block;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
 }
 .comment-top small {
   display: block;
   margin-top: 3px;
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
 }
 .comment-number {
   margin-left: auto;
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .comment-card p {
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   line-height: 1.5;
   margin: 12px 0 9px;
   color: var(--graphite);
 }
 .comment-location {
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
 }
 .comment-decision {
   display: flex;
@@ -631,7 +631,7 @@ button {
 .decision-badge {
   border-radius: 4px;
   padding: 5px 7px;
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .decision-pending {
@@ -650,12 +650,12 @@ button {
   border: 0;
   background: transparent;
   color: var(--action-text);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .proposal-sent {
   color: var(--status-resolved-text);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .comments-footer {
@@ -669,7 +669,7 @@ button {
 .send-proposal {
   border-radius: 5px;
   padding: 10px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .approve-button {
@@ -692,7 +692,7 @@ button {
   border-radius: 7px;
   padding: 12px 15px;
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .decision-bar b {
   color: var(--ink);
@@ -717,7 +717,7 @@ button {
   border-radius: 4px;
   padding: 6px 8px;
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .decision-actions .active-decision {
   border-color: var(--status-resolved-text);
@@ -776,7 +776,7 @@ button {
 }
 .drawer-intro {
   color: var(--graphite);
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   line-height: 1.5;
   margin: 15px 0 22px;
 }
@@ -785,7 +785,7 @@ button {
   display: grid;
   gap: 7px;
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
   margin-bottom: 15px;
 }
@@ -796,7 +796,7 @@ button {
   border-radius: 5px;
   padding: 10px;
   color: var(--graphite);
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   resize: vertical;
 }
 .project-modal input::placeholder {
@@ -805,7 +805,7 @@ button {
 .share-url {
   background: var(--canvas);
   color: var(--graphite) !important;
-  font-size: 10px !important;
+  font-size: var(--t-caption-size) !important;
 }
 .proposal-drawer textarea {
   min-height: 78px;
@@ -825,13 +825,13 @@ button {
 .form-error {
   margin: -4px 0 14px;
   color: var(--danger);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .share-meta {
   display: flex;
   justify-content: space-between;
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   margin: -3px 0 16px;
 }
 .active-link {
@@ -852,7 +852,7 @@ button {
   border: 0;
   background: transparent;
   color: var(--danger);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .version-list {
   display: grid;
@@ -876,18 +876,18 @@ button {
   display: block;
 }
 .version-row b {
-  font-size: 11px;
+  font-size: var(--t-caption-size);
 }
 .version-row small {
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   margin-top: 4px;
 }
 .version-status {
   flex-shrink: 0;
   border-radius: 4px;
   padding: 5px 7px;
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .locked-status {
@@ -985,7 +985,7 @@ button {
   border-radius: 5px;
   padding: 10px;
   color: var(--graphite);
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   resize: vertical;
 }
 .project-modal textarea::placeholder {
@@ -1004,7 +1004,7 @@ button {
   border: 0;
   background: transparent;
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .reply {
@@ -1023,23 +1023,23 @@ button {
   height: 23px;
   background: var(--mist);
   color: var(--ink);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
 }
 .reply b,
 .reply small {
   display: block;
 }
 .reply b {
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .reply small {
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   margin-top: 2px;
 }
 .reply p {
   margin: 7px 0 0;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .reply-form {
   display: flex;
@@ -1053,7 +1053,7 @@ button {
   border-radius: 5px;
   padding: 8px 9px;
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .reply-form input::placeholder {
   color: var(--graphite);
@@ -1064,7 +1064,7 @@ button {
   padding: 0 10px;
   background: var(--ink);
   color: var(--paper);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .reply-form button:disabled {
@@ -1113,7 +1113,7 @@ button {
   border: 1px solid var(--border-input);
   border-radius: 5px;
   padding: 8px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   resize: vertical;
   min-height: 50px;
 }
@@ -1122,7 +1122,7 @@ button {
   border: 1px solid var(--border-input);
   border-radius: 5px;
   padding: 6px 8px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .edit-actions {
   display: flex;
@@ -1137,7 +1137,7 @@ button {
   background: var(--ink);
   color: var(--paper);
   padding: 4px 9px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .save-button:disabled {
@@ -1151,7 +1151,7 @@ button {
   background: var(--canvas);
   color: var(--graphite);
   padding: 12px 14px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
   text-align: left;
 }
@@ -1168,12 +1168,12 @@ button {
   right: -8px;
   display: grid;
   place-items: center;
-  min-width: 14px;
-  height: 14px;
+  min-width: var(--s-4);
+  height: var(--s-4);
   border-radius: 50%;
   background: var(--attention-fill);
   color: var(--ink);
-  font-size: 8px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .notification-panel {
@@ -1195,7 +1195,7 @@ button {
 }
 .notification-panel > p {
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .notification-item {
   display: flex;
@@ -1217,12 +1217,12 @@ button {
 }
 .notification-item span {
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   line-height: 1.35;
 }
 .notification-item small {
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   margin-top: 3px;
 }
 .notify-button {
@@ -1233,7 +1233,7 @@ button {
   color: var(--status-resolved-text);
   padding: 10px;
   margin-top: 9px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .proposal-queue {
@@ -1256,7 +1256,7 @@ button {
 }
 .proposal-queue small {
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
 }
 .proposal-queue-item {
   display: flex;
@@ -1266,7 +1266,7 @@ button {
   border-top: 1px solid var(--border);
   padding-top: 9px;
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .proposal-queue-item > span:first-child {
   min-width: 0;
@@ -1286,7 +1286,7 @@ button {
   background: var(--status-medium-bg);
   color: var(--status-medium-text);
   padding: 10px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .reminder-button:disabled {
@@ -1295,7 +1295,7 @@ button {
 }
 .reminder-row > span {
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
 }
 .adaptation-request-summary {
   border: 1px solid var(--border);
@@ -1307,13 +1307,13 @@ button {
 .adaptation-request-summary > span {
   display: block;
   color: var(--status-medium-text);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .adaptation-request-summary p {
   margin: 8px 0;
   color: var(--graphite);
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   line-height: 1.45;
 }
 .adaptation-request-summary > div {
@@ -1323,12 +1323,12 @@ button {
 }
 .adaptation-request-summary b {
   color: var(--status-medium-text);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
 }
 .proposal-version-label {
   margin: -5px 0 12px;
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
 }
 .artboard .pin {
   z-index: 3;
@@ -1383,11 +1383,11 @@ button {
 }
 .client-comments-heading span {
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .client-empty-comments {
   color: var(--graphite);
-  font-size: 11px;
+  font-size: var(--t-caption-size);
 }
 .client-comments-list {
   display: grid;
@@ -1417,27 +1417,27 @@ button {
   display: block;
 }
 .client-comment-top b {
-  font-size: 11px;
+  font-size: var(--t-caption-size);
 }
 .client-comment-top small {
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   margin-top: 3px;
 }
 .client-comment-number {
   margin-left: auto;
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .client-comment-card > p {
   margin: 11px 0 7px;
   color: var(--graphite);
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   line-height: 1.5;
 }
 .client-comment-location {
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
 }
 .client-reply {
   display: flex;
@@ -1451,23 +1451,23 @@ button {
   display: block;
 }
 .client-reply b {
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .client-reply small {
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   margin-top: 2px;
 }
 .client-reply p {
   margin: 6px 0 0;
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   line-height: 1.4;
 }
 .selected-comment-note {
   margin: 14px 0 0;
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .client-proposals-panel {
   margin-top: 18px;
@@ -1496,19 +1496,19 @@ button {
 }
 .client-proposal-card small {
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
 }
 .client-proposal-card p {
   margin: 7px 0;
   color: var(--graphite);
-  font-size: 11px;
+  font-size: var(--t-caption-size);
 }
 .client-proposal-summary {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
 }
 .client-proposal-summary b {
   color: var(--ink);
@@ -1523,7 +1523,7 @@ button {
 .client-refuse-action {
   border-radius: 5px;
   padding: 9px 11px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .client-accept-action {
@@ -1539,7 +1539,7 @@ button {
 .client-proposal-accepted,
 .client-proposal-refused {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .client-proposal-accepted {
@@ -1554,13 +1554,13 @@ button {
   background: var(--status-medium-bg);
   color: var(--status-medium-text);
   padding: 9px 11px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .client-proposal-adaptation {
   flex-shrink: 0;
   color: var(--status-medium-text);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .client-action-group {
@@ -1575,7 +1575,7 @@ button {
   background: var(--paper);
   color: var(--graphite);
   padding: 11px 15px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .client-primary-action:disabled {
@@ -1592,7 +1592,7 @@ button {
   background: var(--canvas);
   color: var(--graphite);
   padding: 0 11px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .agency-validation-status .status-dot {
@@ -1612,7 +1612,7 @@ button {
   background: transparent;
   color: var(--graphite);
   padding: 10px 0 0;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .client-reply-form {
@@ -1627,7 +1627,7 @@ button {
   border-radius: 5px;
   padding: 8px 9px;
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .client-reply-form input::placeholder {
   color: var(--graphite);
@@ -1638,7 +1638,7 @@ button {
   padding: 0 10px;
   background: var(--ink);
   color: var(--paper);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .client-reply-form button:disabled {
@@ -1653,7 +1653,7 @@ button {
   color: var(--status-medium-text);
   padding: 10px;
   margin-top: 9px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .add-comment-tool {
@@ -1662,7 +1662,7 @@ button {
   background: var(--status-resolved-bg);
   color: var(--status-resolved-text);
   padding: 7px 10px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .add-comment-tool:hover {
@@ -1692,7 +1692,7 @@ button {
   background: var(--paper);
   color: var(--graphite);
   padding: 7px 9px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .project-select:focus,
 .workspace-select:focus {
@@ -1707,7 +1707,7 @@ button {
   color: var(--graphite);
   padding: 7px 9px;
   margin-bottom: 9px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .deliverable-select:focus {
   outline: 2px solid var(--action-ui);
@@ -1729,7 +1729,7 @@ button {
   background: var(--canvas);
   color: var(--graphite);
   padding: 7px 9px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .version-select:focus {
   outline: 2px solid var(--action-ui);
@@ -1773,13 +1773,13 @@ button {
   color: var(--graphite);
   padding: 8px 7px;
   text-align: left;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .sidebar-dropdown-item small {
   grid-column: 2;
   overflow: hidden;
   color: var(--graphite);
-  font-size: 8px;
+  font-size: var(--t-caption-size);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1796,14 +1796,14 @@ button {
   margin-top: 3px;
 }
 .client-dropdown-avatar {
-  width: 15px;
-  height: 15px;
+  width: var(--s-4);
+  height: var(--s-4);
   display: grid;
   place-items: center;
   border-radius: 4px;
   background: var(--mist);
   color: var(--ink);
-  font-size: 8px;
+  font-size: var(--t-caption-size);
 }
 .sidebar-dropdown-action {
   display: block;
@@ -1825,7 +1825,7 @@ button {
   background: var(--status-resolved-bg);
   color: var(--status-resolved-text);
   padding: 7px 10px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .client-add-comment-tool:hover {
@@ -1864,7 +1864,7 @@ button {
   border: 1px solid var(--border-input);
   background: var(--canvas);
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 500;
   padding: 4px 8px;
   border-radius: 6px;
@@ -1891,7 +1891,7 @@ button {
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   border-radius: 4px;
   padding: 1px 5px;
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
   color: inherit;
   margin-left: 0;
@@ -1914,11 +1914,11 @@ button {
 }
 .audit-section-heading span {
   color: var(--graphite);
-  font: 400 9px var(--font-ui);
+  font: 400 var(--t-caption-size) var(--font-ui);
 }
 .audit-empty {
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .audit-list {
   display: grid;
@@ -1947,11 +1947,11 @@ button {
 }
 .audit-event b {
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .audit-event small {
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   margin-top: 3px;
 }
 .import-choice-modal {
@@ -1980,7 +1980,7 @@ button {
 }
 .import-choice small {
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   line-height: 1.4;
 }
 .client-review-shell {
@@ -2005,7 +2005,7 @@ button {
 }
 .client-review-label {
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
   letter-spacing: 1.5px;
 }
@@ -2037,7 +2037,7 @@ button {
   background: var(--paper);
   color: var(--graphite);
   padding: 10px 12px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .client-artboard-panel {
@@ -2054,7 +2054,7 @@ button {
   padding: 14px 18px;
   border-bottom: 1px solid var(--border);
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .client-artboard-wrap {
   display: grid;
@@ -2190,7 +2190,7 @@ button {
 }
 .client-review-actions p {
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .client-primary-action {
   border: 0;
@@ -2198,7 +2198,7 @@ button {
   background: var(--ink);
   color: var(--paper);
   padding: 11px 15px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .client-review-state {
@@ -2275,7 +2275,7 @@ button {
 }
 .proposal-accepted {
   color: var(--status-resolved-text);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .proposal-summary {
@@ -2294,16 +2294,16 @@ button {
 }
 .proposal-summary span {
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .proposal-summary b {
   color: var(--graphite);
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   text-align: right;
 }
 .proposal-refused {
   color: var(--status-high-text);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .refuse-proposal {
@@ -2313,7 +2313,7 @@ button {
   border: 0;
   background: transparent;
   color: var(--danger);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
   padding: 7px;
 }
@@ -2324,7 +2324,7 @@ button {
   padding: 10px;
   background: var(--status-high-bg);
   color: var(--danger);
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .approval-modal {
@@ -2346,7 +2346,7 @@ button {
   background: var(--status-high-bg);
   color: var(--status-high-text);
   padding: 9px 10px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   line-height: 1.4;
 }
 .blocking-dot {
@@ -2372,7 +2372,7 @@ button {
   background: transparent;
   color: var(--graphite);
   padding: 3px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .proof-modal {
@@ -2391,12 +2391,12 @@ button {
 }
 .proof-header span {
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   margin-bottom: 5px;
 }
 .proof-header b {
   color: var(--graphite);
-  font-size: 11px;
+  font-size: var(--t-caption-size);
 }
 .proof-status {
   display: flex;
@@ -2407,7 +2407,7 @@ button {
   background: var(--status-resolved-bg);
   color: var(--status-resolved-text);
   padding: 10px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .proof-status .status-dot {
@@ -2415,7 +2415,7 @@ button {
 }
 .proof-status small {
   color: var(--status-resolved-text);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 400;
 }
 .proof-modal h3 {
@@ -2439,7 +2439,7 @@ button {
 .proof-comment p {
   margin: 0;
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .proof-proposal {
   display: flex;
@@ -2449,7 +2449,7 @@ button {
   border-radius: 5px;
   margin-top: 16px;
   padding: 11px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .proof-proposal b {
   color: var(--graphite);
@@ -2463,7 +2463,7 @@ button {
   gap: 12px;
   border-top: 1px solid var(--border);
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   margin-top: 20px;
   padding-top: 13px;
 }
@@ -2473,7 +2473,7 @@ button {
   background: var(--paper);
   color: var(--graphite);
   padding: 11px 15px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
 }
 .client-secondary-action:disabled,
@@ -2490,7 +2490,7 @@ button {
   background: var(--status-high-bg);
   color: var(--status-high-text);
   padding: 8px 11px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
   margin-bottom: 10px;
 }
@@ -2508,7 +2508,7 @@ button {
   background: transparent;
   color: var(--graphite);
   padding: 4px 6px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
 }
 .client-viewer-button:disabled {
   cursor: not-allowed;
@@ -2549,7 +2549,7 @@ button {
   background: var(--paper);
   color: var(--graphite);
   padding: 8px 11px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
   margin: 12px 0 2px;
 }
@@ -2636,7 +2636,7 @@ button {
   align-items: center;
   gap: 2px;
   color: var(--graphite);
-  font-size: 10px;
+  font-size: var(--t-caption-size);
 }
 .scope-summary-grid {
   display: grid;
@@ -2657,7 +2657,7 @@ button {
   background: var(--status-clarify-bg);
 }
 .scope-card-label {
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
   color: var(--graphite);
   text-transform: uppercase;
@@ -2669,7 +2669,7 @@ button {
   color: var(--ink);
 }
 .scope-summary-card small {
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   color: var(--graphite);
 }
 .proof-proposals-list {
@@ -2689,12 +2689,12 @@ button {
 }
 .proof-proposal-item b {
   display: block;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   color: var(--graphite);
 }
 .proof-proposal-item small {
   display: block;
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   color: var(--graphite);
   margin-top: 2px;
 }
@@ -2721,7 +2721,7 @@ button {
 .input-addon {
   padding: 0 10px;
   color: var(--graphite);
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
   background: var(--canvas);
   border-left: 1px solid var(--border);
@@ -2735,7 +2735,7 @@ button {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 10px 12px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
   text-align: center;
   margin-top: 4px;
@@ -2790,7 +2790,7 @@ button {
   background: var(--status-resolved-bg);
   color: var(--status-resolved-text);
   padding: 7px 10px;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
   margin: 4px 0 14px;
 }
@@ -2809,7 +2809,7 @@ button {
   background: transparent;
   color: var(--graphite);
   padding: 6px 0 2px;
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
   cursor: pointer;
 }
@@ -2864,7 +2864,7 @@ button {
   font-size: 16px;
 }
 .kpi-title {
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   font-weight: 600;
   color: var(--graphite);
   text-transform: uppercase;
@@ -2884,7 +2884,7 @@ button {
   color: var(--status-scope-text);
 }
 .kpi-sub {
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   color: var(--graphite);
   line-height: 1.4;
 }
@@ -2920,11 +2920,11 @@ button {
 }
 .section-card-header p {
   margin: 3px 0 0;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   color: var(--graphite);
 }
 .section-card-header span {
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   color: var(--graphite);
   font-weight: 600;
 }
@@ -2960,7 +2960,7 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 14px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   color: var(--graphite);
 }
 .legend-item {
@@ -2996,7 +2996,7 @@ button {
   gap: 3px;
 }
 .mini-stat small {
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   color: var(--graphite);
 }
 .mini-stat b {
@@ -3016,7 +3016,7 @@ button {
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   color: var(--graphite);
 }
 .status-row.highlight {
@@ -3050,14 +3050,14 @@ button {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
 }
 .arbitrage-table th {
   padding: 10px 12px;
   border-bottom: 2px solid var(--border);
   color: var(--graphite);
   font-weight: 600;
-  font-size: 10px;
+  font-size: var(--t-caption-size);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -3070,7 +3070,7 @@ button {
 .arbitrage-table td small {
   display: block;
   color: var(--graphite);
-  font-size: 9px;
+  font-size: var(--t-caption-size);
   margin-top: 2px;
 }
 .demand-cell {
@@ -3078,7 +3078,7 @@ button {
 }
 .demand-cell p {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   line-height: 1.4;
   color: var(--ink);
 }
@@ -3088,7 +3088,7 @@ button {
 }
 .empty-table-note {
   color: var(--graphite);
-  font-size: 11px;
+  font-size: var(--t-caption-size);
   margin: 8px 0;
 }
 
