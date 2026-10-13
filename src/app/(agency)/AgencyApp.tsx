@@ -2071,7 +2071,6 @@ export function AgencyApp() {
           view={view}
           clients={clients}
           favorites={sidebarFavorites}
-          agencyActionCount={agencyActionCount}
           notifications={notifications}
           onSearch={() => setPaletteOpen(true)}
           onNewClient={() => setNewClientOpen(true)}
@@ -2098,6 +2097,10 @@ export function AgencyApp() {
               overview={overview}
               favorites={favorites}
               onToggleFavorite={toggleFavorite}
+              livrableStatus={(livrableId) => {
+                const latest = versionsOfLivrable(livrableId, deliverables)[0];
+                return latest ? statusOf(latest) : { kind: "none" };
+              }}
             />
           ) : activeTab === "dashboard" ? (
             <div className="dashboard-view">

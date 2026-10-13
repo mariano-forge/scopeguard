@@ -4775,3 +4775,38 @@ a.page-nav-label:hover {
   flex: 1;
   min-width: 0;
 }
+
+/* Recents quick filters + status mark on file cards */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--s-1);
+}
+.filter-chips .filter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 32px;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-button);
+  cursor: pointer;
+}
+.filter-chips .filter .lucide {
+  width: 14px;
+  height: 14px;
+}
+.filter-chips .filter:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 2px;
+}
+.file-card-title {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.file-card-title b {
+  flex: 1;
+  min-width: 0;
+}

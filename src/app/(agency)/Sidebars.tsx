@@ -88,7 +88,6 @@ export function HomeSidebar({
   view,
   clients,
   favorites,
-  agencyActionCount,
   notifications,
   onSearch,
   onNewClient,
@@ -96,7 +95,6 @@ export function HomeSidebar({
   view: AgencyView;
   clients: Client[];
   favorites: SidebarFavorite[];
-  agencyActionCount: number;
   notifications: Notification[];
   onSearch: () => void;
   onNewClient: () => void;
@@ -124,13 +122,6 @@ export function HomeSidebar({
       </button>
       <nav className="sidebar-scroll">
         {navLink(href.home(), view.kind === "home", <House />, "Accueil")}
-        {navLink(
-          href.todo(),
-          view.kind === "todo",
-          <Inbox />,
-          "À traiter",
-          agencyActionCount > 0 ? <strong className="nav-count">{agencyActionCount}</strong> : undefined,
-        )}
         {navLink(href.recents(), view.kind === "recents", <Clock />, "Récents")}
         {navLink(href.shared(), view.kind === "shared", <Share2 />, "Partagés avec moi")}
 

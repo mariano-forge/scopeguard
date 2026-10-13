@@ -8,6 +8,7 @@ import { DeliverableThumbnail } from "@/components/DeliverableThumbnail";
 import { Select } from "@/components/Select";
 import { href, hrefForRecord, livrableIdOf, versionsOfLivrable, type AgencyView } from "./routes";
 import { TodoList, isAgencyAction, type TodoItem } from "./TodoList";
+import { StatusMark, type TabStatus } from "./TabBar";
 
 type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId?: number; status: string };
@@ -56,9 +57,12 @@ type BrowserViewProps = {
   onRenameClient: (clientId: number, name: string) => void;
   onRenameProject: (projectId: number, name: string) => void;
   onToggleFavorite: (key: string) => void;
+  /** Review status of a deliverable (its latest version), as shown on tabs. */
+  livrableStatus: (livrableId: number) => TabStatus;
 };
 
 type SortKey = "recent" | "name";
+type RecentFilter = "all" | "todo" | "awaiting" | "approved" | "starred";
 type Layout = "grid" | "list";
 
 const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "s" : ""}`;
@@ -180,10 +184,12 @@ export function BrowserView({
   onRenameClient,
   onRenameProject,
   onToggleFavorite,
+  livrableStatus,
 }: BrowserViewProps) {
   const router = useRouter();
   const [sort, setSort] = useState<SortKey>("recent");
   const [layout, setLayout] = useState<Layout>("grid");
+  const [recentFilter, setRecentFilter] = useState<RecentFilter>("all");
   // Figma: a click selects a card (blue outline), a second click or a double-click opens it.
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
 
@@ -282,7 +288,10 @@ export function BrowserView({
       <>
         <DeliverableThumbnail type={record.type} fileData={record.fileData} />
         <span className="file-card-body">
-          <b>{record.name}</b>
+          <span className="file-card-title">
+            <b>{record.name}</b>
+            <StatusMark status={livrableStatus(livrableIdOf(record, deliverables))} />
+          </span>
           <small>
             {showProject && project ? `${project.name} · ` : ""}V{String(record.version).padStart(2, "0")} · {record.importedAt}
           </small>
@@ -509,33 +518,56 @@ export function BrowserView({
   const recentRecords = recentLivrableIds
     .map((livrableId) => versionsOfLivrable(livrableId, deliverables)[0])
     .filter((record): record is Deliverable => Boolean(record));
-  const recentProjects = [...new Set(recentRecords.map((record) => record.projectId ?? 1))]
-    .map((projectId) => projects.find((project) => project.id === projectId))
-    .filter((project): project is Project => Boolean(project));
 
-  if (view.kind === "recents")
+  if (view.kind === "recents") {
+    // Quick filters over recently opened deliverables (Figma "Recently viewed").
+    const matches = (record: Deliverable, filter: RecentFilter) => {
+      const livrableId = livrableIdOf(record, deliverables);
+      const status = livrableStatus(livrableId).kind;
+      if (filter === "todo") return status === "changes-requested" || status === "to-qualify";
+      if (filter === "awaiting") return status === "awaiting-client" || status === "none";
+      if (filter === "approved") return status === "approved";
+      if (filter === "starred") return favorites.includes(`l:${livrableId}`);
+      return true;
+    };
+    const filters: { value: RecentFilter; label: string }[] = [
+      { value: "all", label: "Tous" },
+      { value: "todo", label: "À traiter" },
+      { value: "awaiting", label: "En attente du client" },
+      { value: "approved", label: "Approuvés" },
+      { value: "starred", label: "Favoris" },
+    ];
+    const shown = recentRecords.filter((record) => matches(record, recentFilter));
     return (
       <div className="browser">
         <PageNav label="Récents" />
         <header className="page-header">
           <h1 className="page-title">Récents</h1>
+          <div className="filter-chips" role="group" aria-label="Filtrer les livrables récents">
+            {filters.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                className={`filter ${recentFilter === filter.value ? "active-filter" : ""}`}
+                aria-pressed={recentFilter === filter.value}
+                onClick={() => setRecentFilter(filter.value)}
+              >
+                {filter.value === "starred" && <Star aria-hidden="true" />}
+                {filter.label} <span>{recentRecords.filter((record) => matches(record, filter.value)).length}</span>
+              </button>
+            ))}
+          </div>
         </header>
         {recentRecords.length === 0 ? (
-          <EmptyState icon={FolderClosed} title="Rien d’ouvert récemment" text="Les projets et livrables que vous ouvrez apparaîtront ici." />
+          <EmptyState icon={FolderClosed} title="Rien d’ouvert récemment" text="Les livrables que vous ouvrez apparaîtront ici." />
+        ) : shown.length === 0 ? (
+          <EmptyState icon={Star} title="Aucun livrable pour ce filtre" text="Essayez un autre filtre ou revenez à « Tous »." />
         ) : (
-          <>
-            <section className="browser-section">
-              <h2>Projets</h2>
-              <div className="folder-grid">{recentProjects.map(projectCard)}</div>
-            </section>
-            <section className="browser-section">
-              <h2>Livrables</h2>
-              <div className="file-grid">{recentRecords.map((record) => livrableCard(record, true))}</div>
-            </section>
-          </>
+          <div className="file-grid">{shown.map((record) => livrableCard(record, true))}</div>
         )}
       </div>
     );
+  }
 
   if (view.kind === "not-found") return <NotFound />;
 
