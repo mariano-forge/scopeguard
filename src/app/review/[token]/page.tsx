@@ -77,7 +77,19 @@ type Deliverable = {
   importedAt?: string;
   type?: "PDF" | "Image";
   fileData?: string;
+  reviewStatus?: ReviewStatus;
+  approvedAt?: string;
 };
+type ReviewStatus = "pending" | "changes-requested" | "approved";
+
+/** The review status lives on the shared version; older saves kept a single global one. */
+function reviewStateOf(
+  record: Deliverable | undefined,
+  legacy: { reviewStatus?: ReviewStatus; approvedAt?: string | null },
+): { status: ReviewStatus; approvedAt: string | null } {
+  const status = record?.reviewStatus ?? (record?.status === "Approuvée" ? "approved" : legacy.reviewStatus ?? "pending");
+  return { status, approvedAt: status === "approved" ? record?.approvedAt ?? legacy.approvedAt ?? null : null };
+}
 
 type Reply = {
   id: number;
@@ -164,7 +176,7 @@ export default function ClientReviewPage() {
   const [adaptationMessage, setAdaptationMessage] = useState("");
   const [adaptationBudget, setAdaptationBudget] = useState("");
   const [adaptationDeadline, setAdaptationDeadline] = useState("");
-  const [reviewStatus, setReviewStatus] = useState<"pending" | "changes-requested" | "approved">("pending");
+  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("pending");
   const [approvedAt, setApprovedAt] = useState<string | null>(null);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [changesRequestOpen, setChangesRequestOpen] = useState(false);
@@ -227,14 +239,15 @@ export default function ClientReviewPage() {
         if (sharedDeliverable) {
           setDeliverable(sharedDeliverable);
         }
+        const review = reviewStateOf(sharedDeliverable, parsedState);
+        setReviewStatus(review.status);
+        setApprovedAt(review.approvedAt);
         if (parsedState.comments) {
           setComments(parsedState.comments);
         }
         if (parsedState.proposalStates) setProposalStates(parsedState.proposalStates);
         if (parsedState.proposalDecisions) setProposalDecisions(parsedState.proposalDecisions);
         if (parsedState.adaptationRequests) setAdaptationRequests(parsedState.adaptationRequests);
-        if (parsedState.reviewStatus) setReviewStatus(parsedState.reviewStatus);
-        if (parsedState.approvedAt) setApprovedAt(parsedState.approvedAt);
         if (parsedState.proposalVersions) setProposalVersions(parsedState.proposalVersions);
       }
     } catch {
@@ -265,21 +278,25 @@ export default function ClientReviewPage() {
                   ...(item as Record<string, unknown>),
                   status: reviewStatus === "approved" ? "Approuvée" : (item as Record<string, unknown>).status,
                   locked: reviewStatus === "approved",
+                  reviewStatus,
+                  approvedAt: approvedAt ?? undefined,
                 }
               : item,
           )
         : parsedState.deliverables;
 
+      // Drop the legacy app-wide review status: it now lives on each version.
+      const rest = { ...parsedState };
+      delete rest.reviewStatus;
+      delete rest.approved;
+      delete rest.approvedAt;
       const newSerialized = JSON.stringify({
-        ...parsedState,
+        ...rest,
         comments,
         proposalStates,
         proposalDecisions,
         adaptationRequests,
         proposalVersions,
-        reviewStatus,
-        approved: reviewStatus === "approved",
-        approvedAt,
         deliverables: sharedDeliverables,
       });
 
@@ -308,9 +325,6 @@ export default function ClientReviewPage() {
           proposalVersions?: ProposalVersions;
         };
 
-        if (parsedState.reviewStatus) setReviewStatus(parsedState.reviewStatus);
-        if (parsedState.reviewStatus !== "approved") setApprovedAt(null);
-        else if (parsedState.approvedAt) setApprovedAt(parsedState.approvedAt);
 
         const savedLinks = Object.values(parsedState.reviewLinks ?? {});
         const currentLink =
@@ -324,6 +338,9 @@ export default function ClientReviewPage() {
               candidate.version === currentLink.version,
           );
           if (sharedDeliverable) setDeliverable(sharedDeliverable);
+          const review = reviewStateOf(sharedDeliverable, parsedState);
+          setReviewStatus(review.status);
+          setApprovedAt(review.approvedAt);
         }
 
         if (parsedState.comments) setComments(parsedState.comments);
@@ -600,11 +617,14 @@ export default function ClientReviewPage() {
         JSON.stringify({
           ...parsed,
           ...(overrides ?? {}),
-          ...(nextReviewStatus
+          ...(nextReviewStatus && Array.isArray(parsed.deliverables)
             ? {
-                reviewStatus: nextReviewStatus,
-                approved: nextReviewStatus === "approved",
-                approvedAt: nextApprovedAt ?? null,
+                deliverables: (parsed.deliverables as Deliverable[]).map((item) =>
+                  item.id === (reviewLink?.deliverableId ?? deliverable.id) &&
+                  item.version === (reviewLink?.version ?? deliverable.version)
+                    ? { ...item, reviewStatus: nextReviewStatus, approvedAt: nextApprovedAt }
+                    : item,
+                ),
               }
             : {}),
           auditEvents: [

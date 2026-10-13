@@ -74,8 +74,8 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { KoraMark } from "@/components/KoraMark";
 import { BrowserView } from "./BrowserView";
+import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
 import { href, hrefForRecord, parseAgencyPath, versionsOfLivrable } from "./routes";
 
 const PdfDocument = dynamic(
@@ -144,6 +144,9 @@ type Deliverable = {
   importedAt: string;
   locked: boolean;
   fileData?: string;
+  /** Client decision on this version (each version has its own review). */
+  reviewStatus?: ReviewStatus;
+  approvedAt?: string;
 };
 
 type ReviewLink = {
@@ -199,6 +202,8 @@ type AuditEvent = {
 
 const storageKey = "scopeguard-review-state";
 const recentsKey = "kora-recent-deliverables";
+const tabsKey = "kora-open-tabs";
+const maxTabs = 12;
 
 const initialProjects: Project[] = [
   {
@@ -237,13 +242,36 @@ const decisionStyles: Record<string, string> = {
   "Hors périmètre": "decision-outside",
 };
 
+/**
+ * Older saves kept one review status for the whole app. Move it onto the versions:
+ * an "Approuvée" version is approved; a pending "changes requested" goes to the shared version.
+ */
+function migrateReviewStatus(saved: {
+  deliverables?: Deliverable[];
+  reviewStatus?: ReviewStatus;
+  approvedAt?: string | null;
+  reviewLink?: ReviewLink | null;
+}): Deliverable[] {
+  return (saved.deliverables ?? []).map((deliverable) => {
+    if (deliverable.reviewStatus) return deliverable;
+    if (deliverable.status === "Approuvée")
+      return { ...deliverable, reviewStatus: "approved", approvedAt: deliverable.approvedAt ?? saved.approvedAt ?? undefined };
+    const shared = saved.reviewLink?.deliverableId === deliverable.id;
+    return saved.reviewStatus === "changes-requested" && shared
+      ? { ...deliverable, reviewStatus: "changes-requested" }
+      : deliverable;
+  });
+}
+
 export function AgencyApp() {
   const router = useRouter();
-  const view = parseAgencyPath(usePathname());
+  const pathname = usePathname();
+  const view = parseAgencyPath(pathname);
   const [projects, setProjects] = useState(initialProjects);
   const [clients, setClients] = useState(initialClients);
   const [deliverables, setDeliverables] = useState(initialDeliverables);
   const [recentLivrableIds, setRecentLivrableIds] = useState<number[]>([]);
+  const [openTabs, setOpenTabs] = useState<{ livrableId: number; href: string }[]>([]);
 
   // Selection comes from the URL (see routes.ts); outside a project the first project is the fallback.
   const viewProjectId = "projectId" in view ? view.projectId : null;
@@ -290,9 +318,6 @@ export function AgencyApp() {
   const [comments, setComments] = useState(initialComments);
   const [selectedId, setSelectedId] = useState(1);
   const [proposalOpen, setProposalOpen] = useState(false);
-  const [approved, setApproved] = useState(false);
-  const [approvedAt, setApprovedAt] = useState<string | null>(null);
-  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("pending");
   const [proposalStates, setProposalStates] = useState<ProposalStates>({});
   const [proposalDecisions, setProposalDecisions] = useState<ProposalDecisions>(
     {},
@@ -395,7 +420,7 @@ export function AgencyApp() {
         })));
       if (parsedState.clients) setClients(parsedState.clients);
       if (parsedState.deliverables)
-        setDeliverables(parsedState.deliverables.map((deliverable) => ({
+        setDeliverables(migrateReviewStatus(parsedState).map((deliverable) => ({
           ...deliverable,
           projectId: deliverable.projectId ?? 1,
         })));
@@ -409,8 +434,6 @@ export function AgencyApp() {
         setReviewLink({ ...parsedState.reviewLink, autoExpire: parsedState.reviewLink.autoExpire !== false });
       }
       setReviewLinks(savedReviewLinks);
-      if (parsedState.reviewStatus) setReviewStatus(parsedState.reviewStatus);
-      if (parsedState.approvedAt) setApprovedAt(parsedState.approvedAt);
       if (parsedState.notifications)
         setNotifications(parsedState.notifications);
       if (parsedState.comments)
@@ -419,8 +442,6 @@ export function AgencyApp() {
           deliverableId: comment.deliverableId ?? parsedState.deliverables?.[0]?.id ?? 1,
           decision: ((comment.decision as string) === "À traiter" ? "À qualifier" : comment.decision) ?? "À qualifier",
         })));
-      if (typeof parsedState.approved === "boolean")
-        setApproved(parsedState.approved || parsedState.reviewStatus === "approved");
       if (parsedState.proposalStates)
         setProposalStates(parsedState.proposalStates);
       if (parsedState.proposalDecisions)
@@ -474,15 +495,7 @@ export function AgencyApp() {
           setAdaptationRequests(parsedState.adaptationRequests);
         if (parsedState.proposalVersions)
           setProposalVersions(parsedState.proposalVersions);
-        if (parsedState.reviewStatus) {
-          setReviewStatus(parsedState.reviewStatus);
-          if (parsedState.reviewStatus === "changes-requested")
-            setApproved(false);
-        }
-        if (typeof parsedState.approved === "boolean" && parsedState.reviewStatus !== "changes-requested")
-          setApproved(parsedState.approved || parsedState.reviewStatus === "approved");
-        if (parsedState.approvedAt) setApprovedAt(parsedState.approvedAt);
-        if (parsedState.deliverables) setDeliverables(parsedState.deliverables);
+        if (parsedState.deliverables) setDeliverables(migrateReviewStatus(parsedState));
         if (parsedState.reviewLinks) setReviewLinks(parsedState.reviewLinks);
         if (parsedState.reviewLink) setReviewLink(parsedState.reviewLink);
         if (parsedState.auditEvents) setAuditEvents(parsedState.auditEvents);
@@ -505,10 +518,7 @@ export function AgencyApp() {
       deliverables,
       reviewLink,
       reviewLinks,
-      reviewStatus,
       comments,
-      approved,
-      approvedAt,
       proposalStates,
       proposalDecisions,
       adaptationRequests,
@@ -526,10 +536,7 @@ export function AgencyApp() {
     deliverables,
     reviewLink,
     reviewLinks,
-    reviewStatus,
     comments,
-    approved,
-    approvedAt,
     proposalStates,
     proposalDecisions,
     adaptationRequests,
@@ -566,6 +573,9 @@ export function AgencyApp() {
     activeVersions.find((deliverable) => deliverable.id === selectedDeliverableId) ??
     activeVersions[0] ??
     deliverables[0];
+  const reviewStatus: ReviewStatus = currentDeliverable?.reviewStatus ?? "pending";
+  const approved = reviewStatus === "approved";
+  const approvedAt = currentDeliverable?.approvedAt ?? null;
   const isReadOnlyVersion = Boolean(
     currentDeliverable?.locked || currentDeliverable?.status === "Approuvée" || currentDeliverable?.status === "Remplacée",
   );
@@ -711,6 +721,44 @@ export function AgencyApp() {
       return next;
     });
   }, [viewLivrableId]);
+
+  // Open tabs (per browser). Opening a deliverable adds its tab; a tab remembers the version last viewed.
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(tabsKey) ?? "[]");
+      if (Array.isArray(saved))
+        setOpenTabs(saved.filter((tab) => typeof tab?.livrableId === "number" && typeof tab?.href === "string"));
+    } catch {
+      // Tabs are a convenience: ignore unreadable storage.
+    }
+  }, []);
+  function saveTabs(next: { livrableId: number; href: string }[]) {
+    try {
+      window.localStorage.setItem(tabsKey, JSON.stringify(next));
+    } catch {
+      // Ignore storage failures (private mode, quota).
+    }
+    return next;
+  }
+  useEffect(() => {
+    if (viewLivrableId === null) return;
+    setOpenTabs((current) =>
+      saveTabs(
+        current.some((tab) => tab.livrableId === viewLivrableId)
+          ? current.map((tab) => (tab.livrableId === viewLivrableId ? { ...tab, href: pathname } : tab))
+          : [...current, { livrableId: viewLivrableId, href: pathname }].slice(-maxTabs),
+      ),
+    );
+  }, [viewLivrableId, pathname]);
+  function closeTab(livrableId: number) {
+    const index = openTabs.findIndex((tab) => tab.livrableId === livrableId);
+    const remaining = openTabs.filter((tab) => tab.livrableId !== livrableId);
+    setOpenTabs(saveTabs(remaining));
+    if (livrableId === viewLivrableId) {
+      const neighbour = remaining[index] ?? remaining[index - 1];
+      router.push(neighbour ? neighbour.href : href.home());
+    }
+  }
 
   useEffect(() => {
     if (!currentDeliverable) return;
@@ -883,9 +931,6 @@ export function AgencyApp() {
       fileData,
     };
 
-    setApproved(false);
-    setApprovedAt(null);
-    setReviewStatus("pending");
     setPreviewUrl(URL.createObjectURL(file));
     setPreviewType(type);
     setPdfPage(1);
@@ -1116,13 +1161,11 @@ export function AgencyApp() {
   }
 
   function confirmApproval() {
-    setApproved(true);
-    setApprovedAt(new Date().toLocaleString("fr-FR"));
-    setReviewStatus("approved");
+    const approvalTimestamp = new Date().toLocaleString("fr-FR");
     setDeliverables((current) =>
       current.map((deliverable) =>
         deliverable.id === currentDeliverable.id
-          ? { ...deliverable, status: "Approuvée", locked: true }
+          ? { ...deliverable, status: "Approuvée", locked: true, reviewStatus: "approved", approvedAt: approvalTimestamp }
           : deliverable,
       ),
     );
@@ -1132,8 +1175,11 @@ export function AgencyApp() {
   function requestChanges(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!changesMessage.trim()) return;
-    setApproved(false);
-    setReviewStatus("changes-requested");
+    setDeliverables((current) =>
+      current.map((deliverable) =>
+        deliverable.id === currentDeliverable.id ? { ...deliverable, reviewStatus: "changes-requested" } : deliverable,
+      ),
+    );
     recordAudit("review.reopened", "Validation rouverte par l’agence");
     setChangesOpen(false);
   }
@@ -1364,6 +1410,41 @@ export function AgencyApp() {
     setLinkCopied(true);
   }
 
+  // Tab status reflects the latest version: what needs the agency first, then what waits on the client.
+  const tabInfos: TabInfo[] = openTabs.flatMap((tab) => {
+    const latest = versionsOfLivrable(tab.livrableId, deliverables)[0];
+    if (!latest) return [];
+    const project = projects.find((candidate) => candidate.id === (latest.projectId ?? 1));
+    const client = clients.find((candidate) => candidate.id === (project?.clientId ?? 1));
+    const latestComments = comments.filter((comment) => comment.deliverableId === latest.id);
+    const toQualify = latestComments.filter((comment) => comment.decision === "À qualifier" || !comment.decision).length;
+    const awaitingClient = latestComments.filter(
+      (comment) =>
+        comment.decision === "Hors périmètre" &&
+        proposalStateFor(comment.id) === "sent" &&
+        proposalDecisionFor(comment.id) === "none",
+    ).length;
+    const status: TabStatus =
+      latest.reviewStatus === "changes-requested"
+        ? { kind: "changes-requested" }
+        : toQualify > 0
+          ? { kind: "to-qualify", count: toQualify }
+          : awaitingClient > 0
+            ? { kind: "awaiting-client", count: awaitingClient }
+            : latest.reviewStatus === "approved"
+              ? { kind: "approved" }
+              : { kind: "none" };
+    return [
+      {
+        livrableId: tab.livrableId,
+        href: tab.href,
+        name: latest.name,
+        context: [client?.name, project?.name].filter(Boolean).join(" / "),
+        status,
+      },
+    ];
+  });
+
   const breadcrumbs: { label: string; href: string }[] = [{ label: "Accueil", href: href.home() }];
   const crumbClient = clients.find((client) => client.id === selectedClientId);
   if ((view.kind === "client" || viewProjectId !== null) && crumbClient)
@@ -1381,12 +1462,16 @@ export function AgencyApp() {
   }
 
   return (
+    <div className="app-frame">
+    <TabBar
+      tabs={tabInfos}
+      activeLivrableId={viewLivrableId}
+      homeActive={view.kind !== "deliverable"}
+      onClose={closeTab}
+    />
     <main className="app-shell">
+      {view.kind !== "deliverable" && (
       <aside className="sidebar">
-        <div className="brand">
-          <KoraMark className="brand-logo" />
-          <span>KORA</span>
-        </div>
         <nav className="main-nav" aria-label="Navigation principale">
           <Link className={`nav-item ${view.kind === "home" ? "active" : ""}`} href={href.home()}>
             <span><House /></span> Accueil
@@ -1436,6 +1521,7 @@ export function AgencyApp() {
           </div>
         </div>
       </aside>
+      )}
 
       <section className="workspace" id="projet">
         <header className="topbar">
@@ -2266,7 +2352,7 @@ export function AgencyApp() {
                 </button>
               )}
               <div className="comments-footer">
-                <div className={`agency-validation-status ${approved && reviewStatus !== "changes-requested" ? "is-approved" : ""}`}>
+                <div className={`agency-validation-status ${approved ? "is-approved" : ""}`}>
                   <span className="status-dot" />
                     {reviewStatus === "changes-requested"
                       ? "Modifications demandées par le client"
@@ -3157,6 +3243,7 @@ export function AgencyApp() {
         </div>
       </section>
     </main>
+    </div>
   );
   function notifyClient() {
     if (isReadOnlyVersion) return;

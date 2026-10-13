@@ -26,9 +26,14 @@ button {
   flex-shrink: 0;
   vertical-align: -0.2em;
 }
+.app-frame {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
 .app-shell {
   display: flex;
-  min-height: 100vh;
+  flex: 1;
   background: var(--canvas);
 }
 .sidebar {
@@ -38,20 +43,6 @@ button {
   display: flex;
   flex-direction: column;
   padding: 25px 14px 18px;
-  flex-shrink: 0;
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font: 700 19px var(--font-display);
-  letter-spacing: 0.14em;
-  color: var(--ink);
-  padding: 0 12px 31px;
-}
-.brand-logo {
-  width: 26px;
-  height: 26px;
   flex-shrink: 0;
 }
 .brand-mark {
@@ -3301,6 +3292,152 @@ button {
 }
 @media (prefers-reduced-motion: reduce) {
   .browser-card {
+    transition: none;
+  }
+}
+
+/* Tab bar: pinned home + one tab per opened deliverable */
+.tab-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-2);
+  height: 44px;
+  padding: 0 var(--s-3);
+  background: var(--mist);
+  border-bottom: 1px solid var(--border);
+}
+.tab-bar-brand {
+  display: grid;
+  place-items: center;
+  align-self: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-button);
+  color: var(--ink);
+}
+.tab-bar-brand svg {
+  width: 22px;
+  height: 22px;
+}
+.tab-list {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 36px;
+  max-width: 240px;
+  border-radius: var(--r-button) var(--r-button) 0 0;
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+  font-weight: 500;
+  text-decoration: none;
+  transition: background var(--d-fast) var(--ease-out);
+}
+.tab:hover {
+  background: color-mix(in srgb, var(--paper) 60%, transparent);
+  color: var(--ink);
+}
+.tab.is-active {
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 1px 0 var(--paper);
+}
+.tab-home {
+  justify-content: center;
+  width: 40px;
+  color: var(--ink);
+}
+.tab-link {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  height: 100%;
+  padding: 0 var(--s-1) 0 var(--s-3);
+  color: inherit;
+  text-decoration: none;
+}
+.tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab-close {
+  display: grid;
+  place-items: center;
+  width: var(--s-6);
+  height: var(--s-6);
+  margin-right: var(--s-1);
+  border: 0;
+  border-radius: var(--r-field);
+  background: transparent;
+  color: var(--graphite);
+}
+.tab-close:hover {
+  background: var(--mist);
+  color: var(--ink);
+}
+.tab-status {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: var(--t-caption-size);
+  font-weight: 600;
+  line-height: 1;
+}
+.tab-status .lucide {
+  width: 12px;
+  height: 12px;
+  vertical-align: 0;
+}
+.tab-status-to-qualify {
+  background: var(--attention-fill);
+  color: var(--ink);
+}
+.tab-status-changes-requested {
+  background: var(--status-high-bg);
+  color: var(--status-high-text);
+}
+.tab-status-awaiting-client {
+  background: var(--status-medium-bg);
+  color: var(--status-medium-text);
+}
+.tab-status-approved {
+  background: var(--status-resolved-bg);
+  color: var(--status-resolved-text);
+}
+.tab-bar-brand:focus-visible,
+.tab-link:focus-visible,
+.tab-close:focus-visible,
+.tab-home:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: -2px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab {
     transition: none;
   }
 }
