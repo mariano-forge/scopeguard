@@ -1,0 +1,83 @@
+/*
+ * Kora design tokens — source: DESIGN.md.
+ * Every color pair below was measured for WCAG AAA; re-measure before changing a value.
+ */
+
+:root {
+  /* Neutrals */
+  --ink: #111111;
+  --canvas: #faf9f6;
+  --paper: #ffffff;
+  --mist: #ecece8;
+  --graphite: #4c4c48;
+  --border: #ddd9d1;
+  --border-input: #8a8a85;
+
+  /* Accents: "fill" keeps the brand hue (Ink text on top), "text"/"ui" are darkened for contrast */
+  --action-fill: #30a8ff;
+  --action-ui: #0079d1;
+  --action-text: #005593;
+  --attention-fill: #ff795c;
+  --attention-text: #a21d00;
+  --danger: #8d2615;
+
+  /* Statuses (background / text), always paired with a label or icon */
+  --status-high-bg: #ffe1da;
+  --status-high-text: #892414;
+  --status-medium-bg: #fff0c2;
+  --status-medium-text: #6a4700;
+  --status-low-bg: #ddeeff;
+  --status-low-text: #004998;
+  --status-resolved-bg: #ddf4e4;
+  --status-resolved-text: #0a5933;
+  --status-scope-bg: #eae3ff;
+  --status-scope-text: #4e31a6;
+  --status-clarify-bg: #ffe8d6;
+  --status-clarify-text: #7f3500;
+
+  /* Elevation: floating menus and modals only */
+  --shadow: 0 16px 50px rgba(17, 17, 17, 0.06);
+
+  /* Spacing (4px grid) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-6: 24px;
+  --s-8: 32px;
+
+  /* Radius */
+  --r-field: 6px;
+  --r-button: 8px;
+  --r-panel: 12px;
+  --r-full: 50%;
+
+  /* Font families (--font-manrope, --font-inter and --font-plex-mono are set by next/font in layout.tsx) */
+  --font-display: var(--font-manrope), system-ui, sans-serif;
+  --font-ui: var(--font-inter), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  /* Type scale: size/line-height, usable in the `font` shorthand */
+  --t-display: 48px/52px;
+  --t-display-tracking: -0.02em;
+  --t-h2: 28px/34px;
+  --t-h2-tracking: -0.01em;
+  --t-h3: 20px/26px;
+  --t-body: 16px/24px;
+  --t-ui: 14px/20px;
+  --t-caption: 12px/16px;
+  --t-caption-size: 12px;
+  --t-caption-tracking: 0.01em;
+  --t-mono: 12px/16px;
+
+  /* Motion */
+  --d-fast: 150ms;
+  --d-base: 200ms;
+  --d-panel: 250ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  /* Breakpoints — reference only: custom properties cannot be used inside @media */
+  --bp-sm: 680px;
+  --bp-lg: 1024px;
+}

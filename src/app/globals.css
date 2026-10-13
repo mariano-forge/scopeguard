@@ -1,11 +1,10 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
+@import "../theme/tokens.css";
 @import "tailwindcss";
 
 :root {
-  --ink: #1d2827;
   --muted: #77807d;
   --line: #e5e7df;
-  --paper: #f7f8f3;
   --white: #fff;
   --coral: #e87e61;
   --coral-dark: #c9644c;
@@ -16,7 +15,7 @@
 }
 body {
   margin: 0;
-  background: var(--paper);
+  background: var(--canvas);
   color: var(--ink);
   font-family: "DM Sans", sans-serif;
 }
@@ -31,7 +30,7 @@ button {
 .app-shell {
   display: flex;
   min-height: 100vh;
-  background: var(--paper);
+  background: var(--canvas);
 }
 .sidebar {
   width: 238px;
