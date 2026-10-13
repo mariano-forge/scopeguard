@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
 @import "../theme/tokens.css";
 @import "tailwindcss";
 
@@ -17,7 +16,7 @@ body {
   margin: 0;
   background: var(--canvas);
   color: var(--ink);
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--font-ui);
 }
 button,
 input,
@@ -45,9 +44,7 @@ button {
   display: flex;
   align-items: center;
   gap: 9px;
-  font:
-    700 19px "Space Grotesk",
-    sans-serif;
+  font: 700 19px var(--font-display);
   letter-spacing: -0.7px;
   padding: 0 12px 31px;
 }
@@ -147,7 +144,7 @@ button {
   place-items: center;
   border-radius: 50%;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   flex-shrink: 0;
 }
 .dark-avatar {
@@ -230,14 +227,12 @@ button {
 .eyebrow {
   color: #a5aaa2;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 1.4px;
   margin-bottom: 8px;
 }
 .project-heading h1 {
-  font:
-    600 29px "Space Grotesk",
-    sans-serif;
+  font: 600 29px var(--font-display);
   letter-spacing: -1px;
   margin: 0 0 7px;
 }
@@ -399,7 +394,7 @@ button {
 }
 .mock-nav b {
   margin-right: auto;
-  font: 600 14px "Space Grotesk";
+  font: 600 14px var(--font-display);
   color: #25332f;
   letter-spacing: -1px;
 }
@@ -432,7 +427,7 @@ button {
   color: #ac7763;
 }
 .hero-copy h2 {
-  font: 600 clamp(28px, 4vw, 47px)/0.94 "Space Grotesk";
+  font: 600 clamp(28px, 4vw, 47px)/0.94 var(--font-display);
   letter-spacing: -2.5px;
   margin: 13px 0;
 }
@@ -475,7 +470,7 @@ button {
   place-items: center;
   background: #d9e8d7;
   color: #78927d;
-  font: 600 27px "Space Grotesk";
+  font: 600 27px var(--font-display);
   box-shadow: 0 0 0 18px #edf1df;
 }
 .shape-line {
@@ -510,7 +505,7 @@ button {
   border-radius: 50%;
   width: 24px;
   height: 24px;
-  font: 700 10px "DM Sans";
+  font: 600 10px var(--font-ui);
 }
 .pin-one {
   top: 56%;
@@ -552,7 +547,7 @@ button {
   justify-content: space-between;
 }
 .comments-heading h2 {
-  font: 600 16px "Space Grotesk";
+  font: 600 16px var(--font-display);
   margin: 0 0 5px;
 }
 .comments-heading p {
@@ -780,7 +775,7 @@ button {
   justify-content: space-between;
 }
 .drawer-header h2 {
-  font: 600 20px "Space Grotesk";
+  font: 600 20px var(--font-display);
   margin: 0;
 }
 .close-button {
@@ -1187,7 +1182,7 @@ button {
   background: var(--coral);
   color: #fff;
   font-size: 8px;
-  font-weight: 700;
+  font-weight: 600;
 }
 .notification-panel {
   position: absolute;
@@ -1203,7 +1198,7 @@ button {
 }
 .notification-panel > b {
   display: block;
-  font: 600 13px "Space Grotesk";
+  font: 600 13px var(--font-display);
   margin-bottom: 10px;
 }
 .notification-panel > p {
@@ -1265,7 +1260,7 @@ button {
 }
 .proposal-queue b {
   color: #5b5950;
-  font: 600 12px "Space Grotesk";
+  font: 600 12px var(--font-display);
 }
 .proposal-queue small {
   color: #9b958c;
@@ -1391,7 +1386,7 @@ button {
 }
 .client-comments-heading h2 {
   margin: 0;
-  font: 600 17px "Space Grotesk";
+  font: 600 17px var(--font-display);
 }
 .client-comments-heading span {
   color: #9aa39d;
@@ -1902,7 +1897,7 @@ button {
   border-radius: 4px;
   padding: 1px 5px;
   font-size: 9px;
-  font-weight: 700;
+  font-weight: 600;
   color: inherit;
   margin-left: 0;
 }
@@ -1920,11 +1915,11 @@ button {
   align-items: center;
   justify-content: space-between;
   color: #53605a;
-  font: 600 12px "Space Grotesk";
+  font: 600 12px var(--font-display);
 }
 .audit-section-heading span {
   color: #9aa39d;
-  font: 400 9px "DM Sans";
+  font: 400 9px var(--font-ui);
 }
 .audit-empty {
   color: #9aa39d;
@@ -1986,7 +1981,7 @@ button {
   background: #f7fbf7;
 }
 .import-choice b {
-  font: 600 13px "Space Grotesk";
+  font: 600 13px var(--font-display);
 }
 .import-choice small {
   color: #87938b;
@@ -2011,12 +2006,12 @@ button {
   display: flex;
   align-items: center;
   gap: 9px;
-  font: 600 15px "Space Grotesk";
+  font: 600 15px var(--font-display);
 }
 .client-review-label {
   color: #9aa39d;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 1.5px;
 }
 .client-review-content {
@@ -2033,7 +2028,7 @@ button {
 }
 .client-review-heading h1 {
   margin: 0 0 8px;
-  font: 600 30px "Space Grotesk";
+  font: 600 30px var(--font-display);
   letter-spacing: -1px;
 }
 .client-review-heading p:not(.eyebrow) {
@@ -2092,7 +2087,7 @@ button {
 }
 .client-artboard .mock-nav b {
   margin-right: auto;
-  font: 600 14px "Space Grotesk";
+  font: 600 14px var(--font-display);
   color: #25332f;
   letter-spacing: -1px;
 }
@@ -2125,7 +2120,7 @@ button {
   color: #ac7763;
 }
 .client-artboard .hero-copy h2 {
-  font: 600 clamp(28px, 4vw, 47px)/0.94 "Space Grotesk";
+  font: 600 clamp(28px, 4vw, 47px)/0.94 var(--font-display);
   letter-spacing: -2.5px;
   margin: 13px 0;
 }
@@ -2165,7 +2160,7 @@ button {
   place-items: center;
   background: #d9e8d7;
   color: #78927d;
-  font: 600 27px "Space Grotesk";
+  font: 600 27px var(--font-display);
   box-shadow: 0 0 0 18px #edf1df;
 }
 .client-artboard .shape-line {
@@ -2223,7 +2218,7 @@ button {
 }
 .client-review-state h1 {
   margin: 0;
-  font: 600 28px "Space Grotesk";
+  font: 600 28px var(--font-display);
 }
 .client-review-state p:not(.eyebrow) {
   max-width: 360px;
@@ -2240,7 +2235,7 @@ button {
   border-radius: 50%;
   background: #fae2da;
   color: #b55f4d;
-  font-weight: 700;
+  font-weight: 600;
 }
 @media (max-width: 680px) {
   .client-review-header {
@@ -2430,7 +2425,7 @@ button {
 }
 .proof-modal h3 {
   color: #53605a;
-  font: 600 12px "Space Grotesk";
+  font: 600 12px var(--font-display);
   margin: 20px 0 9px;
 }
 .proof-comments {
@@ -2668,14 +2663,14 @@ button {
 }
 .scope-card-label {
   font-size: 9px;
-  font-weight: 700;
+  font-weight: 600;
   color: #9aa39d;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 .scope-summary-card b {
   font-size: 16px;
-  font-family: "Space Grotesk", sans-serif;
+  font-family: var(--font-display);
   color: var(--ink);
 }
 .scope-summary-card small {
@@ -2801,7 +2796,7 @@ button {
   color: #3a7550;
   padding: 7px 10px;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   margin: 4px 0 14px;
 }
 .proposal-preview-status.refused {
@@ -2875,15 +2870,13 @@ button {
 }
 .kpi-title {
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   color: #728079;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 .kpi-value {
-  font:
-    700 28px "Space Grotesk",
-    sans-serif;
+  font: 700 28px var(--font-display);
   color: var(--ink);
   letter-spacing: -1px;
 }
@@ -2925,9 +2918,7 @@ button {
 }
 .section-card-header h3 {
   margin: 0;
-  font:
-    600 15px "Space Grotesk",
-    sans-serif;
+  font: 600 15px var(--font-display);
   color: var(--ink);
 }
 .section-card-header p {
@@ -3012,9 +3003,7 @@ button {
   color: #8b958f;
 }
 .mini-stat b {
-  font:
-    600 15px "Space Grotesk",
-    sans-serif;
+  font: 600 15px var(--font-display);
   color: var(--ink);
 }
 
@@ -3045,7 +3034,7 @@ button {
   gap: 8px;
 }
 .status-row b {
-  font-family: "Space Grotesk", sans-serif;
+  font-family: var(--font-display);
   font-size: 12px;
 }
 
@@ -3070,7 +3059,7 @@ button {
   padding: 10px 12px;
   border-bottom: 2px solid #eef1ea;
   color: #8a948e;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
