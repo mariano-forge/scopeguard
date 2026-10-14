@@ -39,20 +39,23 @@ export function DeliverableContent({
   renderPage?: (page: number, content: React.ReactNode) => React.ReactNode;
 }) {
   const [pageCount, setPageCount] = useState(1);
-  // The PDF is drawn at the width its pages actually take (the artboard is responsive), so the
-  // text layer used for targeting lines up with the drawn text.
+  // The PDF is drawn at the width its pages take on the canvas, so the text layer used for targeting
+  // lines up with the drawn text. That width follows the visible canvas area (92 %, at most 860 px, like
+  // the artboard), never the pages themselves: they shrink-wrap their content, which would lock a small size.
   const [pagesWidth, setPagesWidth] = useState(760);
   const observer = useRef<ResizeObserver | null>(null);
   const measurePages = useCallback((element: HTMLDivElement | null) => {
     observer.current?.disconnect();
     if (!element) return;
+    const frame = element.closest<HTMLElement>(".artboard-transform-wrapper");
+    if (!frame) return;
     const measure = () => {
-      const width = Math.round(element.clientWidth);
-      if (width > 0) setPagesWidth((current) => (Math.abs(current - width) > 2 ? width : current));
+      const width = Math.min(860, Math.floor(frame.clientWidth * 0.92));
+      if (width > 200) setPagesWidth((current) => (Math.abs(current - width) > 2 ? width : current));
     };
     measure();
     observer.current = new ResizeObserver(measure);
-    observer.current.observe(element);
+    observer.current.observe(frame);
   }, []);
   const source = deliverable.fileData ?? objectUrl ?? undefined;
 

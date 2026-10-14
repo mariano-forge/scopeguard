@@ -321,7 +321,9 @@ export function ReviewCanvas({
     const wrapper = zoomApi?.instance.wrapperComponent;
     const content = zoomApi?.instance.contentComponent?.querySelector<HTMLElement>(".artboard");
     if (!zoomApi || !wrapper || !content) return;
-    const scale = Math.min(1, (wrapper.clientWidth - 64) / content.offsetWidth);
+    // A canvas squeezed to almost nothing (tiny window) keeps its zoom instead of falling to 0 %.
+    if (wrapper.clientWidth < 160 || content.offsetWidth === 0) return;
+    const scale = Math.max(0.25, Math.min(1, (wrapper.clientWidth - 64) / content.offsetWidth));
     zoomApi.setTransform((wrapper.clientWidth - content.offsetWidth * scale) / 2 - content.offsetLeft * scale, 0, scale, 200);
   }
 
