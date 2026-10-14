@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, BadgeEuro, ChevronDown, ClipboardCheck, Tag, Trash2, Undo2, X } from "lucide-react";
+import { Hint } from "@/components/hint";
 
 /**
  * One request, three states:
@@ -250,9 +251,11 @@ export function ThreadPopover({
         </span>
         <span className="thread-header-actions">
           {onDelete && (
-            <button type="button" className="thread-icon-button" onClick={onDelete} aria-label="Supprimer" title="Supprimer">
-              <Trash2 />
-            </button>
+            <Hint label="Supprimer">
+              <button type="button" className="thread-icon-button" onClick={onDelete} aria-label="Supprimer">
+                <Trash2 />
+              </button>
+            </Hint>
           )}
           <button type="button" className="thread-icon-button" onClick={onClose} aria-label="Fermer">
             <X />

@@ -1028,7 +1028,7 @@ function OrphansSection({
       <h2>À ranger</h2>
       <p className="browser-empty">Ces éléments ne sont plus rattachés à un espace ou à un projet. Rattachez-les ailleurs ou supprimez-les.</p>
       {error && (
-        <p className="form-error" role="alert">
+        <p className="text-sm text-destructive" role="alert">
           {error}
         </p>
       )}

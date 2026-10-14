@@ -40,7 +40,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import {
   ArrowRight,
-  ArrowUpRight,
   Copy,
   Download,
   FileDown,
@@ -83,7 +82,13 @@ import {
   } from "./editor/CanvasComments";
 import { EditorInspector, threadsToMarkdown, type InspectorTab } from "./editor/EditorInspector";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "./editor/ReviewCanvas";
-import { UndoToast } from "./editor/UndoToast";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { AddonInput, Field, FormError, Modal, selectClassName } from "@/components/modal";
 import { MenuButton, type MenuEntry } from "./editor/MenuButton";
 import { RenameDialog } from "./EntitySettings";
 import type { HomeAnalyticsData } from "./HomeAnalytics";
@@ -434,8 +439,6 @@ export function AgencyApp() {
   const [quotingId, setQuotingId] = useState<number | null>(null);
   /** Proposal waiting for the "send to the client?" confirmation. */
   const [confirmSendId, setConfirmSendId] = useState<number | null>(null);
-  /** Comment just deleted, kept for "Annuler". */
-  const [deletedComment, setDeletedComment] = useState<Comment | null>(null);
   useEffect(() => {
     try {
       const saved = JSON.parse(window.localStorage.getItem(panelWidthsKey) ?? "null");
@@ -1331,7 +1334,7 @@ export function AgencyApp() {
       }
       return updated;
     });
-    setDeletedComment(target);
+    toast("Commentaire supprimé", { action: { label: "Annuler", onClick: () => restoreComment(target) } });
     recordAudit("comment.deleted", "Commentaire agence supprimé", commentId);
   }
 
@@ -1354,12 +1357,9 @@ export function AgencyApp() {
     );
   }
 
-  /** Puts back the comment deleted last ("Annuler" in the toast). */
-  function restoreComment() {
-    const removed = deletedComment;
-    if (!removed) return;
+  /** Puts back a deleted comment ("Annuler" in the toast). */
+  function restoreComment(removed: Comment) {
     setComments((current) => (current.some((comment) => comment.id === removed.id) ? current : [...current, removed].sort((a, b) => a.id - b.id)));
-    setDeletedComment(null);
   }
 
 
@@ -2089,7 +2089,9 @@ export function AgencyApp() {
                   className="tool-button"
                   label="Copier ou exporter les demandes"
                   trigger={<Download />}
-                  menuClassName="is-up"
+                  side="top"
+                  align="center"
+                  tooltip
                   entries={[
                     {
                       label: "Copier les demandes",
@@ -2195,103 +2197,34 @@ export function AgencyApp() {
           </div>
           </>
         )}
-          {proposalOpen && (
-            <div className="proposal-drawer">
-              <div className="drawer-header">
-                <div>
-                  <h2>
-                    {proposalStateFor(proposalCommentId ?? 0) === "sent"
-                      ? "Proposition complémentaire"
-                      : "Créer une proposition"}
-                  </h2>
-                </div>
-                <button
-                  className="close-button"
-                  onClick={() => setProposalOpen(false)}
-                  aria-label="Fermer"
-                >
-                  <X />
-                </button>
-              </div>
-              {proposalStateFor(proposalCommentId ?? 0) === "sent" ? (
+          {/* Sent proposal: follow-up (adaptation, new version). */}
+          <Modal
+            open={proposalOpen}
+            onClose={() => setProposalOpen(false)}
+            title={proposalStateFor(proposalCommentId ?? 0) === "sent" ? "Proposition complémentaire" : "Créer une proposition"}
+            description={
+              proposalStateFor(proposalCommentId ?? 0) === "sent"
+                ? selectedAdaptationRequest
+                  ? "Le client demande une adaptation. Répondez avec une nouvelle proposition réaliste."
+                  : "Le client doit accepter ce montant avant que le studio commence le travail."
+                : "Transformez ce retour en accord clair avant de commencer le travail."
+            }
+            size="lg"
+            footer={
+              proposalStateFor(proposalCommentId ?? 0) === "sent" ? (
                 <>
-                  <p className="drawer-intro">
-                    {selectedAdaptationRequest
-                      ? "Le client demande une adaptation. Répondez avec une nouvelle proposition réaliste."
-                      : "Le client doit accepter ce montant avant que le studio commence le travail."}
-                  </p>
-                  {selectedAdaptationRequest && (
-                    <div className="adaptation-request-summary">
-                      <span>Demande du client · {selectedAdaptationRequest.requestedAt}</span>
-                      <p>{selectedAdaptationRequest.message}</p>
-                      {(selectedAdaptationRequest.budget !== undefined || selectedAdaptationRequest.deadline !== undefined) && (
-                        <div>
-                          {selectedAdaptationRequest.budget !== undefined && <b>Budget indicatif : {formatProposalAmount(selectedAdaptationRequest.budget)}</b>}
-                          {selectedAdaptationRequest.deadline !== undefined && <b>Délai souhaité : {formatProposalDeadline(selectedAdaptationRequest.deadline)}</b>}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {activeProposalFor(proposalCommentId ?? 0) && (
-                    <p className="proposal-version-label">
-                      Version {activeProposalFor(proposalCommentId ?? 0)?.version} · envoyée le {activeProposalFor(proposalCommentId ?? 0)?.createdAt}
-                    </p>
-                  )}
-                  <div className="proposal-summary">
-                    <div>
-                      <span>Prestation</span>
-                      <b>{activeProposalFor(proposalCommentId ?? 0)?.description ?? "Section témoignages"}</b>
-                    </div>
-                    <div>
-                      <span>Montant</span>
-                      <b>{formatProposalAmount(activeProposalFor(proposalCommentId ?? 0)?.amount ?? 850)}</b>
-                    </div>
-                    <div>
-                      <span>Impact planning</span>
-                      <b>{formatProposalDeadline(activeProposalFor(proposalCommentId ?? 0)?.deadline ?? 3)}</b>
-                    </div>
-                  </div>
-                  {proposalDecisionFor(proposalCommentId ?? 0) === "accepted" ? (
-                    <div className="proposal-status-banner accepted">
-                      <span><Check /> Proposition acceptée par le client</span>
-                    </div>
-                  ) : proposalDecisionFor(proposalCommentId ?? 0) === "refused" ? (
-                    <div className="proposal-status-banner refused">
-                      <span><X /> Proposition refusée par le client</span>
-                    </div>
-                  ) : selectedAdaptationRequest?.decision ? (
-                    <div className={`proposal-status-banner ${selectedAdaptationRequest.decision}`}>
-                      <span>{selectedAdaptationRequest.decision === "accepted" ? <><Check /> {"Adaptation acceptée par l'agence"}</> : <><X /> {"Adaptation refusée par l'agence"}</>}</span>
-                    </div>
-                  ) : selectedAdaptationRequest ? (
+                  {selectedAdaptationRequest && !selectedAdaptationRequest.decision && selectedAdaptationRequest.budget !== undefined && (
                     <>
-                      {selectedAdaptationRequest.budget !== undefined && (
-                        <div className="proposal-action-row">
-                          <button className="approve-button" onClick={() => decideAdaptation(proposalCommentId ?? 0, "accepted")} disabled={isReadOnlyVersion}>Accepter l'adaptation</button>
-                          <button className="refuse-submit" onClick={() => decideAdaptation(proposalCommentId ?? 0, "refused")} disabled={isReadOnlyVersion}>Refuser l'adaptation</button>
-                        </div>
-                      )}
-                      <button
-                        className="new-version-button"
-                        onClick={() => {
-                          const existing = activeProposalFor(proposalCommentId ?? 0);
-                          setNewProposalDescription(existing?.description ?? "");
-                          setNewProposalAmount(existing ? String(parseNumericAmount(existing.amount)) : "");
-                          setNewProposalDeadline(existing ? String(parseNumericDays(existing.deadline)) : "");
-                          setNewProposalVersionOpen(true);
-                        }}
-                      >
-                        Répondre avec une nouvelle proposition
-                      </button>
+                      <Button variant="outline" onClick={() => decideAdaptation(proposalCommentId ?? 0, "refused")} disabled={isReadOnlyVersion}>
+                        Refuser l’adaptation
+                      </Button>
+                      <Button variant="outline" onClick={() => decideAdaptation(proposalCommentId ?? 0, "accepted")} disabled={isReadOnlyVersion}>
+                        Accepter l’adaptation
+                      </Button>
                     </>
-                  ) : (
-                    <div className="proposal-status-banner pending">
-                      <span><Hourglass /> Transmise au client · En attente de décision</span>
-                    </div>
                   )}
-                  {!isReadOnlyVersion && proposalDecisionFor(proposalCommentId ?? 0) !== "accepted" && !selectedAdaptationRequest && (
-                    <button
-                      className="new-version-button"
+                  {!isReadOnlyVersion && proposalDecisionFor(proposalCommentId ?? 0) !== "accepted" && !selectedAdaptationRequest?.decision && (
+                    <Button
                       onClick={() => {
                         const existing = activeProposalFor(proposalCommentId ?? 0);
                         setNewProposalDescription(existing?.description ?? "");
@@ -2300,603 +2233,531 @@ export function AgencyApp() {
                         setNewProposalVersionOpen(true);
                       }}
                     >
-                      Modifier la proposition (nouvelle version)
-                    </button>
+                      {selectedAdaptationRequest ? "Répondre avec une nouvelle proposition" : "Modifier la proposition (nouvelle version)"}
+                    </Button>
                   )}
                 </>
               ) : (
-                <>
-                  <p className="drawer-intro">
-                    Transformez ce retour en accord clair avant de commencer le
-                    travail.
+                <Button onClick={sendProposal} disabled={!newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>
+                  Envoyer au client
+                </Button>
+              )
+            }
+          >
+            {proposalStateFor(proposalCommentId ?? 0) === "sent" ? (
+              <>
+                {selectedAdaptationRequest && (
+                  <div className="adaptation-request-summary">
+                    <span>Demande du client · {selectedAdaptationRequest.requestedAt}</span>
+                    <p>{selectedAdaptationRequest.message}</p>
+                    {(selectedAdaptationRequest.budget !== undefined || selectedAdaptationRequest.deadline !== undefined) && (
+                      <div>
+                        {selectedAdaptationRequest.budget !== undefined && <b>Budget indicatif : {formatProposalAmount(selectedAdaptationRequest.budget)}</b>}
+                        {selectedAdaptationRequest.deadline !== undefined && <b>Délai souhaité : {formatProposalDeadline(selectedAdaptationRequest.deadline)}</b>}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {activeProposalFor(proposalCommentId ?? 0) && (
+                  <p className="text-xs text-muted-foreground">
+                    Version {activeProposalFor(proposalCommentId ?? 0)?.version} · envoyée le {activeProposalFor(proposalCommentId ?? 0)?.createdAt}
                   </p>
-                  <label>
-                    Description de la prestation
-                    <textarea
-                      value={newProposalDescription}
-                      onChange={(event) => setNewProposalDescription(event.target.value)}
-                    />
-                  </label>
-                  <div className="field-grid">
-                    <label>
-                      Montant
-                      <div className="input-with-addon">
-                        <input
-                          type="number"
-                          min="0"
-                          step="10"
-                          placeholder="850"
-                          value={newProposalAmount}
-                          onChange={(event) => setNewProposalAmount(event.target.value)}
-                        />
-                        <span className="input-addon">€</span>
-                      </div>
-                    </label>
-                    <label>
-                      Impact planning
-                      <div className="input-with-addon">
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          placeholder="3"
-                          value={newProposalDeadline}
-                          onChange={(event) => setNewProposalDeadline(event.target.value)}
-                        />
-                        <span className="input-addon">jours</span>
-                      </div>
-                    </label>
-                  </div>
-                  <button
-                    className="send-proposal"
-                    onClick={sendProposal}
-                    disabled={
-                      !newProposalDescription.trim() ||
-                      !newProposalAmount.trim() ||
-                      !newProposalDeadline.trim()
-                    }
-                  >
-                    Envoyer au client <ArrowUpRight />
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-          {proposalPreviewCommentId !== null && previewProposal && (
-            <div className="modal-backdrop" role="presentation">
-              <section className="project-modal proposal-preview-modal">
-                <div className="drawer-header">
+                )}
+                <div className="proposal-summary">
                   <div>
-                    <div className="eyebrow">PROPOSITION COMPLÉMENTAIRE</div>
-                    <h2>Résumé de la proposition</h2>
+                    <span>Prestation</span>
+                    <b>{activeProposalFor(proposalCommentId ?? 0)?.description ?? "—"}</b>
                   </div>
-                  <button type="button" className="close-button" onClick={() => setProposalPreviewCommentId(null)} aria-label="Fermer"><X /></button>
+                  <div>
+                    <span>Montant</span>
+                    <b>{formatProposalAmount(activeProposalFor(proposalCommentId ?? 0)?.amount ?? 0)}</b>
+                  </div>
+                  <div>
+                    <span>Impact planning</span>
+                    <b>{formatProposalDeadline(activeProposalFor(proposalCommentId ?? 0)?.deadline ?? 0)}</b>
+                  </div>
                 </div>
-                <p className="drawer-intro">Demande #{previewProposalComment?.id} · Version {previewProposal.version}</p>
+                {proposalDecisionFor(proposalCommentId ?? 0) === "accepted" ? (
+                  <div className="proposal-status-banner accepted">
+                    <span>
+                      <Check /> Proposition acceptée par le client
+                    </span>
+                  </div>
+                ) : proposalDecisionFor(proposalCommentId ?? 0) === "refused" ? (
+                  <div className="proposal-status-banner refused">
+                    <span>
+                      <X /> Proposition refusée par le client
+                    </span>
+                  </div>
+                ) : selectedAdaptationRequest?.decision ? (
+                  <div className={`proposal-status-banner ${selectedAdaptationRequest.decision}`}>
+                    <span>
+                      {selectedAdaptationRequest.decision === "accepted" ? (
+                        <>
+                          <Check /> Adaptation acceptée par l’agence
+                        </>
+                      ) : (
+                        <>
+                          <X /> Adaptation refusée par l’agence
+                        </>
+                      )}
+                    </span>
+                  </div>
+                ) : (
+                  !selectedAdaptationRequest && (
+                    <div className="proposal-status-banner pending">
+                      <span>
+                        <Hourglass /> Transmise au client · En attente de décision
+                      </span>
+                    </div>
+                  )
+                )}
+              </>
+            ) : (
+              <>
+                <Field id="proposal-description" label="Description de la prestation">
+                  <Textarea id="proposal-description" value={newProposalDescription} onChange={(event) => setNewProposalDescription(event.target.value)} />
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field id="proposal-amount" label="Montant HT">
+                    <AddonInput id="proposal-amount" addon="€" type="number" min="0" step="10" placeholder="850" value={newProposalAmount} onChange={(event) => setNewProposalAmount(event.target.value)} />
+                  </Field>
+                  <Field id="proposal-deadline" label="Impact planning">
+                    <AddonInput id="proposal-deadline" addon="jours" type="number" min="0" step="1" placeholder="3" value={newProposalDeadline} onChange={(event) => setNewProposalDeadline(event.target.value)} />
+                  </Field>
+                </div>
+              </>
+            )}
+          </Modal>
+
+          <Modal
+            open={proposalPreviewCommentId !== null && Boolean(previewProposal)}
+            onClose={() => setProposalPreviewCommentId(null)}
+            title="Résumé de la proposition"
+            description={previewProposal ? `Demande #${previewProposalComment?.id} · Version ${previewProposal.version}` : undefined}
+          >
+            {previewProposal && (
+              <>
                 <div className={`proposal-preview-status ${previewAdaptationRequest?.decision === "refused" || proposalDecisionFor(previewProposal.commentId) === "refused" ? "refused" : "accepted"}`}>
-                  {previewAdaptationRequest?.decision === "accepted" ? `Acceptée par l'agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}` : previewAdaptationRequest?.decision === "refused" ? `Refusée par l'agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}` : proposalDecisionFor(previewProposal.commentId) === "accepted" ? "Acceptée par le client" : "Refusée par le client"}
+                  {previewAdaptationRequest?.decision === "accepted"
+                    ? `Acceptée par l’agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}`
+                    : previewAdaptationRequest?.decision === "refused"
+                      ? `Refusée par l’agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}`
+                      : proposalDecisionFor(previewProposal.commentId) === "accepted"
+                        ? "Acceptée par le client"
+                        : "Refusée par le client"}
                 </div>
                 <div className="proposal-summary">
-                  <div><span>Prestation</span><b>{previewProposal.description}</b></div>
-                  <div><span>Montant</span><b>{formatProposalAmount(previewProposal.amount)}</b></div>
-                  <div><span>Impact planning</span><b>{formatProposalDeadline(previewProposal.deadline)}</b></div>
-                </div>
-                {previewAdaptationRequest && <div className="adaptation-request-summary"><span>Demande d'adaptation · {previewAdaptationRequest.requestedAt}</span><p>{previewAdaptationRequest.message}</p></div>}
-              </section>
-            </div>
-          )}
-          {approvalOpen && (
-            <div className="modal-backdrop" role="presentation">
-              <section className="project-modal approval-modal">
-                <div className="drawer-header">
                   <div>
-                    <div className="eyebrow">CONFIRMATION REQUISE</div>
-                    <h2>Approuver cette version ?</h2>
-                  </div>
-                  <button
-                    type="button"
-                    className="close-button"
-                    onClick={() => setApprovalOpen(false)}
-                    aria-label="Fermer"
-                  >
-                    <X />
-                  </button>
-                </div>
-                <p className="drawer-intro">
-                  {
-                    comments.filter(
-                      (comment) => needsQualification(comment),
-                    ).length
-                  }{" "}
-                  demande(s) n'ont pas encore été qualifiée(s). L'approbation
-                  verrouillera cette version.
-                </p>
-                <div className="blocking-list">
-                  {comments
-                    .filter((comment) => needsQualification(comment))
-                    .map((comment) => (
-                      <div className="blocking-item" key={comment.id}>
-                        <span className="blocking-dot" />
-                        <span>{comment.message}</span>
-                      </div>
-                    ))}
-                </div>
-                <div className="approval-actions">
-                  <button
-                    className="changes-button"
-                    onClick={() => {
-                      setApprovalOpen(false);
-                      setInspectorTab("comment");
-                    }}
-                  >
-                    Revenir aux retours
-                  </button>
-                  <button
-                    className="approve-button"
-                    onClick={() => {
-                      setApprovalOpen(false);
-                      confirmApproval();
-                    }}
-                  >
-                    Approuver quand même
-                  </button>
-                </div>
-              </section>
-            </div>
-          )}
-          {proofOpen && (
-            <div className="modal-backdrop" role="presentation">
-              <section className="project-modal proof-modal">
-                <div className="drawer-header">
-                  <div>
-                    <div className="eyebrow">REGISTRE D'ARBITRAGE & PREUVE</div>
-                    <h2>Synthèse du périmètre & décisions</h2>
-                  </div>
-                  <button
-                    type="button"
-                    className="close-button"
-                    onClick={() => setProofOpen(false)}
-                    aria-label="Fermer"
-                  >
-                    <X />
-                  </button>
-                </div>
-                <button className="proof-export-button" onClick={exportProof}>
-                  Exporter la preuve
-                </button>
-                <div className="proof-header">
-                  <div>
-                    <span>Projet</span>
-                    <b>{selectedProject?.name ?? "Projet"}</b>
+                    <span>Prestation</span>
+                    <b>{previewProposal.description}</b>
                   </div>
                   <div>
-                    <span>Client</span>
-                    <b>{selectedClient?.name ?? "Client"}</b>
+                    <span>Montant</span>
+                    <b>{formatProposalAmount(previewProposal.amount)}</b>
                   </div>
                   <div>
-                    <span>Version</span>
-                    <b>
-                      V{String(currentDeliverable.version).padStart(2, "0")}
-                    </b>
+                    <span>Impact planning</span>
+                    <b>{formatProposalDeadline(previewProposal.deadline)}</b>
                   </div>
                 </div>
-                <div className="proof-status">
-                  <span
-                    className={`status-dot ${approved ? "approved-dot" : ""}`}
-                  />{" "}
-                  {approved ? "Version approuvée" : "En attente client"}
-                  {approvedAt && <small> le {approvedAt}</small>}
-                </div>
+                {previewAdaptationRequest && (
+                  <div className="adaptation-request-summary">
+                    <span>Demande d’adaptation · {previewAdaptationRequest.requestedAt}</span>
+                    <p>{previewAdaptationRequest.message}</p>
+                  </div>
+                )}
+              </>
+            )}
+          </Modal>
 
-                <div className="scope-summary-grid">
-                  <div className="scope-summary-card">
-                    <span className="scope-card-label">Demandes incluses</span>
-                    <b>
-                      {activeComments.filter((c) => c.decision === "Inclus").length}
-                    </b>
-                    <small>0 € (compris au forfait)</small>
+          <Modal
+            open={approvalOpen}
+            onClose={() => setApprovalOpen(false)}
+            role="alertdialog"
+            title="Approuver cette version ?"
+            description={`${comments.filter((comment) => needsQualification(comment)).length} demande(s) n’ont pas encore été qualifiée(s). L’approbation verrouillera cette version.`}
+            footer={
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setApprovalOpen(false);
+                    setInspectorTab("comment");
+                  }}
+                >
+                  Revenir aux retours
+                </Button>
+                <Button
+                  onClick={() => {
+                    setApprovalOpen(false);
+                    confirmApproval();
+                  }}
+                >
+                  Approuver quand même
+                </Button>
+              </>
+            }
+          >
+            <div className="blocking-list">
+              {comments
+                .filter((comment) => needsQualification(comment))
+                .map((comment) => (
+                  <div className="blocking-item" key={comment.id}>
+                    <span className="blocking-dot" />
+                    <span>{comment.message}</span>
                   </div>
-                  <div className="scope-summary-card">
-                    <span className="scope-card-label">Hors périmètre</span>
-                    <b>
-                      {activeComments.filter((c) => c.decision === "Hors périmètre").length}
-                    </b>
+                ))}
+            </div>
+          </Modal>
+
+          {/* Built only when a deliverable is open: its body reads the current version. */}
+          {currentDeliverable && (
+          <Modal
+            open={proofOpen}
+            onClose={() => setProofOpen(false)}
+            title="Synthèse du périmètre & décisions"
+            description="Le registre des demandes, de leurs qualifications et des propositions de cette version."
+            size="xl"
+            footer={<Button onClick={exportProof}>Exporter la preuve</Button>}
+          >
+            <div className="proof-header">
+              <div>
+                <span>Projet</span>
+                <b>{selectedProject?.name ?? "Projet"}</b>
+              </div>
+              <div>
+                <span>Client</span>
+                <b>{selectedClient?.name ?? "Client"}</b>
+              </div>
+              <div>
+                <span>Version</span>
+                <b>V{String(currentDeliverable.version).padStart(2, "0")}</b>
+              </div>
+            </div>
+            <div className="proof-status">
+              <span className={`status-dot ${approved ? "approved-dot" : ""}`} /> {approved ? "Version approuvée" : "En attente client"}
+              {approvedAt && <small> le {approvedAt}</small>}
+            </div>
+            <div className="scope-summary-grid">
+              <div className="scope-summary-card">
+                <span className="scope-card-label">À traiter</span>
+                <b>{activeComments.filter((c) => c.decision === "Inclus").length}</b>
+                <small>0 € (compris au forfait)</small>
+              </div>
+              <div className="scope-summary-card">
+                <span className="scope-card-label">Hors scope</span>
+                <b>{activeComments.filter((c) => c.decision === "Hors périmètre").length}</b>
+                <small>
+                  {activeComments.filter((c) => c.decision === "Hors périmètre" && proposalDecisionFor(c.id) === "accepted").length} acceptée(s)
+                </small>
+              </div>
+              <div className="scope-summary-card highlight">
+                <span className="scope-card-label">À clarifier</span>
+                <b>{activeComments.filter((c) => needsQualification(c)).length}</b>
+                <small>en attente d’arbitrage</small>
+              </div>
+            </div>
+            <h3 className="font-heading text-base font-semibold">Décisions sur les demandes</h3>
+            <div className="proof-comments">
+              {activeComments.map((comment) => (
+                <div className="proof-comment" key={comment.id}>
+                  <span className={`decision-badge ${decisionStyles[comment.decision]}`}>
+                    {comment.decision === "Inclus" ? "À traiter" : comment.decision === "Hors périmètre" ? "Hors scope" : "À clarifier"}
+                  </span>
+                  <p>{comment.title ?? comment.message}</p>
+                </div>
+              ))}
+            </div>
+            {activeComments.some((comment) => comment.decision === "Hors périmètre" && proposalStateFor(comment.id) === "sent") && (
+              <>
+                <h3 className="font-heading text-base font-semibold">Propositions commerciales associées</h3>
+                <div className="proof-proposals-list">
+                  {activeComments
+                    .filter((comment) => comment.decision === "Hors périmètre" && proposalStateFor(comment.id) === "sent")
+                    .map((comment) => {
+                      const proposal = activeProposalFor(comment.id);
+                      const decision = proposalDecisionFor(comment.id);
+                      return (
+                        <div className="proof-proposal-item" key={comment.id}>
+                          <div>
+                            <b>
+                              Demande #{comment.id} : {proposal?.description || comment.message}
+                            </b>
+                            <small>
+                              {proposal ? `${formatProposalAmount(proposal.amount)} · ${formatProposalDeadline(proposal.deadline)}` : "Montant et délai à définir"}
+                            </small>
+                          </div>
+                          <span className={`decision-badge ${decision === "accepted" ? "decision-included" : decision === "refused" ? "decision-outside" : "decision-pending"}`}>
+                            {decision === "accepted" ? (
+                              <>
+                                Acceptée <Check />
+                              </>
+                            ) : decision === "refused" ? (
+                              "Refusée"
+                            ) : (
+                              "En attente"
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </>
+            )}
+            <div className="proof-footer">
+              <span>Validé par Alex Morgan</span>
+              <span>
+                Identifiant : KR-{currentDeliverable.id}-{currentDeliverable.version}
+              </span>
+            </div>
+          </Modal>
+          )}
+
+          <Modal
+            open={Boolean(pendingImport)}
+            onClose={() => setPendingImport(null)}
+            title="Que souhaitez-vous ajouter ?"
+            description={pendingImport ? `${pendingImport.file.name} est prêt à être ajouté au projet.` : undefined}
+          >
+            <div className="import-choice-list">
+              <button className="import-choice" onClick={() => confirmImport("version")}>
+                <b>Nouvelle version</b>
+                <small>
+                  Conserver le livrable « {currentDeliverable?.name} » et créer V{(currentDeliverable?.version ?? 0) + 1}.
+                </small>
+              </button>
+              <button className="import-choice" onClick={() => confirmImport("deliverable")}>
+                <b>Nouveau livrable</b>
+                <small>Créer un document indépendant en version 01.</small>
+              </button>
+            </div>
+          </Modal>
+
+          <Modal
+            open={newProjectOpen}
+            onClose={() => setNewProjectOpen(false)}
+            title="Créer un projet"
+            description={
+              view.kind === "client"
+                ? `Le projet sera créé dans l’espace ${clients.find((client) => client.id === view.clientId)?.name ?? ""}.`
+                : "Un projet regroupe les livrables d’une même mission."
+            }
+            onSubmit={createProject}
+            footer={
+              <>
+                <Button type="button" variant="outline" onClick={() => setNewProjectOpen(false)}>
+                  Annuler
+                </Button>
+                <Button type="submit">Créer le projet</Button>
+              </>
+            }
+          >
+            <Field id="new-project-name" label="Nom du projet">
+              <Input id="new-project-name" autoFocus value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} placeholder="Ex. Refonte du site vitrine" />
+            </Field>
+            {/* Inside a space the space is implied; elsewhere, pick it. */}
+            {view.kind !== "client" && (
+              <Field id="new-project-space" label="Espace">
+                <select id="new-project-space" className={selectClassName} value={newProjectClientId ?? selectedClientId} onChange={(event) => setNewProjectClientId(Number(event.target.value))}>
+                  {clients.map((client) => (
+                    <option value={client.id} key={client.id}>
+                      {client.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+            {projectError && <FormError>{projectError}</FormError>}
+          </Modal>
+
+          <Modal
+            open={newClientOpen}
+            onClose={() => setNewClientOpen(false)}
+            title="Créer un espace"
+            description="Un espace regroupe des projets. Vous pourrez y inviter vos collaborateurs, et votre client."
+            onSubmit={createClient}
+            footer={
+              <>
+                <Button type="button" variant="outline" onClick={() => setNewClientOpen(false)}>
+                  Annuler
+                </Button>
+                <Button type="submit">Créer l’espace</Button>
+              </>
+            }
+          >
+            <Field id="new-space-name" label="Nom de l’espace">
+              <Input id="new-space-name" autoFocus value={newClientName} onChange={(event) => setNewClientName(event.target.value)} placeholder="Ex. Atelier Horizon" />
+            </Field>
+            <Field id="new-space-email" label="Inviter un collaborateur" optional>
+              <Input id="new-space-email" type="email" value={newClientEmail} onChange={(event) => setNewClientEmail(event.target.value)} placeholder="prenom@votre-agence.fr" />
+            </Field>
+            {clientError && <FormError>{clientError}</FormError>}
+          </Modal>
+
+          <Modal
+            open={historyOpen}
+            onClose={() => setHistoryOpen(false)}
+            title="Historique & journal"
+            description="Chaque version reste consultable ; une version approuvée ne peut plus être modifiée."
+            size="lg"
+          >
+            <div className="version-list">
+              {deliverables.map((deliverable, index) => (
+                <div className={`version-row ${index === 0 ? "current-version" : ""}`} key={deliverable.id}>
+                  <div>
+                    <b>Version {String(deliverable.version).padStart(2, "0")}</b>
                     <small>
-                      {activeComments.filter(
-                        (c) =>
-                          c.decision === "Hors périmètre" &&
-                          proposalDecisionFor(c.id) === "accepted",
-                      ).length}{" "}
-                      acceptée(s)
+                      {deliverable.name} · {deliverable.importedAt}
                     </small>
                   </div>
-                  <div className="scope-summary-card highlight">
-                    <span className="scope-card-label">À clarifier</span>
-                    <b>
-                      {activeComments.filter((c) => needsQualification(c)).length}
-                    </b>
-                    <small>en attente d'arbitrage</small>
-                  </div>
+                  <span className={`version-status ${deliverable.locked ? "locked-status" : "draft-status"}`}>{deliverable.locked ? "Verrouillée" : deliverable.status}</span>
                 </div>
-
-                <h3>Décisions et qualifications sur les demandes</h3>
-                <div className="proof-comments">
-                  {activeComments.map((comment) => (
-                    <div className="proof-comment" key={comment.id}>
-                      <span
-                        className={`decision-badge ${decisionStyles[comment.decision]}`}
-                      >
-                        {comment.decision}
-                      </span>
-                      <p>{comment.message}</p>
-                    </div>
-                  ))}
-                </div>
-                {activeComments.some(
-                  (comment) =>
-                    comment.decision === "Hors périmètre" &&
-                    proposalStateFor(comment.id) === "sent",
-                ) && (
-                  <>
-                    <h3>Propositions commerciales associées</h3>
-                    <div className="proof-proposals-list">
-                      {activeComments
-                        .filter(
-                          (comment) =>
-                            comment.decision === "Hors périmètre" &&
-                            proposalStateFor(comment.id) === "sent",
-                        )
-                        .map((comment) => {
-                          const proposal = activeProposalFor(comment.id);
-                          const decision = proposalDecisionFor(comment.id);
-                          return (
-                            <div className="proof-proposal-item" key={comment.id}>
-                              <div>
-                                <b>Demande #{comment.id} : {proposal?.description || comment.message}</b>
-                                <small>{proposal ? `${formatProposalAmount(proposal.amount)} · ${formatProposalDeadline(proposal.deadline)}` : "Montant et délai à définir"}</small>
-                              </div>
-                              <span
-                                className={`decision-badge ${
-                                  decision === "accepted"
-                                    ? "decision-included"
-                                    : decision === "refused"
-                                      ? "decision-outside"
-                                      : "decision-pending"
-                                }`}
-                              >
-                                {decision === "accepted"
-                                  ? <>Acceptée <Check /></>
-                                  : decision === "refused"
-                                    ? "Refusée"
-                                    : "En attente"}
-                              </span>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </>
-                )}
-                <div className="proof-footer">
-                  <span>Validé par Alex Morgan</span>
-                  <span>
-                    Identifiant : KR-{currentDeliverable.id}-
-                    {currentDeliverable.version}
-                  </span>
-                </div>
-              </section>
+              ))}
             </div>
-          )}
-          {pendingImport && (
-            <div className="modal-backdrop" role="presentation">
-              <section className="project-modal import-choice-modal">
-                <div className="drawer-header"><div><div className="eyebrow">NOUVEL IMPORT</div><h2>Que souhaitez-vous ajouter ?</h2></div><button type="button" className="close-button" onClick={() => setPendingImport(null)} aria-label="Fermer"><X /></button></div>
-                <p className="drawer-intro">{pendingImport.file.name} est prêt à être ajouté au projet.</p>
-                <div className="import-choice-list"><button className="import-choice" onClick={() => confirmImport("version")}><b>Nouvelle version</b><small>Conserver le livrable « {currentDeliverable?.name} » et créer V{(currentDeliverable?.version ?? 0) + 1}.</small></button><button className="import-choice" onClick={() => confirmImport("deliverable")}><b>Nouveau livrable</b><small>Créer un document indépendant en version 01.</small></button></div>
-              </section>
-            </div>
-          )}
-          {newProjectOpen && (
-            <div className="modal-backdrop" role="presentation">
-              <form className="project-modal" onSubmit={createProject}>
-                <div className="drawer-header">
-                  <h2>Créer un projet</h2>
-                  <button
-                    type="button"
-                    className="close-button"
-                    onClick={() => setNewProjectOpen(false)}
-                    aria-label="Fermer"
-                  >
-                    <X />
-                  </button>
-                </div>
-                <p className="drawer-intro">
-                  {view.kind === "client"
-                    ? `Le projet sera créé dans l’espace ${clients.find((client) => client.id === view.clientId)?.name ?? ""}.`
-                    : "Un projet regroupe les livrables d’une même mission."}
-                </p>
-                <label>
-                  Nom du projet
-                  <input
-                    autoFocus
-                    value={newProjectName}
-                    onChange={(event) => setNewProjectName(event.target.value)}
-                    placeholder="Ex. Refonte du site vitrine"
-                  />
-                </label>
-                {/* Inside a space the space is implied; elsewhere, pick it. */}
-                {view.kind !== "client" && (
-                <label>
-                  Espace
-                  <select
-                    value={newProjectClientId ?? selectedClientId}
-                    onChange={(event) => setNewProjectClientId(Number(event.target.value))}
-                  >
-                    {clients.map((client) => (
-                      <option value={client.id} key={client.id}>
-                        {client.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                )}
-                {projectError && (
-                  <p className="form-error" role="alert">
-                    {projectError}
-                  </p>
-                )}
-                <button className="send-proposal" type="submit">
-                  Créer le projet <ArrowRight />
-                </button>
-              </form>
-            </div>
-          )}
-          {newClientOpen && (
-            <div className="modal-backdrop" role="presentation">
-              <form className="project-modal" onSubmit={createClient} noValidate>
-                <div className="drawer-header">
-                  <div>
-                    <h2>Créer un espace</h2>
-                  </div>
-                  <button
-                    type="button"
-                    className="close-button"
-                    onClick={() => setNewClientOpen(false)}
-                    aria-label="Fermer"
-                  >
-                    <X />
-                  </button>
-                </div>
-                <p className="drawer-intro">
-                  Un espace regroupe des projets. Vous pourrez y inviter vos collaborateurs, et votre client.
-                </p>
-                <label>
-                  Nom de l’espace
-                  <input
-                    autoFocus
-                    value={newClientName}
-                    onChange={(event) => setNewClientName(event.target.value)}
-                    placeholder="Ex. Atelier Horizon"
-                  />
-                </label>
-                <label>
-                  <span>
-                    Inviter un collaborateur <span className="field-optional">(facultatif)</span>
-                  </span>
-                  <input
-                    type="email"
-                    value={newClientEmail}
-                    onChange={(event) => setNewClientEmail(event.target.value)}
-                    placeholder="prenom@votre-agence.fr"
-                  />
-                </label>
-                {clientError && (
-                  <p className="form-error" role="alert">
-                    {clientError}
-                  </p>
-                )}
-                <button className="send-proposal" type="submit">
-                  Créer l’espace <ArrowRight />
-                </button>
-              </form>
-            </div>
-          )}
-          {historyOpen && (
-            <div className="modal-backdrop" role="presentation">
-              <section className="project-modal history-modal">
-                <div className="drawer-header">
-                  <div>
-                    <div className="eyebrow">HISTORIQUE DU LIVRABLE</div>
-                    <h2>Versions</h2>
-                  </div>
-                  <button
-                    type="button"
-                    className="close-button"
-                    onClick={() => setHistoryOpen(false)}
-                    aria-label="Fermer"
-                  >
-                    <X />
-                  </button>
-                </div>
-                <p className="drawer-intro">
-                  Chaque version reste consultable et une version approuvée ne
-                  peut plus être modifiée.
-                </p>
-                <div className="version-list">
-                  {deliverables.map((deliverable, index) => (
-                    <div
-                      className={`version-row ${index === 0 ? "current-version" : ""}`}
-                      key={deliverable.id}
-                    >
+            <div className="audit-section">
+              <div className="audit-section-heading">
+                <b>Journal d’activité</b>
+                <span>
+                  {activeAuditEvents.length} événement{activeAuditEvents.length > 1 ? "s" : ""}
+                </span>
+              </div>
+              {activeAuditEvents.length === 0 ? (
+                <p className="audit-empty">Les décisions et actions importantes apparaîtront ici.</p>
+              ) : (
+                <div className="audit-list">
+                  {activeAuditEvents.slice(0, 12).map((event) => (
+                    <div className="audit-event" key={event.id}>
+                      <span className="audit-dot" />
                       <div>
-                        <b>
-                          Version {String(deliverable.version).padStart(2, "0")}
-                        </b>
+                        <b>{event.description}</b>
                         <small>
-                          {deliverable.name} · {deliverable.importedAt}
+                          {event.actor} · {event.timestamp}
                         </small>
                       </div>
-                      <span
-                        className={`version-status ${deliverable.locked ? "locked-status" : "draft-status"}`}
-                      >
-                        {deliverable.locked
-                          ? "Verrouillée"
-                          : deliverable.status}
-                      </span>
                     </div>
                   ))}
                 </div>
-                <div className="audit-section">
-                  <div className="audit-section-heading"><b>Journal d'activité</b><span>{activeAuditEvents.length} événement{activeAuditEvents.length > 1 ? "s" : ""}</span></div>
-                  {activeAuditEvents.length === 0 ? (
-                    <p className="audit-empty">Les décisions et actions importantes apparaîtront ici.</p>
-                  ) : (
-                    <div className="audit-list">{activeAuditEvents.slice(0, 12).map((event) => <div className="audit-event" key={event.id}><span className="audit-dot" /><div><b>{event.description}</b><small>{event.actor} · {event.timestamp}</small></div></div>)}</div>
-                  )}
-                </div>
-              </section>
+              )}
             </div>
-          )}
-          {shareOpen && (
-            <div className="modal-backdrop" role="presentation">
-              <section className="project-modal share-modal">
-                <div className="drawer-header">
-                  <div>
-                    <div className="eyebrow">LIEN DE REVUE CLIENT</div>
-                    <h2>Partager la revue</h2>
-                  </div>
-                  <button
-                    type="button"
-                    className="close-button"
-                    onClick={() => setShareOpen(false)}
-                    aria-label="Fermer"
+          </Modal>
+
+          <Modal
+            open={shareOpen}
+            onClose={() => setShareOpen(false)}
+            title="Partager la revue"
+            description="Le client pourra consulter la version actuelle et déposer ses retours depuis ce lien."
+            footer={
+              reviewLink?.active ? (
+                <>
+                  <Button
+                    variant="destructive"
+                    className="sm:mr-auto"
+                    onClick={() => {
+                      const revokedLink = { ...reviewLink, active: false };
+                      const linkKey = `${reviewLink.deliverableId ?? 1}:${reviewLink.version ?? 1}`;
+                      setReviewLink(revokedLink);
+                      setReviewLinks((current) => ({ ...current, [linkKey]: revokedLink }));
+                      setShareOpen(false);
+                      toast("Lien de revue révoqué");
+                    }}
                   >
-                    <X />
-                  </button>
+                    Révoquer ce lien
+                  </Button>
+                  <Button variant="outline" onClick={notifyClient} disabled={isReadOnlyVersion}>
+                    {notificationSent ? (
+                      <>
+                        Client notifié <Check />
+                      </>
+                    ) : (
+                      "Notifier par e-mail"
+                    )}
+                  </Button>
+                  <Button onClick={copyReviewLink}>
+                    {linkCopied ? (
+                      <>
+                        Lien copié <Check />
+                      </>
+                    ) : (
+                      "Copier le lien"
+                    )}
+                  </Button>
+                </>
+              ) : undefined
+            }
+          >
+            {reviewLink?.active ? (
+              <>
+                <Field
+                  id="share-url"
+                  label="Lien sécurisé"
+                  hint={
+                    <>
+                      {reviewLink.autoExpire !== false ? `Expire le ${reviewLink.expiresAt}` : "Aucune expiration automatique"} · <span className="text-status-resolved-text">Lien actif</span>
+                    </>
+                  }
+                >
+                  <Input id="share-url" readOnly value={getReviewUrl()} onFocus={(event) => event.target.select()} />
+                </Field>
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="share-auto-expire" className="text-sm font-normal">
+                    Révoquer automatiquement après 7 jours
+                  </Label>
+                  <Switch id="share-auto-expire" checked={reviewLink.autoExpire !== false} onCheckedChange={updateAutoExpire} />
                 </div>
-                <p className="drawer-intro">
-                  Le client pourra consulter la version actuelle et déposer ses
-                  retours depuis ce lien.
-                </p>
-                {reviewLink?.active ? (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs text-muted-foreground">
+                    {lastReminderAt ? `Dernière relance : ${new Date(lastReminderAt).toLocaleString("fr-FR")}` : "Aucune relance envoyée"}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={remindClient} disabled={reminderBlocked || isReadOnlyVersion}>
+                    {reminderBlocked ? "Relance déjà envoyée" : "Relancer le client"}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <FormError>Ce lien a été révoqué. Fermez cette fenêtre pour en générer un nouveau.</FormError>
+            )}
+          </Modal>
+
+          {(() => {
+            const request = confirmSendId !== null ? comments.find((comment) => comment.id === confirmSendId) : undefined;
+            const draft = confirmSendId !== null ? proposalVersions[confirmSendId]?.find((proposal) => proposal.status === "draft") : undefined;
+            return (
+              <Modal
+                open={Boolean(request && draft)}
+                onClose={() => setConfirmSendId(null)}
+                role="alertdialog"
+                title="Envoyer la proposition au client ?"
+                description={`${selectedClient?.name ?? "Le client"} la recevra sur sa page de revue et pourra l’accepter, la refuser ou demander une adaptation.`}
+                className="confirm-send-modal"
+                footer={
                   <>
-                    <label>
-                      Lien sécurisé
-                      <input
-                        className="share-url"
-                        readOnly
-                        value={getReviewUrl()}
-                      />
-                    </label>
-                    <div className="share-meta">
-                      <span>
-                        {reviewLink.autoExpire !== false
-                          ? `Expire le ${reviewLink.expiresAt}`
-                          : "Aucune expiration automatique"}
-                      </span>
-                      <span className="active-link">
-                        <i /> Lien actif
-                      </span>
-                    </div>
-                    <label className="share-expiration-toggle">
-                      <input
-                        type="checkbox"
-                        checked={reviewLink.autoExpire !== false}
-                        onChange={(event) => updateAutoExpire(event.target.checked)}
-                      />
-                      Révoquer automatiquement après 7 jours
-                    </label>
-                    <button className="send-proposal" onClick={copyReviewLink}>
-                      {linkCopied ? <>Lien copié <Check /></> : "Copier le lien"}
-                    </button>
-                    <button className="notify-button" onClick={notifyClient} disabled={isReadOnlyVersion}>
-                      {notificationSent
-                        ? <>Client notifié <Check /></>
-                        : "Notifier le client par e-mail"}
-                    </button>
-                    <div className="reminder-row">
-                      <button
-                        className="reminder-button"
-                        onClick={remindClient}
-                        disabled={reminderBlocked || isReadOnlyVersion}
-                      >
-                        {reminderBlocked
-                          ? "Relance déjà envoyée"
-                          : "Relancer le client"}
-                      </button>
-                      {lastReminderAt && (
-                        <span>
-                          Dernière relance : {new Date(lastReminderAt).toLocaleString("fr-FR")}
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      className="revoke-button"
-                      onClick={() => {
-                        const revokedLink = { ...reviewLink, active: false };
-                        const linkKey = `${reviewLink.deliverableId ?? 1}:${reviewLink.version ?? 1}`;
-                        setReviewLink(revokedLink);
-                        setReviewLinks((current) => ({ ...current, [linkKey]: revokedLink }));
-                        setShareOpen(false);
-                      }}
-                    >
-                      Révoquer ce lien
-                    </button>
+                    <Button variant="outline" onClick={() => setConfirmSendId(null)}>
+                      Annuler
+                    </Button>
+                    <Button onClick={() => confirmSendId !== null && sendQuotedProposal(confirmSendId)}>Envoyer la proposition</Button>
                   </>
-                ) : (
-                  <p className="form-error">
-                    Ce lien a été révoqué. Fermez cette fenêtre pour en générer
-                    un nouveau.
-                  </p>
+                }
+              >
+                {request && draft && (
+                  <div className="proposal-summary">
+                    <div>
+                      <span>Demande</span>
+                      <b>{request.title ?? request.message}</b>
+                    </div>
+                    <div>
+                      <span>Montant HT</span>
+                      <b>{formatProposalAmount(draft.amount)}</b>
+                    </div>
+                    <div>
+                      <span>Délai</span>
+                      <b>{formatProposalDeadline(draft.deadline)}</b>
+                    </div>
+                  </div>
                 )}
-              </section>
-            </div>
-          )}
-          {deletedComment && (
-            <UndoToast key={deletedComment.id} message="Commentaire supprimé" onUndo={restoreComment} onDismiss={() => setDeletedComment(null)} />
-          )}
-          {confirmSendId !== null &&
-            (() => {
-              const request = comments.find((comment) => comment.id === confirmSendId);
-              const draft = proposalVersions[confirmSendId]?.find((proposal) => proposal.status === "draft");
-              if (!request || !draft) return null;
-              return (
-                <div className="modal-backdrop" role="presentation">
-                  <section className="project-modal confirm-send-modal" role="alertdialog" aria-labelledby="confirm-send-title">
-                    <div className="drawer-header">
-                      <h2 id="confirm-send-title">Envoyer la proposition au client ?</h2>
-                      <button type="button" className="close-button" onClick={() => setConfirmSendId(null)} aria-label="Fermer">
-                        <X />
-                      </button>
-                    </div>
-                    <p className="drawer-intro">
-                      {selectedClient?.name ?? "Le client"} la recevra sur sa page de revue et pourra l’accepter, la refuser ou demander une adaptation.
-                    </p>
-                    <div className="proposal-summary">
-                      <div>
-                        <span>Demande</span>
-                        <b>{request.title ?? request.message}</b>
-                      </div>
-                      <div>
-                        <span>Montant HT</span>
-                        <b>{formatProposalAmount(draft.amount)}</b>
-                      </div>
-                      <div>
-                        <span>Délai</span>
-                        <b>{formatProposalDeadline(draft.deadline)}</b>
-                      </div>
-                    </div>
-                    <div className="approval-actions">
-                      <button type="button" className="ghost-button" onClick={() => setConfirmSendId(null)}>
-                        Annuler
-                      </button>
-                      <button type="button" className="primary-button" onClick={() => sendQuotedProposal(confirmSendId)}>
-                        Envoyer la proposition
-                      </button>
-                    </div>
-                  </section>
-                </div>
-              );
-            })()}
+              </Modal>
+            );
+          })()}
           {renameOpen && latestVersionRecord && (
             <RenameDialog
               title="Renommer le livrable"
@@ -2910,123 +2771,87 @@ export function AgencyApp() {
               }}
             />
           )}
-          {shortcutsOpen && (
-            <div className="modal-backdrop" role="presentation" onClick={() => setShortcutsOpen(false)}>
-              <section className="project-modal shortcuts-modal" role="dialog" aria-label="Raccourcis clavier" onClick={(event) => event.stopPropagation()}>
-                <div className="drawer-header">
-                  <h2>Raccourcis clavier</h2>
-                  <button type="button" className="close-button" onClick={() => setShortcutsOpen(false)} aria-label="Fermer">
-                    <X />
-                  </button>
+
+          <Modal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} title="Raccourcis clavier" size="sm">
+            <dl className="shortcuts-list">
+              {[
+                ["V", "Outil Déplacer"],
+                ["C", "Outil Commentaire"],
+                ["Double-clic", "Déplacer une pin"],
+                ["Échap", "Fermer le fil, annuler"],
+                ["Molette", "Faire défiler les pages"],
+                ["Ctrl + molette", "Zoomer"],
+                ["Ctrl K", "Rechercher"],
+                ["Ctrl \\", "Afficher / masquer le panneau"],
+              ].map(([keys, action]) => (
+                <div key={keys}>
+                  <dt>
+                    <kbd>{keys}</kbd>
+                  </dt>
+                  <dd>{action}</dd>
                 </div>
-                <dl className="shortcuts-list">
-                  {[
-                    ["V", "Outil Déplacer"],
-                    ["C", "Outil Commentaire"],
-                    ["D", "Outil Demande"],
-                    ["Échap", "Fermer le fil, quitter l’outil"],
-                    ["Molette", "Faire défiler les pages"],
-                    ["Ctrl + molette", "Zoomer"],
-                    ["Ctrl K", "Rechercher"],
-                    ["Ctrl \\", "Afficher / masquer le panneau"],
-                  ].map(([keys, action]) => (
-                    <div key={keys}>
-                      <dt>
-                        <kbd>{keys}</kbd>
-                      </dt>
-                      <dd>{action}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </section>
+              ))}
+            </dl>
+          </Modal>
+
+          <Modal
+            open={changesOpen}
+            onClose={() => setChangesOpen(false)}
+            title="Rouvrir la validation"
+            description="Expliquez au client pourquoi cette validation doit être rouverte."
+            onSubmit={requestChanges}
+            footer={
+              <>
+                <Button type="button" variant="outline" onClick={() => setChangesOpen(false)}>
+                  Annuler
+                </Button>
+                <Button type="submit" disabled={!changesMessage.trim()}>
+                  Envoyer la demande
+                </Button>
+              </>
+            }
+          >
+            <Field id="changes-message" label="Message">
+              <Textarea id="changes-message" autoFocus value={changesMessage} onChange={(event) => setChangesMessage(event.target.value)} placeholder="Ex. La hiérarchie du bloc principal doit être revue…" />
+            </Field>
+          </Modal>
+
+          <Modal
+            open={newProposalVersionOpen}
+            onClose={() => setNewProposalVersionOpen(false)}
+            title="Nouvelle version de la proposition"
+            description="La proposition actuelle sera remplacée : cette nouvelle version sera la seule active pour le client."
+            onSubmit={sendNewProposalVersion}
+            size="lg"
+            footer={
+              <>
+                <Button type="button" variant="outline" onClick={() => setNewProposalVersionOpen(false)}>
+                  Annuler
+                </Button>
+                <Button type="submit" disabled={!newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>
+                  Envoyer la nouvelle proposition
+                </Button>
+              </>
+            }
+          >
+            {selectedAdaptationRequest && (
+              <div className="adaptation-request-summary">
+                <span>Demande du client · {selectedAdaptationRequest.requestedAt}</span>
+                <p>{selectedAdaptationRequest.message}</p>
+              </div>
+            )}
+            <Field id="version-description" label="Description de la prestation">
+              <Textarea id="version-description" autoFocus value={newProposalDescription} onChange={(event) => setNewProposalDescription(event.target.value)} />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field id="version-amount" label="Montant HT">
+                <AddonInput id="version-amount" addon="€" type="number" min="0" step="10" placeholder="850" value={newProposalAmount} onChange={(event) => setNewProposalAmount(event.target.value)} />
+              </Field>
+              <Field id="version-deadline" label="Impact planning">
+                <AddonInput id="version-deadline" addon="jours" type="number" min="0" step="1" placeholder="3" value={newProposalDeadline} onChange={(event) => setNewProposalDeadline(event.target.value)} />
+              </Field>
             </div>
-          )}
-          {changesOpen && (
-            <div className="modal-backdrop" role="presentation">
-              <form
-                className="project-modal comment-modal"
-                onSubmit={requestChanges}
-              >
-                <div className="drawer-header">
-                  <div>
-                    <div className="eyebrow">RETOUR GLOBAL</div>
-                    <h2>Rouvrir la validation</h2>
-                  </div>
-                  <button
-                    type="button"
-                    className="close-button"
-                    onClick={() => setChangesOpen(false)}
-                    aria-label="Fermer"
-                  >
-                    <X />
-                  </button>
-                </div>
-                <p className="drawer-intro">
-                  Expliquez au client pourquoi cette validation doit être rouverte.
-                </p>
-                <label>
-                  Message au studio
-                  <textarea
-                    autoFocus
-                    value={changesMessage}
-                    onChange={(event) => setChangesMessage(event.target.value)}
-                    placeholder="Ex. La hiérarchie du bloc principal doit être revue..."
-                  />
-                </label>
-                <button
-                  className="send-proposal"
-                  type="submit"
-                  disabled={!changesMessage.trim()}
-                >
-                  Envoyer la demande <ArrowRight />
-                </button>
-              </form>
-            </div>
-          )}
-          {newProposalVersionOpen && (
-            <div className="modal-backdrop" role="presentation">
-              <form className="project-modal comment-modal" onSubmit={sendNewProposalVersion}>
-                <div className="drawer-header">
-                  <div><div className="eyebrow">NOUVELLE VERSION</div><h2>Répondre à la demande d'adaptation</h2></div>
-                  <button type="button" className="close-button" onClick={() => setNewProposalVersionOpen(false)} aria-label="Fermer"><X /></button>
-                </div>
-                <p className="drawer-intro">La proposition actuelle deviendra remplacée. Cette nouvelle version sera la seule proposition active pour le client.</p>
-                {selectedAdaptationRequest && <div className="adaptation-request-summary"><span>Demande du client · {selectedAdaptationRequest.requestedAt}</span><p>{selectedAdaptationRequest.message}</p></div>}
-                <label>Description de la prestation<textarea autoFocus value={newProposalDescription} onChange={(event) => setNewProposalDescription(event.target.value)} /></label>
-                <div className="field-grid">
-                  <label>
-                    Montant
-                    <div className="input-with-addon">
-                      <input
-                        type="number"
-                        min="0"
-                        step="10"
-                        placeholder="850"
-                        value={newProposalAmount}
-                        onChange={(event) => setNewProposalAmount(event.target.value)}
-                      />
-                      <span className="input-addon">€</span>
-                    </div>
-                  </label>
-                  <label>
-                    Impact planning
-                    <div className="input-with-addon">
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        placeholder="3"
-                        value={newProposalDeadline}
-                        onChange={(event) => setNewProposalDeadline(event.target.value)}
-                      />
-                      <span className="input-addon">jours</span>
-                    </div>
-                  </label>
-                </div>
-                <button className="send-proposal" type="submit" disabled={!newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>Envoyer la nouvelle proposition <ArrowRight /></button>
-              </form>
-            </div>
-          )}
+          </Modal>
         </div>
       </section>
     </main>

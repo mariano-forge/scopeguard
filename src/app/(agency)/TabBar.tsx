@@ -5,6 +5,7 @@ import { Check, Clock, House, PenLine, Plus, X } from "lucide-react";
 import { href } from "./routes";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
+import { Hint } from "@/components/hint";
 
 export type TabStatus =
   | { kind: "changes-requested" }
@@ -81,7 +82,6 @@ export function TabBar({
           className={`tab tab-home ${homeActive ? "is-active" : ""}`}
           href={href.home()}
           aria-current={homeActive ? "page" : undefined}
-          title="Accueil"
         >
           <House />
           <span className="sr-only">Accueil</span>
@@ -109,16 +109,17 @@ export function TabBar({
                 className="tab-close"
                 onClick={() => onClose(tab.livrableId)}
                 aria-label={`Fermer ${tab.name}`}
-                title="Fermer l’onglet"
               >
                 <X />
               </button>
             </div>
           );
         })}
-        <button type="button" className="tab-new" onClick={onOpen} aria-label="Ouvrir un livrable" title="Ouvrir un livrable (Ctrl K)">
+        <Hint label="Ouvrir un livrable" shortcut="Ctrl K">
+        <button type="button" className="tab-new" onClick={onOpen} aria-label="Ouvrir un livrable">
           <Plus />
         </button>
+        </Hint>
       </nav>
     </div>
   );

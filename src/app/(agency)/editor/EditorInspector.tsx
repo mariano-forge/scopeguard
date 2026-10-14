@@ -5,6 +5,8 @@ import { Eye, MessageSquare, Plus, Share2 } from "lucide-react";
 import type { ProposalStage } from "./CanvasComments";
 import { ResizeHandle } from "./ResizeHandle";
 import { kindLabels, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
+import { Hint } from "@/components/hint";
+import { Button } from "@/components/ui/button";
 
 export type InspectorTab = RequestKind;
 
@@ -234,16 +236,22 @@ export function EditorInspector({
       <header className="requests-header">
         <h2>Demandes</h2>
         <div className="requests-actions">
-          <button className="icon-action has-tooltip" onClick={onPreview} aria-label="Aperçu client" data-tooltip="Aperçu : la page que voit le client">
-            <Eye />
-          </button>
-          <button className="icon-action has-tooltip" onClick={onShare} aria-label="Partager la revue" data-tooltip="Partager la revue avec le client">
-            <Share2 />
-          </button>
+          <Hint label="Aperçu : la page que voit le client">
+            <Button variant="outline" size="icon" className="icon-action" onClick={onPreview} aria-label="Aperçu client">
+              <Eye />
+            </Button>
+          </Hint>
+          <Hint label="Partager la revue avec le client">
+            <Button variant="outline" size="icon" className="icon-action" onClick={onShare} aria-label="Partager la revue">
+              <Share2 />
+            </Button>
+          </Hint>
           {onAddComment && (
-            <button className="primary-button requests-add has-tooltip" onClick={() => setAdding(true)} data-tooltip="Un retour général, sans le placer sur le livrable">
-              <Plus /> Commentaire
-            </button>
+            <Hint label="Un retour général, sans le placer sur le livrable">
+              <Button className="requests-add" onClick={() => setAdding(true)}>
+                <Plus /> Commentaire
+              </Button>
+            </Hint>
           )}
         </div>
       </header>

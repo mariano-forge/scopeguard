@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Bell,
@@ -24,59 +23,42 @@ import { href, type AgencyView } from "./routes";
 import { SpaceAvatar } from "./BrowserView";
 import { MenuButton, type MenuEntry } from "./editor/MenuButton";
 import { ResizeHandle } from "./editor/ResizeHandle";
+import { Hint } from "@/components/hint";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 type Notification = { id: number; message: string };
 type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId?: number };
 
-/** Bell + popover. The popover opens beside the sidebar. */
+/** Bell + shadcn popover, opening beside the sidebar. */
 function Notifications({ notifications, compact }: { notifications: Notification[]; compact?: boolean }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function close(event: MouseEvent | KeyboardEvent) {
-      if (event instanceof KeyboardEvent ? event.key === "Escape" : !rootRef.current?.contains(event.target as Node))
-        setOpen(false);
-    }
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [open]);
-
   return (
-    <div className={`notifications ${compact ? "is-compact" : ""}`} ref={rootRef}>
-      <button
-        className="sidebar-icon-button"
-        aria-label={`Notifications${notifications.length ? ` (${notifications.length})` : ""}`}
-        aria-expanded={open}
-        title="Notifications"
-        onClick={() => setOpen((current) => !current)}
-      >
-        <Bell />
-        {notifications.length > 0 && <span className="notification-count">{notifications.length}</span>}
-      </button>
-      {open && (
-        <div className="notification-panel" role="dialog" aria-label="Notifications">
-          <b>Notifications</b>
+    <div className={`notifications ${compact ? "is-compact" : ""}`}>
+      <Popover>
+        <Hint label="Notifications" side={compact ? "right" : "bottom"}>
+          <PopoverTrigger asChild>
+            <button className="sidebar-icon-button" aria-label={`Notifications${notifications.length ? ` (${notifications.length})` : ""}`}>
+              <Bell />
+              {notifications.length > 0 && <span className="notification-count">{notifications.length}</span>}
+            </button>
+          </PopoverTrigger>
+        </Hint>
+        <PopoverContent side={compact ? "right" : "bottom"} align="start" className="notification-panel w-80" aria-label="Notifications">
+          <p className="font-heading text-sm font-semibold">Notifications</p>
           {notifications.length === 0 ? (
-            <p>Aucune notification pour le moment.</p>
+            <p className="text-sm text-muted-foreground">Aucune notification pour le moment.</p>
           ) : (
-            notifications.slice(0, 5).map((notification) => (
-              <div className="notification-item" key={notification.id}>
-                <span className="notification-dot" />
-                <div>
+            <ul className="grid gap-2">
+              {notifications.slice(0, 5).map((notification) => (
+                <li className="notification-item" key={notification.id}>
+                  <span className="notification-dot" />
                   <span>{notification.message}</span>
-                </div>
-              </div>
-            ))
+                </li>
+              ))}
+            </ul>
           )}
-        </div>
-      )}
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -148,9 +130,11 @@ export function HomeSidebar({
           <Link href={href.spaces()} className={view.kind === "spaces" ? "is-active" : ""}>
             Tous les espaces
           </Link>
-          <button className="nav-section-action" onClick={onNewClient} aria-label="Nouvel espace" title="Nouvel espace">
-            <Plus />
-          </button>
+          <Hint label="Nouvel espace" side="right">
+            <button className="nav-section-action" onClick={onNewClient} aria-label="Nouvel espace">
+              <Plus />
+            </button>
+          </Hint>
         </div>
         <ul className="nav-tree">
           {clients.map((client) => (
@@ -233,18 +217,20 @@ export function ProjectSidebar({
           label="Menu principal"
           trigger={<Settings />}
           menuClassName="system-menu"
+          tooltip
           entries={systemMenu}
         />
         {view.kind === "deliverable" ? (
-          <button
-            className={`rail-button ${panel ? "is-active" : ""}`}
-            onClick={() => onPanel(panel ? null : "livrables")}
-            aria-label="Canevas, versions et annexes"
-            aria-pressed={Boolean(panel)}
-            title="Canevas, versions et annexes"
-          >
-            <Layers />
-          </button>
+          <Hint label="Versions" side="right">
+            <button
+              className={`rail-button ${panel ? "is-active" : ""}`}
+              onClick={() => onPanel(panel ? null : "livrables")}
+              aria-label="Versions"
+              aria-pressed={Boolean(panel)}
+            >
+              <Layers />
+            </button>
+          </Hint>
         ) : (
           <button
             className="rail-button"
@@ -253,14 +239,13 @@ export function ProjectSidebar({
               onNavigate(canvasHref);
             }}
             aria-label="Revenir au canevas"
-            title="Revenir au canevas"
           >
             <Layers />
           </button>
         )}
         <span className="rail-spacer" />
         <Notifications notifications={notifications} compact />
-        <span className="avatar dark-avatar rail-avatar" title="Alex Morgan">
+        <span className="avatar dark-avatar rail-avatar" aria-label="Alex Morgan">
           AM
         </span>
       </nav>
@@ -281,9 +266,11 @@ export function ProjectSidebar({
               menuClassName="livrable-menu"
               entries={livrableMenu}
             />
-            <button className="sidebar-icon-button" onClick={() => onPanel(null)} aria-label="Masquer le panneau" title="Masquer le panneau (Ctrl \)">
-              <PanelLeftClose />
-            </button>
+            <Hint label="Masquer le panneau" shortcut="Ctrl \">
+              <button className="sidebar-icon-button" onClick={() => onPanel(null)} aria-label="Masquer le panneau">
+                <PanelLeftClose />
+              </button>
+            </Hint>
           </div>
           <div className="panel-context">
             <span className="panel-path">

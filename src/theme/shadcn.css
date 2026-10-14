@@ -35,16 +35,17 @@
   --font-sans: var(--font-inter), system-ui, sans-serif;
   --font-heading: var(--font-manrope), system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
-  --text-caption: 12px;
-  --text-caption--line-height: 16px;
-  --text-ui: 14px;
-  --text-ui--line-height: 20px;
-  --text-body: 16px;
-  --text-body--line-height: 24px;
-  --text-h3: 20px;
-  --text-h3--line-height: 26px;
-  --text-h2: 28px;
-  --text-h2--line-height: 34px;
+  /* Kora type scale under Tailwind's standard names (so cn / tailwind-merge recognizes them) */
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 14px;
+  --text-sm--line-height: 20px;
+  --text-base: 16px;
+  --text-base--line-height: 24px;
+  --text-xl: 20px;
+  --text-xl--line-height: 26px;
+  --text-2xl: 28px;
+  --text-2xl--line-height: 34px;
 
   /* shadcn semantic colors */
   --color-background: var(--background);

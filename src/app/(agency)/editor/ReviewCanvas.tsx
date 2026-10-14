@@ -6,6 +6,7 @@ import { Maximize, MessageCirclePlus, Minus, MousePointer2, Plus } from "lucide-
 import { DeliverableContent } from "@/components/DeliverableContent";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { CommentPin, TargetHighlight, describeTarget, type Area, type TargetBox, type ThreadComment } from "./CanvasComments";
+import { Hint } from "@/components/hint";
 
 /** Canvas tools: move (pan, open threads) and comment (default). Requests are qualified from a comment. */
 export type CanvasTool = "move" | "remark";
@@ -274,8 +275,8 @@ export function ReviewCanvas({
   }
 
   const toolButtons: Record<CanvasTool, { icon: React.ReactNode; label: string; title: string }> = {
-    move: { icon: <MousePointer2 />, label: "", title: "Déplacer (V)" },
-    remark: { icon: <MessageCirclePlus />, label: "", title: "Commenter : cliquez sur un élément ou dessinez une zone (C)" },
+    move: { icon: <MousePointer2 />, label: "", title: "Déplacer · V" },
+    remark: { icon: <MessageCirclePlus />, label: "", title: "Commenter : cliquez sur un élément ou dessinez une zone · C" },
   };
 
   return (
@@ -360,33 +361,41 @@ export function ReviewCanvas({
       <div className="canvas-toolbar" role="toolbar" aria-label="Outils du canevas">
         <div className="tool-group">
           {tools.map((option) => (
-            <button
-              key={option}
-              className={`tool-button ${toolButtons[option].label ? "with-label" : ""} ${tool === option ? "selected" : ""}`}
-              aria-pressed={tool === option}
-              aria-label={option === "move" ? "Déplacer" : "Commentaire"}
-              onClick={() => onToolChange(option)}
-              disabled={option !== "move" && readOnly}
-              title={toolButtons[option].title}
-            >
-              {toolButtons[option].icon} {toolButtons[option].label && <span>{toolButtons[option].label}</span>}
-            </button>
+            <Hint key={option} label={toolButtons[option].title} side="top">
+              <button
+                className={`tool-button ${toolButtons[option].label ? "with-label" : ""} ${tool === option ? "selected" : ""}`}
+                aria-pressed={tool === option}
+                aria-label={option === "move" ? "Déplacer" : "Commentaire"}
+                onClick={() => onToolChange(option)}
+                disabled={option !== "move" && readOnly}
+              >
+                {toolButtons[option].icon} {toolButtons[option].label && <span>{toolButtons[option].label}</span>}
+              </button>
+            </Hint>
           ))}
         </div>
         <span className="toolbar-divider" aria-hidden="true" />
         <div className="tool-group">
-          <button className="tool-button" onClick={() => transformRef.current?.zoomOut(0.2)} disabled={zoom <= 25} title="Réduire le zoom" aria-label="Réduire le zoom">
-            <Minus />
-          </button>
-          <button className="zoom" onClick={fitWidth} title="Ajuster à la largeur">
-            {zoom}%
-          </button>
-          <button className="tool-button" onClick={() => transformRef.current?.zoomIn(0.2)} disabled={zoom >= 400} title="Augmenter le zoom" aria-label="Augmenter le zoom">
-            <Plus />
-          </button>
-          <button className="tool-button" onClick={toggleFullscreen} title="Plein écran" aria-label="Plein écran">
-            <Maximize />
-          </button>
+          <Hint label="Réduire le zoom" side="top">
+            <button className="tool-button" onClick={() => transformRef.current?.zoomOut(0.2)} disabled={zoom <= 25} aria-label="Réduire le zoom">
+              <Minus />
+            </button>
+          </Hint>
+          <Hint label="Ajuster à la largeur" side="top">
+            <button className="zoom" onClick={fitWidth}>
+              {zoom}%
+            </button>
+          </Hint>
+          <Hint label="Augmenter le zoom" side="top">
+            <button className="tool-button" onClick={() => transformRef.current?.zoomIn(0.2)} disabled={zoom >= 400} aria-label="Augmenter le zoom">
+              <Plus />
+            </button>
+          </Hint>
+          <Hint label="Plein écran" side="top">
+            <button className="tool-button" onClick={toggleFullscreen} aria-label="Plein écran">
+              <Maximize />
+            </button>
+          </Hint>
         </div>
         {toolbarExtra && (
           <>

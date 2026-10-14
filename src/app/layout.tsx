@@ -3,6 +3,7 @@ import { IBM_Plex_Mono, Inter, Manrope } from "next/font/google";
 import { AgentationProvider } from "./AgentationProvider";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
+        <Toaster position="bottom-center" />
         <AgentationProvider />
       </body>
     </html>

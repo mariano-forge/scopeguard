@@ -4,18 +4,20 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import {
-  ArrowRight,
   Check,
   Eye,
   Lock,
   Plus,
-  X,
 } from "lucide-react";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { Composer, ThreadPopover, requestKind, type Area, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
 import { RequestPanel, type InspectorTab } from "@/app/(agency)/editor/EditorInspector";
-import { UndoToast } from "@/app/(agency)/editor/UndoToast";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { AddonInput, Field, Modal } from "@/components/modal";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "@/app/(agency)/editor/ReviewCanvas";
+import { Hint } from "@/components/hint";
 
 
 function parseNumericAmount(amount: number | string | undefined): number {
@@ -149,8 +151,6 @@ export default function ClientReviewPage() {
   const [composer, setComposer] = useState<CanvasComposer | null>(null);
   const [panelTab, setPanelTab] = useState<InspectorTab>("comment");
   const [addingComment, setAddingComment] = useState(false);
-  /** Comment just deleted, kept for "Annuler". */
-  const [deletedComment, setDeletedComment] = useState<ClientComment | null>(null);
   const [proposalStates, setProposalStates] = useState<ProposalStates>({});
   const [proposalDecisions, setProposalDecisions] = useState<ProposalDecisions>({});
   const [adaptationRequests, setAdaptationRequests] = useState<AdaptationRequests>({});
@@ -419,7 +419,7 @@ export default function ClientReviewPage() {
       }
       return updated;
     });
-    setDeletedComment(target);
+    toast("Commentaire supprimé", { action: { label: "Annuler", onClick: () => restoreComment(target) } });
   }
 
   /** Double-click a pin, then click: the comment moves there (its drawn area follows). */
@@ -441,13 +441,11 @@ export default function ClientReviewPage() {
     );
   }
 
-  /** Puts back the comment deleted last ("Annuler" in the toast). */
-  function restoreComment() {
-    const removed = deletedComment;
-    if (!removed) return;
+  /** Puts back a deleted comment ("Annuler" in the toast). */
+  function restoreComment(removed: ClientComment) {
     setComments((current) => (current.some((comment) => comment.id === removed.id) ? current : [...current, removed].sort((a, b) => a.id - b.id)));
-    setDeletedComment(null);
   }
+
 
 
   function decideProposal(commentId: number, decision: ProposalDecision) {
@@ -782,9 +780,11 @@ export default function ClientReviewPage() {
               <h2>Vos retours</h2>
               {!isReadOnlyVersion() && (
                 <div className="requests-actions">
-                  <button className="icon-action" onClick={() => setAddingComment(true)} aria-label="Ajouter un commentaire" title="Ajouter un commentaire">
-                    <Plus />
-                  </button>
+                  <Hint label="Un retour général, sans le placer sur le livrable">
+                    <Button className="requests-add" onClick={() => setAddingComment(true)}>
+                      <Plus /> Commentaire
+                    </Button>
+                  </Hint>
                 </div>
               )}
             </header>
@@ -851,67 +851,111 @@ export default function ClientReviewPage() {
           </div>
         </div>
       </section>
-      {proposalPreviewCommentId !== null && previewProposal && (
-        <div className="modal-backdrop" role="presentation">
-          <section className="project-modal proposal-preview-modal">
-            <div className="drawer-header">
-              <div>
-                <div className="eyebrow">PROPOSITION COMPLÉMENTAIRE</div>
-                <h2>Résumé de la proposition</h2>
-              </div>
-              <button type="button" className="close-button" onClick={() => setProposalPreviewCommentId(null)} aria-label="Fermer"><X /></button>
-            </div>
-            <p className="drawer-intro">Demande #{previewProposalComment?.id} · Version {previewProposal.version}</p>
+      <Modal
+        open={proposalPreviewCommentId !== null && Boolean(previewProposal)}
+        onClose={() => setProposalPreviewCommentId(null)}
+        title="Résumé de la proposition"
+        description={previewProposal ? `Demande #${previewProposalComment?.id} · Version ${previewProposal.version}` : undefined}
+      >
+        {previewProposal && (
+          <>
             <div className={`proposal-preview-status ${proposalDecisions[previewProposal.commentId] === "refused" || previewAdaptationRequest?.decision === "refused" ? "refused" : "accepted"}`}>
-              {previewAdaptationRequest?.decision === "accepted" ? `Acceptée par l'agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}` : previewAdaptationRequest?.decision === "refused" ? `Refusée par l'agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}` : proposalDecisions[previewProposal.commentId] === "accepted" ? "Acceptée par le client" : "Refusée par le client"}
+              {previewAdaptationRequest?.decision === "accepted"
+                ? `Acceptée par l’agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}`
+                : previewAdaptationRequest?.decision === "refused"
+                  ? `Refusée par l’agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}`
+                  : proposalDecisions[previewProposal.commentId] === "accepted"
+                    ? "Acceptée par le client"
+                    : "Refusée par le client"}
             </div>
             <div className="proposal-summary">
-              <div><span>Prestation</span><b>{previewProposal.description}</b></div>
-              <div><span>Montant</span><b>{formatProposalAmount(previewProposal.amount)}</b></div>
-              <div><span>Impact planning</span><b>{formatProposalDeadline(previewProposal.deadline)}</b></div>
+              <div>
+                <span>Prestation</span>
+                <b>{previewProposal.description}</b>
+              </div>
+              <div>
+                <span>Montant</span>
+                <b>{formatProposalAmount(previewProposal.amount)}</b>
+              </div>
+              <div>
+                <span>Impact planning</span>
+                <b>{formatProposalDeadline(previewProposal.deadline)}</b>
+              </div>
             </div>
-            {previewAdaptationRequest && <div className="adaptation-request-summary"><span>Demande d'adaptation · {previewAdaptationRequest.requestedAt}</span><p>{previewAdaptationRequest.message}</p></div>}
-          </section>
+            {previewAdaptationRequest && (
+              <div className="adaptation-request-summary">
+                <span>Demande d’adaptation · {previewAdaptationRequest.requestedAt}</span>
+                <p>{previewAdaptationRequest.message}</p>
+              </div>
+            )}
+          </>
+        )}
+      </Modal>
+      <Modal
+        open={adaptationCommentId !== null}
+        onClose={() => setAdaptationCommentId(null)}
+        title="Demander une adaptation"
+        description="L’agence reste responsable du chiffrage. Décrivez votre besoin et, si vous le souhaitez, indiquez un budget ou un délai cible."
+        onSubmit={submitAdaptationRequest}
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setAdaptationCommentId(null)}>
+              Annuler
+            </Button>
+            <Button type="submit" disabled={!adaptationMessage.trim()}>
+              Envoyer la demande
+            </Button>
+          </>
+        }
+      >
+        <Field id="adaptation-message" label="Votre demande">
+          <Textarea id="adaptation-message" autoFocus value={adaptationMessage} onChange={(event) => setAdaptationMessage(event.target.value)} placeholder="Ex. Pouvez-vous proposer une version limitée au formulaire ?" />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field id="adaptation-budget" label="Budget indicatif" optional>
+            <AddonInput id="adaptation-budget" addon="€" type="number" min="0" step="10" value={adaptationBudget} onChange={(event) => setAdaptationBudget(event.target.value)} />
+          </Field>
+          <Field id="adaptation-deadline" label="Délai souhaité" optional>
+            <AddonInput id="adaptation-deadline" addon="jours" type="number" min="0" step="1" value={adaptationDeadline} onChange={(event) => setAdaptationDeadline(event.target.value)} />
+          </Field>
         </div>
-      )}
-      {deletedComment && <UndoToast key={deletedComment.id} message="Commentaire supprimé" onUndo={restoreComment} onDismiss={() => setDeletedComment(null)} />}
-      {adaptationCommentId !== null && (
-        <div className="modal-backdrop" role="presentation">
-          <form className="project-modal comment-modal" onSubmit={submitAdaptationRequest}>
-            <div className="drawer-header">
-              <div><div className="eyebrow">PROPOSITION COMPLÉMENTAIRE</div><h2>Demander une adaptation</h2></div>
-              <button type="button" className="close-button" onClick={() => setAdaptationCommentId(null)} aria-label="Fermer"><X /></button>
-            </div>
-            <p className="drawer-intro">L'agence reste responsable du chiffrage. Décrivez votre besoin ou vos contraintes, sans modifier directement le prix.</p>
-            <p className="drawer-intro">L'agence reste responsable du chiffrage. Décrivez votre besoin et, si vous le souhaitez, indiquez un budget ou un délai cible.</p>
-            <label>Votre demande<textarea autoFocus value={adaptationMessage} onChange={(event) => setAdaptationMessage(event.target.value)} placeholder="Ex. Pouvez-vous proposer une version limitée au formulaire ?" /></label>
-            <div className="field-grid"><label>Budget indicatif<div className="input-with-addon"><input type="number" min="0" step="10" value={adaptationBudget} onChange={(event) => setAdaptationBudget(event.target.value)} placeholder="Facultatif" /><span className="input-addon">€</span></div></label><label>Délai souhaité<div className="input-with-addon"><input type="number" min="0" step="1" value={adaptationDeadline} onChange={(event) => setAdaptationDeadline(event.target.value)} placeholder="Facultatif" /><span className="input-addon">jours</span></div></label></div>
-            <button className="send-proposal" type="submit" disabled={!adaptationMessage.trim()}>Envoyer la demande <ArrowRight /></button>
-          </form>
-        </div>
-      )}
-      {changesRequestOpen && (
-        <div className="modal-backdrop" role="presentation">
-          <form className="project-modal comment-modal" onSubmit={submitChangesRequest}>
-            <div className="drawer-header">
-              <div><div className="eyebrow">RETOUR GLOBAL</div><h2>Demander des modifications</h2></div>
-              <button type="button" className="close-button" onClick={() => setChangesRequestOpen(false)} aria-label="Fermer"><X /></button>
-            </div>
-            <p className="drawer-intro">Cette version ne sera pas approuvable tant que l'agence n'aura pas soumis une nouvelle version.</p>
-            <label>Votre demande<textarea autoFocus value={changesRequestMessage} onChange={(event) => setChangesRequestMessage(event.target.value)} placeholder="Décrivez ce qui doit être revu avant validation..." /></label>
-            <button className="send-proposal" type="submit" disabled={!changesRequestMessage.trim()}>Envoyer la demande <ArrowRight /></button>
-          </form>
-        </div>
-      )}
-      {approvalOpen && (
-        <div className="modal-backdrop" role="presentation">
-          <section className="project-modal approval-modal">
-            <div className="drawer-header"><div><div className="eyebrow">CONFIRMATION CLIENT</div><h2>Approuver cette version ?</h2></div><button type="button" className="close-button" onClick={() => setApprovalOpen(false)} aria-label="Fermer"><X /></button></div>
-            <p className="drawer-intro">Vous confirmez que cette version peut être considérée comme validée par Northstar Studio.</p>
-            <div className="approval-actions"><button className="changes-button" onClick={() => setApprovalOpen(false)}>Annuler</button><button className="approve-button" onClick={confirmApproval}>Confirmer l'approbation</button></div>
-          </section>
-        </div>
-      )}
+      </Modal>
+      <Modal
+        open={changesRequestOpen}
+        onClose={() => setChangesRequestOpen(false)}
+        title="Demander des modifications"
+        description="Cette version ne sera pas approuvable tant que l’agence n’aura pas soumis une nouvelle version."
+        onSubmit={submitChangesRequest}
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setChangesRequestOpen(false)}>
+              Annuler
+            </Button>
+            <Button type="submit" disabled={!changesRequestMessage.trim()}>
+              Envoyer la demande
+            </Button>
+          </>
+        }
+      >
+        <Field id="changes-request" label="Votre demande">
+          <Textarea id="changes-request" autoFocus value={changesRequestMessage} onChange={(event) => setChangesRequestMessage(event.target.value)} placeholder="Décrivez ce qui doit être revu avant validation…" />
+        </Field>
+      </Modal>
+      <Modal
+        open={approvalOpen}
+        onClose={() => setApprovalOpen(false)}
+        role="alertdialog"
+        title="Approuver cette version ?"
+        description="Vous confirmez que cette version peut être considérée comme validée par Northstar Studio."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setApprovalOpen(false)}>
+              Annuler
+            </Button>
+            <Button onClick={confirmApproval}>Confirmer l’approbation</Button>
+          </>
+        }
+      />
     </main>
   );
 }

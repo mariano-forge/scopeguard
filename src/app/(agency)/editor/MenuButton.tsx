@@ -1,7 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import Link from "next/link";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Hint } from "@/components/hint";
 
 export type MenuEntry =
   | { kind: "section"; label: string }
@@ -21,7 +31,10 @@ export type MenuEntry =
       disabled?: boolean;
     };
 
-/** A trigger and its dropdown (Figma main menu / file menu). Closes on outside click, Escape or a choice. */
+/**
+ * A trigger and its shadcn dropdown (main menu, deliverable menu, export).
+ * `tooltip`: icon-only triggers also show their label as a tooltip.
+ */
 export function MenuButton({
   trigger,
   label,
@@ -29,6 +42,9 @@ export function MenuButton({
   menuClassName,
   entries,
   header,
+  tooltip,
+  side = "bottom",
+  align = "start",
 }: {
   trigger: React.ReactNode;
   label: string;
@@ -36,103 +52,85 @@ export function MenuButton({
   menuClassName?: string;
   entries: MenuEntry[];
   header?: React.ReactNode;
+  tooltip?: boolean;
+  side?: "top" | "bottom" | "left" | "right";
+  align?: "start" | "center" | "end";
 }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function close(event: MouseEvent | KeyboardEvent) {
-      if (event instanceof KeyboardEvent ? event.key === "Escape" : !rootRef.current?.contains(event.target as Node))
-        setOpen(false);
-    }
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [open]);
+  // File items open a hidden input kept outside the menu (the menu closes on select).
+  const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
+  const button = (
+    <button type="button" className={className} aria-label={label}>
+      {trigger}
+    </button>
+  );
 
   return (
-    <div className="menu-root" ref={rootRef}>
-      <button
-        type="button"
-        className={className}
-        aria-label={label}
-        title={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-      >
-        {trigger}
-      </button>
-      {open && (
-        <div className={`app-menu ${menuClassName ?? ""}`} role="menu" aria-label={label}>
+    <div className="menu-root">
+      <DropdownMenu>
+        {tooltip ? (
+          <Hint label={label} side={side === "top" ? "top" : "right"}>
+            <DropdownMenuTrigger asChild>{button}</DropdownMenuTrigger>
+          </Hint>
+        ) : (
+          <DropdownMenuTrigger asChild>{button}</DropdownMenuTrigger>
+        )}
+        <DropdownMenuContent side={side} align={align} className={`app-menu min-w-64 ${menuClassName ?? ""}`} aria-label={label}>
           {header}
           {entries.map((entry, index) => {
             if (entry.kind === "section")
               return (
-                <p className="app-menu-section" key={`s${index}`} role="presentation">
-                  {entry.label}
-                </p>
+                <div key={`s${index}`}>
+                  {index > 0 && <DropdownMenuSeparator />}
+                  <DropdownMenuLabel className="app-menu-section text-xs font-medium text-muted-foreground">{entry.label}</DropdownMenuLabel>
+                </div>
               );
             const body = (
               <>
-                <span className="app-menu-icon" aria-hidden="true">
-                  {entry.icon}
-                </span>
+                {entry.icon}
                 <span className="app-menu-label">{entry.label}</span>
-                {entry.hint && <kbd>{entry.hint}</kbd>}
+                {entry.hint && <DropdownMenuShortcut>{entry.hint}</DropdownMenuShortcut>}
               </>
             );
-            if (entry.onFile)
-              return (
-                <label className={`app-menu-item ${entry.disabled ? "is-disabled" : ""}`} role="menuitem" key={entry.label}>
-                  {body}
-                  <input
-                    type="file"
-                    accept={entry.accept}
-                    disabled={entry.disabled}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      event.target.value = "";
-                      setOpen(false);
-                      if (file) entry.onFile?.(file);
-                    }}
-                  />
-                </label>
-              );
             if (entry.href)
               return (
-                <Link
-                  className="app-menu-item"
-                  role="menuitem"
-                  key={entry.label}
-                  href={entry.href}
-                  target={entry.external ? "_blank" : undefined}
-                  onClick={() => setOpen(false)}
-                >
-                  {body}
-                </Link>
+                <DropdownMenuItem key={entry.label} asChild disabled={entry.disabled} className="app-menu-item">
+                  <Link href={entry.href} target={entry.external ? "_blank" : undefined}>
+                    {body}
+                  </Link>
+                </DropdownMenuItem>
               );
             return (
-              <button
-                type="button"
-                className="app-menu-item"
-                role="menuitem"
+              <DropdownMenuItem
                 key={entry.label}
                 disabled={entry.disabled}
-                onClick={() => {
-                  setOpen(false);
-                  entry.onSelect?.();
-                }}
+                className="app-menu-item"
+                onSelect={() => (entry.onFile ? fileInputs.current[entry.label]?.click() : entry.onSelect?.())}
               >
                 {body}
-              </button>
+              </DropdownMenuItem>
             );
           })}
-        </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {entries.map((entry) =>
+        entry.kind !== "section" && entry.onFile ? (
+          <input
+            key={`file-${entry.label}`}
+            ref={(input) => {
+              fileInputs.current[entry.label] = input;
+            }}
+            type="file"
+            accept={entry.accept}
+            className="sr-only"
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) entry.onFile?.(file);
+            }}
+          />
+        ) : null,
       )}
     </div>
   );

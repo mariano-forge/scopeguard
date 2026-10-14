@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
-import { Upload, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Upload } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Field, FormError, Modal } from "@/components/modal";
 import { DeliverableCover } from "@/components/DeliverableCover";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
 import {
@@ -36,7 +39,6 @@ export function NewDeliverableDialog({
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const titleId = useId();
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -91,19 +93,27 @@ export function NewDeliverableDialog({
   }
 
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <form className="project-modal deliverable-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} onSubmit={submit} noValidate>
-        <div className="drawer-header">
-          <h2 id={titleId}>Nouveau livrable</h2>
-          <button type="button" className="close-button" onClick={onClose} aria-label="Fermer">
-            <X />
-          </button>
-        </div>
-
-        <label>
-          Nom du livrable
-          <input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex. Maquette page d’accueil" />
-        </label>
+    <Modal
+      open
+      onClose={onClose}
+      title="Nouveau livrable"
+      size="lg"
+      className="deliverable-dialog"
+      onSubmit={submit}
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Enregistrement…" : "Créer le livrable"}
+          </Button>
+        </>
+      }
+    >
+        <Field id="deliverable-name" label="Nom du livrable">
+          <Input id="deliverable-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex. Maquette page d’accueil" />
+        </Field>
 
         <fieldset className="kind-picker">
           <legend>Type</legend>
@@ -128,10 +138,9 @@ export function NewDeliverableDialog({
         </fieldset>
 
         {type === "Link" ? (
-          <label>
-            Adresse de la page
-            <input type="url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://staging.client.fr/accueil" />
-          </label>
+          <Field id="deliverable-url" label="Adresse de la page">
+            <Input id="deliverable-url" type="url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://staging.client.fr/accueil" />
+          </Field>
         ) : (
           <div className="upload-field">
             <span className="upload-label">Fichier</span>
@@ -155,21 +164,23 @@ export function NewDeliverableDialog({
 
         <div className="upload-field">
           <span className="upload-label">
-            Couverture <span className="field-optional">(facultatif)</span>
+            Couverture <span className="font-normal text-muted-foreground">(facultatif)</span>
           </span>
           <div className="cover-field">
             <div className="cover-field-preview">
               {cover && coverPreview ? <DeliverableCover type={type} coverData={coverPreview} /> : <DeliverableCover type={type} />}
             </div>
             <div className="cover-field-actions">
-              <label className="ghost-button file-button">
-                {cover ? "Changer l’image" : "Ajouter une image"}
-                <input type="file" accept="image/*" onChange={(event) => pickCover(event.target.files?.[0] ?? null)} />
-              </label>
+              <Button asChild variant="outline" size="sm">
+                <label className="file-button">
+                  {cover ? "Changer l’image" : "Ajouter une image"}
+                  <input type="file" accept="image/*" onChange={(event) => pickCover(event.target.files?.[0] ?? null)} />
+                </label>
+              </Button>
               {cover ? (
-                <button type="button" className="ghost-button" onClick={() => pickCover(null)}>
+                <Button type="button" variant="ghost" size="sm" onClick={() => pickCover(null)}>
                   Retirer
-                </button>
+                </Button>
               ) : (
                 <small>Sans image, la vue par défaut ci-contre est utilisée.</small>
               )}
@@ -177,15 +188,7 @@ export function NewDeliverableDialog({
           </div>
         </div>
 
-        {error && (
-          <p className="form-error" role="alert">
-            {error}
-          </p>
-        )}
-        <button className="primary-button" type="submit" disabled={saving}>
-          {saving ? "Enregistrement…" : "Créer le livrable"}
-        </button>
-      </form>
-    </div>
+        {error && <FormError>{error}</FormError>}
+    </Modal>
   );
 }

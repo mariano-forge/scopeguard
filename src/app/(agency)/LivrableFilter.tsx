@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { ChevronDown, ListFilter } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 export type LivrableGroup = { key: string; label: string; livrables: { id: number; name: string }[] };
 
@@ -22,22 +24,8 @@ export function LivrableFilter({
   label: string;
 }) {
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
   const all = groups.flatMap((group) => group.livrables.map((livrable) => livrable.id));
   const selected = new Set(value ?? all);
-
-  useEffect(() => {
-    if (!open) return;
-    function close(event: MouseEvent | KeyboardEvent) {
-      if (event instanceof KeyboardEvent ? event.key === "Escape" : !rootRef.current?.contains(event.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [open]);
 
   function commit(next: Set<number>) {
     onChange(next.size === all.length ? null : all.filter((id) => next.has(id)));
@@ -61,21 +49,21 @@ export function LivrableFilter({
           : `${selected.size} livrables`;
 
   return (
-    <div className="livrable-filter" ref={rootRef}>
-      <button
-        type="button"
-        className={`livrable-filter-trigger ${value !== null ? "is-filtered" : ""}`}
-        aria-label={`${label} : ${summary}`}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <ListFilter aria-hidden="true" />
-        <span>{summary}</span>
-        <ChevronDown aria-hidden="true" />
-      </button>
-      {open && (
-        <div className="livrable-filter-panel" role="dialog" aria-label={label}>
+    <div className="livrable-filter">
+      <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className={`livrable-filter-trigger ${value !== null ? "is-filtered" : ""}`}
+          aria-label={`${label} : ${summary}`}
+        >
+          <ListFilter aria-hidden="true" />
+          <span>{summary}</span>
+          <ChevronDown aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+        <PopoverContent align="end" className="livrable-filter-content w-80 p-2" aria-label={label}>
           <label className="livrable-filter-option is-all">
             <input
               type="checkbox"
@@ -116,8 +104,8 @@ export function LivrableFilter({
               );
             })}
           </div>
-        </div>
-      )}
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }

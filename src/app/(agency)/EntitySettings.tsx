@@ -1,8 +1,20 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
-import { Ellipsis, FolderInput, Pencil, Pin, Settings, Trash2, X } from "lucide-react";
+import { useState } from "react";
+import { Ellipsis, FolderInput, Pencil, Pin, Settings, Trash2 } from "lucide-react";
 import { Select } from "@/components/Select";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Field, FormError, Modal } from "@/components/modal";
+import { Hint } from "@/components/hint";
 
 type Target = { id: number; label: string };
 
@@ -34,64 +46,34 @@ export function EntitySettings({
   currentTargetId?: number;
   onMove?: (targetId: number) => void;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<"rename" | "move" | "delete" | null>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
   const label = kind === "espace" ? "l’espace" : "le projet";
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    function close(event: MouseEvent | KeyboardEvent) {
-      if (event instanceof KeyboardEvent) {
-        if (event.key === "Escape") {
-          setMenuOpen(false);
-          triggerRef.current?.focus();
-        }
-      } else if (!rootRef.current?.contains(event.target as Node)) setMenuOpen(false);
-    }
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [menuOpen]);
-
-  function open(next: "rename" | "move" | "delete") {
-    setMenuOpen(false);
-    setDialog(next);
-  }
-
   return (
-    <div className="entity-settings" ref={rootRef}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="ghost-button icon-only"
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        aria-label={`Réglages de ${label}`}
-        title="Réglages"
-        onClick={() => setMenuOpen((current) => !current)}
-      >
-        <Settings />
-      </button>
-      {menuOpen && (
-        <div className="settings-menu" role="menu" aria-label={`Réglages de ${label}`}>
-          <button type="button" role="menuitem" autoFocus onClick={() => open("rename")}>
-            <Pencil aria-hidden="true" /> Renommer
-          </button>
+    <div className="entity-settings">
+      <DropdownMenu>
+        <Hint label="Réglages">
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label={`Réglages de ${label}`}>
+              <Settings />
+            </Button>
+          </DropdownMenuTrigger>
+        </Hint>
+        <DropdownMenuContent align="end" className="settings-menu min-w-56">
+          <DropdownMenuItem onSelect={() => setDialog("rename")}>
+            <Pencil /> Renommer
+          </DropdownMenuItem>
           {moveTargets && onMove && (
-            <button type="button" role="menuitem" onClick={() => open("move")}>
-              <FolderInput aria-hidden="true" /> Déplacer vers un autre espace
-            </button>
+            <DropdownMenuItem onSelect={() => setDialog("move")}>
+              <FolderInput /> Déplacer vers un autre espace
+            </DropdownMenuItem>
           )}
-          <button type="button" role="menuitem" className="is-danger" onClick={() => open("delete")}>
-            <Trash2 aria-hidden="true" /> Supprimer {label}
-          </button>
-        </div>
-      )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onSelect={() => setDialog("delete")}>
+            <Trash2 /> Supprimer {label}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {dialog === "rename" && (
         <RenameDialog
@@ -133,30 +115,6 @@ export function EntitySettings({
   );
 }
 
-function DialogFrame({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  const titleId = useId();
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-  return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className="project-modal settings-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-        <div className="drawer-header">
-          <h2 id={titleId}>{title}</h2>
-          <button type="button" className="close-button" onClick={onClose} aria-label="Fermer">
-            <X />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
 export function RenameDialog({
   title,
   value,
@@ -175,35 +133,31 @@ export function RenameDialog({
   const [localError, setError] = useState("");
   const error = localError || externalError;
   return (
-    <DialogFrame title={title} onClose={onClose}>
-      <form
-        className="settings-form"
-        noValidate
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!draft.trim()) return setError("Le nom ne peut pas être vide.");
-          onSave(draft.trim());
-        }}
-      >
-        <label>
-          Nom
-          <input autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} onFocus={(event) => event.target.select()} />
-        </label>
-        {error && (
-          <p className="form-error" role="alert">
-            {error}
-          </p>
-        )}
-        <div className="dialog-actions">
-          <button type="button" className="ghost-button" onClick={onClose}>
+    <Modal
+      open
+      onClose={onClose}
+      title={title}
+      size="sm"
+      className="settings-dialog"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!draft.trim()) return setError("Le nom ne peut pas être vide.");
+        onSave(draft.trim());
+      }}
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={onClose}>
             Annuler
-          </button>
-          <button type="submit" className="primary-button">
-            Enregistrer
-          </button>
-        </div>
-      </form>
-    </DialogFrame>
+          </Button>
+          <Button type="submit">Enregistrer</Button>
+        </>
+      }
+    >
+      <Field id="rename-input" label="Nom">
+        <Input id="rename-input" autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} onFocus={(event) => event.target.select()} />
+      </Field>
+      {error && <FormError>{error}</FormError>}
+    </Modal>
   );
 }
 
@@ -223,31 +177,36 @@ function MoveDialog({
   const others = targets.filter((target) => target.id !== currentTargetId);
   const [targetId, setTargetId] = useState(String(others[0]?.id ?? ""));
   return (
-    <DialogFrame title={`Déplacer « ${name} »`} onClose={onClose}>
-      {others.length === 0 ? (
-        <p className="drawer-intro">Il n’y a pas d’autre espace. Créez-en un pour y déplacer ce projet.</p>
-      ) : (
-        <div className="settings-form">
-          <div className="field">
-            <span className="field-label">Vers l’espace</span>
-            <Select
-              label="Espace de destination"
-              value={targetId}
-              options={others.map((target) => ({ value: String(target.id), label: target.label }))}
-              onChange={setTargetId}
-            />
-          </div>
-          <div className="dialog-actions">
-            <button type="button" className="ghost-button" onClick={onClose}>
+    <Modal
+      open
+      onClose={onClose}
+      title={`Déplacer « ${name} »`}
+      description={others.length === 0 ? "Il n’y a pas d’autre espace. Créez-en un pour y déplacer ce projet." : undefined}
+      size="sm"
+      className="settings-dialog"
+      footer={
+        others.length > 0 ? (
+          <>
+            <Button variant="outline" onClick={onClose}>
               Annuler
-            </button>
-            <button type="button" className="primary-button" onClick={() => onMove(Number(targetId))}>
-              Déplacer
-            </button>
-          </div>
+            </Button>
+            <Button onClick={() => onMove(Number(targetId))}>Déplacer</Button>
+          </>
+        ) : undefined
+      }
+    >
+      {others.length > 0 && (
+        <div className="grid gap-1.5">
+          <span className="text-sm font-medium text-foreground">Vers l’espace</span>
+          <Select
+            label="Espace de destination"
+            value={targetId}
+            options={others.map((target) => ({ value: String(target.id), label: target.label }))}
+            onChange={setTargetId}
+          />
         </div>
       )}
-    </DialogFrame>
+    </Modal>
   );
 }
 
@@ -271,22 +230,43 @@ export function ConfirmDeleteDialog({
   confirmLabel?: string;
 }) {
   const [typed, setTyped] = useState("");
-  const inputId = useId();
   const ready = !confirmPhrase || typed.trim() === confirmPhrase;
   return (
-    <DialogFrame title={title} onClose={onClose}>
-      <p className="drawer-intro">
-        {toTrash
+    <Modal
+      open
+      onClose={onClose}
+      role="alertdialog"
+      title={title}
+      size="sm"
+      className="settings-dialog"
+      description={
+        toTrash
           ? `${impact ? `${impact} seront placés` : "Il sera placé"} dans la corbeille. Vous pourrez restaurer pendant 30 jours.`
-          : `${impact ? `${impact} seront supprimés définitivement. ` : ""}Cette action ne peut pas être annulée.`}
-      </p>
+          : `${impact ? `${impact} seront supprimés définitivement. ` : ""}Cette action ne peut pas être annulée.`
+      }
+      footer={
+        <>
+          <Button variant="outline" autoFocus={!confirmPhrase} onClick={onClose}>
+            Annuler
+          </Button>
+          <Button variant="destructive" className="danger-button" onClick={onConfirm} disabled={!ready}>
+            <Trash2 /> {confirmLabel}
+          </Button>
+        </>
+      }
+    >
       {confirmPhrase && (
-        <div className="confirm-phrase">
-          <label htmlFor={inputId}>
-            Pour confirmer, tapez <code>{confirmPhrase}</code>
-          </label>
-          <input
-            id={inputId}
+        <Field
+          id="confirm-phrase"
+          className="confirm-phrase"
+          label={
+            <>
+              Pour confirmer, tapez <code className="rounded-sm bg-mist px-1 font-mono text-xs">{confirmPhrase}</code>
+            </>
+          }
+        >
+          <Input
+            id="confirm-phrase"
             autoFocus
             autoComplete="off"
             spellCheck={false}
@@ -296,17 +276,9 @@ export function ConfirmDeleteDialog({
               if (event.key === "Enter" && ready) onConfirm();
             }}
           />
-        </div>
+        </Field>
       )}
-      <div className="dialog-actions">
-        <button type="button" className="ghost-button" autoFocus={!confirmPhrase} onClick={onClose}>
-          Annuler
-        </button>
-        <button type="button" className="danger-button" onClick={onConfirm} disabled={!ready}>
-          <Trash2 aria-hidden="true" /> {confirmLabel}
-        </button>
-      </div>
-    </DialogFrame>
+    </Modal>
   );
 }
 
@@ -336,57 +308,39 @@ export function LivrableMenu({
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<"rename" | "delete" | null>(null);
   const [renameError, setRenameError] = useState("");
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    function close(event: MouseEvent | KeyboardEvent) {
-      if (event instanceof KeyboardEvent) {
-        if (event.key === "Escape") {
-          setMenuOpen(false);
-          triggerRef.current?.focus();
-        }
-      } else if (!rootRef.current?.contains(event.target as Node)) setMenuOpen(false);
-    }
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [menuOpen]);
 
   return (
-    <div className={`card-menu ${menuOpen ? "is-open" : ""}`} ref={rootRef}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="card-menu-button"
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        aria-label={`Actions sur ${name}`}
-        title="Actions"
-        onClick={() => setMenuOpen((current) => !current)}
-      >
-        <Ellipsis />
-      </button>
-      {menuOpen && (
-        <div className="settings-menu card-menu-list" role="menu" aria-label={`Actions sur ${name}`}>
-          <p className={`card-menu-location ${location ? "" : "is-orphan"}`}>
+    <div className={`card-menu ${menuOpen ? "is-open" : ""}`}>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <Hint label="Actions">
+          <DropdownMenuTrigger asChild>
+            <button type="button" className="card-menu-button" aria-label={`Actions sur ${name}`}>
+              <Ellipsis />
+            </button>
+          </DropdownMenuTrigger>
+        </Hint>
+        <DropdownMenuContent align="end" className="card-menu-list min-w-56">
+          <DropdownMenuLabel className={`card-menu-location text-xs font-normal text-muted-foreground ${location ? "" : "is-orphan"}`}>
             {location ? `Dans ${location}` : "Hors de tout espace et projet"}
-          </p>
-          <button type="button" role="menuitem" autoFocus onClick={() => (setMenuOpen(false), setRenameError(""), setDialog("rename"))}>
-            <Pencil aria-hidden="true" /> Renommer
-          </button>
-          <button type="button" role="menuitem" onClick={() => (setMenuOpen(false), onTogglePin())}>
-            <Pin aria-hidden="true" /> {pinned ? "Retirer des favoris" : "Épingler aux favoris"}
-          </button>
-          <button type="button" role="menuitem" className="is-danger" onClick={() => (setMenuOpen(false), setDialog("delete"))}>
-            <Trash2 aria-hidden="true" /> Mettre à la corbeille
-          </button>
-        </div>
-      )}
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={() => {
+              setRenameError("");
+              setDialog("rename");
+            }}
+          >
+            <Pencil /> Renommer
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onTogglePin}>
+            <Pin /> {pinned ? "Retirer des favoris" : "Épingler aux favoris"}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onSelect={() => setDialog("delete")}>
+            <Trash2 /> Mettre à la corbeille
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       {dialog === "rename" && (
         <RenameDialog
           title="Renommer le livrable"
