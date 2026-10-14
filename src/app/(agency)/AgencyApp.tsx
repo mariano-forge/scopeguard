@@ -2957,10 +2957,7 @@ export function AgencyApp() {
             <div className="modal-backdrop" role="presentation">
               <form className="project-modal" onSubmit={createProject}>
                 <div className="drawer-header">
-                  <div>
-                    <div className="eyebrow">NOUVEAU PROJET</div>
-                    <h2>Créer un projet</h2>
-                  </div>
+                  <h2>Créer un projet</h2>
                   <button
                     type="button"
                     className="close-button"
@@ -2971,7 +2968,9 @@ export function AgencyApp() {
                   </button>
                 </div>
                 <p className="drawer-intro">
-                  Commencez par définir le projet et le client à associer.
+                  {view.kind === "client"
+                    ? `Le projet sera créé dans l’espace ${clients.find((client) => client.id === view.clientId)?.name ?? ""}.`
+                    : "Un projet regroupe les livrables d’une même mission."}
                 </p>
                 <label>
                   Nom du projet
@@ -2982,6 +2981,8 @@ export function AgencyApp() {
                     placeholder="Ex. Refonte du site vitrine"
                   />
                 </label>
+                {/* Inside a space the space is implied; elsewhere, pick it. */}
+                {view.kind !== "client" && (
                 <label>
                   Espace
                   <select
@@ -2995,6 +2996,7 @@ export function AgencyApp() {
                     ))}
                   </select>
                 </label>
+                )}
                 {projectError && (
                   <p className="form-error" role="alert">
                     {projectError}
