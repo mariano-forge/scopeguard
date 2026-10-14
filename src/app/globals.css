@@ -4108,7 +4108,7 @@ button {
   flex: 1;
 }
 
-/* Primary actions (CTA): Ink on the action blue */
+/* Primary actions (CTA): white on the deep action blue */
 .primary-button,
 .inspector-primary {
   background: var(--cta-fill);

@@ -15,10 +15,10 @@
 
   /* Accents: "fill" keeps the brand hue (Ink text on top), "text"/"ui" are darkened for contrast */
   --action-fill: #30a8ff;
-  /* Call to action (primary buttons): Ink on the action blue (7.35:1); hover darkens by 6% */
-  --cta-fill: var(--action-fill);
-  --cta-fill-hover: #2d9ef0;
-  --cta-text: var(--ink);
+  /* Call to action (primary buttons): white on the deep action blue (7.72:1, AAA); hover 8.73:1 */
+  --cta-fill: var(--action-text);
+  --cta-fill-hover: #004998;
+  --cta-text: var(--paper);
   --action-ui: #0079d1;
   --action-text: #005593;
   --attention-fill: #ff795c;
