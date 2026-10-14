@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ClipboardCheck, BadgeEuro, Eye, History, MessageSquare, Plus, Share2 } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Eye, History, MessageSquare, Plus, Share2 } from "lucide-react";
 import type { ProposalStage } from "./CanvasComments";
 import { ResizeHandle } from "./ResizeHandle";
 import { kindLabels, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
@@ -12,9 +11,9 @@ import { Button } from "@/components/ui/button";
 export type InspectorTab = RequestKind;
 
 const tabs: { kind: RequestKind; label: string; empty: string }[] = [
-  { kind: "comment", label: "À clarifier", empty: "Aucun commentaire. Commentez le livrable sur le canevas, ou ajoutez-en un avec +." },
-  { kind: "correction", label: "À traiter", empty: "Aucune demande à traiter. Créez-en une depuis un commentaire quand elle fait partie du scope." },
-  { kind: "outside", label: "Hors scope", empty: "Aucune demande hors scope. Créez-en une depuis un commentaire pour la chiffrer." },
+  { kind: "comment", label: "À clarifier", empty: "Aucun commentaire. Cliquez sur le livrable pour en ajouter un." },
+  { kind: "correction", label: "À traiter", empty: "Aucune demande à traiter. Créez-en une avec « + Demande » ou depuis un commentaire." },
+  { kind: "outside", label: "Hors scope", empty: "Aucune demande hors scope. Créez-en une avec « + Demande » ou depuis un commentaire." },
 ];
 
 /** Markdown summary of every request of the version (copy / export). */
@@ -244,7 +243,6 @@ export function EditorInspector({
   onOpenProposal,
   onRequote,
   proposalSummary,
-  onAddComment,
   onAddRequest,
   onShare,
   onPreview,
@@ -262,7 +260,6 @@ export function EditorInspector({
   onOpenProposal: (commentId: number) => void;
   onRequote: (commentId: number) => void;
   proposalSummary: (comment: ThreadComment) => React.ReactNode;
-  onAddComment?: (message: string) => void;
   /** Opens the "new request" form, already qualified (no comment first). */
   onAddRequest?: (decision: "Inclus" | "Hors périmètre") => void;
   onShare: () => void;
@@ -270,7 +267,6 @@ export function EditorInspector({
   width: number;
   onResize: (width: number) => void;
 }) {
-  const [adding, setAdding] = useState(false);
   return (
     <aside className="inspector editor-inspector" aria-label="Demandes">
       <ResizeHandle edge="left" width={width} min={300} max={560} defaultWidth={340} label="Largeur du panneau des demandes" onResize={onResize} />
@@ -287,33 +283,12 @@ export function EditorInspector({
               <Share2 />
             </Button>
           </Hint>
-          {onAddComment && (
-            <div className="split-button">
-              <Hint label="Un retour général, sans le placer sur le livrable">
-                <Button className="requests-add" onClick={() => setAdding(true)}>
-                  <Plus /> Commentaire
-                </Button>
-              </Hint>
-              {onAddRequest && (
-                <DropdownMenu>
-                  <Hint label="Ajouter une demande déjà qualifiée">
-                    <DropdownMenuTrigger asChild>
-                      <Button size="icon" className="split-button-more" aria-label="Ajouter une demande">
-                        <ChevronDown />
-                      </Button>
-                    </DropdownMenuTrigger>
-                  </Hint>
-                  <DropdownMenuContent align="end" className="min-w-56">
-                    <DropdownMenuItem onSelect={() => onAddRequest("Inclus")}>
-                      <ClipboardCheck /> Demande à traiter
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onAddRequest("Hors périmètre")}>
-                      <BadgeEuro /> Demande hors scope
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </div>
+          {onAddRequest && (
+            <Hint label="Une demande déjà qualifiée : à traiter ou hors scope">
+              <Button className="requests-add" onClick={() => onAddRequest(tab === "outside" ? "Hors périmètre" : "Inclus")}>
+                <Plus /> Demande
+              </Button>
+            </Hint>
           )}
         </div>
       </header>
@@ -330,9 +305,8 @@ export function EditorInspector({
         onOpenProposal={onOpenProposal}
         onRequote={onRequote}
         proposalSummary={proposalSummary}
-        adding={adding}
-        onAddingChange={setAdding}
-        onAddComment={onAddComment}
+        adding={false}
+        onAddingChange={() => undefined}
       />
     </aside>
   );

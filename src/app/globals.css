@@ -7719,3 +7719,49 @@ body.is-resizing {
   width: 28px;
   height: 28px;
 }
+
+/* Share dialog: people invited by e-mail */
+.invite-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+}
+.invite-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  padding: 4px 4px 4px var(--s-3);
+  font-size: var(--t-ui-size, 14px);
+}
+.invite-list li + li {
+  border-top: 1px solid var(--border);
+}
+.invite-list small {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+
+/* Side panel items: long names are cut with an ellipsis */
+.panel-section li {
+  min-width: 0;
+}
+.panel-section .panel-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  overflow: hidden;
+}
+.panel-section .panel-item .panel-item-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

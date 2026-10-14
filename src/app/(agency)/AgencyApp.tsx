@@ -180,6 +180,8 @@ type ReviewLink = {
   autoExpire?: boolean;
   deliverableId?: number;
   version?: number;
+  /** People invited by e-mail to this review (manual invitations). */
+  invites?: { email: string; at: string }[];
 };
 type ReviewLinks = Record<string, ReviewLink>;
 
@@ -488,7 +490,9 @@ export function AgencyApp() {
   const [proofOpen, setProofOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
-  const [notificationSent, setNotificationSent] = useState(false);
+  /** Share dialog: e-mail addresses being typed for a manual invitation. */
+  const [inviteDraft, setInviteDraft] = useState("");
+  const [inviteError, setInviteError] = useState("");
   const [lastReminderAt, setLastReminderAt] = useState<number | null>(null);
   const [stateHydrated, setStateHydrated] = useState(false);
 
@@ -2476,7 +2480,6 @@ export function AgencyApp() {
                   </span>
                 );
               }}
-              onAddComment={isReadOnlyVersion ? undefined : (message) => addComment(message, null)}
               onAddRequest={isReadOnlyVersion ? undefined : setNewRequestKind}
               onShare={openShareDialog}
               onPreview={openClientPreview}
@@ -2971,15 +2974,6 @@ export function AgencyApp() {
                   >
                     Révoquer ce lien
                   </Button>
-                  <Button variant="outline" onClick={notifyClient} disabled={isReadOnlyVersion}>
-                    {notificationSent ? (
-                      <>
-                        Client notifié <Check />
-                      </>
-                    ) : (
-                      "Notifier par e-mail"
-                    )}
-                  </Button>
                   <Button onClick={copyReviewLink}>
                     {linkCopied ? (
                       <>
@@ -3006,6 +3000,47 @@ export function AgencyApp() {
                 >
                   <Input id="share-url" readOnly value={getReviewUrl()} onFocus={(event) => event.target.select()} />
                 </Field>
+                <Field id="share-invite" label="Inviter par e-mail" hint="Plusieurs adresses : séparez-les par une virgule.">
+                  <div className="flex gap-2">
+                    <Input
+                      id="share-invite"
+                      type="email"
+                      multiple
+                      value={inviteDraft}
+                      placeholder="prenom@client.fr"
+                      onChange={(event) => {
+                        setInviteDraft(event.target.value);
+                        setInviteError("");
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          inviteByEmail();
+                        }
+                      }}
+                      disabled={isReadOnlyVersion}
+                    />
+                    <Button variant="outline" className="h-9" onClick={inviteByEmail} disabled={!inviteDraft.trim() || isReadOnlyVersion}>
+                      Inviter
+                    </Button>
+                  </div>
+                </Field>
+                {inviteError && <FormError>{inviteError}</FormError>}
+                {(reviewLink.invites?.length ?? 0) > 0 && (
+                  <ul className="invite-list" aria-label="Personnes invitées">
+                    {reviewLink.invites?.map((invite) => (
+                      <li key={invite.email}>
+                        <span className="truncate">{invite.email}</span>
+                        <small>invité le {invite.at.split(" ")[0]}</small>
+                        <Hint label="Retirer l’invitation">
+                          <Button variant="ghost" size="icon-xs" aria-label={`Retirer ${invite.email}`} onClick={() => removeInvite(invite.email)}>
+                            <X />
+                          </Button>
+                        </Hint>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <div className="flex items-center justify-between gap-3">
                   <Label htmlFor="share-auto-expire" className="text-sm font-normal">
                     Révoquer automatiquement après 7 jours
@@ -3178,17 +3213,39 @@ export function AgencyApp() {
     </main>
     </div>
   );
-  function notifyClient() {
-    if (isReadOnlyVersion) return;
-    setNotifications((current) => [
-      {
-        id: Date.now(),
-        message: "Revue envoyée à Claire Martin",
-        time: "À l'instant",
-      },
-      ...current,
-    ]);
-    setNotificationSent(true);
+  /** Invites the typed addresses (comma, semicolon or space separated) to this review. */
+  function inviteByEmail() {
+    if (!reviewLink || isReadOnlyVersion) return;
+    const typed = inviteDraft.split(/[\s,;]+/).map((email) => email.trim().toLowerCase()).filter(Boolean);
+    const invalid = typed.filter((email) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email));
+    if (invalid.length) {
+      setInviteError(`Adresse invalide : ${invalid.join(", ")}`);
+      return;
+    }
+    const already = new Set((reviewLink.invites ?? []).map((invite) => invite.email));
+    const fresh = [...new Set(typed)].filter((email) => !already.has(email));
+    if (fresh.length === 0) {
+      setInviteError(typed.length ? "Ces personnes sont déjà invitées." : "");
+      return;
+    }
+    const at = new Date().toLocaleString("fr-FR");
+    const linkKey = `${reviewLink.deliverableId ?? 1}:${reviewLink.version ?? 1}`;
+    const updatedLink = { ...reviewLink, invites: [...(reviewLink.invites ?? []), ...fresh.map((email) => ({ email, at }))] };
+    setReviewLink(updatedLink);
+    setReviewLinks((current) => ({ ...current, [linkKey]: updatedLink }));
+    setNotifications((current) => [...fresh.map((email, index) => ({ id: Date.now() + index, message: `Invitation envoyée à ${email}`, time: "À l'instant" })), ...current]);
+    recordAudit("review.invited", `Invitation envoyée à ${fresh.join(", ")}`);
+    setInviteDraft("");
+    setInviteError("");
+    toast(fresh.length > 1 ? `${fresh.length} invitations envoyées` : `Invitation envoyée à ${fresh[0]}`);
+  }
+
+  function removeInvite(email: string) {
+    if (!reviewLink) return;
+    const linkKey = `${reviewLink.deliverableId ?? 1}:${reviewLink.version ?? 1}`;
+    const updatedLink = { ...reviewLink, invites: (reviewLink.invites ?? []).filter((invite) => invite.email !== email) };
+    setReviewLink(updatedLink);
+    setReviewLinks((current) => ({ ...current, [linkKey]: updatedLink }));
   }
 
   function remindClient() {
