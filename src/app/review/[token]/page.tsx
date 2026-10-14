@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
-import { Check, Clock, Lock, PenLine, Plus } from "lucide-react";
+import { Check, Clock, Lock, PenLine } from "lucide-react";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { Composer, ThreadPopover, requestKind, type Area, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
 import { RequestPanel, type InspectorTab } from "@/app/(agency)/editor/EditorInspector";
@@ -164,7 +164,6 @@ export default function ClientReviewPage() {
   const [threadOpen, setThreadOpen] = useState(false);
   const [composer, setComposer] = useState<CanvasComposer | null>(null);
   const [panelTab, setPanelTab] = useState<InspectorTab>("comment");
-  const [addingComment, setAddingComment] = useState(false);
   const [proposalStates, setProposalStates] = useState<ProposalStates>({});
   const [proposalDecisions, setProposalDecisions] = useState<ProposalDecisions>({});
   const [adaptationRequests, setAdaptationRequests] = useState<AdaptationRequests>({});
@@ -905,15 +904,6 @@ export default function ClientReviewPage() {
           <ResizeHandle edge="left" width={panelWidth} min={300} max={560} defaultWidth={340} label="Largeur du panneau des retours" onResize={setPanelWidth} />
           <header className="requests-header">
             <h2>Vos retours</h2>
-            {!isReadOnlyVersion() && !addingComment && (
-              <div className="requests-actions">
-                <Hint label="Un retour général, sans le placer sur le livrable">
-                  <Button variant="outline" className="requests-add" onClick={() => setAddingComment(true)}>
-                    <Plus /> Commentaire
-                  </Button>
-                </Hint>
-              </div>
-            )}
           </header>
           <RequestPanel
             comments={canvasComments}
@@ -935,9 +925,9 @@ export default function ClientReviewPage() {
                 </span>
               );
             }}
-            adding={addingComment}
-            onAddingChange={setAddingComment}
-            onAddComment={isReadOnlyVersion() ? undefined : (message) => addComment(message, null)}
+            // Comments are written on the deliverable (canvas); no general comment from the panel.
+            adding={false}
+            onAddingChange={() => undefined}
           />
         </aside>
       </div>
