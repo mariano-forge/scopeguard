@@ -7051,7 +7051,7 @@ body.is-resizing {
   transform: rotate(180deg);
 }
 
-/* Moving a pin (double-click, then click to drop) */
+/* Moving a pin (drag it, or double-click then click to drop) */
 .canvas.is-moving-pin .artboard {
   cursor: grabbing;
 }
@@ -7063,13 +7063,22 @@ body.is-resizing {
   pointer-events: none;
 }
 
-/* "Commentaire supprimé · Annuler" */
-
-.undo-toast-action:focus-visible,
-
 /* Deliverable filter popover (shadcn Popover): scrollable list */
 .livrable-filter-content {
   display: grid;
   max-height: 360px;
   overflow-y: auto;
+}
+
+/* Avatars of the request list and threads: neutral (the blue tint is kept for the selected row) */
+.thread-avatar,
+.thread-row .thread-avatar.is-client,
+.thread-message.is-client .thread-avatar {
+  background: var(--mist);
+  color: var(--ink);
+}
+.thread-avatar.is-agency,
+.thread-message.is-agency .thread-avatar {
+  background: var(--ink);
+  color: var(--paper);
 }

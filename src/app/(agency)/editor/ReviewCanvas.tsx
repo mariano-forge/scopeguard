@@ -85,6 +85,8 @@ export function ReviewCanvas({
   const commenting = tool !== "move" && !readOnly;
   /** Pin being moved: it follows the pointer until a click drops it (Escape cancels). */
   const [moving, setMoving] = useState<{ id: number; page: number; x: number; y: number } | null>(null);
+  /** Press on a movable pin: past a few pixels it becomes a drag, dropped on release. */
+  const pinPress = useRef<{ id: number; x: number; y: number; dragging: boolean } | null>(null);
   useEffect(() => {
     if (!moving) return;
     function cancel(event: KeyboardEvent) {
@@ -107,7 +109,10 @@ export function ReviewCanvas({
 
   /** Page under an event and the point in % of that page. */
   function pagePoint(event: React.MouseEvent) {
-    const page = (event.target as Element).closest<HTMLElement>("[data-page]");
+    // By position, not by target: while a pin is dragged the artboard captures the pointer.
+    const page =
+      (event.target as Element).closest<HTMLElement>("[data-page]") ??
+      document.elementsFromPoint(event.clientX, event.clientY).find((element) => element.matches("[data-page]")) as HTMLElement | undefined;
     if (!page) return null;
     const bounds = page.getBoundingClientRect();
     const percent = (value: number) => Math.min(100, Math.max(0, Math.round(value * 1000) / 10));
@@ -168,6 +173,12 @@ export function ReviewCanvas({
     pointerStart.current = { x: event.clientX, y: event.clientY };
     moved.current = false;
     setDragging(false);
+    const pin = (event.target as Element).closest<HTMLElement>(".canvas-pin");
+    const pinned = pin && comments.find((comment) => comment.id === Number(pin.dataset.pin));
+    if (pinned && event.button === 0 && !readOnly && canMove?.(pinned)) {
+      pinPress.current = { id: pinned.id, x: event.clientX, y: event.clientY, dragging: false };
+      return;
+    }
     if (!commenting || event.button !== 0 || (event.target as Element).closest(".thread, .canvas-pin")) return;
     const page = (event.target as Element).closest<HTMLElement>("[data-page]");
     if (!page) return;
@@ -181,6 +192,16 @@ export function ReviewCanvas({
   }
 
   function pointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const press = pinPress.current;
+    if (press && !press.dragging && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 4) {
+      press.dragging = true;
+      moved.current = true;
+      // Captured only once it is a drag, so a plain click / double-click still reaches the pin.
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const point = pagePoint(event);
+      if (point) setMoving({ id: press.id, page: point.page, x: point.x, y: point.y });
+      return;
+    }
     if (moving) {
       const point = pagePoint(event);
       if (point) setMoving({ ...moving, page: point.page, x: point.x, y: point.y });
@@ -207,6 +228,14 @@ export function ReviewCanvas({
   }
 
   function pointerUp() {
+    const press = pinPress.current;
+    pinPress.current = null;
+    if (press?.dragging && moving) {
+      pointerStart.current = null;
+      onMovePin?.(moving.id, moving.page, moving.x, moving.y);
+      setMoving(null);
+      return;
+    }
     pointerStart.current = null;
     setDragging(false);
     const box = drawing?.box;
@@ -307,6 +336,8 @@ export function ReviewCanvas({
               onPointerLeave={() => setHover(null)}
               onPointerUp={pointerUp}
               onPointerCancel={() => {
+                if (pinPress.current?.dragging) setMoving(null);
+                pinPress.current = null;
                 pointerStart.current = null;
                 drawStart.current = null;
                 setDrawing(null);

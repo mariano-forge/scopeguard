@@ -94,11 +94,13 @@
   --color-status-clarify-bg: var(--status-clarify-bg);
   --color-status-clarify-text: var(--status-clarify-text);
 
-  /* Radii: Kora field 6px, button 8px, panel 12px */
-  --radius-sm: var(--r-field);
-  --radius-md: var(--r-button);
-  --radius-lg: var(--r-panel);
-  --radius-xl: calc(var(--r-panel) + 4px);
+  /* Radii — shadcn draws buttons and fields with rounded-lg, menus with rounded-md, dialogs with rounded-xl:
+     Kora button 8px, field 6px, panel 12px. */
+  --radius-sm: 4px;
+  --radius-md: var(--r-field);
+  --radius-lg: var(--r-button);
+  --radius-xl: var(--r-panel);
+  --radius-2xl: var(--r-panel);
 
 }
 

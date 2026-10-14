@@ -143,7 +143,7 @@ export function RequestPanel({
                     <span className="thread-row-body">
                       <span className="thread-row-meta">
                         <span>{comment.author}</span>
-                        <small>{timeLabel(comment, now)}</small>
+                        {timeLabel(comment, now) && <small>{timeLabel(comment, now)}</small>}
                       </span>
                       <span className={`thread-row-text ${kind !== "comment" ? "is-title" : ""}`}>{requestText(comment)}</span>
                       {(comment.replies?.length ?? 0) > 0 && (

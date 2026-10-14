@@ -16,26 +16,30 @@ export type RequestKind = "comment" | "correction" | "outside";
 
 type ThreadReply = { id: number; author: string; initials: string; message: string; time: string; createdAt?: number };
 
-/** Current time, refreshed every minute (for "il y a 5 min"). */
+/** Current time, refreshed every 15 s (for "il y a 5 min"). */
 export function useNow() {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
     return () => window.clearInterval(timer);
   }, []);
   return now;
 }
 
-/** "À l'instant", "il y a 5 min", "il y a 3 h", "hier", "14 oct." — older data keeps its stored text. */
-export function timeLabel(item: { time: string; createdAt?: number }, now: number) {
-  if (!item.createdAt) return item.time;
-  const minutes = Math.floor((now - item.createdAt) / 60_000);
+/**
+ * "À l'instant", "il y a 5 min", "il y a 3 h", "hier", "14 oct.", always computed from the real time.
+ * Older data has no createdAt: replies use Date.now() as id, otherwise no label (the stored text was frozen).
+ */
+export function timeLabel(item: { id?: number; time: string; createdAt?: number }, now: number) {
+  const at = item.createdAt ?? (item.id && item.id > 1e12 ? item.id : undefined);
+  if (!at) return "";
+  const minutes = Math.max(0, Math.floor((now - at) / 60_000));
   if (minutes < 1) return "À l’instant";
   if (minutes < 60) return `il y a ${minutes} min`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `il y a ${hours} h`;
   if (hours < 48) return "hier";
-  return new Date(item.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+  return new Date(at).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
 /** Rectangle drawn on a page, in % of the page box. */
 export type Area = { x: number; y: number; w: number; h: number };
@@ -127,7 +131,7 @@ export function CommentPin({
         event.stopPropagation();
         onMove?.();
       }}
-      title={onMove ? "Double-clic pour déplacer" : undefined}
+      title={onMove ? "Glisser pour déplacer" : undefined}
       aria-label={`${kindLabels[kind]} #${comment.id} : ${requestText(comment)}`}
       aria-expanded={active}
     >
@@ -396,7 +400,7 @@ export function ThreadPopover({
                 </span>
                 <div>
                   <p className="thread-meta">
-                    <b>{message.author}</b> <small>{timeLabel(message, now)}</small>
+                    <b>{message.author}</b> {timeLabel(message, now) && <small>{timeLabel(message, now)}</small>}
                   </p>
                   <p className="thread-text">{message.message}</p>
                 </div>
