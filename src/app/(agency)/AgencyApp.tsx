@@ -1928,8 +1928,8 @@ export function AgencyApp() {
     { label: "Rouvrir la validation", icon: <RotateCcw />, onSelect: () => { setChangesMessage(""); setChangesOpen(true); } },
     { label: "Synthèse & export", icon: <FileCheck />, onSelect: () => setProofOpen(true) },
     { label: "Historique & journal", icon: <ScrollText />, onSelect: () => setHistoryOpen(true) },
-    { label: "Propositions hors périmètre", icon: <Receipt />, href: href.proposals(selectedProjectId, livrableRootId) },
-    { label: "Tableau de bord", icon: <LayoutDashboard />, href: href.dashboard(selectedProjectId, livrableRootId) },
+    { label: "Propositions financières", icon: <Receipt />, onSelect: () => router.push(href.proposals(selectedProjectId, livrableRootId)) },
+    { label: "Tableau de bord", icon: <LayoutDashboard />, onSelect: () => router.push(href.dashboard(selectedProjectId, livrableRootId)) },
     { kind: "section", label: "Organisation" },
     { label: "Renommer…", icon: <Pencil />, onSelect: () => { setRenameError(""); setRenameOpen(true); } },
     {
@@ -1948,9 +1948,6 @@ export function AgencyApp() {
     { kind: "section", label: "Fichier" },
     { label: "Synthèse & export", icon: <FileCheck />, onSelect: () => setProofOpen(true) },
     { label: "Historique & journal", icon: <ScrollText />, onSelect: () => setHistoryOpen(true) },
-    { kind: "section", label: "Aller à" },
-    { label: "Accueil", icon: <House />, href: href.home() },
-    { label: "À traiter", icon: <Inbox />, href: href.todo(), hint: agencyActionCount ? String(agencyActionCount) : undefined },
     { label: "Rechercher", icon: <Search />, hint: "Ctrl K", onSelect: () => setPaletteOpen(true) },
     { kind: "section", label: "Aide et réglages" },
     { label: "Raccourcis clavier", icon: <Keyboard />, onSelect: () => setShortcutsOpen(true) },
@@ -2041,6 +2038,7 @@ export function AgencyApp() {
           canvasHref={href.deliverable(selectedProject.id, livrableRootId)}
           proposalsBadge={proposalRows.filter((row) => row.state === "to-quote" || row.state === "adaptation").length}
           onSearch={() => setPaletteOpen(true)}
+          onNavigate={(target) => router.push(target)}
           onNewDeliverable={() => setNewDeliverableOpen(true)}
           notifications={notifications}
         />
@@ -2096,6 +2094,7 @@ export function AgencyApp() {
               clientName={selectedClient?.name ?? ""}
               rows={proposalRows}
               onOpenProposal={openProposal}
+              onOpenCanvas={(target) => router.push(target)}
             />
           ) : activeTab === "dashboard" ? (
             <div className="dashboard-view">

@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowUpRight, Copy, FileText, Printer, Receipt } from "lucide-react";
+import { useState } from "react";
+import { Check, Copy, Eye, MapPin, Printer, Receipt, Send } from "lucide-react";
 
 export type ProposalRowState = "to-quote" | "sent" | "adaptation" | "accepted" | "refused";
 export type ProposalRow = {
@@ -29,43 +29,65 @@ const stateLabel: Record<ProposalRowState, string> = {
 };
 const stateTone: Record<ProposalRowState, string> = {
   "to-quote": "decision-pending",
-  sent: "decision-pending",
+  sent: "decision-sent",
   adaptation: "decision-pending",
   accepted: "decision-included",
   refused: "decision-outside",
 };
+// What needs the agency first, then what waits on the client, then what is settled.
+const stateOrder: ProposalRowState[] = ["to-quote", "adaptation", "sent", "accepted", "refused"];
 const euros = (value: number) => `${value.toLocaleString("fr-FR")} €`;
+const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "s" : ""}`;
 
-/** Every out-of-scope request of a deliverable, all versions, ready to become one financial proposal. */
+/** Financial proposals of a deliverable: every out-of-scope request of all versions, to quote and send. */
 export function ProposalsView({
   livrableName,
   projectName,
   clientName,
   rows,
   onOpenProposal,
+  onOpenCanvas,
 }: {
   livrableName: string;
   projectName: string;
   clientName: string;
   rows: ProposalRow[];
   onOpenProposal: (commentId: number) => void;
+  /** Shows the request on its version's canvas (same tab). */
+  onOpenCanvas: (href: string) => void;
 }) {
-  const quoted = rows.filter((row) => row.state !== "to-quote" && row.state !== "refused");
-  const total = quoted.reduce((sum, row) => sum + row.amount, 0);
-  const accepted = rows.filter((row) => row.state === "accepted").reduce((sum, row) => sum + row.amount, 0);
-  const waiting = rows.filter((row) => row.state === "sent" || row.state === "adaptation").reduce((sum, row) => sum + row.amount, 0);
-  const toQuote = rows.filter((row) => row.state === "to-quote").length;
-  const days = quoted.reduce((sum, row) => sum + row.days, 0);
+  const [copied, setCopied] = useState(false);
+  const sorted = [...rows].sort((left, right) => stateOrder.indexOf(left.state) - stateOrder.indexOf(right.state));
+  const quoted = rows.filter((row) => row.state !== "to-quote");
+  const sum = (list: ProposalRow[]) => list.reduce((total, row) => total + row.amount, 0);
+  const accepted = rows.filter((row) => row.state === "accepted");
+  const waiting = rows.filter((row) => row.state === "sent" || row.state === "adaptation");
+  const refused = rows.filter((row) => row.state === "refused");
+  const toQuote = rows.filter((row) => row.state === "to-quote");
+  const total = sum(quoted);
+  const proposed = quoted.filter((row) => row.state !== "refused");
+  const days = proposed.reduce((count, row) => count + row.days, 0);
+  const share = (list: ProposalRow[]) => (total ? (sum(list) / total) * 100 : 0);
 
   const summary = () =>
     [
-      `Proposition complémentaire — ${livrableName}`,
+      `Proposition financière — ${livrableName}`,
       `${clientName} · ${projectName}`,
       "",
-      ...quoted.map((row) => `• #${row.commentId} (${row.versionLabel}) ${row.description || row.message} — ${euros(row.amount)} · ${row.days} j · ${stateLabel[row.state]}`),
+      ...proposed.map((row) => `• ${row.description || row.message} (${row.versionLabel}) — ${euros(row.amount)} · ${row.days} j · ${stateLabel[row.state]}`),
       "",
-      `Total : ${euros(total)} HT · ${days} jour${days > 1 ? "s" : ""}`,
+      `Total : ${euros(sum(proposed))} HT · ${plural(days, "jour")}`,
     ].join("\n");
+
+  async function copySummary() {
+    try {
+      await navigator.clipboard.writeText(summary());
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard refused: the export stays available.
+    }
+  }
 
   function printProposal() {
     const win = window.open("", "_blank");
@@ -75,28 +97,32 @@ export function ProposalsView({
     // Opened in a separate window where tokens.css is not loaded: Kora token values are inlined.
     const style = doc.createElement("style");
     style.textContent =
-      "body{font-family:Arial,sans-serif;color:#111111;max-width:820px;margin:40px auto;padding:0 24px;line-height:1.5}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{text-align:left;border-bottom:1px solid #ddd9d1;padding:10px 8px;font-size:13px;vertical-align:top}th{color:#4c4c48;font-size:12px}td.num{text-align:right;white-space:nowrap}tfoot td{font-weight:bold;border-bottom:0}small{color:#4c4c48}@media print{button{display:none}}";
+      "body{font-family:Arial,sans-serif;color:#111111;max-width:820px;margin:40px auto;padding:0 24px;line-height:1.5}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{text-align:left;border-bottom:1px solid #ddd9d1;padding:10px 8px;font-size:13px;vertical-align:top}th{color:#4c4c48;font-size:12px}td.num,th.num{text-align:right;white-space:nowrap}tfoot td{font-weight:bold;border-bottom:0}small{color:#4c4c48}@media print{button{display:none}}";
     doc.head.append(style);
     const title = doc.createElement("h1");
-    title.textContent = `Proposition complémentaire — ${livrableName}`;
+    title.textContent = `Proposition financière — ${livrableName}`;
     const meta = doc.createElement("p");
     meta.textContent = `${clientName} · ${projectName} · ${new Date().toLocaleDateString("fr-FR")}`;
     const table = doc.createElement("table");
     const head = table.createTHead().insertRow();
-    ["Demande", "Version", "Délai", "Montant HT"].forEach((label) => {
+    [
+      ["Prestation", ""],
+      ["Délai", "num"],
+      ["Montant HT", "num"],
+    ].forEach(([label, className]) => {
       const cell = doc.createElement("th");
       cell.textContent = label;
+      cell.className = className;
       head.append(cell);
     });
     const body = table.createTBody();
-    quoted.forEach((row) => {
+    proposed.forEach((row) => {
       const line = body.insertRow();
       const what = line.insertCell();
       what.textContent = row.description || row.message;
       const origin = doc.createElement("small");
-      origin.textContent = ` — demande #${row.commentId} de ${row.author}`;
+      origin.textContent = ` — demande de ${row.author} (${row.versionLabel})`;
       what.append(origin);
-      line.insertCell().textContent = row.versionLabel;
       const delay = line.insertCell();
       delay.className = "num";
       delay.textContent = `${row.days} j`;
@@ -106,13 +132,12 @@ export function ProposalsView({
     });
     const foot = table.createTFoot().insertRow();
     foot.insertCell().textContent = "Total";
-    foot.insertCell();
     const totalDays = foot.insertCell();
     totalDays.className = "num";
     totalDays.textContent = `${days} j`;
     const totalAmount = foot.insertCell();
     totalAmount.className = "num";
-    totalAmount.textContent = euros(total);
+    totalAmount.textContent = euros(sum(proposed));
     const print = doc.createElement("button");
     print.textContent = "Imprimer ou enregistrer en PDF";
     print.onclick = () => win.print();
@@ -121,113 +146,147 @@ export function ProposalsView({
   }
 
   return (
-    <div className="proposals-view">
-      <header className="proposals-header">
-        <div>
-          <p className="eyebrow">Propositions hors périmètre</p>
-          <h1>{livrableName}</h1>
-          <p className="proposals-intro">
-            Toutes les demandes hors périmètre de ce livrable, toutes versions confondues. Chiffrez-les, puis envoyez une
-            proposition financière groupée au client.
+    <div className="browser proposals-view">
+      <header className="page-header">
+        <div className="proposals-heading">
+          <h1 className="page-title">Propositions financières</h1>
+          <p>
+            Demandes hors périmètre de « {livrableName} » à chiffrer, puis à proposer au client.
           </p>
         </div>
-        <div className="heading-actions">
-          <button className="secondary-button" onClick={() => void navigator.clipboard?.writeText(summary())} disabled={quoted.length === 0}>
-            <Copy /> Copier le récapitulatif
+        <div className="proposals-header-actions">
+          <button className="secondary-button" onClick={copySummary} disabled={proposed.length === 0}>
+            {copied ? <Check /> : <Copy />} {copied ? "Copié" : "Copier le récapitulatif"}
           </button>
-          <button className="primary-button" onClick={printProposal} disabled={quoted.length === 0}>
+          <button className="primary-button" onClick={printProposal} disabled={proposed.length === 0}>
             <Printer /> Exporter la proposition
           </button>
         </div>
       </header>
 
-      <div className="proposals-stats">
-        <div className="stat-tile">
-          <small>Total proposé</small>
-          <b>{euros(total)}</b>
-          <span>
-            {quoted.length} poste{quoted.length > 1 ? "s" : ""} · {days} j
+      <section className="overview" aria-label="Montants">
+        <div className="hero-stat">
+          <span className="stat-label">Total chiffré</span>
+          <span className="hero-value">{euros(total)}</span>
+          <span className="stat-note">
+            {plural(quoted.length, "proposition")}
+            {days > 0 ? ` · ${plural(days, "jour")} de travail` : ""}
           </span>
+          {total > 0 && (
+            <div className="proposal-split" role="img" aria-label={`Accepté ${euros(sum(accepted))}, en attente ${euros(sum(waiting))}, refusé ${euros(sum(refused))}`}>
+              <span className="is-accepted" style={{ width: `${share(accepted)}%` }} />
+              <span className="is-waiting" style={{ width: `${share(waiting)}%` }} />
+              <span className="is-refused" style={{ width: `${share(refused)}%` }} />
+            </div>
+          )}
         </div>
-        <div className="stat-tile">
-          <small>Accepté par le client</small>
-          <b>{euros(accepted)}</b>
+        <div className="stat-row">
+          <div className="stat-tile">
+            <span className="stat-label">
+              <i className="legend-swatch is-accepted" aria-hidden="true" /> Accepté par le client
+            </span>
+            <span className="stat-value">{euros(sum(accepted))}</span>
+            <span className="stat-note">{plural(accepted.length, "proposition")}</span>
+          </div>
+          <div className="stat-tile">
+            <span className="stat-label">
+              <i className="legend-swatch is-waiting" aria-hidden="true" /> En attente du client
+            </span>
+            <span className="stat-value">{euros(sum(waiting))}</span>
+            <span className="stat-note">{plural(waiting.length, "proposition")}</span>
+          </div>
+          <div className="stat-tile">
+            <span className="stat-label">
+              <i className="legend-swatch is-refused" aria-hidden="true" /> Refusé
+            </span>
+            <span className="stat-value">{euros(sum(refused))}</span>
+            <span className="stat-note">{plural(refused.length, "proposition")}</span>
+          </div>
+          <div className="stat-tile">
+            <span className="stat-label">À chiffrer</span>
+            <span className="stat-value">{toQuote.length}</span>
+            <span className="stat-note">{toQuote.length > 1 ? "demandes sans proposition" : "demande sans proposition"}</span>
+          </div>
         </div>
-        <div className="stat-tile">
-          <small>En attente de décision</small>
-          <b>{euros(waiting)}</b>
-        </div>
-        <div className="stat-tile">
-          <small>À chiffrer</small>
-          <b>{toQuote}</b>
-          <span>demande{toQuote > 1 ? "s" : ""} sans proposition</span>
-        </div>
-      </div>
+      </section>
 
-      {rows.length === 0 ? (
-        <div className="empty-state">
-          <Receipt aria-hidden="true" />
-          <h2>Aucune demande hors périmètre</h2>
-          <p>Qualifiez une demande « Hors périmètre » sur le canevas : elle apparaîtra ici pour être chiffrée.</p>
-        </div>
-      ) : (
-        <div className="arbitrage-table-wrap">
-          <table className="arbitrage-table proposals-table">
-            <thead>
-              <tr>
-                <th>Demande</th>
-                <th>Version</th>
-                <th>Proposition</th>
-                <th className="num">Délai</th>
-                <th className="num">Montant HT</th>
-                <th>Statut</th>
-                <th>
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.commentId}>
-                  <td className="demand-cell">
-                    <p>{row.message}</p>
-                    <small>
-                      #{row.commentId} · {row.author} · {row.location}
-                    </small>
-                  </td>
-                  <td>{row.versionLabel}</td>
-                  <td>{row.description ?? <span className="text-muted">—</span>}</td>
-                  <td className="num">{row.state === "to-quote" ? "—" : `${row.days} j`}</td>
-                  <td className="num">{row.state === "to-quote" ? "—" : euros(row.amount)}</td>
-                  <td>
-                    <span className={`decision-badge ${stateTone[row.state]}`}>{stateLabel[row.state]}</span>
-                  </td>
-                  <td className="proposals-actions">
-                    {row.editable && (row.state === "to-quote" || row.state === "sent" || row.state === "adaptation") && (
-                      <button className="action-link" onClick={() => onOpenProposal(row.commentId)}>
-                        <FileText /> {row.state === "to-quote" ? "Chiffrer" : "Voir"}
-                      </button>
-                    )}
-                    <Link className="action-link" href={row.href}>
-                      Canevas <ArrowUpRight />
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            {quoted.length > 0 && (
-              <tfoot>
+      <section className="browser-section">
+        <h2>Demandes hors périmètre · {rows.length}</h2>
+        {rows.length === 0 ? (
+          <div className="empty-state">
+            <Receipt aria-hidden="true" />
+            <h2>Aucune demande hors périmètre</h2>
+            <p>Qualifiez une demande « Hors périmètre » sur le canevas : elle apparaîtra ici pour être chiffrée.</p>
+          </div>
+        ) : (
+          <div className="overview-table-wrap">
+            <table className="overview-table proposals-table">
+              <thead>
                 <tr>
-                  <td colSpan={3}>Total proposé</td>
-                  <td className="num">{days} j</td>
-                  <td className="num">{euros(total)}</td>
-                  <td colSpan={2} />
+                  <th scope="col">Demande</th>
+                  <th scope="col">Statut</th>
+                  <th scope="col">Délai</th>
+                  <th scope="col">Montant HT</th>
+                  <th scope="col">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {sorted.map((row) => (
+                  <tr key={row.commentId}>
+                    <th scope="row">
+                      <span className="proposal-title">{row.description ?? row.message}</span>
+                      <span className="proposal-meta">
+                        {row.description ? `« ${row.message} » · ` : ""}
+                        {row.author} · {row.versionLabel}
+                      </span>
+                    </th>
+                    <td>
+                      <span className={`decision-badge ${stateTone[row.state]}`}>{stateLabel[row.state]}</span>
+                    </td>
+                    <td>{row.state === "to-quote" ? "—" : `${row.days} j`}</td>
+                    <td>{row.state === "to-quote" ? "—" : euros(row.amount)}</td>
+                    <td>
+                      <span className="proposal-actions">
+                        {row.editable && row.state === "to-quote" && (
+                          <button className="primary-button small-button" onClick={() => onOpenProposal(row.commentId)}>
+                            <Send /> Faire une proposition
+                          </button>
+                        )}
+                        {row.editable && (row.state === "sent" || row.state === "adaptation") && (
+                          <button className="secondary-button small-button" onClick={() => onOpenProposal(row.commentId)}>
+                            <Eye /> Voir la proposition
+                          </button>
+                        )}
+                        <button
+                          className="icon-only"
+                          onClick={() => onOpenCanvas(row.href)}
+                          aria-label={`Voir la demande sur le canevas (${row.versionLabel})`}
+                          title="Voir sur le canevas"
+                        >
+                          <MapPin />
+                        </button>
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              {proposed.length > 0 && (
+                <tfoot>
+                  <tr>
+                    <th scope="row">Total proposé</th>
+                    <td />
+                    <td>{days} j</td>
+                    <td>{euros(sum(proposed))}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -223,6 +223,7 @@ export function ProjectSidebar({
   canvasHref,
   proposalsBadge,
   onSearch,
+  onNavigate,
   onNewDeliverable,
   notifications,
 }: {
@@ -249,6 +250,8 @@ export function ProjectSidebar({
   /** Out-of-scope requests still waiting for a client decision. */
   proposalsBadge: number;
   onSearch: () => void;
+  /** Switches view inside the deliverable's tab (canvas, proposals, dashboard). */
+  onNavigate: (target: string) => void;
   onNewDeliverable: () => void;
   notifications: Notification[];
 }) {
@@ -279,33 +282,37 @@ export function ProjectSidebar({
             <Layers />
           </button>
         ) : (
-          <Link
+          <button
             className="rail-button"
-            href={canvasHref}
-            onClick={() => onPanel("livrables")}
+            onClick={() => {
+              onPanel("livrables");
+              onNavigate(canvasHref);
+            }}
             aria-label="Revenir au canevas"
             title="Revenir au canevas"
           >
             <Layers />
-          </Link>
+          </button>
         )}
-        <Link
+        <button
           className={`rail-button ${view.kind === "proposals" ? "is-active" : ""}`}
-          href={proposalsHref}
-          aria-label={`Propositions hors périmètre${proposalsBadge ? ` (${proposalsBadge} en attente)` : ""}`}
-          title="Propositions hors périmètre"
+          onClick={() => onNavigate(proposalsHref)}
+          aria-label={`Propositions financières${proposalsBadge ? ` (${proposalsBadge} à traiter)` : ""}`}
+          aria-pressed={view.kind === "proposals"}
+          title="Propositions financières"
         >
           <Receipt />
           {proposalsBadge > 0 && <span className="rail-badge">{proposalsBadge}</span>}
-        </Link>
-        <Link
+        </button>
+        <button
           className={`rail-button ${view.kind === "dashboard" ? "is-active" : ""}`}
-          href={dashboardHref}
+          onClick={() => onNavigate(dashboardHref)}
           aria-label="Tableau de bord du livrable"
+          aria-pressed={view.kind === "dashboard"}
           title="Tableau de bord du livrable"
         >
           <LayoutDashboard />
-        </Link>
+        </button>
         <button className="rail-button" onClick={onSearch} aria-label="Rechercher" title="Rechercher (Ctrl K)">
           <Search />
         </button>
