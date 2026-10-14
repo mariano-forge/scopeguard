@@ -44,6 +44,7 @@ export function ReviewCanvas({
   renderComposer,
   transformRef,
   overlay,
+  toolbarExtra,
 }: {
   deliverable: ViewedDeliverable;
   comments: CanvasComment[];
@@ -64,6 +65,8 @@ export function ReviewCanvas({
   transformRef: RefObject<ReactZoomPanPinchRef | null>;
   /** Banners shown over the canvas (frozen version, errors). */
   overlay?: React.ReactNode;
+  /** Extra tools at the end of the toolbar (agency: copy / export). */
+  toolbarExtra?: React.ReactNode;
 }) {
   const panelRef = useRef<HTMLElement>(null);
   const [zoom, setZoom] = useState(100);
@@ -343,6 +346,12 @@ export function ReviewCanvas({
             <Maximize />
           </button>
         </div>
+        {toolbarExtra && (
+          <>
+            <span className="toolbar-divider" aria-hidden="true" />
+            <div className="tool-group">{toolbarExtra}</div>
+          </>
+        )}
       </div>
     </section>
   );

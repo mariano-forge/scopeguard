@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowRight, ArrowUp, BadgeEuro, ClipboardCheck, Tag, Trash2, Undo2, X } from "lucide-react";
+import { ArrowUp, BadgeEuro, ClipboardCheck, Receipt, Tag, Trash2, Undo2, X } from "lucide-react";
 
 /**
  * One request, three states:
  * - "À qualifier" → Commentaire (to clarify): written on the canvas or by hand;
- * - "Inclus"      → Inclus: qualified as part of the scope;
+ * - "Inclus"      → À traiter: qualified as part of the scope (work to do);
  * - "Hors périmètre" → Hors scope: qualified as an addition, leads to a proposal.
  * Included and out-of-scope requests only come from qualifying a comment.
  */
@@ -38,9 +38,9 @@ export type ThreadComment = {
 export const requestKind = (comment: Pick<ThreadComment, "decision">): RequestKind =>
   comment.decision === "Inclus" ? "correction" : comment.decision === "Hors périmètre" ? "outside" : "comment";
 export const isQualified = (comment: Pick<ThreadComment, "decision">) => requestKind(comment) !== "comment";
-export const kindLabels: Record<RequestKind, string> = { comment: "Commentaire", correction: "Demande incluse", outside: "Demande hors scope" };
+export const kindLabels: Record<RequestKind, string> = { comment: "Commentaire", correction: "Demande à traiter", outside: "Demande hors scope" };
 /** Short status shown on badges. */
-export const statusLabels: Record<RequestKind, string> = { comment: "À clarifier", correction: "Inclus", outside: "Hors scope" };
+export const statusLabels: Record<RequestKind, string> = { comment: "À clarifier", correction: "À traiter", outside: "Hors scope" };
 export const statusTones: Record<RequestKind, string> = { comment: "decision-pending", correction: "decision-included", outside: "decision-outside" };
 /** What a request asks, in one line: its title once qualified, else the comment. */
 export const requestText = (comment: Pick<ThreadComment, "title" | "message">) => comment.title ?? comment.message;
@@ -49,7 +49,6 @@ export const requestText = (comment: Pick<ThreadComment, "title" | "message">) =
 export type TargetBox = { left: number; top: number; width: number; height: number; label: string };
 
 const side = (x: number) => (x > 58 ? "is-left" : "is-right");
-const vertical = (y: number) => (y > 62 ? "is-up" : "");
 
 /**
  * Opens the bubble where it fits in the visible canvas: on its preferred side, else the other side,
@@ -93,10 +92,10 @@ export function CommentPin({ comment, active, onOpen }: { comment: ThreadComment
   );
 }
 
-/** Inclus / Hors scope switch. */
+/** À traiter / Hors scope switch. */
 function ScopeChoice({ value, onChange }: { value: Qualification; onChange: (value: Qualification) => void }) {
   const options: { value: Qualification; label: string; hint: string }[] = [
-    { value: "Inclus", label: "Inclus", hint: "Dans le scope prévu" },
+    { value: "Inclus", label: "À traiter", hint: "Dans le scope prévu" },
     { value: "Hors périmètre", label: "Hors scope", hint: "Ajout à chiffrer" },
   ];
   return (
@@ -120,6 +119,31 @@ function ScopeChoice({ value, onChange }: { value: Qualification; onChange: (val
 
 /** Optional quote typed while qualifying an out-of-scope request (prefills the proposal, sends nothing). */
 export type Quote = { amount: number; days: number };
+/** One-line field that grows with the text (up to 6 lines); Enter sends, Shift+Enter adds a line. */
+function GrowingField({ value, onChange, placeholder, label, autoFocus }: { value: string; onChange: (value: string) => void; placeholder: string; label: string; autoFocus?: boolean }) {
+  return (
+    <textarea
+      className="growing-field"
+      rows={1}
+      autoFocus={autoFocus}
+      value={value}
+      placeholder={placeholder}
+      aria-label={label}
+      onChange={(event) => {
+        onChange(event.target.value);
+        event.target.style.height = "auto";
+        event.target.style.height = `${Math.min(event.target.scrollHeight, 132)}px`;
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          event.currentTarget.form?.requestSubmit();
+        }
+      }}
+    />
+  );
+}
+
 export type Qualified = { title: string; description: string; decision: Qualification; quote?: Quote };
 
 /**
@@ -142,6 +166,7 @@ export function ThreadPopover({
   readOnly: boolean;
   /** Decision locked by an accepted/refused proposal. */
   locked: boolean;
+  /** Label of the proposal action for an out-of-scope request ("Chiffrer", "Envoyer la proposition"…). */
   proposalLabel: string | null;
   /** Quote already typed for this request (not sent yet). */
   quote?: Quote;
@@ -177,7 +202,7 @@ export function ThreadPopover({
   return (
     <div
       ref={bubbleRef}
-      className={`thread is-${kind} ${qualifying ? "is-qualifying" : ""} ${placement} ${vertical(y)}`}
+      className={`thread is-${kind} ${qualifying ? "is-qualifying" : ""} ${placement}`}
       style={{ left: `${x}%`, top: `${y}%` }}
       role="dialog"
       aria-label={`${kindLabels[kind]} #${comment.id}`}
@@ -189,9 +214,7 @@ export function ThreadPopover({
     >
       <header className="thread-header">
         <span className="thread-title">
-          <span className="thread-title-line">
-            <span className={`decision-badge ${statusTones[kind]}`}>{statusLabels[kind]}</span> #{comment.id}
-          </span>
+          {kind === "comment" ? "Commentaire" : "Demande"} n°{comment.id}
         </span>
         <span className="thread-header-actions">
           {onDelete && (
@@ -271,11 +294,15 @@ export function ThreadPopover({
         <>
           {kind !== "comment" && (
             <div className="request-body">
+              <p className={`request-kind is-${kind}`}>
+                <i className={`kind-square is-${kind}`} aria-hidden="true" />
+                {kind === "outside" ? "Hors scope · ajout à chiffrer" : "À traiter · dans le scope"}
+              </p>
               <p className="request-title">{requestText(comment)}</p>
               {comment.description && <p className="request-description">{comment.description}</p>}
-              {kind === "outside" && onOpenProposal && (
-                <button type="button" className="thread-proposal" onClick={onOpenProposal} disabled={readOnly}>
-                  {proposalLabel ?? "Faire une proposition"} <ArrowRight aria-hidden="true" />
+              {kind === "outside" && onOpenProposal && proposalLabel && (
+                <button type="button" className="request-cta" onClick={onOpenProposal} disabled={readOnly}>
+                  <Receipt aria-hidden="true" /> {proposalLabel}
                 </button>
               )}
               {onQualify && canWrite && (
@@ -319,7 +346,11 @@ export function ThreadPopover({
             </div>
           )}
 
-          {canWrite ? (
+          {kind !== "comment" ? (
+            <p className="thread-locked">
+              Demande qualifiée : la discussion est close.{onQualify && canWrite ? " Remettez-la à clarifier pour la rouvrir." : ""}
+            </p>
+          ) : canWrite ? (
             <form
               className="thread-reply"
               onSubmit={(event) => {
@@ -329,13 +360,7 @@ export function ThreadPopover({
                 setDraft("");
               }}
             >
-              <input
-                autoFocus={kind === "comment"}
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder={kind === "comment" ? "Répondre, demander une précision…" : "Commenter la demande…"}
-                aria-label="Répondre"
-              />
+              <GrowingField autoFocus value={draft} onChange={setDraft} placeholder="Répondre, demander une précision…" label="Répondre" />
               <button type="submit" className="thread-send" disabled={!draft.trim()} aria-label="Envoyer la réponse">
                 <ArrowUp />
               </button>
@@ -370,7 +395,7 @@ export function Composer({
       <span className="composer-pin" style={{ left: `${x}%`, top: `${y}%` }} aria-hidden="true" />
       <div
         ref={bubbleRef}
-        className={`thread composer ${placement} ${vertical(y)}`}
+        className={`thread composer ${placement}`}
         style={{ left: `${x}%`, top: `${y}%` }}
         onClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
@@ -393,7 +418,7 @@ export function Composer({
             if (draft.trim()) onSubmit({ message: draft.trim() });
           }}
         >
-          <input autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Écrire un commentaire…" aria-label="Commentaire" />
+          <GrowingField autoFocus value={draft} onChange={setDraft} placeholder="Écrire un commentaire…" label="Commentaire" />
           <button type="submit" className="thread-send" disabled={!draft.trim()} aria-label="Publier">
             <ArrowUp />
           </button>

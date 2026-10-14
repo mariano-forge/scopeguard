@@ -1,17 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Download, Eye, MessageSquare, MoreHorizontal, Plus, Share2 } from "lucide-react";
-import { MenuButton } from "./MenuButton";
+import { Eye, MessageSquare, Plus, Receipt, Share2 } from "lucide-react";
 import { ResizeHandle } from "./ResizeHandle";
-import { kindLabels, requestKind, requestText, statusLabels, statusTones, type RequestKind, type ThreadComment } from "./CanvasComments";
+import { kindLabels, requestKind, requestText, type RequestKind, type ThreadComment } from "./CanvasComments";
 
 export type InspectorTab = RequestKind;
 
 const tabs: { kind: RequestKind; label: string; empty: string }[] = [
-  { kind: "comment", label: "À clarifier", empty: "Aucun commentaire à clarifier. Commentez le livrable sur le canevas, ou ajoutez-en un ici." },
-  { kind: "correction", label: "Inclus", empty: "Aucune demande incluse. Qualifiez un commentaire « Inclus » quand il fait partie du scope." },
-  { kind: "outside", label: "Hors scope", empty: "Aucun ajout hors scope. Qualifiez un commentaire « Hors scope » pour le chiffrer." },
+  { kind: "comment", label: "À clarifier", empty: "Aucun commentaire à clarifier. Commentez le livrable sur le canevas, ou ajoutez-en un avec +." },
+  { kind: "correction", label: "À traiter", empty: "Aucune demande à traiter. Créez-en une depuis un commentaire quand elle fait partie du scope." },
+  { kind: "outside", label: "Hors scope", empty: "Aucune demande hors scope. Créez-en une depuis un commentaire pour la chiffrer." },
 ];
 
 /** Markdown summary of every request of the version (copy / export). */
@@ -29,11 +28,11 @@ export function threadsToMarkdown(title: string, comments: ThreadComment[]) {
       )
       .join("\n")}\n\n`;
   };
-  return `# ${title}\n\n${section("correction", "Inclus")}${section("outside", "Hors scope")}${section("comment", "À clarifier")}`.trim() + "\n";
+  return `# ${title}\n\n${section("correction", "À traiter")}${section("outside", "Hors scope")}${section("comment", "À clarifier")}`.trim() + "\n";
 }
 
 /**
- * Requests of a version in three tabs (À clarifier · Inclus · Hors scope), with a manual comment form.
+ * Requests of a version in three tabs (À clarifier · À traiter · Hors scope), with a manual comment form.
  * Used by the agency inspector and by the client page.
  */
 export function RequestPanel({
@@ -43,6 +42,7 @@ export function RequestPanel({
   onTab,
   onFocus,
   proposalLabel,
+  onProposal,
   adding,
   onAddingChange,
   onAddComment,
@@ -53,7 +53,9 @@ export function RequestPanel({
   onTab: (tab: InspectorTab) => void;
   /** Shows that request on the canvas. */
   onFocus: (commentId: number) => void;
+  /** Proposal action of an out-of-scope request ("Chiffrer", "Envoyer la proposition"…), agency only. */
   proposalLabel?: (comment: ThreadComment) => string | null;
+  onProposal?: (commentId: number) => void;
   /** The manual comment form is open (opened from the panel header's "+"). */
   adding: boolean;
   onAddingChange: (adding: boolean) => void;
@@ -138,17 +140,20 @@ export function RequestPanel({
                         </small>
                       </span>
                       <span className={`thread-row-text ${kind !== "comment" ? "is-title" : ""}`}>{requestText(comment)}</span>
-                      <span className="thread-row-tags">
-                        <span className={`decision-badge ${statusTones[kind]}`}>{statusLabels[kind]}</span>
-                        {kind === "outside" && proposalLabel?.(comment) && <small>{proposalLabel(comment)}</small>}
-                        {(comment.replies?.length ?? 0) > 0 && (
+                      {(comment.replies?.length ?? 0) > 0 && (
+                        <span className="thread-row-tags">
                           <small>
                             {comment.replies?.length} réponse{(comment.replies?.length ?? 0) > 1 ? "s" : ""}
                           </small>
-                        )}
-                      </span>
+                        </span>
+                      )}
                     </span>
                   </button>
+                  {kind === "outside" && onProposal && proposalLabel?.(comment) && (
+                    <button type="button" className="row-cta" onClick={() => onProposal(comment.id)}>
+                      <Receipt aria-hidden="true" /> {proposalLabel(comment)}
+                    </button>
+                  )}
                 </li>
               );
             })}
@@ -161,30 +166,29 @@ export function RequestPanel({
 
 /**
  * Right panel of the deliverable: where requests are handled.
- * Header: "Demandes" + add a comment, share, client preview, and copy / export in "⋯".
+ * Header: "Demandes", add a comment, client preview, share. Copy / export live in the canvas toolbar.
  */
 export function EditorInspector({
-  title,
   comments,
   selectedId,
   tab,
   onTab,
   onFocus,
   proposalLabel,
+  onProposal,
   onAddComment,
   onShare,
   onPreview,
   width,
   onResize,
 }: {
-  /** "Livrable — V03", used by copy / export. */
-  title: string;
   comments: ThreadComment[];
   selectedId: number | null;
   tab: InspectorTab;
   onTab: (tab: InspectorTab) => void;
   onFocus: (commentId: number) => void;
   proposalLabel: (comment: ThreadComment) => string | null;
+  onProposal: (commentId: number) => void;
   onAddComment?: (message: string) => void;
   onShare: () => void;
   onPreview: () => void;
@@ -192,25 +196,11 @@ export function EditorInspector({
   onResize: (width: number) => void;
 }) {
   const [adding, setAdding] = useState(false);
-  const toClarify = comments.filter((comment) => requestKind(comment) === "comment").length;
-
-  function exportFile() {
-    const url = URL.createObjectURL(new Blob([threadsToMarkdown(title, comments)], { type: "text/markdown" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${title.replace(/[^\p{L}\p{N}]+/gu, "-")}-demandes.md`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
   return (
     <aside className="inspector editor-inspector" aria-label="Demandes">
       <ResizeHandle edge="left" width={width} min={300} max={560} defaultWidth={340} label="Largeur du panneau des demandes" onResize={onResize} />
       <header className="requests-header">
-        <div className="requests-heading">
-          <h2>Demandes</h2>
-          <p>{toClarify > 0 ? `${toClarify} commentaire${toClarify > 1 ? "s" : ""} à clarifier` : "Tout est qualifié"}</p>
-        </div>
+        <h2>Demandes</h2>
         <div className="requests-actions">
           {onAddComment && (
             <button className="icon-action" onClick={() => setAdding(true)} aria-label="Ajouter un commentaire" title="Ajouter un commentaire">
@@ -220,16 +210,6 @@ export function EditorInspector({
           <button className="icon-action" onClick={onPreview} aria-label="Aperçu client" title="Aperçu client : la page que voit le client">
             <Eye />
           </button>
-          <MenuButton
-            className="icon-action"
-            label="Plus d’actions"
-            trigger={<MoreHorizontal />}
-            menuClassName="requests-menu"
-            entries={[
-              { label: "Copier les demandes", icon: <Copy />, onSelect: () => void navigator.clipboard?.writeText(threadsToMarkdown(title, comments)), disabled: comments.length === 0 },
-              { label: "Exporter (.md)", icon: <Download />, onSelect: exportFile, disabled: comments.length === 0 },
-            ]}
-          />
           <button className="primary-button requests-share" onClick={onShare}>
             <Share2 /> Partager
           </button>
@@ -243,6 +223,7 @@ export function EditorInspector({
         onTab={onTab}
         onFocus={onFocus}
         proposalLabel={proposalLabel}
+        onProposal={onProposal}
         adding={adding}
         onAddingChange={setAdding}
         onAddComment={onAddComment}

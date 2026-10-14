@@ -32,7 +32,7 @@ export type HomeAnalyticsData = {
 };
 
 const decisionStyles = { "À qualifier": "decision-pending", Inclus: "decision-included", "Hors périmètre": "decision-outside" } as const;
-const decisionLabels = { "À qualifier": "À clarifier", Inclus: "Inclus", "Hors périmètre": "Hors scope" } as const;
+const decisionLabels = { "À qualifier": "À clarifier", Inclus: "À traiter", "Hors périmètre": "Hors scope" } as const;
 const euros = (value: number) => `${value.toLocaleString("fr-FR")} €`;
 
 /** Scope split and proposal status, side by side (same bar and swatches as the proposals page). */
@@ -51,7 +51,7 @@ export function ScopeCharts({ data }: { data: HomeAnalyticsData }) {
         <div
           className="proposal-split"
           role="img"
-          aria-label={`Inclus ${included}, hors scope ${outside}, à clarifier ${pending}`}
+          aria-label={`À traiter ${included}, hors scope ${outside}, à clarifier ${pending}`}
         >
           <span className="is-included" style={{ width: share(included) }} />
           <span className="is-outside" style={{ width: share(outside) }} />
@@ -59,7 +59,7 @@ export function ScopeCharts({ data }: { data: HomeAnalyticsData }) {
         </div>
         <ul className="chart-legend">
           <li>
-            <i className="legend-swatch is-included" aria-hidden="true" /> Inclus <b>{included}</b>
+            <i className="legend-swatch is-included" aria-hidden="true" /> À traiter <b>{included}</b>
           </li>
           <li>
             <i className="legend-swatch is-outside" aria-hidden="true" /> Hors scope <b>{outside}</b>

@@ -741,10 +741,7 @@ export default function ClientReviewPage() {
 
           <aside className="client-side-panel" aria-label="Vos retours">
             <header className="requests-header">
-              <div className="requests-heading">
-                <h2>Vos retours</h2>
-                <p>Commentez un élément ou dessinez une zone : l’équipe qualifie chaque demande.</p>
-              </div>
+              <h2>Vos retours</h2>
               {!isReadOnlyVersion() && (
                 <div className="requests-actions">
                   <button className="icon-action" onClick={() => setAddingComment(true)} aria-label="Ajouter un commentaire" title="Ajouter un commentaire">

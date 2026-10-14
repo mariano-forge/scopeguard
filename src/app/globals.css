@@ -7221,3 +7221,116 @@ body.is-resizing {
   min-width: 0;
   flex: 1;
 }
+
+/* Requests panel header: small title + actions on one line */
+.requests-header {
+  align-items: center;
+  padding: var(--s-3) var(--s-4);
+}
+.requests-header h2 {
+  margin: 0;
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
+}
+
+/* Qualified request in its bubble: colored square + plain words, then the action */
+.request-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font: 600 var(--t-caption) var(--font-ui);
+}
+.request-kind.is-correction {
+  color: var(--status-resolved-text);
+}
+.request-kind.is-outside {
+  color: var(--status-scope-text);
+}
+.kind-square {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.kind-square.is-correction {
+  background: var(--status-resolved-text);
+}
+.kind-square.is-outside {
+  background: var(--status-scope-text);
+}
+.request-cta,
+.row-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 0;
+  border-radius: var(--r-button);
+  padding: 0 var(--s-3);
+  background: var(--status-scope-text);
+  color: var(--paper);
+  font: 600 var(--t-ui) var(--font-ui);
+  cursor: pointer;
+}
+.request-cta:hover,
+.row-cta:hover {
+  filter: brightness(1.12);
+}
+.request-cta:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.request-cta:focus-visible,
+.row-cta:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 2px;
+}
+.request-cta .lucide,
+.row-cta .lucide {
+  width: 16px;
+  height: 16px;
+}
+.request-cta {
+  width: 100%;
+}
+.inspector-list li {
+  border-bottom: 1px solid var(--border);
+}
+.inspector-list li .thread-row {
+  border-bottom: 0;
+}
+.row-cta {
+  min-height: 30px;
+  margin: 0 var(--s-4) var(--s-3) calc(var(--s-4) + 24px + var(--s-2));
+  font-size: var(--t-caption-size);
+}
+
+/* Reply / comment field grows with the text instead of moving the bubble */
+.growing-field {
+  flex: 1;
+  min-width: 0;
+  min-height: 34px;
+  max-height: 132px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--r-field);
+  padding: 7px var(--s-3);
+  color: var(--ink);
+  font: var(--t-ui) var(--font-ui);
+  line-height: 20px;
+  resize: none;
+  overflow-y: auto;
+}
+.thread-reply {
+  align-items: flex-end;
+}
+
+/* Menus opened from the bottom toolbar open upwards */
+.app-menu.is-up {
+  top: auto;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+}

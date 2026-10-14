@@ -41,6 +41,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
   ArrowUpRight,
+  Copy,
+  Download,
+  FileDown,
   Check,
   CircleHelp,
   Eye,
@@ -78,10 +81,10 @@ import {
   type Qualified,
   type Area,
   } from "./editor/CanvasComments";
-import { EditorInspector, type InspectorTab } from "./editor/EditorInspector";
+import { EditorInspector, threadsToMarkdown, type InspectorTab } from "./editor/EditorInspector";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "./editor/ReviewCanvas";
 import { ProposalsView, type ProposalRow } from "./editor/ProposalsView";
-import type { MenuEntry } from "./editor/MenuButton";
+import { MenuButton, type MenuEntry } from "./editor/MenuButton";
 import { RenameDialog } from "./EntitySettings";
 import type { HomeAnalyticsData } from "./HomeAnalytics";
 import type { LivrableGroup } from "./LivrableFilter";
@@ -918,7 +921,7 @@ export function AgencyApp() {
     );
     recordAudit(
       "scope.classified",
-      back ? "Demande remise à clarifier" : `Demande qualifiée « ${qualified.decision === "Inclus" ? "Inclus" : "Hors scope"} » : ${qualified.title}`,
+      back ? "Demande remise à clarifier" : `Demande qualifiée « ${qualified.decision === "Inclus" ? "À traiter" : "Hors scope"} » : ${qualified.title}`,
       commentId,
     );
     setInspectorTab(back ? "comment" : qualified.decision === "Inclus" ? "correction" : "outside");
@@ -1240,6 +1243,17 @@ export function AgencyApp() {
     setInspectorTab("comment");
     setComposer(null);
     setThreadOpen(true);
+  }
+
+  /** "Livrable — V03": title of copied / exported requests. */
+  const exportTitle = currentDeliverable ? `${currentDeliverable.name} — V${String(currentDeliverable.version).padStart(2, "0")}` : "Demandes";
+  function exportRequests() {
+    const url = URL.createObjectURL(new Blob([threadsToMarkdown(exportTitle, activeComments)], { type: "text/markdown" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${exportTitle.replace(/[^\p{L}\p{N}]+/gu, "-")}-demandes.md`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   function replyTo(commentId: number, message: string) {
@@ -1789,20 +1803,21 @@ export function AgencyApp() {
     ...paletteActions.slice(2),
   ];
 
+  /** Next step of an out-of-scope request, used as the label of its proposal button. */
   const proposalLabel = (comment: Comment) =>
     comment.decision !== "Hors périmètre"
       ? null
       : proposalDecisionFor(comment.id) === "accepted" || adaptationRequests[comment.id]?.decision === "accepted"
-        ? "Proposition acceptée"
+        ? "Proposition acceptée · voir"
         : proposalDecisionFor(comment.id) === "refused" || adaptationRequests[comment.id]?.decision === "refused"
-          ? "Proposition refusée"
+          ? "Proposition refusée · voir"
           : adaptationRequests[comment.id] && !adaptationRequests[comment.id].decision
-            ? "Adaptation demandée"
+            ? "Répondre à l’adaptation"
             : proposalStateFor(comment.id) === "sent"
-              ? "Proposition envoyée"
+              ? "Voir la proposition envoyée"
               : proposalStateFor(comment.id) === "draft"
-                ? "Chiffrée · à envoyer"
-                : "Proposition à créer";
+                ? "Envoyer la proposition"
+                : "Chiffrer";
 
   // Deliverable workspace (canvas, dashboard, proposals): everything below is about this deliverable.
   const livrableRootId = "livrableId" in view ? view.livrableId : 0;
@@ -2035,6 +2050,23 @@ export function AgencyApp() {
                 setComposer(null);
               }}
               transformRef={transformRef}
+              toolbarExtra={
+                <MenuButton
+                  className="tool-button"
+                  label="Copier ou exporter les demandes"
+                  trigger={<Download />}
+                  menuClassName="is-up"
+                  entries={[
+                    {
+                      label: "Copier les demandes",
+                      icon: <Copy />,
+                      disabled: activeComments.length === 0,
+                      onSelect: () => void navigator.clipboard?.writeText(threadsToMarkdown(exportTitle, activeComments)),
+                    },
+                    { label: "Exporter (.md)", icon: <FileDown />, disabled: activeComments.length === 0, onSelect: exportRequests },
+                  ]}
+                />
+              }
               overlay={
                 <>
                   {isReadOnlyVersion && latestVersionRecord && (
@@ -2096,13 +2128,13 @@ export function AgencyApp() {
             />
 
             <EditorInspector
-              title={`${currentDeliverable.name} — V${String(currentDeliverable.version).padStart(2, "0")}`}
               comments={activeComments}
               selectedId={threadOpen ? (selectedComment?.id ?? null) : null}
               tab={inspectorTab}
               onTab={setInspectorTab}
               onFocus={focusThread}
               proposalLabel={(comment) => proposalLabel(comment as Comment)}
+              onProposal={openProposal}
               onAddComment={isReadOnlyVersion ? undefined : (message) => addComment(message, null)}
               onShare={openShareDialog}
               onPreview={openClientPreview}
