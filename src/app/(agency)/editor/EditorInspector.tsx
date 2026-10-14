@@ -48,6 +48,7 @@ export function RequestPanel({
   onQuote,
   onSendProposal,
   onOpenProposal,
+  onRequote,
   proposalSummary,
   adding,
   onAddingChange,
@@ -64,7 +65,9 @@ export function RequestPanel({
   onQuote?: (commentId: number) => void;
   onSendProposal?: (commentId: number) => void;
   onOpenProposal?: (commentId: number) => void;
-  /** Out-of-scope requests (client page): amount, delay and where the decision stands, above the actions. */
+  /** After a refusal: quote a new version (the refused one stays in the history). */
+  onRequote?: (commentId: number) => void;
+  /** Out-of-scope requests: amount, delay and where the decision stands, above the actions. */
   proposalSummary?: (comment: ThreadComment) => React.ReactNode;
   /** The manual comment form is open (opened from the panel header's "+"). */
   adding: boolean;
@@ -165,7 +168,16 @@ export function RequestPanel({
                       return (
                         <div className="row-actions">
                           {proposalSummary?.(comment)}
-                          {stage.stage === "sent" ? (
+                          {stage.stage === "sent" && stage.retry ? (
+                            <>
+                              <button type="button" className="secondary-button small-button" onClick={() => onOpenProposal?.(comment.id)}>
+                                Historique
+                              </button>
+                              <button type="button" className="secondary-button small-button" onClick={() => onRequote?.(comment.id)}>
+                                Chiffrer à nouveau
+                              </button>
+                            </>
+                          ) : stage.stage === "sent" ? (
                             <button type="button" className="secondary-button small-button" onClick={() => onOpenProposal?.(comment.id)}>
                               {stage.label}
                             </button>
@@ -212,6 +224,8 @@ export function EditorInspector({
   onQuote,
   onSendProposal,
   onOpenProposal,
+  onRequote,
+  proposalSummary,
   onAddComment,
   onShare,
   onPreview,
@@ -227,6 +241,8 @@ export function EditorInspector({
   onQuote: (commentId: number) => void;
   onSendProposal: (commentId: number) => void;
   onOpenProposal: (commentId: number) => void;
+  onRequote: (commentId: number) => void;
+  proposalSummary: (comment: ThreadComment) => React.ReactNode;
   onAddComment?: (message: string) => void;
   onShare: () => void;
   onPreview: () => void;
@@ -270,6 +286,8 @@ export function EditorInspector({
         onQuote={onQuote}
         onSendProposal={onSendProposal}
         onOpenProposal={onOpenProposal}
+        onRequote={onRequote}
+        proposalSummary={proposalSummary}
         adding={adding}
         onAddingChange={setAdding}
         onAddComment={onAddComment}

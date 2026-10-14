@@ -691,9 +691,9 @@ export default function ClientReviewPage() {
   const proposalStatus = (commentId: number) => {
     const adaptation = adaptationRequests[commentId];
     if (proposalDecisions[commentId] === "accepted") return { label: "Acceptée", tone: "decision-included" };
-    if (proposalDecisions[commentId] === "refused") return { label: "Refusée", tone: "decision-outside" };
+    if (proposalDecisions[commentId] === "refused") return { label: "Refusée", tone: "decision-refused" };
     if (adaptation?.decision === "accepted") return { label: "Adaptation acceptée", tone: "decision-included" };
-    if (adaptation?.decision === "refused") return { label: "Adaptation refusée", tone: "decision-outside" };
+    if (adaptation?.decision === "refused") return { label: "Adaptation refusée", tone: "decision-refused" };
     if (adaptation) return { label: "Adaptation demandée", tone: "decision-sent" };
     return { label: "À décider", tone: "decision-sent" };
   };

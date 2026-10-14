@@ -53,7 +53,6 @@ import {
   Search,
   Settings,
   Star,
-  Hourglass,
   House,
   Inbox,
   Pencil,
@@ -201,6 +200,8 @@ type ProposalVersion = {
   deadline: number | string;
   status: "draft" | "sent" | "superseded" | "accepted" | "refused";
   createdAt: string;
+  /** Closed by a refused adaptation: what the client had asked. */
+  adaptation?: string;
 };
 type ProposalVersions = Record<number, ProposalVersion[]>;
 type ImportMode = "version" | "deliverable";
@@ -390,6 +391,8 @@ export function AgencyApp() {
   const [adaptationRequests, setAdaptationRequests] = useState<AdaptationRequests>({});
   const [proposalVersions, setProposalVersions] = useState<ProposalVersions>({});
   const [newProposalVersionOpen, setNewProposalVersionOpen] = useState(false);
+  /** The version form re-quotes a refused proposal: it saves a draft, sent later after confirmation. */
+  const [requoting, setRequoting] = useState(false);
   const [newProposalDescription, setNewProposalDescription] = useState("");
   const [newProposalAmount, setNewProposalAmount] = useState("");
   const [newProposalDeadline, setNewProposalDeadline] = useState("");
@@ -973,21 +976,25 @@ export function AgencyApp() {
     if (qualified.quote && qualified.decision === "Hors périmètre" && proposalStateFor(commentId) !== "sent") {
       const quote = qualified.quote;
       setProposalStates((current) => ({ ...current, [commentId]: "draft" }));
-      setProposalVersions((current) => ({
-        ...current,
-        [commentId]: [
-          {
-            id: Date.now(),
-            version: 1,
-            commentId,
-            description: qualified.title,
-            amount: quote.amount,
-            deadline: quote.days,
-            status: "draft",
-            createdAt: new Date().toLocaleString("fr-FR"),
-          },
-        ],
-      }));
+      setProposalVersions((current) => {
+        const history = (current[commentId] ?? []).filter((proposal) => proposal.status !== "draft");
+        return {
+          ...current,
+          [commentId]: [
+            ...history,
+            {
+              id: Date.now(),
+              version: Math.max(...history.map((proposal) => proposal.version), 0) + 1,
+              commentId,
+              description: qualified.title,
+              amount: quote.amount,
+              deadline: quote.days,
+              status: "draft",
+              createdAt: new Date().toLocaleString("fr-FR"),
+            },
+          ],
+        };
+      });
       recordAudit("proposal.drafted", `Chiffrage préparé : ${quote.amount} € · ${quote.days} j`, commentId);
     }
   }
@@ -1465,7 +1472,12 @@ export function AgencyApp() {
   function sendQuotedProposal(commentId: number) {
     const draft = proposalVersions[commentId]?.find((proposal) => proposal.status === "draft");
     if (!draft || isReadOnlyVersion) return;
-    setProposalVersions((current) => ({ ...current, [commentId]: [{ ...draft, status: "sent", createdAt: new Date().toLocaleString("fr-FR") }] }));
+    setProposalVersions((current) => ({
+      ...current,
+      [commentId]: (current[commentId] ?? []).map((proposal) =>
+        proposal.id === draft.id ? { ...proposal, status: "sent" as const, createdAt: new Date().toLocaleString("fr-FR") } : proposal,
+      ),
+    }));
     setProposalStates((current) => ({ ...current, [commentId]: "sent" }));
     setProposalDecisions((current) => ({ ...current, [commentId]: "none" }));
     recordAudit("proposal.sent", `Proposition envoyée au client : ${formatProposalAmount(draft.amount)} · ${formatProposalDeadline(draft.deadline)}`, commentId);
@@ -1476,9 +1488,66 @@ export function AgencyApp() {
     return proposalVersions[commentId]?.find((proposal) => proposal.status === "sent" || proposal.status === "accepted") ?? proposalVersions[commentId]?.at(-1);
   }
 
+  /** Opens the quote form on a refused proposal. */
+  function openRequote(commentId: number) {
+    if (isReadOnlyVersion) return;
+    const existing = activeProposalFor(commentId);
+    const source = comments.find((comment) => comment.id === commentId);
+    setProposalCommentId(commentId);
+    setNewProposalDescription(existing?.description ?? source?.title ?? source?.message ?? "");
+    setNewProposalAmount(existing ? String(parseNumericAmount(existing.amount)) : "");
+    setNewProposalDeadline(existing ? String(parseNumericDays(existing.deadline)) : "");
+    setProposalOpen(false);
+    setRequoting(true);
+    setNewProposalVersionOpen(true);
+  }
+
+  /** New quote after a refusal: the refused version stays in the history, the new one waits to be sent. */
+  function saveRequote(commentId: number) {
+    const history = proposalVersions[commentId] ?? [];
+    const adaptation = adaptationRequests[commentId];
+    const nextVersion = Math.max(...history.map((proposal) => proposal.version), 0) + 1;
+    setProposalVersions((current) => ({
+      ...current,
+      [commentId]: [
+        ...(current[commentId] ?? [])
+          .filter((proposal) => proposal.status !== "draft")
+          .map((proposal) =>
+            proposal.status === "sent" ? { ...proposal, status: "refused" as const, adaptation: adaptation?.message } : proposal,
+          ),
+        {
+          id: Date.now(),
+          version: nextVersion,
+          commentId,
+          description: newProposalDescription.trim(),
+          amount: parseNumericAmount(newProposalAmount),
+          deadline: parseNumericDays(newProposalDeadline),
+          status: "draft",
+          createdAt: new Date().toLocaleString("fr-FR"),
+        },
+      ],
+    }));
+    setProposalStates((current) => ({ ...current, [commentId]: "draft" }));
+    setProposalDecisions((current) => ({ ...current, [commentId]: "none" }));
+    setAdaptationRequests((current) => {
+      const next = { ...current };
+      delete next[commentId];
+      return next;
+    });
+    recordAudit("proposal.drafted", `Nouveau chiffrage v${nextVersion} après refus`, commentId);
+    setNewProposalVersionOpen(false);
+    setRequoting(false);
+    toast(`Version ${nextVersion} chiffrée · à envoyer au client`);
+  }
+
   function sendNewProposalVersion(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (isReadOnlyVersion) return;
+    if (requoting && proposalCommentId !== null) {
+      if (!newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()) return;
+      saveRequote(proposalCommentId);
+      return;
+    }
     if (
       proposalCommentId === null ||
       !newProposalDescription.trim() ||
@@ -1940,11 +2009,35 @@ export function AgencyApp() {
     ...paletteActions.slice(2),
   ];
 
+  /** Where the client's answer stands, shown as a status badge. */
+  const proposalStatusOf = (commentId: number) => {
+    const adaptation = adaptationRequests[commentId];
+    if (proposalStateFor(commentId) === "draft") return { label: "À envoyer", tone: "decision-pending", retry: false };
+    if (proposalDecisionFor(commentId) === "accepted") return { label: "Acceptée", tone: "decision-included", retry: false };
+    if (proposalDecisionFor(commentId) === "refused") return { label: "Refusée", tone: "decision-refused", retry: true };
+    if (adaptation?.decision === "accepted") return { label: "Adaptation acceptée", tone: "decision-included", retry: false };
+    if (adaptation?.decision === "refused") return { label: "Adaptation refusée", tone: "decision-refused", retry: true };
+    if (adaptation) return { label: "Adaptation demandée", tone: "decision-pending", retry: false };
+    return { label: "En attente du client", tone: "decision-sent", retry: false };
+  };
+  const versionStatusLabel = (proposal: ProposalVersion) =>
+    proposal.status === "refused"
+      ? proposal.adaptation
+        ? "Adaptation refusée"
+        : "Refusée"
+      : proposal.status === "accepted"
+        ? "Acceptée"
+        : proposal.status === "superseded"
+          ? "Remplacée"
+          : proposal.status === "draft"
+            ? "À envoyer"
+            : "En attente du client";
+
   /** Where the proposal of an out-of-scope request stands: to quote, quoted (ready to send), or sent. */
   const proposalStageOf = (comment: Comment): ProposalStage | null => {
     if (comment.decision !== "Hors périmètre") return null;
     const state = proposalStateFor(comment.id);
-    if (state === "sent") return { stage: "sent", label: proposalLabel(comment) ?? "Voir la proposition" };
+    if (state === "sent") return { stage: "sent", label: proposalLabel(comment) ?? "Voir la proposition", retry: proposalStatusOf(comment.id).retry };
     return state === "draft" ? { stage: "draft" } : { stage: "none" };
   };
 
@@ -2253,6 +2346,20 @@ export function AgencyApp() {
               }}
               onSendProposal={setConfirmSendId}
               onOpenProposal={openProposal}
+              onRequote={openRequote}
+              proposalSummary={(comment) => {
+                if (proposalStateFor(comment.id) === "none") return null;
+                const proposal = activeProposalFor(comment.id);
+                const status = proposalStatusOf(comment.id);
+                return (
+                  <span className="client-proposal-line">
+                    <b>{formatProposalAmount(proposal?.amount)} HT</b>
+                    <span>{formatProposalDeadline(proposal?.deadline)}</span>
+                    {(proposalVersions[comment.id]?.length ?? 0) > 1 && <span>V{proposal?.version}</span>}
+                    <span className={`decision-badge ${status.tone}`}>{status.label}</span>
+                  </span>
+                );
+              }}
               onAddComment={isReadOnlyVersion ? undefined : (message) => addComment(message, null)}
               onShare={openShareDialog}
               onPreview={openClientPreview}
@@ -2262,138 +2369,150 @@ export function AgencyApp() {
           </div>
           </>
         )}
-          {/* Sent proposal: follow-up (adaptation, new version). */}
-          <Modal
-            open={proposalOpen}
-            onClose={() => setProposalOpen(false)}
-            title={proposalStateFor(proposalCommentId ?? 0) === "sent" ? "Proposition complémentaire" : "Créer une proposition"}
-            description={
-              proposalStateFor(proposalCommentId ?? 0) === "sent"
-                ? selectedAdaptationRequest
-                  ? "Le client demande une adaptation. Répondez avec une nouvelle proposition réaliste."
-                  : "Le client doit accepter ce montant avant que le studio commence le travail."
-                : "Transformez ce retour en accord clair avant de commencer le travail."
-            }
-            size="lg"
-            footer={
-              proposalStateFor(proposalCommentId ?? 0) === "sent" ? (
-                <>
-                  {selectedAdaptationRequest && !selectedAdaptationRequest.decision && selectedAdaptationRequest.budget !== undefined && (
+          {/* Sent proposal: status, history and the next step (adaptation, new version). */}
+          {(() => {
+            const id = proposalCommentId ?? 0;
+            const sent = proposalStateFor(id) === "sent";
+            const proposal = activeProposalFor(id);
+            const status = proposalStatusOf(id);
+            const source = comments.find((comment) => comment.id === id);
+            const history = (proposalVersions[id] ?? []).filter((version) => version.id !== proposal?.id).sort((left, right) => right.version - left.version);
+            const adaptationPending = Boolean(selectedAdaptationRequest && !selectedAdaptationRequest.decision);
+            const openNewVersion = () => {
+              setNewProposalDescription(proposal?.description ?? "");
+              setNewProposalAmount(proposal ? String(parseNumericAmount(proposal.amount)) : "");
+              setNewProposalDeadline(proposal ? String(parseNumericDays(proposal.deadline)) : "");
+              setRequoting(false);
+              setNewProposalVersionOpen(true);
+            };
+            return (
+              <Modal
+                open={proposalOpen}
+                onClose={() => setProposalOpen(false)}
+                title={sent ? `Proposition · demande n°${id}` : "Créer une proposition"}
+                description={sent ? (source?.title ?? source?.message) : "Transformez ce retour en accord clair avant de commencer le travail."}
+                footer={
+                  !sent ? (
+                    <Button onClick={sendProposal} disabled={!newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>
+                      Envoyer au client
+                    </Button>
+                  ) : isReadOnlyVersion ? (
+                    <Button variant="outline" onClick={() => setProposalOpen(false)}>
+                      Fermer
+                    </Button>
+                  ) : status.retry ? (
                     <>
-                      <Button variant="outline" onClick={() => decideAdaptation(proposalCommentId ?? 0, "refused")} disabled={isReadOnlyVersion}>
+                      <Button variant="outline" onClick={() => setProposalOpen(false)}>
+                        Fermer
+                      </Button>
+                      <Button onClick={() => openRequote(id)}>Chiffrer une nouvelle version</Button>
+                    </>
+                  ) : adaptationPending ? (
+                    <>
+                      <Button variant="outline" onClick={() => decideAdaptation(id, "refused")}>
                         Refuser l’adaptation
                       </Button>
-                      <Button variant="outline" onClick={() => decideAdaptation(proposalCommentId ?? 0, "accepted")} disabled={isReadOnlyVersion}>
-                        Accepter l’adaptation
+                      {selectedAdaptationRequest?.budget !== undefined && (
+                        <Button variant="outline" onClick={() => decideAdaptation(id, "accepted")}>
+                          Accepter l’adaptation
+                        </Button>
+                      )}
+                      <Button onClick={openNewVersion}>Répondre par une nouvelle version</Button>
+                    </>
+                  ) : status.label === "En attente du client" ? (
+                    <>
+                      <Button variant="outline" onClick={() => setProposalOpen(false)}>
+                        Fermer
+                      </Button>
+                      <Button variant="outline" onClick={openNewVersion}>
+                        Modifier (nouvelle version)
                       </Button>
                     </>
-                  )}
-                  {!isReadOnlyVersion && proposalDecisionFor(proposalCommentId ?? 0) !== "accepted" && !selectedAdaptationRequest?.decision && (
-                    <Button
-                      onClick={() => {
-                        const existing = activeProposalFor(proposalCommentId ?? 0);
-                        setNewProposalDescription(existing?.description ?? "");
-                        setNewProposalAmount(existing ? String(parseNumericAmount(existing.amount)) : "");
-                        setNewProposalDeadline(existing ? String(parseNumericDays(existing.deadline)) : "");
-                        setNewProposalVersionOpen(true);
-                      }}
-                    >
-                      {selectedAdaptationRequest ? "Répondre avec une nouvelle proposition" : "Modifier la proposition (nouvelle version)"}
+                  ) : (
+                    <Button variant="outline" onClick={() => setProposalOpen(false)}>
+                      Fermer
                     </Button>
-                  )}
-                </>
-              ) : (
-                <Button onClick={sendProposal} disabled={!newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>
-                  Envoyer au client
-                </Button>
-              )
-            }
-          >
-            {proposalStateFor(proposalCommentId ?? 0) === "sent" ? (
-              <>
-                {selectedAdaptationRequest && (
-                  <div className="adaptation-request-summary">
-                    <span>Demande du client · {selectedAdaptationRequest.requestedAt}</span>
-                    <p>{selectedAdaptationRequest.message}</p>
-                    {(selectedAdaptationRequest.budget !== undefined || selectedAdaptationRequest.deadline !== undefined) && (
+                  )
+                }
+              >
+                {sent ? (
+                  <>
+                    <div className="proposal-status-line">
+                      <span className="text-muted-foreground">Statut</span>
+                      <span className={`decision-badge ${status.tone}`}>{status.label}</span>
+                      {proposal && (
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          V{proposal.version} · envoyée le {proposal.createdAt}
+                        </span>
+                      )}
+                    </div>
+                    <div className="proposal-summary">
                       <div>
-                        {selectedAdaptationRequest.budget !== undefined && <b>Budget indicatif : {formatProposalAmount(selectedAdaptationRequest.budget)}</b>}
-                        {selectedAdaptationRequest.deadline !== undefined && <b>Délai souhaité : {formatProposalDeadline(selectedAdaptationRequest.deadline)}</b>}
+                        <span>Prestation</span>
+                        <b>{proposal?.description ?? "—"}</b>
+                      </div>
+                      <div>
+                        <span>Montant</span>
+                        <b>{formatProposalAmount(proposal?.amount ?? 0)} HT</b>
+                      </div>
+                      <div>
+                        <span>Impact planning</span>
+                        <b>{formatProposalDeadline(proposal?.deadline ?? 0)}</b>
+                      </div>
+                    </div>
+                    {selectedAdaptationRequest && (
+                      <div className="proposal-note">
+                        <span>Demande d’adaptation du client · {selectedAdaptationRequest.requestedAt}</span>
+                        <p>{selectedAdaptationRequest.message}</p>
+                        {(selectedAdaptationRequest.budget !== undefined || selectedAdaptationRequest.deadline !== undefined) && (
+                          <small>
+                            {[
+                              selectedAdaptationRequest.budget !== undefined ? `Budget indicatif : ${formatProposalAmount(selectedAdaptationRequest.budget)}` : null,
+                              selectedAdaptationRequest.deadline !== undefined ? `Délai souhaité : ${formatProposalDeadline(selectedAdaptationRequest.deadline)}` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </small>
+                        )}
                       </div>
                     )}
-                  </div>
-                )}
-                {activeProposalFor(proposalCommentId ?? 0) && (
-                  <p className="text-xs text-muted-foreground">
-                    Version {activeProposalFor(proposalCommentId ?? 0)?.version} · envoyée le {activeProposalFor(proposalCommentId ?? 0)?.createdAt}
-                  </p>
-                )}
-                <div className="proposal-summary">
-                  <div>
-                    <span>Prestation</span>
-                    <b>{activeProposalFor(proposalCommentId ?? 0)?.description ?? "—"}</b>
-                  </div>
-                  <div>
-                    <span>Montant</span>
-                    <b>{formatProposalAmount(activeProposalFor(proposalCommentId ?? 0)?.amount ?? 0)}</b>
-                  </div>
-                  <div>
-                    <span>Impact planning</span>
-                    <b>{formatProposalDeadline(activeProposalFor(proposalCommentId ?? 0)?.deadline ?? 0)}</b>
-                  </div>
-                </div>
-                {proposalDecisionFor(proposalCommentId ?? 0) === "accepted" ? (
-                  <div className="proposal-status-banner accepted">
-                    <span>
-                      <Check /> Proposition acceptée par le client
-                    </span>
-                  </div>
-                ) : proposalDecisionFor(proposalCommentId ?? 0) === "refused" ? (
-                  <div className="proposal-status-banner refused">
-                    <span>
-                      <X /> Proposition refusée par le client
-                    </span>
-                  </div>
-                ) : selectedAdaptationRequest?.decision ? (
-                  <div className={`proposal-status-banner ${selectedAdaptationRequest.decision}`}>
-                    <span>
-                      {selectedAdaptationRequest.decision === "accepted" ? (
-                        <>
-                          <Check /> Adaptation acceptée par l’agence
-                        </>
-                      ) : (
-                        <>
-                          <X /> Adaptation refusée par l’agence
-                        </>
-                      )}
-                    </span>
-                  </div>
+                    {history.length > 0 && (
+                      <div className="proposal-history">
+                        <span>Historique</span>
+                        <ul>
+                          {history.map((version) => (
+                            <li key={version.id}>
+                              <b>V{version.version}</b>
+                              <span>
+                                {formatProposalAmount(version.amount)} HT · {formatProposalDeadline(version.deadline)}
+                              </span>
+                              <span className={`decision-badge ${version.status === "accepted" ? "decision-included" : version.status === "refused" ? "decision-refused" : "decision-sent"}`}>
+                                {versionStatusLabel(version)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
                 ) : (
-                  !selectedAdaptationRequest && (
-                    <div className="proposal-status-banner pending">
-                      <span>
-                        <Hourglass /> Transmise au client · En attente de décision
-                      </span>
+                  <>
+                    <Field id="proposal-description" label="Description de la prestation">
+                      <Textarea id="proposal-description" value={newProposalDescription} onChange={(event) => setNewProposalDescription(event.target.value)} />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field id="proposal-amount" label="Montant HT">
+                        <AddonInput id="proposal-amount" addon="€" type="number" min="0" step="10" placeholder="850" value={newProposalAmount} onChange={(event) => setNewProposalAmount(event.target.value)} />
+                      </Field>
+                      <Field id="proposal-deadline" label="Impact planning">
+                        <AddonInput id="proposal-deadline" addon="jours" type="number" min="0" step="1" placeholder="3" value={newProposalDeadline} onChange={(event) => setNewProposalDeadline(event.target.value)} />
+                      </Field>
                     </div>
-                  )
+                  </>
                 )}
-              </>
-            ) : (
-              <>
-                <Field id="proposal-description" label="Description de la prestation">
-                  <Textarea id="proposal-description" value={newProposalDescription} onChange={(event) => setNewProposalDescription(event.target.value)} />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field id="proposal-amount" label="Montant HT">
-                    <AddonInput id="proposal-amount" addon="€" type="number" min="0" step="10" placeholder="850" value={newProposalAmount} onChange={(event) => setNewProposalAmount(event.target.value)} />
-                  </Field>
-                  <Field id="proposal-deadline" label="Impact planning">
-                    <AddonInput id="proposal-deadline" addon="jours" type="number" min="0" step="1" placeholder="3" value={newProposalDeadline} onChange={(event) => setNewProposalDeadline(event.target.value)} />
-                  </Field>
-                </div>
-              </>
-            )}
-          </Modal>
+              </Modal>
+            );
+          })()}
 
           <Modal
             open={proposalPreviewCommentId !== null && Boolean(previewProposal)}
@@ -2883,9 +3002,16 @@ export function AgencyApp() {
 
           <Modal
             open={newProposalVersionOpen}
-            onClose={() => setNewProposalVersionOpen(false)}
-            title="Nouvelle version de la proposition"
-            description="La proposition actuelle sera remplacée : cette nouvelle version sera la seule active pour le client."
+            onClose={() => {
+              setNewProposalVersionOpen(false);
+              setRequoting(false);
+            }}
+            title={requoting ? "Chiffrer une nouvelle version" : "Nouvelle version de la proposition"}
+            description={
+              requoting
+                ? "La version refusée reste dans l’historique. Vous enverrez la nouvelle version après confirmation."
+                : "La proposition actuelle sera remplacée : cette nouvelle version sera la seule active pour le client."
+            }
             onSubmit={sendNewProposalVersion}
             size="lg"
             footer={
@@ -2894,14 +3020,14 @@ export function AgencyApp() {
                   Annuler
                 </Button>
                 <Button type="submit" disabled={!newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>
-                  Envoyer la nouvelle proposition
+                  {requoting ? "Enregistrer le chiffrage" : "Envoyer la nouvelle proposition"}
                 </Button>
               </>
             }
           >
             {selectedAdaptationRequest && (
-              <div className="adaptation-request-summary">
-                <span>Demande du client · {selectedAdaptationRequest.requestedAt}</span>
+              <div className="proposal-note">
+                <span>Demande d’adaptation du client · {selectedAdaptationRequest.requestedAt}</span>
                 <p>{selectedAdaptationRequest.message}</p>
               </div>
             )}

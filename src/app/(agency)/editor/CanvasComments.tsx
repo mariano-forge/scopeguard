@@ -168,7 +168,8 @@ function ScopeChoice({ value, onChange }: { value: Qualification; onChange: (val
 /** Optional quote typed while qualifying an out-of-scope request (prefills the proposal, sends nothing). */
 export type Quote = { amount: number; days: number };
 /** Where an out-of-scope request stands: not quoted, quoted (not sent), or sent (label says what follows). */
-export type ProposalStage = { stage: "none" } | { stage: "draft" } | { stage: "sent"; label: string };
+/** `retry`: the client refused (or the adaptation was refused): the agency can quote a new version. */
+export type ProposalStage = { stage: "none" } | { stage: "draft" } | { stage: "sent"; label: string; retry?: boolean };
 
 export type Qualified = { title: string; description: string; decision: Qualification; quote?: Quote };
 

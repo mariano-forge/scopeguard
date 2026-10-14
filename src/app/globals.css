@@ -7358,6 +7358,77 @@ body.is-resizing {
   }
 }
 
-.client-side-panel .row-actions {
+/* Request rows: the proposal line takes the full width, the buttons go below */
+.inspector-list .row-actions {
   flex-wrap: wrap;
+}
+
+.decision-refused {
+  background: var(--status-high-bg);
+  color: var(--status-high-text);
+}
+
+/* Proposal follow-up modal: status line, summary, client's adaptation, history */
+[data-slot="dialog-content"] .proposal-summary {
+  margin: 0;
+}
+.proposal-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--t-caption-size);
+}
+.proposal-note {
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--canvas);
+  font-size: var(--t-caption-size);
+}
+.proposal-note > span {
+  color: var(--graphite);
+  font-weight: 600;
+}
+.proposal-note p {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.45;
+}
+.proposal-note small {
+  color: var(--graphite);
+}
+.proposal-history {
+  display: grid;
+  gap: var(--s-2);
+  font-size: var(--t-caption-size);
+}
+.proposal-history > span {
+  color: var(--graphite);
+  font-weight: 600;
+}
+.proposal-history ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+}
+.proposal-history li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+}
+.proposal-history li + li {
+  border-top: 1px solid var(--border);
+}
+.proposal-history li > span:not(.decision-badge) {
+  color: var(--graphite);
+}
+.proposal-history .decision-badge {
+  margin-left: auto;
 }
