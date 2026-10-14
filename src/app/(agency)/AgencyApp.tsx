@@ -77,10 +77,12 @@ import {
   ThreadPopover,
   requestKind,
   type ProposalStage,
+  type Qualification,
   type Qualified,
   type Area,
   } from "./editor/CanvasComments";
 import { EditorInspector, threadsToMarkdown, type InspectorTab } from "./editor/EditorInspector";
+import { NewRequestDialog } from "./editor/NewRequestDialog";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "./editor/ReviewCanvas";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -399,6 +401,8 @@ export function AgencyApp() {
   const [newProposalVersionOpen, setNewProposalVersionOpen] = useState(false);
   /** The version form re-quotes a refused proposal: it saves a draft, sent later after confirmation. */
   const [requoting, setRequoting] = useState(false);
+  /** "Nouvelle demande" form, opened on that qualification. */
+  const [newRequestKind, setNewRequestKind] = useState<Qualification | null>(null);
   const [newProposalCounter, setNewProposalCounter] = useState(false);
   const [newProposalDescription, setNewProposalDescription] = useState("");
   const [newProposalAmount, setNewProposalAmount] = useState("");
@@ -1278,6 +1282,41 @@ export function AgencyApp() {
     setComposer(null);
     setThreadOpen(true);
     requestAnimationFrame(() => centerOnPin(commentId));
+  }
+
+  /** A request created directly, already qualified (from the panel's ▾), with its optional quote. */
+  function addRequest(request: Qualified) {
+    if (isReadOnlyVersion || !currentDeliverable) return;
+    const id = Math.max(...comments.map((comment) => comment.id), 0) + 1;
+    const created: Comment = {
+      id,
+      deliverableId: currentDeliverable.id,
+      author: "Alex Morgan",
+      initials: "AM",
+      time: "À l'instant",
+      createdAt: Date.now(),
+      message: request.description || request.title,
+      location: "Livrable (général)",
+      decision: request.decision,
+      kind: "request",
+      title: request.title,
+      description: request.description || undefined,
+      page: 1,
+    };
+    setComments((current) => [...current, created]);
+    recordAudit("scope.classified", `Demande créée « ${request.decision === "Inclus" ? "À traiter" : "Hors scope"} » : ${request.title}`, id);
+    if (request.quote && request.decision === "Hors périmètre") {
+      const quote = request.quote;
+      setProposalStates((current) => ({ ...current, [id]: "draft" }));
+      setProposalVersions((current) => ({
+        ...current,
+        [id]: [{ id: Date.now(), version: 1, commentId: id, description: request.title, amount: quote.amount, deadline: quote.days, allowCounter: quote.counter, status: "draft", createdAt: new Date().toLocaleString("fr-FR") }],
+      }));
+    }
+    setNewRequestKind(null);
+    setInspectorTab(request.decision === "Inclus" ? "correction" : "outside");
+    setSelectedId(id);
+    toast(`Demande « ${request.title} » créée`);
   }
 
   /** Publishes a comment written on the canvas, or by hand (no position) from the panel. */
@@ -2438,6 +2477,7 @@ export function AgencyApp() {
                 );
               }}
               onAddComment={isReadOnlyVersion ? undefined : (message) => addComment(message, null)}
+              onAddRequest={isReadOnlyVersion ? undefined : setNewRequestKind}
               onShare={openShareDialog}
               onPreview={openClientPreview}
               width={panelWidths.inspector}
@@ -2446,6 +2486,7 @@ export function AgencyApp() {
           </div>
           </>
         )}
+          <NewRequestDialog initial={newRequestKind} onClose={() => setNewRequestKind(null)} onCreate={addRequest} />
           {/* Sent proposal: status, history and the next step (adaptation, new version). */}
           {(() => {
             const id = proposalCommentId ?? 0;

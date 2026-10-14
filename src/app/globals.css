@@ -7678,3 +7678,44 @@ body.is-resizing {
   color: var(--graphite);
   font-size: var(--t-caption-size);
 }
+
+/* "+ Commentaire" + ▾ (request already qualified): one split call to action */
+.split-button {
+  display: inline-flex;
+  align-items: stretch;
+}
+.split-button .requests-add {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.split-button .split-button-more {
+  width: 32px;
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+/* Requests header: the actions never overflow the panel (the title gives way first) */
+.editor-inspector .requests-header h2 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editor-inspector .requests-actions {
+  flex-shrink: 0;
+  gap: 4px;
+}
+.split-button .requests-add {
+  padding-inline: 10px;
+}
+.split-button .split-button-more {
+  width: 28px;
+}
+.split-button .requests-add {
+  font-size: var(--t-ui-size, 14px);
+}
+.editor-inspector .requests-actions .icon-action {
+  width: 28px;
+  height: 28px;
+}

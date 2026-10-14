@@ -239,7 +239,7 @@ function ThreadMessage({
 }
 
 /** À traiter / Hors scope switch. */
-function ScopeChoice({ value, onChange }: { value: Qualification; onChange: (value: Qualification) => void }) {
+export function ScopeChoice({ value, onChange }: { value: Qualification; onChange: (value: Qualification) => void }) {
   const options: { value: Qualification; label: string; hint: string }[] = [
     { value: "Inclus", label: "À traiter", hint: "Dans le scope prévu" },
     { value: "Hors périmètre", label: "Hors scope", hint: "Ajout à chiffrer" },

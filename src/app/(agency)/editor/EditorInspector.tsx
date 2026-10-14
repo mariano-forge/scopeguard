@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, History, MessageSquare, Plus, Share2 } from "lucide-react";
+import { ChevronDown, ClipboardCheck, BadgeEuro, Eye, History, MessageSquare, Plus, Share2 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { ProposalStage } from "./CanvasComments";
 import { ResizeHandle } from "./ResizeHandle";
 import { kindLabels, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
@@ -244,6 +245,7 @@ export function EditorInspector({
   onRequote,
   proposalSummary,
   onAddComment,
+  onAddRequest,
   onShare,
   onPreview,
   width,
@@ -261,6 +263,8 @@ export function EditorInspector({
   onRequote: (commentId: number) => void;
   proposalSummary: (comment: ThreadComment) => React.ReactNode;
   onAddComment?: (message: string) => void;
+  /** Opens the "new request" form, already qualified (no comment first). */
+  onAddRequest?: (decision: "Inclus" | "Hors périmètre") => void;
   onShare: () => void;
   onPreview: () => void;
   width: number;
@@ -284,11 +288,32 @@ export function EditorInspector({
             </Button>
           </Hint>
           {onAddComment && (
-            <Hint label="Un retour général, sans le placer sur le livrable">
-              <Button className="requests-add" onClick={() => setAdding(true)}>
-                <Plus /> Commentaire
-              </Button>
-            </Hint>
+            <div className="split-button">
+              <Hint label="Un retour général, sans le placer sur le livrable">
+                <Button className="requests-add" onClick={() => setAdding(true)}>
+                  <Plus /> Commentaire
+                </Button>
+              </Hint>
+              {onAddRequest && (
+                <DropdownMenu>
+                  <Hint label="Ajouter une demande déjà qualifiée">
+                    <DropdownMenuTrigger asChild>
+                      <Button size="icon" className="split-button-more" aria-label="Ajouter une demande">
+                        <ChevronDown />
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </Hint>
+                  <DropdownMenuContent align="end" className="min-w-56">
+                    <DropdownMenuItem onSelect={() => onAddRequest("Inclus")}>
+                      <ClipboardCheck /> Demande à traiter
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onAddRequest("Hors périmètre")}>
+                      <BadgeEuro /> Demande hors scope
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
           )}
         </div>
       </header>
