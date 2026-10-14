@@ -15,9 +15,9 @@
   --card-foreground: var(--ink);
   --popover: var(--paper);
   --popover-foreground: var(--ink);
-  /* Kora CTA: ink on the action blue (7.35:1) */
-  --primary: var(--action-fill);
-  --primary-foreground: var(--ink);
+  /* Kora CTA: white on black (--cta-*) */
+  --primary: var(--cta-fill);
+  --primary-foreground: var(--cta-text);
   --secondary: var(--mist);
   --secondary-foreground: var(--ink);
   --muted: var(--mist);

@@ -68,7 +68,7 @@ import { BrowserView, type HomeOverview } from "./BrowserView";
 import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
 import { isAgencyAction, todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
-import { HomeSidebar, ProjectSidebar, type PanelMode, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
+import { HomeSidebar, ProjectSidebar, type ClientFeedback, type PanelMode, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
 import { href, hrefForRecord, livrableIdOf, parseAgencyPath, versionsOfLivrable } from "./routes";
 import { MAX_FILE_BYTES, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
 import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialog";
@@ -423,10 +423,12 @@ export function AgencyApp() {
       // Everything unread when storage is unavailable.
     }
   }, []);
-  function markSeen(commentId: number) {
+  /** Comment and reply ids the agency has read (client messages leave the notifications). */
+  function markSeen(ids: number[]) {
     setSeenIds((current) => {
-      if (current.includes(commentId)) return current;
-      const next = [...current, commentId];
+      const fresh = ids.filter((id) => !current.includes(id));
+      if (fresh.length === 0) return current;
+      const next = [...current, ...fresh];
       try {
         window.localStorage.setItem(seenKey, JSON.stringify(next));
       } catch {
@@ -910,9 +912,10 @@ export function AgencyApp() {
 
   // A comment counts as read once its thread has been opened.
   const openThreadId = threadOpen ? (selectedComment?.id ?? null) : null;
+  const openReplyIds = threadOpen ? (selectedComment?.replies ?? []).map((reply) => reply.id).join(",") : "";
   useEffect(() => {
-    if (openThreadId !== null) markSeen(openThreadId);
-  }, [openThreadId]);
+    if (openThreadId !== null) markSeen([openThreadId, ...openReplyIds.split(",").filter(Boolean).map(Number)]);
+  }, [openThreadId, openReplyIds]);
 
   // ?demande=ID (from "À traiter"): select that comment once, then drop the param so clicks work normally.
   useEffect(() => {
@@ -1639,12 +1642,10 @@ export function AgencyApp() {
   }
 
   // Deliverable status = its latest version: what needs the agency first, then what waits on the client.
-  /** `unreadOnly`: tabs alert only on comments nobody has opened yet (agency comments are read by definition). */
-  function statusOf(latest: Deliverable, unreadOnly = false): TabStatus {
+  /** Tabs and cards alert on client messages (comments and replies) nobody has opened yet. */
+  function statusOf(latest: Deliverable): TabStatus {
     const latestComments = comments.filter((comment) => comment.deliverableId === latest.id);
-    const toQualify = latestComments.filter(
-      (comment) => needsQualification(comment) && (!unreadOnly || (comment.initials !== "AM" && !seenIds.includes(comment.id))),
-    ).length;
+    const unread = unreadOf(latest.id).length;
     const awaitingClient = latestComments.filter(
       (comment) =>
         comment.decision === "Hors périmètre" &&
@@ -1653,14 +1654,67 @@ export function AgencyApp() {
     ).length;
     return latest.reviewStatus === "changes-requested"
         ? { kind: "changes-requested" }
-        : toQualify > 0
-          ? { kind: "to-qualify", count: toQualify }
+        : unread > 0
+          ? { kind: "messages", count: unread }
           : awaitingClient > 0
             ? { kind: "awaiting-client", count: awaitingClient }
             : latest.reviewStatus === "approved"
               ? { kind: "approved" }
               : { kind: "none" };
   }
+
+  /** Unread messages written in the client space on one version: comments, then replies. */
+  function unreadOf(recordId: number): ClientFeedback[] {
+    const record = deliverables.find((candidate) => candidate.id === recordId);
+    if (!record) return [];
+    const project = projects.find((candidate) => candidate.id === (record.projectId ?? 1));
+    const client = clients.find((candidate) => candidate.id === (project?.clientId ?? 1));
+    const context = [client?.name, `${record.name} V${String(record.version).padStart(2, "0")}`].filter(Boolean).join(" · ");
+    const fromClient = (initials: string) => initials !== "AM";
+    return comments
+      .filter((comment) => comment.deliverableId === recordId)
+      .flatMap((comment) => {
+        const target = `${hrefForRecord(record, deliverables)}?demande=${comment.id}`;
+        return [comment, ...(comment.replies ?? [])]
+          .filter((message) => fromClient(message.initials) && !seenIds.includes(message.id))
+          .map((message) => ({
+            key: `m-${message.id}`,
+            id: message.id,
+            kind: "message" as const,
+            author: message.author,
+            initials: message.initials,
+            message: message.message,
+            time: message.time,
+            createdAt: message.createdAt ?? (message.id > 1e12 ? message.id : undefined),
+            context,
+            href: target,
+          }));
+      });
+  }
+  // Notifications: every unread client message, newest first, plus what the client asked on whole versions.
+  const clientFeedback: ClientFeedback[] = [
+    ...deliverables.flatMap((record) => {
+      const latest = versionsOfLivrable(livrableIdOf(record, deliverables), deliverables)[0];
+      if (latest?.id !== record.id || record.reviewStatus !== "changes-requested") return [];
+      const project = projects.find((candidate) => candidate.id === (record.projectId ?? 1));
+      const client = clients.find((candidate) => candidate.id === (project?.clientId ?? 1));
+      return [
+        {
+          key: `changes-${record.id}`,
+          id: record.id,
+          kind: "changes" as const,
+          author: client?.name ?? "Le client",
+          initials: (client?.name ?? "?").charAt(0).toUpperCase(),
+          message: "Modifications demandées sur cette version",
+          time: "",
+          context: [client?.name, `${record.name} V${String(record.version).padStart(2, "0")}`].filter(Boolean).join(" · "),
+          href: hrefForRecord(record, deliverables),
+        },
+      ];
+    }),
+    ...deliverables.flatMap((record) => unreadOf(record.id)).sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0)),
+  ];
+  const markAllRead = () => markSeen(clientFeedback.filter((item) => item.kind === "message").map((item) => item.id));
 
   const tabInfos: TabInfo[] = openTabs.flatMap((tab) => {
     const latest = versionsOfLivrable(tab.livrableId, deliverables)[0];
@@ -1674,7 +1728,7 @@ export function AgencyApp() {
         name: latest.name,
         type: latest.type,
         context: [client?.name, project?.name].filter(Boolean).join(" / "),
-        status: statusOf(latest, true),
+        status: statusOf(latest),
       },
     ];
   });
@@ -2005,6 +2059,8 @@ export function AgencyApp() {
           canvasHref={href.deliverable(selectedProject.id, livrableRootId)}
           onNavigate={(target) => router.push(target)}
           notifications={notifications}
+          feedback={clientFeedback}
+          onMarkAllRead={markAllRead}
         />
       ) : (
         <HomeSidebar
@@ -2012,6 +2068,8 @@ export function AgencyApp() {
           clients={clients}
           favorites={sidebarFavorites}
           notifications={notifications}
+          feedback={clientFeedback}
+          onMarkAllRead={markAllRead}
           onSearch={() => setPaletteOpen(true)}
           onNewClient={() => setNewClientOpen(true)}
         />
@@ -2050,6 +2108,10 @@ export function AgencyApp() {
               livrableStatus={(livrableId) => {
                 const latest = versionsOfLivrable(livrableId, deliverables)[0];
                 return latest ? statusOf(latest) : { kind: "none" };
+              }}
+              livrableUnread={(livrableId) => {
+                const latest = versionsOfLivrable(livrableId, deliverables)[0];
+                return latest ? unreadOf(latest.id).length : 0;
               }}
             />
           ) : view.kind === "dashboard" ? (

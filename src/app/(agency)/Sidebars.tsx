@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   Bell,
@@ -25,38 +26,103 @@ import { MenuButton, type MenuEntry } from "./editor/MenuButton";
 import { ResizeHandle } from "./editor/ResizeHandle";
 import { Hint } from "@/components/hint";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { timeLabel, useNow } from "./editor/CanvasComments";
 
 type Notification = { id: number; message: string };
 type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId?: number };
 
-/** Bell + shadcn popover, opening beside the sidebar. */
-function Notifications({ notifications, compact }: { notifications: Notification[]; compact?: boolean }) {
+/** What the client sent from its review space: a message (comment or reply), or "changes requested" on a version. */
+export type ClientFeedback = {
+  key: string;
+  /** Comment / reply id (messages), deliverable id (changes). */
+  id: number;
+  kind: "message" | "changes";
+  author: string;
+  initials: string;
+  message: string;
+  time: string;
+  createdAt?: number;
+  /** "Northstar · landing.pdf V02" */
+  context: string;
+  href: string;
+};
+
+/** Bell + shadcn popover, opening beside the sidebar: client messages first, then the activity. */
+function Notifications({
+  notifications,
+  feedback,
+  onMarkAllRead,
+  compact,
+}: {
+  notifications: Notification[];
+  feedback: ClientFeedback[];
+  onMarkAllRead: () => void;
+  compact?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const now = useNow();
+  const unread = feedback.length;
   return (
     <div className={`notifications ${compact ? "is-compact" : ""}`}>
-      <Popover>
+      <Popover open={open} onOpenChange={setOpen}>
         <Hint label="Notifications" side={compact ? "right" : "bottom"}>
           <PopoverTrigger asChild>
-            <button className="sidebar-icon-button" aria-label={`Notifications${notifications.length ? ` (${notifications.length})` : ""}`}>
+            <button className="sidebar-icon-button" aria-label={`Notifications${unread ? ` (${unread} non lues)` : ""}`}>
               <Bell />
-              {notifications.length > 0 && <span className="notification-count">{notifications.length}</span>}
+              {unread > 0 && <span className="notification-count">{unread > 99 ? "99+" : unread}</span>}
             </button>
           </PopoverTrigger>
         </Hint>
-        <PopoverContent side={compact ? "right" : "bottom"} align="start" className="notification-panel w-80" aria-label="Notifications">
-          <p className="font-heading text-sm font-semibold">Notifications</p>
-          {notifications.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Aucune notification pour le moment.</p>
-          ) : (
-            <ul className="grid gap-2">
-              {notifications.slice(0, 5).map((notification) => (
-                <li className="notification-item" key={notification.id}>
-                  <span className="notification-dot" />
-                  <span>{notification.message}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+        <PopoverContent side={compact ? "right" : "bottom"} align="start" className="notification-panel w-96 gap-0 p-0" aria-label="Notifications">
+          <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+            <p className="font-heading text-sm font-semibold">Notifications</p>
+            {feedback.some((item) => item.kind === "message") && (
+              <Button variant="ghost" size="sm" onClick={onMarkAllRead}>
+                Tout marquer comme lu
+              </Button>
+            )}
+          </div>
+          <div className="max-h-[min(480px,calc(100vh-8rem))] overflow-y-auto">
+            <p className="notification-section">Messages du client{unread ? ` · ${unread}` : ""}</p>
+            {feedback.length === 0 ? (
+              <p className="px-4 pb-3 text-sm text-muted-foreground">Aucun nouveau message.</p>
+            ) : (
+              <ul>
+                {feedback.map((item) => (
+                  <li key={item.key}>
+                    <Link className="notification-message" href={item.href} onClick={() => setOpen(false)}>
+                      <span className="thread-avatar" aria-hidden="true">
+                        {item.initials}
+                      </span>
+                      <span className="grid min-w-0 gap-0.5">
+                        <span className="flex items-baseline gap-2 text-sm">
+                          <b className="truncate font-medium">{item.author}</b>
+                          {timeLabel(item, now) && <small className="ml-auto shrink-0 text-xs text-muted-foreground">{timeLabel(item, now)}</small>}
+                        </span>
+                        <span className={`line-clamp-2 text-sm ${item.kind === "changes" ? "font-medium" : ""}`}>{item.message}</span>
+                        <small className="truncate text-xs text-muted-foreground">{item.context}</small>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {notifications.length > 0 && (
+              <>
+                <p className="notification-section">Activité</p>
+                <ul className="grid gap-2 px-4 pb-3">
+                  {notifications.slice(0, 5).map((notification) => (
+                    <li className="notification-item" key={notification.id}>
+                      <span className="notification-dot" />
+                      <span>{notification.message}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
         </PopoverContent>
       </Popover>
     </div>
@@ -71,6 +137,8 @@ export function HomeSidebar({
   clients,
   favorites,
   notifications,
+  feedback,
+  onMarkAllRead,
   onSearch,
   onNewClient,
 }: {
@@ -78,12 +146,14 @@ export function HomeSidebar({
   clients: Client[];
   favorites: SidebarFavorite[];
   notifications: Notification[];
+  feedback: ClientFeedback[];
+  onMarkAllRead: () => void;
   onSearch: () => void;
   onNewClient: () => void;
 }) {
   const navLink = (target: string, active: boolean, icon: React.ReactNode, label: string, extra?: React.ReactNode) => (
     <Link className={`nav-item ${active ? "active" : ""}`} href={target} aria-current={active ? "page" : undefined}>
-      <span>{icon}</span>
+      <span className="nav-icon">{icon}</span>
       <span className="nav-label">{label}</span>
       {extra}
     </Link>
@@ -95,7 +165,7 @@ export function HomeSidebar({
           <span className="avatar dark-avatar">AM</span>
           <b>Alex Morgan</b>
         </span>
-        <Notifications notifications={notifications} />
+        <Notifications notifications={notifications} feedback={feedback} onMarkAllRead={onMarkAllRead} />
       </div>
       <button className="sidebar-search" onClick={onSearch}>
         <Search />
@@ -118,7 +188,7 @@ export function HomeSidebar({
             {favorites.map((favorite) => (
               <li key={favorite.key}>
                 <Link className="nav-item" href={favorite.href} title={favorite.label}>
-                  <span>{favorite.kind === "project" ? <FolderClosed /> : <FileText />}</span>
+                  <span className="nav-icon">{favorite.kind === "project" ? <FolderClosed /> : <FileText />}</span>
                   <span className="nav-label">{favorite.label}</span>
                 </Link>
               </li>
@@ -153,11 +223,11 @@ export function HomeSidebar({
       </nav>
       <div className="sidebar-bottom">
         <a className="nav-item" href="#equipe">
-          <span><Users /></span>
+          <span className="nav-icon"><Users /></span>
           <span className="nav-label">Équipe</span>
         </a>
         <a className="nav-item" href="#aide">
-          <span><CircleHelp /></span>
+          <span className="nav-icon"><CircleHelp /></span>
           <span className="nav-label">Aide</span>
         </a>
       </div>
@@ -186,6 +256,8 @@ export function ProjectSidebar({
   canvasHref,
   onNavigate,
   notifications,
+  feedback,
+  onMarkAllRead,
   panelWidth,
   onPanelResize,
 }: {
@@ -206,6 +278,8 @@ export function ProjectSidebar({
   /** Switches view inside the deliverable's tab. */
   onNavigate: (target: string) => void;
   notifications: Notification[];
+  feedback: ClientFeedback[];
+  onMarkAllRead: () => void;
   panelWidth: number;
   onPanelResize: (width: number) => void;
 }) {
@@ -244,7 +318,7 @@ export function ProjectSidebar({
           </button>
         )}
         <span className="rail-spacer" />
-        <Notifications notifications={notifications} compact />
+        <Notifications notifications={notifications} feedback={feedback} onMarkAllRead={onMarkAllRead} compact />
         <span className="avatar dark-avatar rail-avatar" aria-label="Alex Morgan">
           AM
         </span>

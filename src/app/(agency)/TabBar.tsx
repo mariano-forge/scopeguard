@@ -9,7 +9,8 @@ import { Hint } from "@/components/hint";
 
 export type TabStatus =
   | { kind: "changes-requested" }
-  | { kind: "to-qualify"; count: number }
+  /** Unread messages from the client space. */
+  | { kind: "messages"; count: number }
   | { kind: "awaiting-client"; count: number }
   | { kind: "approved" }
   | { kind: "none" };
@@ -30,8 +31,8 @@ function statusLabel(status: TabStatus) {
   switch (status.kind) {
     case "changes-requested":
       return "Modifications demandées par le client";
-    case "to-qualify":
-      return `${plural(status.count, "commentaire")} à clarifier`;
+    case "messages":
+      return status.count > 1 ? `${status.count} nouveaux messages du client` : "1 nouveau message du client";
     case "awaiting-client":
       return `${plural(status.count, "proposition")} en attente du client`;
     case "approved":
@@ -46,7 +47,7 @@ export function StatusMark({ status }: { status: TabStatus }) {
   const label = statusLabel(status);
   return (
     <span className={`tab-status tab-status-${status.kind}`} title={label}>
-      {status.kind === "to-qualify" ? (
+      {status.kind === "messages" ? (
         status.count
       ) : status.kind === "approved" ? (
         <Check />

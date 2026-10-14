@@ -1,7 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 /** Scope and proposal analytics (formerly the deliverable dashboard) for a set of deliverables. */
 export type HomeAnalyticsData = {
@@ -125,10 +129,19 @@ export function ScopeCharts({ data }: { data: HomeAnalyticsData }) {
   );
 }
 
-/** Every request with its qualification, quote and client answer. */
+const pageSizes = [10, 20, 40, 80];
+
+/** Every request with its qualification, quote and client answer, page by page. */
 export function RegisterTable({ rows }: { rows: HomeAnalyticsData["register"] }) {
+  const [pageSize, setPageSize] = useState(pageSizes[0]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  // A narrower filter can leave the current page empty: show the last one.
+  const page = Math.min(pageIndex, pageCount - 1);
+  const shown = rows.slice(page * pageSize, (page + 1) * pageSize);
   if (rows.length === 0) return <p className="browser-empty">Aucune demande pour ces livrables.</p>;
   return (
+    <div className="register">
     <div className="overview-table-wrap">
       <table className="overview-table register-table">
         <thead>
@@ -144,7 +157,7 @@ export function RegisterTable({ rows }: { rows: HomeAnalyticsData["register"] })
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {shown.map((row) => (
             <tr key={row.id}>
               <th scope="row">
                 <span className="proposal-title">{row.message}</span>
@@ -181,6 +194,46 @@ export function RegisterTable({ rows }: { rows: HomeAnalyticsData["register"] })
           ))}
         </tbody>
       </table>
+    </div>
+      <div className="register-pagination">
+        <div className="flex items-center gap-2">
+          <Label htmlFor="register-page-size" className="text-sm font-normal text-muted-foreground">
+            Lignes par page
+          </Label>
+          <Select
+            value={String(pageSize)}
+            onValueChange={(value) => {
+              setPageSize(Number(value));
+              setPageIndex(0);
+            }}
+          >
+            <SelectTrigger id="register-page-size" size="sm" className="w-20">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {pageSizes.map((size) => (
+                <SelectItem key={size} value={String(size)}>
+                  {size}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <span className="text-sm text-muted-foreground" aria-live="polite">
+          {page * pageSize + 1}–{page * pageSize + shown.length} sur {rows.length}
+        </span>
+        <div className="flex items-center gap-1">
+          <Button variant="outline" size="icon-sm" aria-label="Page précédente" disabled={page === 0} onClick={() => setPageIndex(page - 1)}>
+            <ChevronLeft />
+          </Button>
+          <span className="min-w-20 text-center text-sm">
+            Page {page + 1} / {pageCount}
+          </span>
+          <Button variant="outline" size="icon-sm" aria-label="Page suivante" disabled={page >= pageCount - 1} onClick={() => setPageIndex(page + 1)}>
+            <ChevronRight />
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

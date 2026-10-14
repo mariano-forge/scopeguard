@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, FolderClosed, LayoutGrid, List, Pencil, Plus, RotateCcw, Share2, Star, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderClosed, LayoutGrid, List, MessageSquare, Pencil, Plus, RotateCcw, Share2, Star, Trash2 } from "lucide-react";
 import { DeliverableCover } from "@/components/DeliverableCover";
 import { Select } from "@/components/Select";
 import { href, hrefForRecord, livrableIdOf, versionsOfLivrable, type AgencyView } from "./routes";
@@ -83,6 +83,8 @@ type BrowserViewProps = {
   onRenameLivrable: (livrableId: number, name: string) => string | null;
   /** Review status of a deliverable (its latest version), as shown on tabs. */
   livrableStatus: (livrableId: number) => TabStatus;
+  /** Unread client messages on the latest version. */
+  livrableUnread: (livrableId: number) => number;
   trash: TrashItem[];
   onRestore: (itemId: number) => void;
   /** Without an id: empty the whole trash. */
@@ -241,6 +243,7 @@ export function BrowserView({
   onRenameProject,
   onToggleFavorite,
   livrableStatus,
+  livrableUnread,
   onDeleteClient,
   onDeleteProject,
   onMoveProject,
@@ -309,34 +312,57 @@ export function BrowserView({
     ].filter((part) => !part.startsWith("0 "));
     return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} et ${parts.at(-1)}` : (parts[0] ?? "");
   };
-  const toQualify = (record: Deliverable) =>
-    comments.filter((comment) => comment.deliverableId === record.id && comment.decision === "À qualifier").length;
 
-  /** Starrable card wrapper (the star sits beside the link: no button inside a link). */
-  function card(key: string, target: string, className: string, label: string, children: React.ReactNode, corner?: React.ReactNode) {
+  /** Favorite toggle, beside a link (no button inside a link). */
+  function starButton(key: string, label: string) {
     const starred = favorites.includes(key);
+    return (
+      <button
+        type="button"
+        className={`star-button ${starred ? "is-starred" : ""}`}
+        aria-pressed={starred}
+        aria-label={starred ? `Retirer ${label} des favoris` : `Ajouter ${label} aux favoris`}
+        title={starred ? "Retirer des favoris" : "Ajouter aux favoris"}
+        onClick={() => onToggleFavorite(key)}
+      >
+        <Star />
+      </button>
+    );
+  }
+
+  /** Starrable card wrapper. */
+  function card(key: string, target: string, className: string, label: string, children: React.ReactNode, corner?: React.ReactNode) {
     return (
       <div className="card-wrap" key={key}>
         <Link className={className} href={target}>
           {children}
         </Link>
         {corner}
-        <button
-          type="button"
-          className={`star-button ${starred ? "is-starred" : ""}`}
-          aria-pressed={starred}
-          aria-label={starred ? `Retirer ${label} des favoris` : `Ajouter ${label} aux favoris`}
-          title={starred ? "Retirer des favoris" : "Ajouter aux favoris"}
-          onClick={() => onToggleFavorite(key)}
-        >
-          <Star />
-        </button>
+        {starButton(key, label)}
       </div>
     );
   }
 
+  /** Message pill: what the client wrote and nobody has read yet. */
+  function unreadPill(livrableId: number) {
+    const unread = livrableUnread(livrableId);
+    if (unread === 0) return null;
+    const label = unread > 1 ? `${unread} nouveaux messages du client` : "1 nouveau message du client";
+    return (
+      <span className="unread-pill" title={label}>
+        <MessageSquare aria-hidden="true" />
+        {unread}
+        <span className="sr-only">{label}</span>
+      </span>
+    );
+  }
+  /** Status beside a title, without the message count (shown as a pill). */
+  function titleStatus(livrableId: number) {
+    const status = livrableStatus(livrableId);
+    return status.kind === "messages" ? null : <StatusMark status={status} />;
+  }
+
   function livrableCard(record: Deliverable) {
-    const pending = toQualify(record);
     const versions = versionsOfLivrable(livrableIdOf(record, deliverables), deliverables);
     const versionLabel = (version: Deliverable) => `V${String(version.version).padStart(2, "0")}`;
     // Top-right of the cover: latest version by default, every version when there are several.
@@ -377,14 +403,16 @@ export function BrowserView({
       "file-card",
       record.name,
       <>
-        <DeliverableCover type={record.type} coverData={record.coverData} />
+        <span className="file-card-cover">
+          <DeliverableCover type={record.type} coverData={record.coverData} />
+          {unreadPill(livrableId)}
+        </span>
         <span className="file-card-body">
           <span className="file-card-title">
             <b>{record.name}</b>
-            <StatusMark status={livrableStatus(livrableIdOf(record, deliverables))} />
+            {titleStatus(livrableId)}
           </span>
           <small>{modifiedLabel(record.importedAt)}</small>
-          {pending > 0 && <span className="browser-badge">{plural(pending, "commentaire")} à clarifier</span>}
         </span>
       </>,
       <>
@@ -429,14 +457,17 @@ export function BrowserView({
     const latest = latestOf(project.id);
     const client = clients.find((candidate) => candidate.id === (project.clientId ?? 1));
     return (
-      <li key={project.id}>
+      <li key={project.id} className="browser-row-wrap">
         <Link className="browser-row" href={href.project(project.id)}>
-          <FolderClosed className="folder-icon" aria-hidden="true" />
+          <span className="row-thumb">
+            <FolderClosed className="folder-icon" aria-hidden="true" />
+          </span>
           <b>{project.name}</b>
           <small>{client?.name}</small>
           <small>{plural(latest.length, "livrable")}</small>
           <small>{latest[0] ? latest[0].importedAt : "—"}</small>
         </Link>
+        {starButton(`p:${project.id}`, project.name)}
       </li>
     );
   }
@@ -571,16 +602,32 @@ export function BrowserView({
           <div className="file-grid">{sorted.map((record) => livrableCard(record))}</div>
         ) : (
           <ul className="browser-list">
-            {sorted.map((record) => (
-              <li key={record.id}>
-                <Link className="browser-row" href={hrefForRecord(record, deliverables)}>
-                  <b>{record.name}</b>
-                  <small>V{String(record.version).padStart(2, "0")}</small>
-                  <small>{record.status}</small>
-                  <small>{record.importedAt}</small>
-                </Link>
-              </li>
-            ))}
+            {sorted.map((record) => {
+              const livrableId = livrableIdOf(record, deliverables);
+              return (
+                <li key={record.id} className="browser-row-wrap">
+                  <Link className="browser-row" href={hrefForRecord(record, deliverables)}>
+                    <span className="row-thumb">
+                      {record.coverData ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- local data URL cover
+                        <img src={record.coverData} alt="" />
+                      ) : (
+                        <DeliverableIcon type={record.type} />
+                      )}
+                    </span>
+                    <span className="row-title">
+                      <b>{record.name}</b>
+                      {titleStatus(livrableId)}
+                      {unreadPill(livrableId)}
+                    </span>
+                    <small>V{String(record.version).padStart(2, "0")}</small>
+                    <small>{record.status}</small>
+                    <small>{record.importedAt}</small>
+                  </Link>
+                  {starButton(`l:${livrableId}`, record.name)}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -645,7 +692,7 @@ export function BrowserView({
     const matches = (record: Deliverable, filter: RecentFilter) => {
       const livrableId = livrableIdOf(record, deliverables);
       const status = livrableStatus(livrableId).kind;
-      if (filter === "todo") return status === "changes-requested" || status === "to-qualify";
+      if (filter === "todo") return status === "changes-requested" || status === "messages";
       if (filter === "awaiting") return status === "awaiting-client" || status === "none";
       if (filter === "approved") return status === "approved";
       if (filter === "starred") return favorites.includes(`l:${livrableId}`);
@@ -730,7 +777,6 @@ export function BrowserView({
     <HomePage
       overviewFor={overviewFor}
       livrableGroups={livrableGroups}
-      agencyActions={agencyActions}
       onNewProject={onNewProject}
     />
   );
@@ -759,12 +805,10 @@ function SectionHeader({
 function HomePage({
   overviewFor,
   livrableGroups,
-  agencyActions,
   onNewProject,
 }: {
   overviewFor: (selection: number[] | null) => HomeOverview;
   livrableGroups: LivrableGroup[];
-  agencyActions: TodoItem[];
   onNewProject: () => void;
 }) {
   const [filters, setFilters] = useState<Record<"figures" | "charts" | "register" | "breakdown", number[] | null>>({
@@ -822,22 +866,6 @@ function HomePage({
           </div>
         </div>
       </section>
-
-      {agencyActions.length > 0 && (
-        <section className="browser-section">
-          <div className="section-header">
-            <h2>
-              <Link href={href.todo()}>À traiter · {agencyActions.length}</Link>
-            </h2>
-          </div>
-          <TodoList items={agencyActions.slice(0, 5)} />
-          {agencyActions.length > 5 && (
-            <Link className="browser-more" href={href.todo()}>
-              Voir les {agencyActions.length} décisions
-            </Link>
-          )}
-        </section>
-      )}
 
       <section className="browser-section">
         <SectionHeader title="Pilotage commercial" filter={filters.charts} onFilter={setFilter("charts")} groups={livrableGroups} />

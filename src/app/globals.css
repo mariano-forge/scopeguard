@@ -78,7 +78,7 @@ button {
   font-size: 13px;
   font-weight: 600;
 }
-.nav-item span {
+.nav-item > .nav-icon {
   width: 16px;
   text-align: center;
   font-size: 16px;
@@ -88,8 +88,8 @@ button {
   color: var(--ink);
   background: var(--mist);
 }
-.nav-item.active span {
-  color: var(--action-ui);
+.nav-item.active > .nav-icon {
+  color: var(--ink);
 }
 .nav-item strong {
   margin-left: auto;
@@ -3802,12 +3802,12 @@ button {
 }
 .primary-button {
   border: 0;
-  background: var(--action-fill);
-  color: var(--ink);
+  background: var(--cta-fill);
+  color: var(--cta-text);
   transition: filter var(--d-fast) var(--ease-out);
 }
 .primary-button:hover {
-  filter: brightness(0.94);
+  background: var(--cta-fill-hover);
 }
 .ghost-button {
   border: 0;
@@ -4107,18 +4107,18 @@ button {
   flex: 1;
 }
 
-/* Primary actions: Kora CTA blue with Ink text (7.35:1); hover darkens by 6% (DESIGN.md) */
+/* Primary actions (CTA): white on black */
 .primary-button,
 .inspector-primary {
-  background: var(--action-fill);
-  color: var(--ink);
+  background: var(--cta-fill);
+  color: var(--cta-text);
   filter: none;
-  transition: filter var(--d-fast) var(--ease-out);
+  transition: background-color var(--d-fast) var(--ease-out);
 }
 .primary-button:hover,
 .inspector-primary:hover {
-  background: var(--action-fill);
-  filter: brightness(0.94);
+  background: var(--cta-fill-hover);
+  filter: none;
 }
 
 /* Project icon: neutral (feedback) */
@@ -5435,8 +5435,8 @@ a.page-nav-label:hover {
   padding: 0;
   border: 0;
   border-radius: var(--r-full);
-  background: var(--action-fill);
-  color: var(--ink);
+  background: var(--cta-fill);
+  color: var(--cta-text);
   cursor: pointer;
 }
 .thread-send:disabled {
@@ -7081,4 +7081,118 @@ body.is-resizing {
 .thread-message.is-agency .thread-avatar {
   background: var(--ink);
   color: var(--paper);
+}
+
+/* Request register: rows page by page (10 / 20 / 40 / 80) */
+.register {
+  display: grid;
+  gap: var(--s-3);
+}
+.register-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-4);
+}
+
+/* Notifications: client messages (avatar, author, time, excerpt, deliverable) */
+.notification-section {
+  margin: 0;
+  padding: var(--s-3) var(--s-4) var(--s-1);
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+  font-weight: 600;
+}
+.notification-message {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-4);
+  color: var(--ink);
+  text-decoration: none;
+}
+.notification-message:hover {
+  background: var(--canvas);
+}
+.notification-message:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: -2px;
+}
+
+/* Unread client messages: pill on the cover (cards) or after the name (rows) */
+.file-card-cover {
+  position: relative;
+  display: grid;
+}
+.unread-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-full);
+  background: var(--ink);
+  color: var(--paper);
+  font: 600 var(--t-caption-size) var(--font-ui);
+  white-space: nowrap;
+}
+.unread-pill .lucide {
+  width: 14px;
+  height: 14px;
+}
+.file-card-cover .unread-pill {
+  position: absolute;
+  bottom: var(--s-2);
+  left: var(--s-2);
+}
+
+/* List rows: thumbnail, name (+ status), columns; the star sits beside the link */
+.browser-row-wrap {
+  position: relative;
+}
+.browser-row-wrap .browser-row,
+.browser-row-wrap .browser-row:not(:has(.folder-icon)) {
+  grid-template-columns: 40px minmax(0, 2fr) repeat(3, minmax(0, 1fr));
+  padding-right: 56px;
+}
+.row-thumb {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 30px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--canvas);
+  color: var(--graphite);
+}
+.row-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.row-thumb .lucide {
+  width: 16px;
+  height: 16px;
+}
+.row-title {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.browser-row-wrap .star-button {
+  top: 50%;
+  right: var(--s-3);
+  transform: translateY(-50%);
+}
+.browser-row-wrap:hover .star-button {
+  opacity: 1;
+}
+@media (max-width: 760px) {
+  .browser-row-wrap .browser-row,
+  .browser-row-wrap .browser-row:not(:has(.folder-icon)) {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+  }
 }
