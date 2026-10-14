@@ -34,25 +34,20 @@ function formatProposalDeadline(deadline: number | string | undefined): string {
   return `+ ${num} jour${num > 1 ? "s" : ""}`;
 }
 import { useEffect, useRef, useState } from "react";
+import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import {
-  TransformComponent,
-  TransformWrapper,
-  type ReactZoomPanPinchRef,
-} from "react-zoom-pan-pinch";
+
 import {
   ArrowRight,
   ArrowUpRight,
   Check,
   CircleHelp,
-  ClipboardCheck,
   Eye,
   FilePlus,
   FolderClosed,
   Keyboard,
   Lock,
-  MessageCirclePlus,
   Receipt,
   Search,
   Settings,
@@ -60,11 +55,7 @@ import {
   Hourglass,
   House,
   Inbox,
-  Maximize,
-  Minus,
-  MousePointer2,
   Pencil,
-  Plus,
   RotateCcw,
   ScrollText,
   Share2,
@@ -78,11 +69,17 @@ import { isAgencyAction, todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { HomeSidebar, ProjectSidebar, type PanelMode, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
 import { href, hrefForRecord, livrableIdOf, parseAgencyPath, versionsOfLivrable } from "./routes";
-import { DeliverableContent } from "@/components/DeliverableContent";
 import { MAX_FILE_BYTES, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
 import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialog";
-import { CommentPin, Composer, TargetHighlight, ThreadPopover, describeTarget, type TargetBox } from "./editor/CanvasComments";
-import { EditorInspector, isRequest, type InspectorTab } from "./editor/EditorInspector";
+import {
+  Composer,
+  ThreadPopover,
+  isCorrection,
+  type Area,
+  type ComposerResult,
+} from "./editor/CanvasComments";
+import { EditorInspector, type InspectorTab } from "./editor/EditorInspector";
+import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "./editor/ReviewCanvas";
 import { ProposalsView, type ProposalRow } from "./editor/ProposalsView";
 import type { MenuEntry } from "./editor/MenuButton";
 import { RenameDialog } from "./EntitySettings";
@@ -109,8 +106,14 @@ type Comment = {
   message: string;
   location: string;
   decision: Decision;
-  /** Created as a request (qualified up front) or as a remark (qualified later, or never). */
+  /** "request" = correction (title, description, qualification); otherwise a remark (conversation only). */
   kind?: "remark" | "request";
+  /** Title of a correction (its description is `message`). */
+  title?: string;
+  /** Remark a correction was written from. */
+  sourceId?: number;
+  /** Area drawn on the page, in %. */
+  area?: Area;
   page?: number;
   position?: { x: number; y: number };
   replies?: Reply[];
@@ -188,9 +191,6 @@ type ProposalVersion = {
 };
 type ProposalVersions = Record<number, ProposalVersion[]>;
 type ImportMode = "version" | "deliverable";
-/** Canvas tools: move (pan, open threads), remark, request (qualified at creation). */
-type CanvasTool = "move" | "remark" | "request";
-
 type Notification = {
   id: number;
   message: string;
@@ -391,22 +391,15 @@ export function AgencyApp() {
   const [clientError, setClientError] = useState("");
   const [deliverableError, setDeliverableError] = useState("");
   const [pendingImport, setPendingImport] = useState<{ file: File; type: DeliverableType } | null>(null);
-  const [previewZoom, setPreviewZoom] = useState(100);
-  const [canvasTool, setCanvasTool] = useState<CanvasTool>("move");
+  const [canvasTool, setCanvasTool] = useState<CanvasTool>("remark");
   /** The selected thread is open on the canvas. */
   const [threadOpen, setThreadOpen] = useState(false);
-  const [composer, setComposer] = useState<{ mode: "remark" | "request"; page: number; x: number; y: number; target: string } | null>(null);
-  /** Zone under the pointer with a comment tool (Agentation-like targeting). */
-  const [hoverTarget, setHoverTarget] = useState<{ page: number; box: TargetBox; element: Element } | null>(null);
+  const [composer, setComposer] = useState<CanvasComposer | null>(null);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("remarques");
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameError, setRenameError] = useState("");
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [previewDragging, setPreviewDragging] = useState(false);
-  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
-  const pointerMovedRef = useRef(false);
   const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
-  const previewPanelRef = useRef<HTMLElement | null>(null);
   const [reviewLink, setReviewLink] = useState<ReviewLink | null>(null);
   const [reviewLinks, setReviewLinks] = useState<ReviewLinks>({});
   const [shareOpen, setShareOpen] = useState(false);
@@ -750,17 +743,16 @@ export function AgencyApp() {
   useEffect(() => {
     if (!editorOpen) return;
     function onKeyDown(event: KeyboardEvent) {
-      const target = event.target as HTMLElement | null;
+      const target = event.target instanceof Element ? event.target : null;
       if (event.ctrlKey || event.metaKey || event.altKey || target?.closest("input, textarea, select, [contenteditable='true']")) return;
       const key = event.key.toLowerCase();
       if (key === "v") setCanvasTool("move");
       else if (key === "c" && !isReadOnlyVersion) setCanvasTool("remark");
-      else if (key === "d" && !isReadOnlyVersion) setCanvasTool("request");
+      else if ((key === "r" || key === "d") && !isReadOnlyVersion) setCanvasTool("correction");
       else if (event.key === "Escape") {
         setComposer(null);
         setThreadOpen(false);
-        setHoverTarget(null);
-        setCanvasTool("move");
+        setCanvasTool(isReadOnlyVersion ? "move" : "remark");
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -847,7 +839,6 @@ export function AgencyApp() {
   useEffect(() => {
     setComposer(null);
     setThreadOpen(false);
-    setHoverTarget(null);
   }, [currentDeliverable?.id]);
 
   useEffect(() => {
@@ -862,7 +853,7 @@ export function AgencyApp() {
     const focused = activeComments.find((comment) => comment.id === focusedCommentId);
     setSelectedId(focusedCommentId);
     setThreadOpen(true);
-    if (focused) setInspectorTab(isRequest(focused) ? "demandes" : "remarques");
+    if (focused) setInspectorTab(isCorrection(focused) ? "corrections" : "remarques");
     router.replace(pathname, { scroll: false });
     // Bring its pin into view once the canvas has laid out the pages.
     window.setTimeout(() => {
@@ -890,8 +881,7 @@ export function AgencyApp() {
   function qualifyComment(commentId: number, decision: Decision) {
     if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
     setComments((current) => current.map((comment) => (comment.id === commentId ? { ...comment, decision } : comment)));
-    recordAudit("scope.classified", `Demande classée « ${decision} »`, commentId);
-    if (decision !== "À qualifier") setInspectorTab("demandes");
+    recordAudit("scope.classified", `Correction qualifiée « ${decision} »`, commentId);
   }
 
   function createProject(event: React.FormEvent<HTMLFormElement>) {
@@ -1151,91 +1141,6 @@ export function AgencyApp() {
     });
   }
 
-  /** Page under a canvas event and the point in % of that page. */
-  function pagePoint(event: React.MouseEvent) {
-    const page = (event.target as Element).closest<HTMLElement>("[data-page]");
-    if (!page) return null;
-    const bounds = page.getBoundingClientRect();
-    const percent = (value: number) => Math.min(100, Math.max(0, Math.round(value * 1000) / 10));
-    return {
-      page: Number(page.dataset.page) || 1,
-      bounds,
-      x: percent((event.clientX - bounds.left) / bounds.width),
-      y: percent((event.clientY - bounds.top) / bounds.height),
-    };
-  }
-
-  /** Meaningful element under the pointer (a button rather than its label), or null for plain media. */
-  function targetElement(target: EventTarget | null) {
-    const element = target instanceof Element ? target : null;
-    const content = element?.closest(".canvas-page-content");
-    if (!element || !content || element === content) return null;
-    const zone = element.closest("button, a, h1, h2, h3, h4, h5, h6, p, li, nav, small, img, svg, [class^='mock-'], [class*=' mock-']");
-    const picked = zone && content.contains(zone) ? zone : element;
-    // A rendered PDF page or an image has no inner structure to target.
-    if (picked.matches("canvas, img, video, iframe, .react-pdf__Page, .react-pdf__Document") || picked === content) return null;
-    return picked;
-  }
-
-  /** Comment tools: outline the zone under the pointer. */
-  function trackCanvasHover(event: React.PointerEvent<HTMLDivElement>) {
-    if (canvasTool === "move" || composer || (event.target as Element).closest(".thread, .canvas-pin")) {
-      if (hoverTarget) setHoverTarget(null);
-      return;
-    }
-    const element = targetElement(event.target);
-    if (element === hoverTarget?.element) return;
-    const point = pagePoint(event);
-    if (!element || !point) {
-      if (hoverTarget) setHoverTarget(null);
-      return;
-    }
-    const rect = element.getBoundingClientRect();
-    setHoverTarget({
-      page: point.page,
-      element,
-      box: {
-        left: ((rect.left - point.bounds.left) / point.bounds.width) * 100,
-        top: ((rect.top - point.bounds.top) / point.bounds.height) * 100,
-        width: (rect.width / point.bounds.width) * 100,
-        height: (rect.height / point.bounds.height) * 100,
-        label: describeTarget(element),
-      },
-    });
-  }
-
-  /**
-   * Click on the canvas (capture phase, so the deliverable's own buttons don't swallow it):
-   * with the move tool it closes the open thread; with a comment tool it opens the composer there.
-   */
-  function handleCanvasClick(event: React.MouseEvent<HTMLDivElement>) {
-    if ((event.target as Element).closest(".thread, .canvas-pin")) return;
-    if (pointerMovedRef.current) {
-      pointerMovedRef.current = false;
-      return;
-    }
-    if (canvasTool === "move") {
-      setThreadOpen(false);
-      setComposer(null);
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    if (isReadOnlyVersion) return;
-    const point = pagePoint(event);
-    if (!point) return;
-    const element = targetElement(event.target);
-    setThreadOpen(false);
-    setHoverTarget(null);
-    setComposer({
-      mode: canvasTool,
-      page: point.page,
-      x: point.x,
-      y: point.y,
-      target: [`Page ${point.page}`, element ? describeTarget(element) : null].filter(Boolean).join(" · "),
-    });
-  }
-
   /** Brings a pin to the middle of the canvas, keeping the zoom. */
   function centerOnPin(commentId: number) {
     const pin = document.querySelector<HTMLElement>(`[data-pin="${commentId}"]`);
@@ -1252,70 +1157,54 @@ export function AgencyApp() {
     requestAnimationFrame(() => centerOnPin(commentId));
   }
 
-  /** Fits the pages to the canvas width, from the top (100 % if they already fit). */
-  function resetCanvasView() {
-    const zoom = transformRef.current;
-    const wrapper = zoom?.instance.wrapperComponent;
-    const content = zoom?.instance.contentComponent?.querySelector<HTMLElement>(".artboard");
-    if (!zoom || !wrapper || !content) return;
-    const scale = Math.min(1, (wrapper.clientWidth - 64) / content.offsetWidth);
-    zoom.setTransform((wrapper.clientWidth - content.offsetWidth * scale) / 2 - content.offsetLeft * scale, 0, scale, 200);
-  }
-
-  function trackPreviewPointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    pointerStartRef.current = { x: event.clientX, y: event.clientY };
-    pointerMovedRef.current = false;
-    setPreviewDragging(false);
-  }
-
-  function trackPreviewPointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    const start = pointerStartRef.current;
-    if (!start) return;
-    pointerMovedRef.current =
-      Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5;
-    if (pointerMovedRef.current) setPreviewDragging(true);
-  }
-
-  function trackPreviewPointerUp() {
-    pointerStartRef.current = null;
-    setPreviewDragging(false);
-  }
-
-  function togglePreviewFullscreen() {
-    if (!previewPanelRef.current) return;
-    if (document.fullscreenElement) {
-      void document.exitFullscreen();
-    } else {
-      void previewPanelRef.current.requestFullscreen();
-    }
-  }
-
-  /** Publishes the composer: a remark (to clarify) or a request already qualified. */
-  function submitComposer(message: string, decision: Decision) {
+  /** Publishes the composer: a remark, or a correction (title, description, qualification). */
+  function submitComposer(result: ComposerResult) {
     if (isReadOnlyVersion || !composer) return;
+    const correction = composer.mode === "correction";
     const created: Comment = {
       id: Math.max(...comments.map((comment) => comment.id), 0) + 1,
       deliverableId: currentDeliverable.id,
       author: "Alex Morgan",
       initials: "AM",
       time: "À l'instant",
-      message,
+      message: result.message,
+      title: result.title,
       location: composer.target,
-      decision,
-      kind: composer.mode,
+      decision: correction ? result.decision : "À qualifier",
+      kind: correction ? "request" : "remark",
+      sourceId: composer.sourceId,
       page: composer.page,
       position: { x: composer.x, y: composer.y },
+      area: composer.area,
     };
     setComments((current) => [...current, created]);
     recordAudit(
-      composer.mode === "request" ? "request.created" : "comment.created",
-      composer.mode === "request" ? `Demande ajoutée, qualifiée « ${decision} »` : "Remarque agence ajoutée",
+      correction ? "correction.created" : "comment.created",
+      correction ? `Correction « ${result.title} » créée, qualifiée « ${result.decision} »` : "Remarque agence ajoutée",
       created.id,
     );
     setSelectedId(created.id);
-    setInspectorTab(isRequest(created) ? "demandes" : "remarques");
+    setInspectorTab(correction ? "corrections" : "remarques");
     setComposer(null);
     setThreadOpen(true);
+  }
+
+  /** "Créer une correction" from a remark: the form opens on the same spot, prefilled. */
+  function createCorrectionFrom(remark: Comment) {
+    if (isReadOnlyVersion) return;
+    const excerpt = remark.message.length > 60 ? `${remark.message.slice(0, 60)}…` : remark.message;
+    setThreadOpen(false);
+    setComposer({
+      mode: "correction",
+      page: remark.page ?? 1,
+      x: remark.position?.x ?? 50,
+      y: remark.position?.y ?? 50,
+      target: remark.location,
+      area: remark.area,
+      sourceId: remark.id,
+      initialTitle: excerpt,
+      initialDescription: remark.message,
+    });
   }
 
   function replyTo(commentId: number, message: string) {
@@ -1356,9 +1245,15 @@ export function AgencyApp() {
     recordAudit("comment.deleted", "Remarque agence supprimée", commentId);
   }
 
+  /** What still needs the agency: a client remark with no correction yet, or a correction to clarify. */
+  function needsQualification(comment: Comment) {
+    if (isCorrection(comment)) return comment.decision === "À qualifier";
+    return comment.initials !== "AM" && !comments.some((other) => other.sourceId === comment.id);
+  }
+
   function approveVersion() {
     const blockingComments = comments.filter(
-      (comment) => comment.decision === "À qualifier" || !comment.decision,
+      (comment) => needsQualification(comment),
     );
 
     if (blockingComments.length > 0) {
@@ -1397,10 +1292,8 @@ export function AgencyApp() {
     if (isReadOnlyVersion) return;
     setProposalCommentId(commentId);
     const existingProposal = activeProposalFor(commentId);
-    setNewProposalDescription(
-      existingProposal?.description ??
-        "Conception et intégration d'une section témoignages supplémentaire.",
-    );
+    const source = comments.find((comment) => comment.id === commentId);
+    setNewProposalDescription(existingProposal?.description ?? source?.title ?? source?.message ?? "");
     setNewProposalAmount(
       existingProposal
         ? String(parseNumericAmount(existingProposal.amount))
@@ -1620,7 +1513,7 @@ export function AgencyApp() {
   // Deliverable status = its latest version: what needs the agency first, then what waits on the client.
   function statusOf(latest: Deliverable): TabStatus {
     const latestComments = comments.filter((comment) => comment.deliverableId === latest.id);
-    const toQualify = latestComments.filter((comment) => comment.decision === "À qualifier" || !comment.decision).length;
+    const toQualify = latestComments.filter((comment) => needsQualification(comment)).length;
     const awaitingClient = latestComments.filter(
       (comment) =>
         comment.decision === "Hors périmètre" &&
@@ -1670,8 +1563,8 @@ export function AgencyApp() {
     for (const comment of comments.filter((candidate) => candidate.deliverableId === record.id)) {
       const commentHref = `${recordHref}?demande=${comment.id}`;
       const adaptation = adaptationRequests[comment.id];
-      if (comment.decision === "À qualifier" || !comment.decision)
-        todoItems.push({ key: `qualify-${comment.id}`, kind: "to-qualify", title: "Demande à qualifier", excerpt: comment.message, context, meta: [comment.author, comment.time].filter(Boolean).join(" · "), href: commentHref });
+      if (needsQualification(comment))
+        todoItems.push({ key: `qualify-${comment.id}`, kind: "to-qualify", title: isCorrection(comment) ? "Correction à clarifier" : "Remarque à traiter", excerpt: comment.title ?? comment.message, context, meta: [comment.author, comment.time].filter(Boolean).join(" · "), href: commentHref });
       else if (comment.decision === "Hors périmètre" && adaptation && !adaptation.decision)
         todoItems.push({ key: `adapt-${comment.id}`, kind: "adaptation", title: "Adaptation de proposition demandée", excerpt: adaptation.message, context, meta: `Demandée le ${adaptation.requestedAt}`, href: commentHref });
       else if (comment.decision === "Hors périmètre" && proposalStateFor(comment.id) === "sent" && proposalDecisionFor(comment.id) === "none") {
@@ -1711,11 +1604,11 @@ export function AgencyApp() {
         .map((record) => record.id),
     );
     const latestComments = scopeComments.filter((comment) => latestIds.has(comment.deliverableId ?? -1));
-    const qualified = latestComments.filter((comment) => comment.decision && comment.decision !== "À qualifier");
+    const qualified = latestComments.filter((comment) => isCorrection(comment) && comment.decision !== "À qualifier");
     const figuresOf = (recordIds: Set<number>) => {
       const own = scopeComments.filter((comment) => recordIds.has(comment.deliverableId ?? -1));
       return {
-        toQualify: own.filter((comment) => latestIds.has(comment.deliverableId ?? -1) && (comment.decision === "À qualifier" || !comment.decision)).length,
+        toQualify: own.filter((comment) => latestIds.has(comment.deliverableId ?? -1) && (needsQualification(comment))).length,
         outside: own.filter((comment) => comment.decision === "Hors périmètre").length,
         acceptedEuros: sumAmounts(acceptedComments.filter((comment) => recordIds.has(comment.deliverableId ?? -1))),
       };
@@ -1756,7 +1649,7 @@ export function AgencyApp() {
       totalDemands: scopeComments.length,
       included: scopeComments.filter((comment) => comment.decision === "Inclus").length,
       outside: outsideComments.length,
-      pending: scopeComments.filter((comment) => comment.decision === "À qualifier" || !comment.decision).length,
+      pending: scopeComments.filter((comment) => needsQualification(comment)).length,
       quotedEuros: sumAmounts(outsideComments),
       acceptedEuros: sumAmounts(acceptedComments),
       acceptedDays: acceptedComments.reduce((total, comment) => total + parseNumericDays(activeProposalFor(comment.id)?.deadline), 0),
@@ -1773,7 +1666,7 @@ export function AgencyApp() {
             id: comment.id,
             livrable: record?.name ?? "Livrable",
             version: `V${String(record?.version ?? 1).padStart(2, "0")}`,
-            message: comment.message,
+            message: comment.title ?? comment.message,
             location: comment.location,
             initials: comment.initials,
             decision: comment.decision,
@@ -1790,7 +1683,7 @@ export function AgencyApp() {
       acceptedDays: analytics.acceptedDays,
       pendingEuros: sumAmounts(pendingComments),
       pendingCount: pendingComments.length,
-      toQualify: latestComments.length - qualified.length,
+      toQualify: latestComments.filter(needsQualification).length,
       outsideRate: qualified.length ? Math.round((qualified.filter((comment) => comment.decision === "Hors périmètre").length / qualified.length) * 100) : null,
       conversionRate: decided.length ? Math.round((acceptedComments.length / decided.length) * 100) : null,
       totalDemands: scopeComments.length,
@@ -1878,18 +1771,6 @@ export function AgencyApp() {
   // Deliverable workspace (canvas, dashboard, proposals): everything below is about this deliverable.
   const livrableRootId = "livrableId" in view ? view.livrableId : 0;
   const latestVersionRecord = viewVersions[0];
-  // How the canvas page is laid out (mirrors what DeliverableContent shows).
-  const pageKind = !currentDeliverable
-    ? "mock"
-    : currentDeliverable.type === "PDF" && currentDeliverable.fileData
-      ? "pdf"
-      : currentDeliverable.type === "Image" && currentDeliverable.fileData
-        ? "image"
-        : currentDeliverable.type === "Video" && currentDeliverable.fileData
-          ? "video"
-          : (currentDeliverable.type === "Link" && currentDeliverable.url) || (currentDeliverable.type === "Doc" && currentDeliverable.fileData)
-            ? "placeholder"
-            : "mock";
 
   // Out-of-scope requests of every version, for the proposals page.
   const proposalRows: ProposalRow[] = viewVersions.flatMap((record) =>
@@ -1911,7 +1792,7 @@ export function AgencyApp() {
                   : "to-quote";
         return {
           commentId: comment.id,
-          message: comment.message,
+          message: comment.title ?? comment.message,
           author: comment.author,
           location: comment.location,
           versionLabel: `V${String(record.version).padStart(2, "0")}`,
@@ -2089,171 +1970,95 @@ export function AgencyApp() {
           ) : (
             <>
           <div className="editor">
-            <section className={`preview-panel canvas tool-${canvasTool}`} ref={previewPanelRef} aria-label="Canevas">
-              {isReadOnlyVersion && latestVersionRecord && (
-                <div className="canvas-banner" role="status">
-                  <Lock aria-hidden="true" />
-                  <span>
-                    V{String(currentDeliverable.version).padStart(2, "0")} est figée : lecture seule.
-                  </span>
-                  {latestVersionRecord.id !== currentDeliverable.id && (
-                    <Link href={hrefForRecord(latestVersionRecord, deliverables)}>
-                      Aller à la V{String(latestVersionRecord.version).padStart(2, "0")} <ArrowRight />
-                    </Link>
-                  )}
-                </div>
-              )}
-              {deliverableError && (
-                <div className="canvas-error" role="alert">
-                  {deliverableError}
-                  <button className="thread-icon-button" onClick={() => setDeliverableError("")} aria-label="Fermer le message">
-                    <X />
-                  </button>
-                </div>
-              )}
-              <div className="artboard-wrap">
-                <TransformWrapper
-                  ref={transformRef}
-                  initialScale={1}
-                  minScale={0.25}
-                  maxScale={4}
-                  limitToBounds={false}
-                  smooth={false}
-                  doubleClick={{ disabled: true }}
-                  wheel={{ step: 0.08, wheelDisabled: true, excluded: ["thread"] }}
-                  trackPadPanning={{ disabled: false, velocityDisabled: true, excluded: ["thread"] }}
-                  panning={{ excluded: ["thread", "canvas-pin"], velocityDisabled: true }}
-                  onInit={() => requestAnimationFrame(resetCanvasView)}
-                  onTransform={(_, state) => setPreviewZoom(Math.round(state.scale * 100))}
-                >
-                  <TransformComponent wrapperClass={`artboard-transform-wrapper ${previewDragging ? "dragging" : ""}`} contentClass="artboard-transform-content">
-                    <div
-                      className="artboard"
-                      style={{ "--inv-zoom": 100 / Math.max(previewZoom, 1) } as React.CSSProperties}
-                      onClickCapture={handleCanvasClick}
-                      onPointerDown={trackPreviewPointerDown}
-                      onPointerMove={(event) => {
-                        trackPreviewPointerMove(event);
-                        trackCanvasHover(event);
-                      }}
-                      onPointerLeave={() => setHoverTarget(null)}
-                      onPointerUp={trackPreviewPointerUp}
-                      onPointerCancel={trackPreviewPointerUp}
-                    >
-                      <DeliverableContent
-                        deliverable={currentDeliverable}
-                        renderPage={(page, content) => (
-                          <div className="canvas-page" data-page={page}>
-                            {currentDeliverable.type === "PDF" && <span className="canvas-page-label">Page {page}</span>}
-                            <div className={`canvas-page-content kind-${pageKind}`}>{content}</div>
-                            {hoverTarget?.page === page && <TargetHighlight box={hoverTarget.box} />}
-                            {activeComments
-                              .filter((comment) => (comment.page ?? 1) === page && comment.position)
-                              .map((comment) => (
-                                <CommentPin
-                                  key={comment.id}
-                                  comment={comment}
-                                  active={threadOpen && comment.id === selectedComment?.id}
-                                  onOpen={() => {
-                                    if (pointerMovedRef.current) return;
-                                    setComposer(null);
-                                    setSelectedId(comment.id);
-                                    setThreadOpen((open) => !(open && comment.id === selectedComment?.id));
-                                    setInspectorTab(isRequest(comment) ? "demandes" : "remarques");
-                                  }}
-                                />
-                              ))}
-                            {threadOpen && selectedComment && (selectedComment.page ?? 1) === page && (
-                              <ThreadPopover
-                                key={selectedComment.id}
-                                comment={selectedComment}
-                                readOnly={isReadOnlyVersion}
-                                locked={isDecisionLocked(selectedComment.id)}
-                                proposalLabel={proposalLabel(selectedComment)}
-                                onReply={(message) => replyTo(selectedComment.id, message)}
-                                onQualify={(decision) => qualifyComment(selectedComment.id, decision)}
-                                onOpenProposal={() => openProposal(selectedComment.id)}
-                                onDelete={selectedComment.initials === "AM" && !isReadOnlyVersion && !isDecisionLocked(selectedComment.id) ? () => {
-                                  deleteComment(selectedComment.id);
-                                  setThreadOpen(false);
-                                } : undefined}
-                                onClose={() => setThreadOpen(false)}
-                              />
-                            )}
-                            {composer?.page === page && (
-                              <Composer
-                                key={`${composer.x}-${composer.y}`}
-                                x={composer.x}
-                                y={composer.y}
-                                mode={composer.mode}
-                                target={composer.target}
-                                onSubmit={submitComposer}
-                                onCancel={() => setComposer(null)}
-                              />
-                            )}
-                          </div>
-                        )}
-                      />
+            <ReviewCanvas
+              deliverable={currentDeliverable}
+              comments={activeComments}
+              selectedId={selectedComment?.id ?? null}
+              threadOpen={threadOpen}
+              readOnly={isReadOnlyVersion}
+              tool={canvasTool}
+              tools={["move", "remark", "correction"]}
+              onToolChange={setCanvasTool}
+              composer={composer}
+              onCompose={(next) => {
+                setThreadOpen(false);
+                setComposer(next);
+              }}
+              onPinClick={(comment) => {
+                setComposer(null);
+                setSelectedId(comment.id);
+                setThreadOpen((open) => !(open && comment.id === selectedComment?.id));
+                setInspectorTab(isCorrection(comment) ? "corrections" : "remarques");
+              }}
+              onBackgroundClick={() => {
+                setThreadOpen(false);
+                setComposer(null);
+              }}
+              transformRef={transformRef}
+              overlay={
+                <>
+                  {isReadOnlyVersion && latestVersionRecord && (
+                    <div className="canvas-banner" role="status">
+                      <Lock aria-hidden="true" />
+                      <span>V{String(currentDeliverable.version).padStart(2, "0")} est figée : lecture seule.</span>
+                      {latestVersionRecord.id !== currentDeliverable.id && (
+                        <Link href={hrefForRecord(latestVersionRecord, deliverables)}>
+                          Aller à la V{String(latestVersionRecord.version).padStart(2, "0")} <ArrowRight />
+                        </Link>
+                      )}
                     </div>
-                  </TransformComponent>
-                </TransformWrapper>
-              </div>
-
-              {canvasTool !== "move" && !isReadOnlyVersion && (
-                <p className="canvas-hint" role="status">
-                  {canvasTool === "remark"
-                    ? "Cliquez sur une zone pour laisser une remarque"
-                    : "Cliquez sur une zone pour ajouter une demande qualifiée"}{" "}
-                  · <kbd>Échap</kbd> pour quitter
-                </p>
+                  )}
+                  {deliverableError && (
+                    <div className="canvas-error" role="alert">
+                      {deliverableError}
+                      <button className="thread-icon-button" onClick={() => setDeliverableError("")} aria-label="Fermer le message">
+                        <X />
+                      </button>
+                    </div>
+                  )}
+                </>
+              }
+              renderThread={(comment) => (
+                <ThreadPopover
+                  key={comment.id}
+                  comment={comment}
+                  readOnly={isReadOnlyVersion}
+                  locked={isDecisionLocked(comment.id)}
+                  proposalLabel={proposalLabel(comment as Comment)}
+                  onReply={(message) => replyTo(comment.id, message)}
+                  onQualify={(decision) => qualifyComment(comment.id, decision)}
+                  onOpenProposal={() => openProposal(comment.id)}
+                  onCreateCorrection={isReadOnlyVersion ? undefined : () => createCorrectionFrom(comment as Comment)}
+                  linkedCorrection={(() => {
+                    const linked = activeComments.find((candidate) => candidate.sourceId === comment.id);
+                    return linked ? { id: linked.id, title: linked.title ?? linked.message } : undefined;
+                  })()}
+                  onOpenThread={focusThread}
+                  onDelete={
+                    comment.initials === "AM" && !isReadOnlyVersion && !isDecisionLocked(comment.id)
+                      ? () => {
+                          deleteComment(comment.id);
+                          setThreadOpen(false);
+                        }
+                      : undefined
+                  }
+                  onClose={() => setThreadOpen(false)}
+                />
               )}
-              <div className="canvas-toolbar" role="toolbar" aria-label="Outils du canevas">
-                <div className="tool-group">
-                  <button
-                    className={`tool-button ${canvasTool === "move" ? "selected" : ""}`}
-                    aria-pressed={canvasTool === "move"}
-                    onClick={() => setCanvasTool("move")}
-                    title="Déplacer (V)"
-                    aria-label="Déplacer"
-                  >
-                    <MousePointer2 />
-                  </button>
-                  <button
-                    className={`tool-button with-label ${canvasTool === "remark" ? "selected" : ""}`}
-                    aria-pressed={canvasTool === "remark"}
-                    onClick={() => setCanvasTool("remark")}
-                    disabled={isReadOnlyVersion}
-                    title="Ajouter une remarque (C)"
-                  >
-                    <MessageCirclePlus /> <span>Remarque</span>
-                  </button>
-                  <button
-                    className={`tool-button with-label ${canvasTool === "request" ? "selected" : ""}`}
-                    aria-pressed={canvasTool === "request"}
-                    onClick={() => setCanvasTool("request")}
-                    disabled={isReadOnlyVersion}
-                    title="Ajouter une demande déjà qualifiée (D)"
-                  >
-                    <ClipboardCheck /> <span>Demande</span>
-                  </button>
-                </div>
-                <span className="toolbar-divider" aria-hidden="true" />
-                <div className="tool-group">
-                  <button className="tool-button" onClick={() => transformRef.current?.zoomOut(0.2)} disabled={previewZoom <= 25} title="Réduire le zoom" aria-label="Réduire le zoom">
-                    <Minus />
-                  </button>
-                  <button className="zoom" onClick={resetCanvasView} title="Ajuster à la largeur">
-                    {previewZoom}%
-                  </button>
-                  <button className="tool-button" onClick={() => transformRef.current?.zoomIn(0.2)} disabled={previewZoom >= 400} title="Augmenter le zoom" aria-label="Augmenter le zoom">
-                    <Plus />
-                  </button>
-                  <button className="tool-button" onClick={togglePreviewFullscreen} title="Plein écran" aria-label="Plein écran">
-                    <Maximize />
-                  </button>
-                </div>
-              </div>
-            </section>
+              renderComposer={(current) => (
+                <Composer
+                  key={`${current.mode}-${current.x}-${current.y}`}
+                  x={current.x}
+                  y={current.y}
+                  mode={current.mode}
+                  target={current.target}
+                  initialTitle={current.initialTitle}
+                  initialDescription={current.initialDescription}
+                  onSubmit={submitComposer}
+                  onCancel={() => setComposer(null)}
+                />
+              )}
+            />
 
             <EditorInspector
               title={`${currentDeliverable.name} — V${String(currentDeliverable.version).padStart(2, "0")}`}
@@ -2490,7 +2295,7 @@ export function AgencyApp() {
                 <p className="drawer-intro">
                   {
                     comments.filter(
-                      (comment) => comment.decision === "À qualifier" || !comment.decision,
+                      (comment) => needsQualification(comment),
                     ).length
                   }{" "}
                   demande(s) n'ont pas encore été qualifiée(s). L'approbation
@@ -2498,7 +2303,7 @@ export function AgencyApp() {
                 </p>
                 <div className="blocking-list">
                   {comments
-                    .filter((comment) => comment.decision === "À qualifier" || !comment.decision)
+                    .filter((comment) => needsQualification(comment))
                     .map((comment) => (
                       <div className="blocking-item" key={comment.id}>
                         <span className="blocking-dot" />
@@ -2598,7 +2403,7 @@ export function AgencyApp() {
                   <div className="scope-summary-card highlight">
                     <span className="scope-card-label">À qualifier</span>
                     <b>
-                      {activeComments.filter((c) => c.decision === "À qualifier" || !c.decision).length}
+                      {activeComments.filter((c) => needsQualification(c)).length}
                     </b>
                     <small>en attente d'arbitrage</small>
                   </div>

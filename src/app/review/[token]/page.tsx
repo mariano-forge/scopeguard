@@ -1,25 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useParams } from "next/navigation";
-import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
+import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import {
   ArrowRight,
   Check,
-  ChevronDown,
-  ChevronUp,
-  Crosshair,
   Eye,
-  Maximize,
-  Minus,
-  Pencil,
-  Plus,
-  Trash2,
+  Lock,
+  MessageSquare,
   X,
 } from "lucide-react";
-import { DeliverableContent } from "@/components/DeliverableContent";
 import type { DeliverableType } from "@/components/deliverableKinds";
+import { Composer, ThreadPopover, isCorrection, type Area, type ComposerResult, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
+import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "@/app/(agency)/editor/ReviewCanvas";
 
 
 function parseNumericAmount(amount: number | string | undefined): number {
@@ -100,6 +94,11 @@ type ClientComment = {
   position?: { x: number; y: number };
   page?: number;
   replies?: Reply[];
+  /** Set by the agency: "request" = correction. */
+  kind?: "remark" | "request";
+  title?: string;
+  sourceId?: number;
+  area?: Area;
 };
 
 type ProposalState = "none" | "draft" | "sent";
@@ -136,26 +135,14 @@ export default function ClientReviewPage() {
   const [accessState, setAccessState] = useState<"allowed" | "denied">("denied");
   const [reviewLink, setReviewLink] = useState<ReviewLink | null>(null);
   const [comments, setComments] = useState<ClientComment[]>([]);
-  const [commentDraft, setCommentDraft] = useState<{ x: number; y: number } | null>(null);
-  const [generalComment, setGeneralComment] = useState(false);
-  const [commentText, setCommentText] = useState("");
   const [commentSent, setCommentSent] = useState(false);
-  const [previewZoom, setPreviewZoom] = useState(100);
-  const [pdfPage, setPdfPage] = useState(1);
-  const [pdfPageCount, setPdfPageCount] = useState(1);
-  const [previewDragging, setPreviewDragging] = useState(false);
-  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
-  const pointerMovedRef = useRef(false);
   const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
-  const clientPanelRef = useRef<HTMLElement | null>(null);
   const [selectedCommentId, setSelectedCommentId] = useState<number | null>(null);
-  const [replyingTo, setReplyingTo] = useState<number | null>(null);
-  const [replyText, setReplyText] = useState("");
-  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
-  const [editingCommentText, setEditingCommentText] = useState("");
-  const [editingReply, setEditingReply] = useState<{ commentId: number; replyId: number } | null>(null);
-  const [editingReplyText, setEditingReplyText] = useState("");
-  const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
+  const [tool, setTool] = useState<CanvasTool>("remark");
+  /** The selected thread is open on the canvas. */
+  const [threadOpen, setThreadOpen] = useState(false);
+  const [composer, setComposer] = useState<CanvasComposer | null>(null);
+  const [panelTab, setPanelTab] = useState<"remarques" | "corrections">("remarques");
   const [proposalStates, setProposalStates] = useState<ProposalStates>({});
   const [proposalDecisions, setProposalDecisions] = useState<ProposalDecisions>({});
   const [adaptationRequests, setAdaptationRequests] = useState<AdaptationRequests>({});
@@ -347,132 +334,69 @@ export default function ClientReviewPage() {
     return () => window.removeEventListener("storage", syncFromStorage);
   }, [params.token]);
 
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target instanceof Element ? event.target : null;
+      if (event.ctrlKey || event.metaKey || event.altKey || target?.closest("input, textarea, select")) return;
+      if (event.key === "Escape") {
+        setComposer(null);
+        setThreadOpen(false);
+        setTool("remark");
+      } else if (event.key.toLowerCase() === "v") setTool("move");
+      else if (event.key.toLowerCase() === "c") setTool("remark");
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   function isReadOnlyVersion() {
     return reviewStatus === "approved" || deliverable.locked || deliverable.status === "Approuvée" || deliverable.status === "Remplacée";
   }
 
-  function startComment(event: React.MouseEvent<HTMLDivElement>) {
-    if (isReadOnlyVersion()) return;
-    if (pointerMovedRef.current) {
-      pointerMovedRef.current = false;
-      return;
-    }
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const scale = previewZoom / 100;
-    const offsetX = (bounds.width - bounds.width * scale) / 2;
-    const offsetY = (bounds.height - bounds.height * scale) / 2;
-    setCommentDraft({
-      x: Math.round(((event.clientX - bounds.left - offsetX) / (bounds.width * scale)) * 100),
-      y: Math.round(((event.clientY - bounds.top - offsetY) / (bounds.height * scale)) * 100),
-    });
-    setGeneralComment(false);
-    setCommentText("");
-  }
-
-  function trackPreviewPointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    pointerStartRef.current = { x: event.clientX, y: event.clientY };
-    pointerMovedRef.current = false;
-    setPreviewDragging(false);
-  }
-
-  function trackPreviewPointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    const start = pointerStartRef.current;
-    if (!start) return;
-    pointerMovedRef.current = Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5;
-    if (pointerMovedRef.current) setPreviewDragging(true);
-  }
-
-  function trackPreviewPointerUp() {
-    pointerStartRef.current = null;
-    setPreviewDragging(false);
-  }
-
-  function togglePreviewFullscreen() {
-    if (!clientPanelRef.current) return;
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void clientPanelRef.current.requestFullscreen();
-  }
-
-  function startGeneralComment() {
-    if (isReadOnlyVersion()) return;
-    setCommentDraft({ x: 0, y: 0 });
-    setGeneralComment(true);
-    setCommentText("");
-  }
-
-  function addComment(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (isReadOnlyVersion()) return;
-    const message = commentText.trim();
-    if (!commentDraft || !message) return;
-
+  /** Publishes the remark written on the canvas. */
+  function submitRemark(result: ComposerResult) {
+    if (isReadOnlyVersion() || !composer) return;
+    const id = Math.max(...comments.map((comment) => comment.id), 0) + 1;
     setComments((current) => [
       ...current,
       {
-        id: Math.max(...current.map((comment) => comment.id), 0) + 1,
+        id,
         deliverableId: reviewLink?.deliverableId ?? deliverable.id,
         author: "Claire Martin",
         initials: "CM",
         time: "À l'instant",
-        message,
-        location: generalComment
-          ? "Commentaire général sur le livrable"
-          : `Page ${pdfPage} · position ${commentDraft.x}% / ${commentDraft.y}%`,
-        page: pdfPage,
-        ...(generalComment ? {} : { position: commentDraft }),
+        message: result.message,
+        location: composer.target,
+        decision: "À qualifier",
+        kind: "remark",
+        page: composer.page,
+        position: { x: composer.x, y: composer.y },
+        area: composer.area,
       },
     ]);
-    setCommentDraft(null);
-    setGeneralComment(false);
-    setCommentText("");
+    setComposer(null);
     setCommentSent(true);
-    setSelectedCommentId(Math.max(...comments.map((comment) => comment.id), 0) + 1);
+    setSelectedCommentId(id);
+    setPanelTab("remarques");
+    setThreadOpen(true);
   }
 
-  function addReply(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (isReadOnlyVersion()) return;
-    const message = replyText.trim();
-    if (replyingTo === null || isCommercialDecisionLocked(replyingTo) || !message) return;
-
-    const reply: Reply = {
-      id: Date.now(),
-      author: "Claire Martin",
-      initials: "CM",
-      message,
-      time: "À l'instant",
-    };
-
-    setComments((current) => current.map((comment) => (
-      comment.id === replyingTo
-        ? { ...comment, replies: [...(comment.replies ?? []), reply] }
-        : comment
-    )));
-    setSelectedCommentId(replyingTo);
-    setReplyingTo(null);
-    setReplyText("");
-  }
-
-  function startEditComment(comment: ClientComment) {
-    if (isReadOnlyVersion() || isCommercialDecisionLocked(comment.id) || comment.initials !== "CM") return;
-    setEditingCommentId(comment.id);
-    setEditingCommentText(comment.message);
-  }
-
-  function saveEditComment(commentId: number) {
+  function replyTo(commentId: number, message: string) {
     if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
-    const target = comments.find((c) => c.id === commentId);
-    if (target?.initials !== "CM") return;
-    const message = editingCommentText.trim();
-    if (!message) return;
+    const reply: Reply = { id: Date.now(), author: "Claire Martin", initials: "CM", message, time: "À l'instant" };
+    setComments((current) => current.map((comment) => (comment.id === commentId ? { ...comment, replies: [...(comment.replies ?? []), reply] } : comment)));
+  }
 
-    setComments((current) =>
-      current.map((comment) =>
-        comment.id === commentId ? { ...comment, message } : comment,
-      ),
-    );
-    setEditingCommentId(null);
-    setEditingCommentText("");
+  /** Opens a thread from the side list and brings its pin into view. */
+  function focusThread(commentId: number) {
+    setSelectedCommentId(commentId);
+    setComposer(null);
+    setThreadOpen(true);
+    requestAnimationFrame(() => {
+      const pin = document.querySelector<HTMLElement>(`[data-pin="${commentId}"]`);
+      const zoom = transformRef.current;
+      if (pin && zoom) void zoom.zoomToElement(pin, zoom.state.scale, 300);
+    });
   }
 
   function deleteComment(commentId: number) {
@@ -486,53 +410,6 @@ export default function ClientReviewPage() {
       }
       return updated;
     });
-  }
-
-  function startEditReply(commentId: number, reply: Reply) {
-    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId) || reply.initials !== "CM") return;
-    setEditingReply({ commentId, replyId: reply.id });
-    setEditingReplyText(reply.message);
-  }
-
-  function saveEditReply(commentId: number, replyId: number) {
-    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
-    const parent = comments.find((c) => c.id === commentId);
-    const target = parent?.replies?.find((r) => r.id === replyId);
-    if (target?.initials !== "CM") return;
-    const message = editingReplyText.trim();
-    if (!message) return;
-
-    setComments((current) =>
-      current.map((comment) =>
-        comment.id === commentId
-          ? {
-              ...comment,
-              replies: comment.replies?.map((reply) =>
-                reply.id === replyId ? { ...reply, message } : reply,
-              ),
-            }
-          : comment,
-      ),
-    );
-    setEditingReply(null);
-    setEditingReplyText("");
-  }
-
-  function deleteReply(commentId: number, replyId: number) {
-    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
-    const parent = comments.find((c) => c.id === commentId);
-    const target = parent?.replies?.find((r) => r.id === replyId);
-    if (target?.initials !== "CM") return;
-    setComments((current) =>
-      current.map((comment) =>
-        comment.id === commentId
-          ? {
-              ...comment,
-              replies: comment.replies?.filter((reply) => reply.id !== replyId),
-            }
-          : comment,
-      ),
-    );
   }
 
   function decideProposal(commentId: number, decision: ProposalDecision) {
@@ -729,12 +606,14 @@ export default function ClientReviewPage() {
   const sharedComments = comments.filter(
     (comment) => (comment.deliverableId ?? comments[0]?.deliverableId ?? sharedDeliverableId) === sharedDeliverableId,
   );
-  const displayedComments = (() => {
-    const selectedIndex = sharedComments.findIndex((comment) => comment.id === selectedCommentId);
-    if (selectedIndex <= 0) return sharedComments;
-    return [sharedComments[selectedIndex], ...sharedComments.slice(0, selectedIndex), ...sharedComments.slice(selectedIndex + 1)];
-  })();
-  const selectedComment = sharedComments.find((comment) => comment.id === selectedCommentId);
+  // Canvas threads: corrections and remarks (older "À traiter" counts as to clarify).
+  const canvasComments: (ThreadComment & { page?: number; sourceId?: number })[] = sharedComments.map((comment) => ({
+    ...comment,
+    decision: comment.decision === "Inclus" || comment.decision === "Hors périmètre" ? comment.decision : "À qualifier",
+  }));
+  const panelComments = canvasComments
+    .filter((comment) => (panelTab === "corrections" ? isCorrection(comment) : !isCorrection(comment)))
+    .sort((left, right) => right.id - left.id);
   const sharedProposalComments = sharedComments.filter(
     (comment) => comment.decision === "Hors périmètre" && proposalStates[comment.id] === "sent",
   );
@@ -786,257 +665,151 @@ export default function ClientReviewPage() {
             Version {String(deliverable.version).padStart(2, "0")} · {reviewStatus === "approved" ? "Approuvée" : reviewStatus === "changes-requested" ? "Modifications demandées" : deliverable.status === "Remplacée" ? "Remplacée" : "À valider"}
           </div>
         </div>
-        <section className="client-artboard-panel" ref={clientPanelRef}>
-          <div className="client-artboard-toolbar">
-            <span>{deliverable.name}</span>
-            <button className="client-add-comment-tool" onClick={startGeneralComment} disabled={isReadOnlyVersion()}>+ Soumettre une demande</button>
-            <div className="client-viewer-controls">
-              {deliverable.type === "PDF" && (
-                <div className="client-page-controls">
-                  <button className="client-viewer-button" onClick={() => setPdfPage((page) => Math.max(1, page - 1))} disabled={pdfPage <= 1} aria-label="Page précédente">‹</button>
-                  <span>{pdfPage} / {pdfPageCount}</span>
-                  <button className="client-viewer-button" onClick={() => setPdfPage((page) => Math.min(pdfPageCount, page + 1))} disabled={pdfPage >= pdfPageCount} aria-label="Page suivante">›</button>
+        <div className="client-workspace">
+          <ReviewCanvas
+            deliverable={{ ...deliverable, type: deliverable.type ?? "PDF" }}
+            comments={canvasComments}
+            selectedId={selectedCommentId}
+            threadOpen={threadOpen}
+            readOnly={isReadOnlyVersion()}
+            tool={tool}
+            tools={["move", "remark"]}
+            onToolChange={setTool}
+            composer={composer}
+            onCompose={(next) => {
+              setThreadOpen(false);
+              setComposer({ ...next, mode: "remark" });
+            }}
+            onPinClick={(comment) => {
+              setComposer(null);
+              setSelectedCommentId(comment.id);
+              setThreadOpen((open) => !(open && comment.id === selectedCommentId));
+              setPanelTab(isCorrection(comment) ? "corrections" : "remarques");
+            }}
+            onBackgroundClick={() => {
+              setThreadOpen(false);
+              setComposer(null);
+            }}
+            transformRef={transformRef}
+            overlay={
+              isReadOnlyVersion() ? (
+                <div className="canvas-banner" role="status">
+                  <Lock aria-hidden="true" />
+                  <span>Cette version est en lecture seule.</span>
                 </div>
-              )}
-              <button className="client-viewer-button" onClick={() => transformRef.current?.zoomOut(0.1)} disabled={previewZoom <= 50} aria-label="Réduire le zoom"><Minus /></button>
-              <button className="client-viewer-zoom" onClick={() => transformRef.current?.resetTransform()} aria-label="Réinitialiser le zoom">{previewZoom}%</button>
-              <button className="client-viewer-button" onClick={() => transformRef.current?.zoomIn(0.1)} disabled={previewZoom >= 300} aria-label="Augmenter le zoom"><Plus /></button>
-              <button className="client-viewer-button" onClick={togglePreviewFullscreen} aria-label="Plein écran"><Maximize /></button>
-            </div>
-            <span>Expire le {reviewLink?.expiresAt}</span>
-          </div>
-          <div className="client-artboard-wrap">
-            <TransformWrapper
-              ref={transformRef}
-              initialScale={1}
-              minScale={0.5}
-              maxScale={3}
-              centerOnInit
-              smooth={false}
-              wheel={{ step: 0.1 }}
-              onTransform={(_, state) => setPreviewZoom(Math.round(state.scale * 100))}
-            >
-              <TransformComponent wrapperClass={`client-artboard-transform-wrapper ${previewDragging ? "dragging" : ""}`} contentClass="client-artboard-transform-content">
-            <div className="client-artboard" onClick={startComment} onPointerDown={trackPreviewPointerDown} onPointerMove={trackPreviewPointerMove} onPointerUp={trackPreviewPointerUp} onPointerCancel={trackPreviewPointerUp}>
-              <DeliverableContent deliverable={{ ...deliverable, type: deliverable.type ?? "PDF" }} pdfPage={pdfPage} onPdfLoad={setPdfPageCount} />
-              {sharedComments.filter((comment) => (!comment.page || comment.page === pdfPage) && comment.position).map((comment) => (
-                <button
+              ) : null
+            }
+            renderThread={(comment) => {
+              const locked = isCommercialDecisionLocked(comment.id);
+              const linked = canvasComments.find((candidate) => candidate.sourceId === comment.id);
+              return (
+                <ThreadPopover
                   key={comment.id}
-                  className={`pin pin-new client-comment-pin ${comment.initials === "AM" ? "agency-pin" : "client-pin"}`}
-                  style={{ left: `${comment.position?.x}%`, top: `${comment.position?.y}%` }}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setSelectedCommentId(comment.id);
-                  }}
-                  aria-label={`Commentaire ${comment.id}`}
-                >
-                  {comment.id}
-                </button>
-              ))}
-            </div>
-              </TransformComponent>
-            </TransformWrapper>
-          </div>
-        </section>
-        <section className="client-comments-panel">
-          <div className="client-comments-heading">
-            <div>
-              <p className="eyebrow">ARBITRAGES & DEMANDES</p>
-              <h2>Demandes sur cette version</h2>
-            </div>
-            <span>{comments.length} demande{comments.length > 1 ? "s" : ""}</span>
-          </div>
-          {comments.length === 0 ? (
-            <p className="client-empty-comments">Aucune demande pour le moment.</p>
-          ) : (
-            <div className="client-comments-list">
-              {displayedComments.map((comment) => (
-                <article
-                  className={`client-comment-card ${comment.id === selectedCommentId ? "selected-client-comment" : ""}`}
-                  key={comment.id}
-                  onClick={() => setSelectedCommentId(comment.id)}
-                >
-                  <div className="client-comment-top">
-                    <span className="avatar light-avatar">{comment.initials}</span>
-                    <div><b>{comment.author}</b><small>{comment.time}</small></div>
-                    <span className="client-comment-number">#{comment.id}</span>
-                  </div>
-                  {editingCommentId === comment.id && !isCommercialDecisionLocked(comment.id) ? (
-                    <form
-                      className="edit-form"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        saveEditComment(comment.id);
-                      }}
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <textarea
-                        autoFocus
-                        value={editingCommentText}
-                        onChange={(event) =>
-                          setEditingCommentText(event.target.value)
+                  comment={comment}
+                  readOnly={isReadOnlyVersion()}
+                  locked={locked}
+                  proposalLabel="Voir la proposition"
+                  onReply={(message) => replyTo(comment.id, message)}
+                  onOpenProposal={
+                    comment.decision === "Hors périmètre" && proposalStates[comment.id] === "sent"
+                      ? () => {
+                          setThreadOpen(false);
+                          document.querySelector(".client-proposals-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
                         }
-                      />
-                      <div className="edit-actions">
-                        <button
-                          type="button"
-                          className="action-link"
-                          onClick={() => setEditingCommentId(null)}
-                        >
-                          Annuler
-                        </button>
-                        <button
-                          type="submit"
-                          className="save-button"
-                          disabled={!editingCommentText.trim()}
-                        >
-                          Enregistrer
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <p>{comment.message}</p>
-                  )}
-                  <small className="client-comment-location"><Crosshair /> {comment.location}</small>
-                  {(expandedReplies[comment.id] ? (comment.replies ?? []) : (comment.replies ?? []).slice(0, 2)).map((reply) => (
-                    <div className="client-reply" key={reply.id}>
-                      <span className="avatar reply-avatar">{reply.initials}</span>
-                      <div className="reply-content">
-                        <b>{reply.author}</b><small>{reply.time}</small>
-                        {editingReply?.commentId === comment.id &&
-                        editingReply?.replyId === reply.id ? (
-                          <form
-                            className="edit-reply-form"
-                            onSubmit={(event) => {
-                              event.preventDefault();
-                              saveEditReply(comment.id, reply.id);
-                            }}
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <input
-                              autoFocus
-                              value={editingReplyText}
-                              onChange={(event) =>
-                                setEditingReplyText(event.target.value)
-                              }
-                            />
-                            <div className="edit-actions">
-                              <button
-                                type="button"
-                                className="action-link"
-                                onClick={() => setEditingReply(null)}
-                              >
-                                Annuler
-                              </button>
-                              <button
-                                type="submit"
-                                className="save-button"
-                                disabled={!editingReplyText.trim()}
-                              >
-                                Enregistrer
-                              </button>
-                            </div>
-                          </form>
-                        ) : (
-                          <>
-                            <p>{reply.message}</p>
-                            {!isReadOnlyVersion() && !isCommercialDecisionLocked(comment.id) && reply.initials === "CM" && (
-                              <div className="item-inline-actions">
-                                <button
-                                  className="action-link"
-                                  title="Modifier"
-                                  aria-label="Modifier la réponse"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    startEditReply(comment.id, reply);
-                                  }}
-                                >
-                                  <Pencil />
-                                </button>
-                                <button
-                                  className="action-link delete-link"
-                                  title="Supprimer"
-                                  aria-label="Supprimer la réponse"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    deleteReply(comment.id, reply.id);
-                                  }}
-                                >
-                                  <Trash2 />
-                                </button>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {(comment.replies?.length ?? 0) > 2 && (
-                    <button
-                      type="button"
-                      className="replies-toggle"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setExpandedReplies((current) => ({ ...current, [comment.id]: !current[comment.id] }));
-                      }}
-                    >
-                      {expandedReplies[comment.id] ? <><ChevronUp /> Réduire les réponses</> : <><ChevronDown /> Afficher les {(comment.replies?.length ?? 0) - 2} autres réponses</>}
-                    </button>
-                  )}
-                  <div className="comment-actions">
-                    {!isReadOnlyVersion() && !isCommercialDecisionLocked(comment.id) && editingCommentId !== comment.id && comment.initials === "CM" && (
-                      <>
-                        <button
-                          className="action-link"
-                          title="Modifier"
-                          aria-label="Modifier le commentaire"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            startEditComment(comment);
-                          }}
-                        >
-                          <Pencil />
-                        </button>
-                        <button
-                          className="action-link delete-link"
-                          title="Supprimer"
-                          aria-label="Supprimer le commentaire"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            deleteComment(comment.id);
-                          }}
-                        >
-                          <Trash2 />
-                        </button>
-                      </>
-                    )}
-                    <button
-                      className="client-reply-link"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setSelectedCommentId(comment.id);
-                        setReplyingTo(comment.id);
-                        setReplyText("");
-                      }}
-                      disabled={isReadOnlyVersion() || isCommercialDecisionLocked(comment.id)}
-                    >
-                      Répondre
-                    </button>
-                  </div>
-                  {replyingTo === comment.id && !isCommercialDecisionLocked(comment.id) && (
-                    <form className="client-reply-form" onSubmit={addReply} onClick={(event) => event.stopPropagation()}>
-                      <input autoFocus value={replyText} onChange={(event) => setReplyText(event.target.value)} placeholder="Écrire une réponse..." />
-                      <button type="submit" disabled={!replyText.trim()}>Envoyer</button>
-                    </form>
-                  )}
-                </article>
-              ))}
+                      : undefined
+                  }
+                  linkedCorrection={linked ? { id: linked.id, title: linked.title ?? linked.message } : undefined}
+                  onOpenThread={focusThread}
+                  onDelete={
+                    comment.initials === "CM" && !isCorrection(comment) && !isReadOnlyVersion() && !locked
+                      ? () => {
+                          deleteComment(comment.id);
+                          setThreadOpen(false);
+                        }
+                      : undefined
+                  }
+                  onClose={() => setThreadOpen(false)}
+                />
+              );
+            }}
+            renderComposer={(current) => (
+              <Composer
+                key={`${current.x}-${current.y}`}
+                x={current.x}
+                y={current.y}
+                mode="remark"
+                target={current.target}
+                onSubmit={submitRemark}
+                onCancel={() => setComposer(null)}
+              />
+            )}
+          />
+
+          <aside className="client-side-panel" aria-label="Vos retours">
+            <div className="client-side-heading">
+              <h2>Vos retours</h2>
+              <p>Cliquez sur le livrable, ou dessinez une zone, pour laisser une remarque. L’équipe la transforme en correction.</p>
             </div>
-          )}
-          {selectedComment && (
-            <p className="selected-comment-note">Demande sélectionnée : {selectedComment.message}</p>
-          )}
-        </section>
+            <div className="inspector-tabs" role="tablist" aria-label="Retours">
+              <button role="tab" aria-selected={panelTab === "remarques"} className={panelTab === "remarques" ? "is-active" : ""} onClick={() => setPanelTab("remarques")}>
+                Remarques <span>{canvasComments.filter((comment) => !isCorrection(comment)).length}</span>
+              </button>
+              <button role="tab" aria-selected={panelTab === "corrections"} className={panelTab === "corrections" ? "is-active" : ""} onClick={() => setPanelTab("corrections")}>
+                Corrections <span>{canvasComments.filter(isCorrection).length}</span>
+              </button>
+            </div>
+            <div className="inspector-list" role="tabpanel">
+              {panelComments.length === 0 ? (
+                <div className="inspector-empty-state">
+                  <MessageSquare aria-hidden="true" />
+                  <p>
+                    {panelTab === "remarques"
+                      ? "Aucune remarque pour l’instant. Cliquez sur le livrable pour en laisser une."
+                      : "Aucune correction pour l’instant : l’équipe les rédige à partir de vos remarques."}
+                  </p>
+                </div>
+              ) : (
+                <ul>
+                  {panelComments.map((comment) => (
+                    <li key={comment.id}>
+                      <button
+                        className={`thread-row ${threadOpen && comment.id === selectedCommentId ? "is-selected" : ""}`}
+                        onClick={() => focusThread(comment.id)}
+                      >
+                        <span className={`thread-avatar ${comment.initials === "AM" ? "is-agency" : "is-client"}`} aria-hidden="true">
+                          {comment.initials}
+                        </span>
+                        <span className="thread-row-body">
+                          <span className="thread-row-meta">
+                            <b>{comment.author}</b>
+                            <small>
+                              #{comment.id} · {comment.time}
+                            </small>
+                          </span>
+                          <span className={`thread-row-text ${isCorrection(comment) ? "is-title" : ""}`}>
+                            {isCorrection(comment) ? (comment.title ?? comment.message) : comment.message}
+                          </span>
+                          <span className="thread-row-tags">
+                            {isCorrection(comment) && (
+                              <span className={`decision-badge ${comment.decision === "Inclus" ? "decision-included" : comment.decision === "Hors périmètre" ? "decision-outside" : "decision-pending"}`}>
+                                {comment.decision === "Inclus" ? "Incluse" : comment.decision === "Hors périmètre" ? "Hors périmètre" : "À clarifier"}
+                              </span>
+                            )}
+                            {(comment.replies?.length ?? 0) > 0 && (
+                              <small>
+                                {comment.replies?.length} réponse{(comment.replies?.length ?? 0) > 1 ? "s" : ""}
+                              </small>
+                            )}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </aside>
+        </div>
         {sharedProposalComments.length > 0 && (
           <section className="client-proposals-panel">
             <div className="client-comments-heading">
@@ -1078,7 +851,7 @@ export default function ClientReviewPage() {
           </section>
         )}
         <div className="client-review-actions">
-          <p>{commentSent ? "Votre demande a été transmise à l'équipe." : "Cliquez sur le livrable pour soumettre une demande."}</p>
+          <p>{commentSent ? "Votre remarque a été transmise à l'équipe." : "Cliquez ou dessinez une zone sur le livrable pour laisser une remarque."}</p>
           {reviewStatus === "changes-requested" && (
             <div className="client-status-banner"><span className="status-dot changes-dot" />Modifications demandées · en attente d'une nouvelle version de l'agence</div>
           )}
@@ -1110,23 +883,6 @@ export default function ClientReviewPage() {
             {previewAdaptationRequest && <div className="adaptation-request-summary"><span>Demande d'adaptation · {previewAdaptationRequest.requestedAt}</span><p>{previewAdaptationRequest.message}</p></div>}
           </section>
         </div>
-      )}
-      {commentDraft && clientPanelRef.current && createPortal(
-        <div className="modal-backdrop" role="presentation">
-          <form className="project-modal comment-modal" onSubmit={addComment}>
-            <div className="drawer-header">
-              <div>
-                <div className="eyebrow">NOUVELLE DEMANDE</div>
-                <h2>Soumettre une demande</h2>
-              </div>
-              <button type="button" className="close-button" onClick={() => setCommentDraft(null)} aria-label="Fermer"><X /></button>
-            </div>
-            <p className="drawer-intro">{generalComment ? "Votre demande sera liée au livrable dans son ensemble." : `Votre demande sera attachée à la position ${commentDraft.x}% / ${commentDraft.y}% de la page.`}</p>
-            <label>Description de la demande<textarea autoFocus value={commentText} onChange={(event) => setCommentText(event.target.value)} placeholder="Décrivez précisément la modification souhaitée..." /></label>
-            <button className="send-proposal" type="submit" disabled={!commentText.trim()}>Soumettre la demande <ArrowRight /></button>
-          </form>
-        </div>,
-        clientPanelRef.current,
       )}
       {adaptationCommentId !== null && (
         <div className="modal-backdrop" role="presentation">

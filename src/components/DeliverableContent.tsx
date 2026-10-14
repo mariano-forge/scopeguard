@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import "react-pdf/dist/Page/TextLayer.css";
 import { ArrowUpRight, Download } from "lucide-react";
 import { DeliverableCover } from "./DeliverableCover";
 import { MockArtboard } from "./MockArtboard";
@@ -52,7 +53,10 @@ export function DeliverableContent({
       >
         <div className="canvas-pages">
           {Array.from({ length: pageCount }, (_, index) =>
-            <div key={index + 1}>{renderPage(index + 1, <PdfPage pageNumber={index + 1} width={760} renderTextLayer={false} renderAnnotationLayer={false} />)}</div>,
+            <div key={index + 1}>
+              {/* Text layer on: each text line can be targeted by a comment. */}
+              {renderPage(index + 1, <PdfPage pageNumber={index + 1} width={760} renderTextLayer renderAnnotationLayer={false} />)}
+            </div>,
           )}
         </div>
       </PdfDocument>

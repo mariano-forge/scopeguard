@@ -782,7 +782,7 @@ function HomePage({
   const tiles = [
     { label: "En attente du client", value: euros(figures.pendingEuros), note: plural(figures.pendingCount, "proposition") },
     { label: "Taux de conversion", value: percent(figures.conversionRate), note: "des propositions tranchées acceptées" },
-    { label: "Demandes à qualifier", value: String(figures.toQualify), note: "sur les dernières versions" },
+    { label: "Retours à traiter", value: String(figures.toQualify), note: "remarques sans correction, corrections à clarifier" },
     { label: "Part hors périmètre", value: percent(figures.outsideRate), note: "des demandes qualifiées" },
     { label: "Total des demandes", value: String(figures.totalDemands), note: "toutes versions confondues" },
     { label: "Versions approuvées", value: `${figures.approved} / ${figures.livrables}`, note: "livrables validés par le client" },

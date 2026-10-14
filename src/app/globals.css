@@ -5476,7 +5476,7 @@ a.page-nav-label:hover {
   cursor: grab;
 }
 .canvas.tool-remark .artboard,
-.canvas.tool-request .artboard {
+.canvas.tool-correction .artboard {
   cursor: crosshair;
 }
 .canvas-pages {
@@ -5576,7 +5576,23 @@ a.page-nav-label:hover {
 .canvas-pin:hover {
   transform: translateY(-100%) scale(calc(var(--inv-zoom) * 1.1));
 }
-.canvas-pin.is-open {
+/* Remark: a speech bubble with the author's initials. Correction: a square tag colored by its qualification. */
+.canvas-pin.is-remark {
+  background: var(--paper);
+  color: var(--ink);
+}
+.canvas-pin.is-remark.is-agency {
+  background: var(--ink);
+  color: var(--paper);
+}
+.canvas-pin.is-correction {
+  border-radius: var(--r-button) var(--r-button) var(--r-button) 0;
+}
+.canvas-pin.is-correction .lucide {
+  width: 15px;
+  height: 15px;
+}
+.canvas-pin.is-clarify {
   background: var(--status-clarify-bg);
   color: var(--status-clarify-text);
 }
@@ -6676,4 +6692,177 @@ button.rail-logo .lucide {
 .proposal-meta.is-inline {
   display: inline;
   margin: 0;
+}
+
+/* Remarks and corrections on the canvas */
+.canvas.tool-remark .canvas-page,
+.canvas.tool-correction .canvas-page {
+  user-select: none;
+}
+.canvas.tool-remark .textLayer span,
+.canvas.tool-correction .textLayer span {
+  cursor: crosshair;
+}
+.target-highlight.is-drawing {
+  outline-style: dashed;
+  background: rgba(48, 168, 255, 0.12);
+}
+.correction-body {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-bottom: 1px solid var(--border);
+}
+.correction-title {
+  margin: 0;
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.correction-description {
+  margin: 0;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.correction-body .thread-qualify {
+  padding: 0;
+  border-top: 0;
+}
+.correction-body .thread-proposal {
+  margin: 0;
+}
+.qualify-chip.is-static {
+  justify-self: start;
+  cursor: default;
+}
+.thread-actions {
+  padding: var(--s-2) var(--s-3);
+  border-top: 1px solid var(--border);
+}
+.thread-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  justify-content: center;
+}
+.thread-create .lucide,
+.thread-link .lucide {
+  width: 14px;
+  height: 14px;
+}
+.thread-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--action-text);
+  font: 600 var(--t-caption) var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.thread-link:hover {
+  text-decoration: underline;
+}
+.thread-link:focus-visible,
+.thread-create:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 2px;
+}
+.thread.composer.is-correction {
+  width: 340px;
+}
+.correction-form {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-3);
+}
+.correction-form label,
+.correction-form-label {
+  display: grid;
+  gap: 4px;
+  color: var(--graphite);
+  font: 500 var(--t-caption) var(--font-ui);
+}
+.correction-form input,
+.correction-form textarea {
+  border: 1px solid var(--border-input);
+  border-radius: var(--r-field);
+  padding: var(--s-2) var(--s-3);
+  color: var(--ink);
+  font: var(--t-ui) var(--font-ui);
+  resize: vertical;
+}
+.correction-form .thread-qualify {
+  margin-top: -6px;
+  padding: 0;
+  border-top: 0;
+}
+.correction-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+.thread-row-text.is-title {
+  font-weight: 600;
+}
+.thread-row-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.thread-row-link .lucide {
+  width: 12px;
+  height: 12px;
+}
+
+/* Client review page: the same canvas as the agency, with the client's feedback beside it */
+.client-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  height: min(78vh, 760px);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  background: var(--paper);
+}
+.client-workspace .preview-panel.canvas {
+  height: 100%;
+}
+.client-side-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: var(--paper);
+}
+.client-side-heading {
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+.client-side-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.client-side-heading p {
+  margin: 0;
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+@media (max-width: 900px) {
+  .client-workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(420px, 1fr) auto;
+    height: auto;
+  }
+  .client-side-panel {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
 }
