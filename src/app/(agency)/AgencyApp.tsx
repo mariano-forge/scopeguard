@@ -87,6 +87,7 @@ import { ProposalsView, type ProposalRow } from "./editor/ProposalsView";
 import type { MenuEntry } from "./editor/MenuButton";
 import { RenameDialog } from "./EntitySettings";
 import type { HomeAnalyticsData } from "./HomeAnalytics";
+import type { LivrableGroup } from "./LivrableFilter";
 
 
 type Decision = "À qualifier" | "Inclus" | "Hors périmètre";
@@ -312,9 +313,6 @@ export function AgencyApp() {
   const view = parseAgencyPath(pathname);
   const searchParams = useSearchParams();
   const focusedCommentId = Number(searchParams.get("demande")) || null;
-  // Home analytics filters.
-  const filterProjectId = Number(searchParams.get("projet")) || null;
-  const filterLivrableId = Number(searchParams.get("livrable")) || null;
   const [projects, setProjects] = useState(initialProjects);
   const [clients, setClients] = useState(initialClients);
   const [deliverables, setDeliverables] = useState(initialDeliverables);
@@ -1693,55 +1691,36 @@ export function AgencyApp() {
   todoItems.sort((left, right) => todoOrder.indexOf(left.kind) - todoOrder.indexOf(right.kind));
   const agencyActionCount = todoItems.filter(isAgencyAction).length;
 
-  // Home overview: figures across every space, or one project / one deliverable (?projet=, ?livrable=).
+  // Home overview for a set of deliverables (null = all). Each home section has its own selection.
   // Proposals count whatever version they were raised on.
-  const filterProject = projects.find((project) => project.id === filterProjectId) ?? null;
-  const filterLivrable =
-    filterProject && filterLivrableId !== null
-      ? (versionsOfLivrable(filterLivrableId, deliverables).find((record) => (record.projectId ?? 1) === filterProject.id) ?? null)
-      : null;
-  const scopeRecords = filterLivrable
-    ? versionsOfLivrable(filterLivrableId ?? 0, deliverables)
-    : filterProject
-      ? deliverables.filter((record) => (record.projectId ?? 1) === filterProject.id)
-      : deliverables;
-  const scopeIds = new Set(scopeRecords.map((record) => record.id));
-  const scopeComments = comments.filter((comment) => scopeIds.has(comment.deliverableId ?? -1));
-  const outsideComments = scopeComments.filter((comment) => comment.decision === "Hors périmètre");
-  const sumAmounts = (list: Comment[]) =>
-    list.reduce((total, comment) => total + parseNumericAmount(activeProposalFor(comment.id)?.amount), 0);
-  const acceptedComments = outsideComments.filter((comment) => proposalDecisionFor(comment.id) === "accepted");
-  const pendingComments = outsideComments.filter(
-    (comment) => proposalStateFor(comment.id) === "sent" && proposalDecisionFor(comment.id) === "none",
-  );
-  const latestIds = new Set(
-    scopeRecords
-      .filter((record) => versionsOfLivrable(livrableIdOf(record, deliverables), deliverables)[0]?.id === record.id)
-      .map((record) => record.id),
-  );
-  const latestComments = scopeComments.filter((comment) => latestIds.has(comment.deliverableId ?? -1));
-  const qualified = latestComments.filter((comment) => comment.decision && comment.decision !== "À qualifier");
-  const projectsOfClient = (clientId: number) => projects.filter((project) => (project.clientId ?? 1) === clientId);
-  const figuresOf = (recordIds: Set<number>) => {
-    const own = scopeComments.filter((comment) => recordIds.has(comment.deliverableId ?? -1));
-    return {
-      toQualify: own.filter((comment) => latestIds.has(comment.deliverableId ?? -1) && (comment.decision === "À qualifier" || !comment.decision)).length,
-      outside: own.filter((comment) => comment.decision === "Hors périmètre").length,
-      acceptedEuros: sumAmounts(acceptedComments.filter((comment) => recordIds.has(comment.deliverableId ?? -1))),
+  function overviewFor(selection: number[] | null): HomeOverview {
+    const chosen = selection === null ? null : new Set(selection);
+    const scopeRecords = chosen ? deliverables.filter((record) => chosen.has(livrableIdOf(record, deliverables))) : deliverables;
+    const scopeIds = new Set(scopeRecords.map((record) => record.id));
+    const scopeComments = comments.filter((comment) => scopeIds.has(comment.deliverableId ?? -1));
+    const outsideComments = scopeComments.filter((comment) => comment.decision === "Hors périmètre");
+    const sumAmounts = (list: Comment[]) =>
+      list.reduce((total, comment) => total + parseNumericAmount(activeProposalFor(comment.id)?.amount), 0);
+    const acceptedComments = outsideComments.filter((comment) => proposalDecisionFor(comment.id) === "accepted");
+    const pendingComments = outsideComments.filter(
+      (comment) => proposalStateFor(comment.id) === "sent" && proposalDecisionFor(comment.id) === "none",
+    );
+    const latestIds = new Set(
+      scopeRecords
+        .filter((record) => versionsOfLivrable(livrableIdOf(record, deliverables), deliverables)[0]?.id === record.id)
+        .map((record) => record.id),
+    );
+    const latestComments = scopeComments.filter((comment) => latestIds.has(comment.deliverableId ?? -1));
+    const qualified = latestComments.filter((comment) => comment.decision && comment.decision !== "À qualifier");
+    const figuresOf = (recordIds: Set<number>) => {
+      const own = scopeComments.filter((comment) => recordIds.has(comment.deliverableId ?? -1));
+      return {
+        toQualify: own.filter((comment) => latestIds.has(comment.deliverableId ?? -1) && (comment.decision === "À qualifier" || !comment.decision)).length,
+        outside: own.filter((comment) => comment.decision === "Hors périmètre").length,
+        acceptedEuros: sumAmounts(acceptedComments.filter((comment) => recordIds.has(comment.deliverableId ?? -1))),
+      };
     };
-  };
-  const breakdown: HomeOverview["breakdown"] = filterLivrable
-    ? {
-        kind: "version",
-        rows: scopeRecords.map((record) => ({
-          key: `v${record.id}`,
-          label: `Version ${String(record.version).padStart(2, "0")}`,
-          href: hrefForRecord(record, deliverables),
-          counts: [],
-          ...figuresOf(new Set([record.id])),
-        })),
-      }
-    : filterProject
+    const breakdown: HomeOverview["breakdown"] = chosen
       ? {
           kind: "livrable",
           rows: scopeRecords
@@ -1760,7 +1739,7 @@ export function AgencyApp() {
       : {
           kind: "space",
           rows: clients.map((client) => {
-            const projectIds = new Set(projectsOfClient(client.id).map((project) => project.id));
+            const projectIds = new Set(projects.filter((project) => (project.clientId ?? 1) === client.id).map((project) => project.id));
             const recordIds = new Set(deliverables.filter((record) => projectIds.has(record.projectId ?? 1)).map((record) => record.id));
             return {
               key: `s${client.id}`,
@@ -1772,61 +1751,66 @@ export function AgencyApp() {
             };
           }),
         };
-  const scopeCommentIds = new Set(scopeComments.map((comment) => comment.id));
-  const decidedNone = outsideComments.filter((comment) => proposalDecisionFor(comment.id) === "none");
-  const analytics: HomeAnalyticsData = {
-    totalDemands: scopeComments.length,
-    included: scopeComments.filter((comment) => comment.decision === "Inclus").length,
-    outside: outsideComments.length,
-    pending: scopeComments.filter((comment) => comment.decision === "À qualifier" || !comment.decision).length,
-    quotedEuros: sumAmounts(outsideComments),
-    acceptedEuros: sumAmounts(acceptedComments),
-    acceptedDays: acceptedComments.reduce((total, comment) => total + parseNumericDays(activeProposalFor(comment.id)?.deadline), 0),
-    acceptedCount: acceptedComments.length,
-    refusedCount: outsideComments.filter((comment) => proposalDecisionFor(comment.id) === "refused").length,
-    awaitingCount: decidedNone.filter((comment) => proposalStateFor(comment.id) === "sent").length,
-    versions: scopeRecords.length,
-    register: [...scopeComments]
-      .sort((left, right) => right.id - left.id)
-      .map((comment) => {
-        const record = deliverables.find((candidate) => candidate.id === comment.deliverableId);
-        const proposal = comment.decision === "Hors périmètre" ? activeProposalFor(comment.id) : undefined;
-        return {
-          id: comment.id,
-          livrable: record?.name ?? "Livrable",
-          version: `V${String(record?.version ?? 1).padStart(2, "0")}`,
-          message: comment.message,
-          location: comment.location,
-          initials: comment.initials,
-          decision: comment.decision,
-          amount: proposal ? formatProposalAmount(proposal.amount) : undefined,
-          deadline: proposal ? formatProposalDeadline(proposal.deadline) : undefined,
-          clientDecision: proposalDecisionFor(comment.id),
-          href: record ? `${hrefForRecord(record, deliverables)}?demande=${comment.id}` : href.home(),
-        };
-      }),
-  };
-  // The home "À traiter" list follows the same filter.
-  const scopeHrefs = new Set(scopeRecords.map((record) => hrefForRecord(record, deliverables)));
-  const homeTodoItems = filterProject ? todoItems.filter((item) => scopeHrefs.has(item.href.split("?")[0])) : todoItems;
-  const overview: HomeOverview = {
-    acceptedEuros: sumAmounts(acceptedComments),
-    acceptedCount: acceptedComments.length,
-    acceptedDays: acceptedComments.reduce((total, comment) => total + parseNumericDays(activeProposalFor(comment.id)?.deadline), 0),
-    pendingEuros: sumAmounts(pendingComments),
-    pendingCount: pendingComments.length,
-    toQualify: latestComments.length - qualified.length,
-    outsideRate: qualified.length ? Math.round((qualified.filter((comment) => comment.decision === "Hors périmètre").length / qualified.length) * 100) : null,
-    approved: deliverables.filter((record) => latestIds.has(record.id) && record.reviewStatus === "approved").length,
-    livrables: latestIds.size,
-    breakdown,
-    analytics,
-    filter: { projectId: filterProject?.id ?? null, livrableId: filterLivrable ? filterLivrableId : null },
-    activity: auditEvents
-      .filter((event) => (!filterProject ? true : event.commentId !== undefined && scopeCommentIds.has(event.commentId)))
-      .slice(0, 5)
-      .map((event) => ({ id: event.id, description: event.description, actor: event.actor, timestamp: event.timestamp })),
-  };
+    const decided = outsideComments.filter((comment) => proposalDecisionFor(comment.id) !== "none");
+    const analytics: HomeAnalyticsData = {
+      totalDemands: scopeComments.length,
+      included: scopeComments.filter((comment) => comment.decision === "Inclus").length,
+      outside: outsideComments.length,
+      pending: scopeComments.filter((comment) => comment.decision === "À qualifier" || !comment.decision).length,
+      quotedEuros: sumAmounts(outsideComments),
+      acceptedEuros: sumAmounts(acceptedComments),
+      acceptedDays: acceptedComments.reduce((total, comment) => total + parseNumericDays(activeProposalFor(comment.id)?.deadline), 0),
+      acceptedCount: acceptedComments.length,
+      refusedCount: outsideComments.filter((comment) => proposalDecisionFor(comment.id) === "refused").length,
+      awaitingCount: pendingComments.length,
+      versions: scopeRecords.length,
+      register: [...scopeComments]
+        .sort((left, right) => right.id - left.id)
+        .map((comment) => {
+          const record = deliverables.find((candidate) => candidate.id === comment.deliverableId);
+          const proposal = comment.decision === "Hors périmètre" ? activeProposalFor(comment.id) : undefined;
+          return {
+            id: comment.id,
+            livrable: record?.name ?? "Livrable",
+            version: `V${String(record?.version ?? 1).padStart(2, "0")}`,
+            message: comment.message,
+            location: comment.location,
+            initials: comment.initials,
+            decision: comment.decision,
+            amount: proposal ? formatProposalAmount(proposal.amount) : undefined,
+            deadline: proposal ? formatProposalDeadline(proposal.deadline) : undefined,
+            clientDecision: proposalDecisionFor(comment.id),
+            href: record ? `${hrefForRecord(record, deliverables)}?demande=${comment.id}` : href.home(),
+          };
+        }),
+    };
+    return {
+      acceptedEuros: sumAmounts(acceptedComments),
+      acceptedCount: acceptedComments.length,
+      acceptedDays: analytics.acceptedDays,
+      pendingEuros: sumAmounts(pendingComments),
+      pendingCount: pendingComments.length,
+      toQualify: latestComments.length - qualified.length,
+      outsideRate: qualified.length ? Math.round((qualified.filter((comment) => comment.decision === "Hors périmètre").length / qualified.length) * 100) : null,
+      conversionRate: decided.length ? Math.round((acceptedComments.length / decided.length) * 100) : null,
+      totalDemands: scopeComments.length,
+      approved: deliverables.filter((record) => latestIds.has(record.id) && record.reviewStatus === "approved").length,
+      livrables: latestIds.size,
+      breakdown,
+      analytics,
+    };
+  }
+  // Filter choices of the home sections: deliverables grouped by "space / project".
+  const livrableGroups: LivrableGroup[] = projects
+    .map((project) => ({
+      key: `p${project.id}`,
+      label: [clients.find((client) => client.id === (project.clientId ?? 1))?.name, project.name].filter(Boolean).join(" / "),
+      livrables: deliverables
+        .filter((record) => versionsOfLivrable(livrableIdOf(record, deliverables), deliverables)[0]?.id === record.id)
+        .filter((record) => (record.projectId ?? 1) === project.id)
+        .map((record) => ({ id: livrableIdOf(record, deliverables), name: record.name })),
+    }))
+    .filter((group) => group.livrables.length > 0);
 
   // ⌘K palette index: everything reachable, plus a few actions.
   const contextOf = (record: Deliverable) => {
@@ -2066,13 +2050,10 @@ export function AgencyApp() {
               deliverables={deliverables}
               comments={comments}
               recentLivrableIds={recentLivrableIds}
-              todoItems={view.kind === "home" ? homeTodoItems : todoItems}
+              todoItems={todoItems}
               error={deliverableError}
               onNewClient={() => setNewClientOpen(true)}
               onNewProject={() => setNewProjectOpen(true)}
-              onOverviewFilter={(projectId, livrableId) =>
-                router.replace(projectId === null ? href.home() : `/?projet=${projectId}${livrableId === null ? "" : `&livrable=${livrableId}`}`, { scroll: false })
-              }
               onNewDeliverable={() => setNewDeliverableOpen(true)}
               onRenameClient={renameClient}
               onRenameProject={renameProject}
@@ -2085,7 +2066,8 @@ export function AgencyApp() {
               trash={trash}
               onRestore={restoreFromTrash}
               onPurge={purgeFromTrash}
-              overview={overview}
+              overviewFor={overviewFor}
+              livrableGroups={livrableGroups}
               favorites={favorites}
               onToggleFavorite={toggleFavorite}
               livrableStatus={(livrableId) => {

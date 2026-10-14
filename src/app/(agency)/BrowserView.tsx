@@ -12,7 +12,8 @@ import { StatusMark, type TabStatus } from "./TabBar";
 import { ConfirmDeleteDialog, EntitySettings, LivrableMenu } from "./EntitySettings";
 import type { TrashItem } from "./AgencyApp";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
-import { HomeAnalytics, type HomeAnalyticsData } from "./HomeAnalytics";
+import { RegisterTable, ScopeCharts, type HomeAnalyticsData } from "./HomeAnalytics";
+import { LivrableFilter, type LivrableGroup } from "./LivrableFilter";
 import type { DeliverableType } from "@/components/deliverableKinds";
 
 type Client = { id: number; name: string; email: string };
@@ -30,7 +31,7 @@ type Deliverable = {
 };
 type Comment = { deliverableId?: number; decision: string };
 
-/** Figures for the home overview, computed by AgencyApp across every space. */
+/** Figures for the home overview, computed by AgencyApp for a set of deliverables. */
 export type HomeOverview = {
   acceptedEuros: number;
   acceptedCount: number;
@@ -40,16 +41,17 @@ export type HomeOverview = {
   toQualify: number;
   /** Share of qualified requests that are out of scope, null when nothing is qualified yet. */
   outsideRate: number | null;
+  /** Accepted share of the proposals the client answered, null before any answer. */
+  conversionRate: number | null;
+  totalDemands: number;
   approved: number;
   livrables: number;
-  /** Rows under the figures: spaces, or the deliverables of the filtered project, or the versions of the filtered deliverable. */
+  /** Rows of the breakdown table: spaces (everything selected) or the selected deliverables. */
   breakdown: {
-    kind: "space" | "livrable" | "version";
+    kind: "space" | "livrable";
     rows: { key: string; label: string; href: string; client?: Client; counts: number[]; toQualify: number; outside: number; acceptedEuros: number }[];
   };
-  filter: { projectId: number | null; livrableId: number | null };
   analytics: HomeAnalyticsData;
-  activity: { id: number; description: string; actor: string; timestamp: string }[];
 };
 
 type BrowserViewProps = {
@@ -60,13 +62,13 @@ type BrowserViewProps = {
   comments: Comment[];
   recentLivrableIds: number[];
   todoItems: TodoItem[];
-  overview: HomeOverview;
+  /** Home figures for a selection of deliverables (null = all). */
+  overviewFor: (selection: number[] | null) => HomeOverview;
+  livrableGroups: LivrableGroup[];
   favorites: string[];
   error?: string;
   onNewClient: () => void;
   onNewProject: () => void;
-  /** Home analytics scope (null = everything). */
-  onOverviewFilter: (projectId: number | null, livrableId: number | null) => void;
   onNewDeliverable: () => void;
   onRenameClient: (clientId: number, name: string) => void;
   onRenameProject: (projectId: number, name: string) => void;
@@ -228,12 +230,12 @@ export function BrowserView({
   comments,
   recentLivrableIds,
   todoItems,
-  overview,
+  overviewFor,
+  livrableGroups,
   favorites,
   error,
   onNewClient,
   onNewProject,
-  onOverviewFilter,
   onNewDeliverable,
   onRenameClient,
   onRenameProject,
@@ -723,37 +725,71 @@ export function BrowserView({
     );
   }
 
-  // ----- Home: global overview (figures, pending decisions, spaces breakdown, activity)
+  // ----- Home: global overview, each section filtered on its own deliverables
+  return (
+    <HomePage
+      overviewFor={overviewFor}
+      livrableGroups={livrableGroups}
+      agencyActions={agencyActions}
+      onNewProject={onNewProject}
+    />
+  );
+}
+
+/** Section title with its own "Tous les livrables" filter on the right. */
+function SectionHeader({
+  title,
+  filter,
+  onFilter,
+  groups,
+}: {
+  title: React.ReactNode;
+  filter: number[] | null;
+  onFilter: (value: number[] | null) => void;
+  groups: LivrableGroup[];
+}) {
+  return (
+    <div className="section-header">
+      <h2>{title}</h2>
+      <LivrableFilter groups={groups} value={filter} onChange={onFilter} label={`Filtrer « ${typeof title === "string" ? title : "la section"} »`} />
+    </div>
+  );
+}
+
+function HomePage({
+  overviewFor,
+  livrableGroups,
+  agencyActions,
+  onNewProject,
+}: {
+  overviewFor: (selection: number[] | null) => HomeOverview;
+  livrableGroups: LivrableGroup[];
+  agencyActions: TodoItem[];
+  onNewProject: () => void;
+}) {
+  const [filters, setFilters] = useState<Record<"figures" | "charts" | "register" | "breakdown", number[] | null>>({
+    figures: null,
+    charts: null,
+    register: null,
+    breakdown: null,
+  });
+  const setFilter = (section: keyof typeof filters) => (value: number[] | null) => setFilters((current) => ({ ...current, [section]: value }));
+  const figures = overviewFor(filters.figures);
+  const charts = overviewFor(filters.charts).analytics;
+  const register = overviewFor(filters.register).analytics.register;
+  const breakdown = overviewFor(filters.breakdown).breakdown;
+  const percent = (value: number | null) => (value === null ? "—" : `${value} %`);
   const tiles = [
-    { label: "En attente du client", value: euros(overview.pendingEuros), note: plural(overview.pendingCount, "proposition") },
-    { label: "Demandes à qualifier", value: String(overview.toQualify), note: "sur les dernières versions" },
-    {
-      label: "Part hors périmètre",
-      value: overview.outsideRate === null ? "—" : `${overview.outsideRate} %`,
-      note: "des demandes qualifiées",
-    },
-    { label: "Versions approuvées", value: `${overview.approved} / ${overview.livrables}`, note: "livrables validés par le client" },
+    { label: "En attente du client", value: euros(figures.pendingEuros), note: plural(figures.pendingCount, "proposition") },
+    { label: "Taux de conversion", value: percent(figures.conversionRate), note: "des propositions tranchées acceptées" },
+    { label: "Demandes à qualifier", value: String(figures.toQualify), note: "sur les dernières versions" },
+    { label: "Part hors périmètre", value: percent(figures.outsideRate), note: "des demandes qualifiées" },
+    { label: "Total des demandes", value: String(figures.totalDemands), note: "toutes versions confondues" },
+    { label: "Versions approuvées", value: `${figures.approved} / ${figures.livrables}`, note: "livrables validés par le client" },
   ];
-  // Filter choices: every project (with its space), then the deliverables of the chosen one.
-  const projectOptions = [
-    { value: "", label: "Tous les projets" },
-    ...projects.map((project) => ({
-      value: String(project.id),
-      label: `${clients.find((client) => client.id === (project.clientId ?? 1))?.name ?? "—"} / ${project.name}`,
-    })),
-  ];
-  const livrableOptions = [
-    { value: "", label: "Tous les livrables" },
-    ...[
-      ...new Map(
-        deliverables
-          .filter((record) => overview.filter.projectId !== null && (record.projectId ?? 1) === overview.filter.projectId)
-          .map((record) => [livrableIdOf(record, deliverables), record.name] as const),
-      ),
-    ].map(([id, name]) => ({ value: String(id), label: name })),
-  ];
-  const breakdownTitle = { space: "Par espace", livrable: "Par livrable", version: "Par version" }[overview.breakdown.kind];
-  const breakdownColumns = { space: ["Espace", "Projets", "Livrables"], livrable: ["Livrable", "Versions"], version: ["Version"] }[overview.breakdown.kind];
+  const breakdownTitle = breakdown.kind === "space" ? "Par espace" : "Par livrable";
+  const breakdownColumns = breakdown.kind === "space" ? ["Espace", "Projets", "Livrables"] : ["Livrable", "Versions"];
+
   return (
     <div className="browser">
       <PageNav />
@@ -764,55 +800,36 @@ export function BrowserView({
         </button>
       </header>
 
-      <div className="overview-filters" role="group" aria-label="Filtrer les analyses">
-        <Select
-          label="Projet"
-          prefix="Projet"
-          value={overview.filter.projectId === null ? "" : String(overview.filter.projectId)}
-          options={projectOptions}
-          onChange={(value) => onOverviewFilter(value ? Number(value) : null, null)}
-        />
-        {overview.filter.projectId !== null && (
-          <Select
-            label="Livrable"
-            prefix="Livrable"
-            value={overview.filter.livrableId === null ? "" : String(overview.filter.livrableId)}
-            options={livrableOptions}
-            onChange={(value) => onOverviewFilter(overview.filter.projectId, value ? Number(value) : null)}
-          />
-        )}
-        {overview.filter.projectId !== null && (
-          <button className="ghost-button" onClick={() => onOverviewFilter(null, null)}>
-            Réinitialiser
-          </button>
-        )}
-      </div>
-
-      <section className="overview" aria-label="Indicateurs">
-        <div className="hero-stat">
-          <span className="stat-label">Revenu supplémentaire accepté</span>
-          <span className="hero-value">{euros(overview.acceptedEuros)}</span>
-          <span className="stat-note">
-            {overview.acceptedCount} proposition{overview.acceptedCount > 1 ? "s acceptées" : " acceptée"}
-            {overview.acceptedDays > 0 ? ` · ${plural(overview.acceptedDays, "jour")} de délai accordé` : ""}
-          </span>
-        </div>
-        <div className="stat-row">
-          {tiles.map((tile) => (
-            <div className="stat-tile" key={tile.label}>
-              <span className="stat-label">{tile.label}</span>
-              <span className="stat-value">{tile.value}</span>
-              <span className="stat-note">{tile.note}</span>
-            </div>
-          ))}
+      <section className="browser-section">
+        <SectionHeader title="Chiffres clés" filter={filters.figures} onFilter={setFilter("figures")} groups={livrableGroups} />
+        <div className="overview">
+          <div className="hero-stat is-positive">
+            <span className="stat-label">Revenu supplémentaire accepté</span>
+            <span className="hero-value">{euros(figures.acceptedEuros)}</span>
+            <span className="stat-note">
+              {plural(figures.acceptedCount, "proposition acceptée").replace("propositions acceptée", "propositions acceptées")}
+              {figures.acceptedDays > 0 ? ` · +${plural(figures.acceptedDays, "jour")} de délai accordé` : ""}
+            </span>
+          </div>
+          <div className="stat-row">
+            {tiles.map((tile) => (
+              <div className="stat-tile" key={tile.label}>
+                <span className="stat-label">{tile.label}</span>
+                <span className="stat-value">{tile.value}</span>
+                <span className="stat-note">{tile.note}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {agencyActions.length > 0 && (
         <section className="browser-section">
-          <h2>
-            <Link href={href.todo()}>À traiter · {agencyActions.length}</Link>
-          </h2>
+          <div className="section-header">
+            <h2>
+              <Link href={href.todo()}>À traiter · {agencyActions.length}</Link>
+            </h2>
+          </div>
           <TodoList items={agencyActions.slice(0, 5)} />
           {agencyActions.length > 5 && (
             <Link className="browser-more" href={href.todo()}>
@@ -822,11 +839,21 @@ export function BrowserView({
         </section>
       )}
 
-      <HomeAnalytics data={overview.analytics} />
+      <section className="browser-section">
+        <SectionHeader title="Pilotage commercial" filter={filters.charts} onFilter={setFilter("charts")} groups={livrableGroups} />
+        <ScopeCharts data={charts} />
+      </section>
 
-      {overview.breakdown.rows.length > 0 && (
-        <section className="browser-section">
-          <h2>{overview.breakdown.kind === "space" ? <Link href={href.spaces()}>{breakdownTitle}</Link> : breakdownTitle}</h2>
+      <section className="browser-section">
+        <SectionHeader title={`Registre des demandes · ${register.length}`} filter={filters.register} onFilter={setFilter("register")} groups={livrableGroups} />
+        <RegisterTable rows={register} />
+      </section>
+
+      <section className="browser-section">
+        <SectionHeader title={breakdownTitle} filter={filters.breakdown} onFilter={setFilter("breakdown")} groups={livrableGroups} />
+        {breakdown.rows.length === 0 ? (
+          <p className="browser-empty">Aucun livrable sélectionné.</p>
+        ) : (
           <div className="overview-table-wrap">
             <table className="overview-table">
               <thead>
@@ -842,7 +869,7 @@ export function BrowserView({
                 </tr>
               </thead>
               <tbody>
-                {overview.breakdown.rows.map((row) => (
+                {breakdown.rows.map((row) => (
                   <tr key={row.key}>
                     <th scope="row">
                       <Link href={row.href}>
@@ -861,24 +888,8 @@ export function BrowserView({
               </tbody>
             </table>
           </div>
-        </section>
-      )}
-
-      {overview.activity.length > 0 && (
-        <section className="browser-section">
-          <h2>Activité récente</h2>
-          <ul className="activity-list">
-            {overview.activity.map((event) => (
-              <li key={event.id}>
-                <span>{event.description}</span>
-                <small>
-                  {event.actor} · {event.timestamp}
-                </small>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+        )}
+      </section>
     </div>
   );
 }
