@@ -4816,7 +4816,6 @@ a.page-nav-label:hover {
 /* Dialog rhythm: section titles look like field labels, even spacing */
 
 .deliverable-dialog > label,
-.deliverable-dialog .kind-picker legend,
 .cover-field-actions .ghost-button {
   height: 32px;
   padding: 0 var(--s-3);

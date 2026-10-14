@@ -39,6 +39,8 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import {
+  Users,
+  FolderPlus,
   ArrowRight,
   Copy,
   Download,
@@ -54,7 +56,6 @@ import {
   Settings,
   Star,
   House,
-  Inbox,
   Pencil,
   RotateCcw,
   ScrollText,
@@ -65,7 +66,7 @@ import {
 } from "lucide-react";
 import { BrowserView, type HomeOverview } from "./BrowserView";
 import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
-import { isAgencyAction, todoOrder, type TodoItem } from "./TodoList";
+import { todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { HomeSidebar, ProjectSidebar, type ClientFeedback, type PanelMode, type SidebarLivrable, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
 import { href, hrefForRecord, livrableIdOf, parseAgencyPath, versionsOfLivrable } from "./routes";
@@ -1197,7 +1198,7 @@ export function AgencyApp() {
     ]);
     const created: Deliverable = {
       id: Date.now(),
-      projectId: selectedProjectId,
+      projectId: input.projectId ?? selectedProjectId,
       name: input.name,
       type: input.type,
       size: input.file?.size ?? 0,
@@ -1881,7 +1882,6 @@ export function AgencyApp() {
     }
   }
   todoItems.sort((left, right) => todoOrder.indexOf(left.kind) - todoOrder.indexOf(right.kind));
-  const agencyActionCount = todoItems.filter(isAgencyAction).length;
 
   // Home overview for a set of deliverables (null = all). Each home section has its own selection.
   // Proposals count whatever version they were raised on.
@@ -2013,11 +2013,12 @@ export function AgencyApp() {
   const latestRecords = deliverables.filter(
     (record) => versionsOfLivrable(livrableIdOf(record, deliverables), deliverables)[0]?.id === record.id,
   );
+  // Most common first: home, then creating a project, then a deliverable.
   const paletteActions: PaletteItem[] = [
-    { id: "action-todo", group: "Actions", label: "À traiter", hint: `${agencyActionCount} décision${agencyActionCount > 1 ? "s" : ""} en attente`, href: href.todo(), icon: Inbox },
     { id: "action-home", group: "Actions", label: "Accueil", href: href.home(), icon: House },
-    { id: "action-client", group: "Actions", label: "Nouvel espace", run: () => setNewClientOpen(true) },
-    { id: "action-project", group: "Actions", label: "Nouveau projet", run: () => setNewProjectOpen(true) },
+    { id: "action-project", group: "Créer", label: "Nouveau projet", run: () => setNewProjectOpen(true), icon: FolderPlus },
+    { id: "action-livrable", group: "Créer", label: "Nouveau livrable", run: () => setNewDeliverableOpen(true), icon: FilePlus },
+    { id: "action-client", group: "Créer", label: "Nouvel espace", run: () => setNewClientOpen(true), icon: Users },
   ];
   const paletteItems: PaletteItem[] = [
     ...paletteActions,
@@ -2051,7 +2052,7 @@ export function AgencyApp() {
   const paletteSuggestions: PaletteItem[] = [
     paletteActions[0],
     ...tabInfos.map((tab) => ({ id: `tab-${tab.livrableId}`, group: "Livrables" as const, label: tab.name, hint: tab.context, href: tab.href })),
-    ...paletteActions.slice(2),
+    ...paletteActions.slice(1),
   ];
 
   /** Where the client's answer stands, shown as a status badge. */
@@ -2175,7 +2176,14 @@ export function AgencyApp() {
     <div className="app-frame">
     {newDeliverableOpen && (
       <NewDeliverableDialog
-        existingNames={deliverables.filter((record) => (record.projectId ?? 1) === selectedProjectId).map((record) => record.name)}
+        existingNamesFor={(projectId) => deliverables.filter((record) => (record.projectId ?? 1) === projectId).map((record) => record.name)}
+        defaultProjectId={selectedProjectId}
+        // Outside a project (home, palette…), the dialog asks where the deliverable goes.
+        projects={
+          viewProjectId === null
+            ? projects.map((project) => ({ id: project.id, label: [clients.find((client) => client.id === (project.clientId ?? 1))?.name, project.name].filter(Boolean).join(" / ") }))
+            : undefined
+        }
         onClose={() => setNewDeliverableOpen(false)}
         onCreate={createDeliverable}
       />

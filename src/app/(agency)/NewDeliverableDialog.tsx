@@ -5,6 +5,7 @@ import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FormError, Modal } from "@/components/modal";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DeliverableCover } from "@/components/DeliverableCover";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
 import {
@@ -18,19 +19,26 @@ import {
   type DeliverableType,
 } from "@/components/deliverableKinds";
 
-export type NewDeliverable = { name: string; type: DeliverableType; file?: File; url?: string; cover?: File };
+export type NewDeliverable = { name: string; type: DeliverableType; file?: File; url?: string; cover?: File; projectId?: number };
 
 /** "+ Livrable": name, kind, the file (or the address for a link) and an optional cover. */
 export function NewDeliverableDialog({
-  existingNames,
+  existingNamesFor,
+  defaultProjectId,
+  projects,
   onClose,
   onCreate,
 }: {
-  /** Names already used in the project (a same-named upload would become a version of it). */
-  existingNames: string[];
+  /** Names already used in a project (a same-named upload would become a version of it). */
+  existingNamesFor: (projectId: number) => string[];
+  defaultProjectId: number;
+  /** Opened outside a project: the projects to choose from. */
+  projects?: { id: number; label: string }[];
   onClose: () => void;
   onCreate: (deliverable: NewDeliverable) => Promise<void> | void;
 }) {
+  const [projectId, setProjectId] = useState(defaultProjectId);
+  const existingNames = existingNamesFor(projectId);
   const [name, setName] = useState("");
   const [type, setType] = useState<DeliverableType>("PDF");
   const [file, setFile] = useState<File | null>(null);
@@ -85,7 +93,7 @@ export function NewDeliverableDialog({
       return setError(`Couverture trop lourde : ${formatBytes(cover.size)} (maximum ${formatBytes(MAX_COVER_BYTES)}).`);
     setSaving(true);
     try {
-      await onCreate({ name: name.trim(), type, file: type === "Link" ? undefined : (file ?? undefined), url: type === "Link" ? url.trim() : undefined, cover: cover ?? undefined });
+      await onCreate({ name: name.trim(), type, file: type === "Link" ? undefined : (file ?? undefined), url: type === "Link" ? url.trim() : undefined, cover: cover ?? undefined, projectId });
     } catch {
       setError("Le livrable n’a pas pu être enregistré.");
       setSaving(false);
@@ -111,6 +119,22 @@ export function NewDeliverableDialog({
         </>
       }
     >
+        {projects && (
+          <Field id="deliverable-project" label="Projet">
+            <Select value={String(projectId)} onValueChange={(value) => setProjectId(Number(value))}>
+              <SelectTrigger id="deliverable-project" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((project) => (
+                  <SelectItem key={project.id} value={String(project.id)}>
+                    {project.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        )}
         <Field id="deliverable-name" label="Nom du livrable">
           <Input id="deliverable-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex. Maquette page d’accueil" />
         </Field>

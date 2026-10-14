@@ -7,7 +7,7 @@ import { Building2, CornerDownLeft, FileText, Folder, MessageSquareText, Plus, S
 
 export type PaletteItem = {
   id: string;
-  group: "Actions" | "Livrables" | "Projets" | "Espaces" | "Demandes";
+  group: "Actions" | "Créer" | "Livrables" | "Projets" | "Espaces" | "Demandes";
   label: string;
   /** Secondary text, also searched (client, project, version…). */
   hint?: string;
@@ -16,9 +16,10 @@ export type PaletteItem = {
   icon?: LucideIcon;
 };
 
-const groupOrder: PaletteItem["group"][] = ["Actions", "Livrables", "Projets", "Espaces", "Demandes"];
+const groupOrder: PaletteItem["group"][] = ["Actions", "Créer", "Livrables", "Projets", "Espaces", "Demandes"];
 const icons = {
   Actions: Plus,
+  Créer: Plus,
   Livrables: FileText,
   Projets: Folder,
   Espaces: Building2,
