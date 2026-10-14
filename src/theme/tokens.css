@@ -15,9 +15,10 @@
 
   /* Accents: "fill" keeps the brand hue (Ink text on top), "text"/"ui" are darkened for contrast */
   --action-fill: #30a8ff;
-  /* Call to action (primary buttons): white on the deep action blue (7.72:1, AAA); hover 8.73:1 */
-  --cta-fill: var(--action-text);
-  --cta-fill-hover: #004998;
+  /* Call to action (primary buttons): white on the UI blue, 4.51:1 (AA): accepted exception to the AAA rule, by the product owner.
+     Hover #006bb8 (5.53:1). */
+  --cta-fill: var(--action-ui);
+  --cta-fill-hover: #006bb8;
   --cta-text: var(--paper);
   --action-ui: #0079d1;
   --action-text: #005593;
