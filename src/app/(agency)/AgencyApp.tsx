@@ -74,10 +74,10 @@ import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialo
 import {
   Composer,
   ThreadPopover,
-  isCorrection,
+  requestKind,
+  type Qualified,
   type Area,
-  type ComposerResult,
-} from "./editor/CanvasComments";
+  } from "./editor/CanvasComments";
 import { EditorInspector, type InspectorTab } from "./editor/EditorInspector";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "./editor/ReviewCanvas";
 import { ProposalsView, type ProposalRow } from "./editor/ProposalsView";
@@ -108,8 +108,9 @@ type Comment = {
   decision: Decision;
   /** "request" = correction (title, description, qualification); otherwise a remark (conversation only). */
   kind?: "remark" | "request";
-  /** Title of a correction (its description is `message`). */
+  /** Set when qualified (correction or hors scope): what has to be done; `message` keeps the comment. */
   title?: string;
+  description?: string;
   /** Remark a correction was written from. */
   sourceId?: number;
   /** Area drawn on the page, in %. */
@@ -395,7 +396,7 @@ export function AgencyApp() {
   /** The selected thread is open on the canvas. */
   const [threadOpen, setThreadOpen] = useState(false);
   const [composer, setComposer] = useState<CanvasComposer | null>(null);
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("remarques");
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("comment");
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameError, setRenameError] = useState("");
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -748,7 +749,6 @@ export function AgencyApp() {
       const key = event.key.toLowerCase();
       if (key === "v") setCanvasTool("move");
       else if (key === "c" && !isReadOnlyVersion) setCanvasTool("remark");
-      else if ((key === "r" || key === "d") && !isReadOnlyVersion) setCanvasTool("correction");
       else if (event.key === "Escape") {
         setComposer(null);
         setThreadOpen(false);
@@ -853,7 +853,7 @@ export function AgencyApp() {
     const focused = activeComments.find((comment) => comment.id === focusedCommentId);
     setSelectedId(focusedCommentId);
     setThreadOpen(true);
-    if (focused) setInspectorTab(isCorrection(focused) ? "corrections" : "remarques");
+    if (focused) setInspectorTab(requestKind(focused));
     router.replace(pathname, { scroll: false });
     // Bring its pin into view once the canvas has laid out the pages.
     window.setTimeout(() => {
@@ -877,11 +877,28 @@ export function AgencyApp() {
     ]);
   }
 
-  /** Qualification chosen in a thread: a remark qualified "Incluse" or "Hors périmètre" becomes a request. */
-  function qualifyComment(commentId: number, decision: Decision) {
+  /**
+   * Qualifies a comment as a correction (in scope) or an addition (hors scope), with a clear title;
+   * also used to change a qualification or send the request back to clarify.
+   */
+  function qualifyComment(commentId: number, qualified: Qualified) {
     if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
-    setComments((current) => current.map((comment) => (comment.id === commentId ? { ...comment, decision } : comment)));
-    recordAudit("scope.classified", `Correction qualifiée « ${decision} »`, commentId);
+    const back = qualified.decision === "À qualifier";
+    setComments((current) =>
+      current.map((comment) =>
+        comment.id !== commentId
+          ? comment
+          : back
+            ? { ...comment, decision: "À qualifier", kind: "remark" }
+            : { ...comment, decision: qualified.decision, kind: "request", title: qualified.title, description: qualified.description || undefined },
+      ),
+    );
+    recordAudit(
+      "scope.classified",
+      back ? "Demande remise à clarifier" : `Demande qualifiée « ${qualified.decision === "Inclus" ? "Correction" : "Hors scope"} » : ${qualified.title}`,
+      commentId,
+    );
+    setInspectorTab(back ? "comment" : qualified.decision === "Inclus" ? "correction" : "outside");
   }
 
   function createProject(event: React.FormEvent<HTMLFormElement>) {
@@ -1157,54 +1174,29 @@ export function AgencyApp() {
     requestAnimationFrame(() => centerOnPin(commentId));
   }
 
-  /** Publishes the composer: a remark, or a correction (title, description, qualification). */
-  function submitComposer(result: ComposerResult) {
-    if (isReadOnlyVersion || !composer) return;
-    const correction = composer.mode === "correction";
+  /** Publishes a comment written on the canvas, or by hand (no position) from the panel. */
+  function addComment(message: string, spot: CanvasComposer | null) {
+    if (isReadOnlyVersion) return;
     const created: Comment = {
       id: Math.max(...comments.map((comment) => comment.id), 0) + 1,
       deliverableId: currentDeliverable.id,
       author: "Alex Morgan",
       initials: "AM",
       time: "À l'instant",
-      message: result.message,
-      title: result.title,
-      location: composer.target,
-      decision: correction ? result.decision : "À qualifier",
-      kind: correction ? "request" : "remark",
-      sourceId: composer.sourceId,
-      page: composer.page,
-      position: { x: composer.x, y: composer.y },
-      area: composer.area,
+      message,
+      location: spot?.target ?? "Livrable (général)",
+      decision: "À qualifier",
+      kind: "remark",
+      page: spot?.page ?? 1,
+      position: spot ? { x: spot.x, y: spot.y } : undefined,
+      area: spot?.area,
     };
     setComments((current) => [...current, created]);
-    recordAudit(
-      correction ? "correction.created" : "comment.created",
-      correction ? `Correction « ${result.title} » créée, qualifiée « ${result.decision} »` : "Remarque agence ajoutée",
-      created.id,
-    );
+    recordAudit("comment.created", "Commentaire agence ajouté", created.id);
     setSelectedId(created.id);
-    setInspectorTab(correction ? "corrections" : "remarques");
+    setInspectorTab("comment");
     setComposer(null);
     setThreadOpen(true);
-  }
-
-  /** "Créer une correction" from a remark: the form opens on the same spot, prefilled. */
-  function createCorrectionFrom(remark: Comment) {
-    if (isReadOnlyVersion) return;
-    const excerpt = remark.message.length > 60 ? `${remark.message.slice(0, 60)}…` : remark.message;
-    setThreadOpen(false);
-    setComposer({
-      mode: "correction",
-      page: remark.page ?? 1,
-      x: remark.position?.x ?? 50,
-      y: remark.position?.y ?? 50,
-      target: remark.location,
-      area: remark.area,
-      sourceId: remark.id,
-      initialTitle: excerpt,
-      initialDescription: remark.message,
-    });
   }
 
   function replyTo(commentId: number, message: string) {
@@ -1242,13 +1234,12 @@ export function AgencyApp() {
       }
       return updated;
     });
-    recordAudit("comment.deleted", "Remarque agence supprimée", commentId);
+    recordAudit("comment.deleted", "Commentaire agence supprimé", commentId);
   }
 
-  /** What still needs the agency: a client remark with no correction yet, or a correction to clarify. */
+  /** What still needs the agency: every comment still to clarify (not yet a correction or hors scope). */
   function needsQualification(comment: Comment) {
-    if (isCorrection(comment)) return comment.decision === "À qualifier";
-    return comment.initials !== "AM" && !comments.some((other) => other.sourceId === comment.id);
+    return requestKind(comment) === "comment";
   }
 
   function approveVersion() {
@@ -1564,7 +1555,7 @@ export function AgencyApp() {
       const commentHref = `${recordHref}?demande=${comment.id}`;
       const adaptation = adaptationRequests[comment.id];
       if (needsQualification(comment))
-        todoItems.push({ key: `qualify-${comment.id}`, kind: "to-qualify", title: isCorrection(comment) ? "Correction à clarifier" : "Remarque à traiter", excerpt: comment.title ?? comment.message, context, meta: [comment.author, comment.time].filter(Boolean).join(" · "), href: commentHref });
+        todoItems.push({ key: `qualify-${comment.id}`, kind: "to-qualify", title: "Commentaire à clarifier", excerpt: comment.message, context, meta: [comment.author, comment.time].filter(Boolean).join(" · "), href: commentHref });
       else if (comment.decision === "Hors périmètre" && adaptation && !adaptation.decision)
         todoItems.push({ key: `adapt-${comment.id}`, kind: "adaptation", title: "Adaptation de proposition demandée", excerpt: adaptation.message, context, meta: `Demandée le ${adaptation.requestedAt}`, href: commentHref });
       else if (comment.decision === "Hors périmètre" && proposalStateFor(comment.id) === "sent" && proposalDecisionFor(comment.id) === "none") {
@@ -1604,7 +1595,7 @@ export function AgencyApp() {
         .map((record) => record.id),
     );
     const latestComments = scopeComments.filter((comment) => latestIds.has(comment.deliverableId ?? -1));
-    const qualified = latestComments.filter((comment) => isCorrection(comment) && comment.decision !== "À qualifier");
+    const qualified = latestComments.filter((comment) => requestKind(comment) !== "comment");
     const figuresOf = (recordIds: Set<number>) => {
       const own = scopeComments.filter((comment) => recordIds.has(comment.deliverableId ?? -1));
       return {
@@ -1977,7 +1968,7 @@ export function AgencyApp() {
               threadOpen={threadOpen}
               readOnly={isReadOnlyVersion}
               tool={canvasTool}
-              tools={["move", "remark", "correction"]}
+              tools={["move", "remark"]}
               onToolChange={setCanvasTool}
               composer={composer}
               onCompose={(next) => {
@@ -1988,7 +1979,7 @@ export function AgencyApp() {
                 setComposer(null);
                 setSelectedId(comment.id);
                 setThreadOpen((open) => !(open && comment.id === selectedComment?.id));
-                setInspectorTab(isCorrection(comment) ? "corrections" : "remarques");
+                setInspectorTab(requestKind(comment));
               }}
               onBackgroundClick={() => {
                 setThreadOpen(false);
@@ -2026,14 +2017,8 @@ export function AgencyApp() {
                   locked={isDecisionLocked(comment.id)}
                   proposalLabel={proposalLabel(comment as Comment)}
                   onReply={(message) => replyTo(comment.id, message)}
-                  onQualify={(decision) => qualifyComment(comment.id, decision)}
+                  onQualify={(qualified) => qualifyComment(comment.id, qualified)}
                   onOpenProposal={() => openProposal(comment.id)}
-                  onCreateCorrection={isReadOnlyVersion ? undefined : () => createCorrectionFrom(comment as Comment)}
-                  linkedCorrection={(() => {
-                    const linked = activeComments.find((candidate) => candidate.sourceId === comment.id);
-                    return linked ? { id: linked.id, title: linked.title ?? linked.message } : undefined;
-                  })()}
-                  onOpenThread={focusThread}
                   onDelete={
                     comment.initials === "AM" && !isReadOnlyVersion && !isDecisionLocked(comment.id)
                       ? () => {
@@ -2047,14 +2032,11 @@ export function AgencyApp() {
               )}
               renderComposer={(current) => (
                 <Composer
-                  key={`${current.mode}-${current.x}-${current.y}`}
+                  key={`${current.x}-${current.y}`}
                   x={current.x}
                   y={current.y}
-                  mode={current.mode}
                   target={current.target}
-                  initialTitle={current.initialTitle}
-                  initialDescription={current.initialDescription}
-                  onSubmit={submitComposer}
+                  onSubmit={(result) => addComment(result.message, current)}
                   onCancel={() => setComposer(null)}
                 />
               )}
@@ -2068,6 +2050,7 @@ export function AgencyApp() {
               onTab={setInspectorTab}
               onFocus={focusThread}
               proposalLabel={(comment) => proposalLabel(comment as Comment)}
+              onAddComment={isReadOnlyVersion ? undefined : (message) => addComment(message, null)}
               versionLabel={`Version ${String(currentDeliverable.version).padStart(2, "0")}`}
               versionChip={versionChip}
               validation={[
@@ -2088,7 +2071,7 @@ export function AgencyApp() {
             <div className="proposal-drawer">
               <div className="drawer-header">
                 <div>
-                  <div className="eyebrow">DEMANDE HORS PÉRIMÈTRE</div>
+                  <div className="eyebrow">AJOUT HORS SCOPE</div>
                   <h2>
                     {proposalStateFor(proposalCommentId ?? 0) === "sent"
                       ? "Proposition complémentaire"
@@ -2316,7 +2299,7 @@ export function AgencyApp() {
                     className="changes-button"
                     onClick={() => {
                       setApprovalOpen(false);
-                      setInspectorTab("remarques");
+                      setInspectorTab("comment");
                     }}
                   >
                     Revenir aux retours
@@ -2401,7 +2384,7 @@ export function AgencyApp() {
                     </small>
                   </div>
                   <div className="scope-summary-card highlight">
-                    <span className="scope-card-label">À qualifier</span>
+                    <span className="scope-card-label">À clarifier</span>
                     <b>
                       {activeComments.filter((c) => needsQualification(c)).length}
                     </b>
@@ -2766,7 +2749,7 @@ export function AgencyApp() {
                 <dl className="shortcuts-list">
                   {[
                     ["V", "Outil Déplacer"],
-                    ["C", "Outil Remarque"],
+                    ["C", "Outil Commentaire"],
                     ["D", "Outil Demande"],
                     ["Échap", "Fermer le fil, quitter l’outil"],
                     ["Molette", "Faire défiler les pages"],

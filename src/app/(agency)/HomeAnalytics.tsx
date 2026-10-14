@@ -32,7 +32,7 @@ export type HomeAnalyticsData = {
 };
 
 const decisionStyles = { "À qualifier": "decision-pending", Inclus: "decision-included", "Hors périmètre": "decision-outside" } as const;
-const decisionLabels = { "À qualifier": "À qualifier", Inclus: "Incluse", "Hors périmètre": "Hors périmètre" } as const;
+const decisionLabels = { "À qualifier": "À clarifier", Inclus: "Correction", "Hors périmètre": "Hors scope" } as const;
 const euros = (value: number) => `${value.toLocaleString("fr-FR")} €`;
 
 /** Scope split and proposal status, side by side (same bar and swatches as the proposals page). */
@@ -51,7 +51,7 @@ export function ScopeCharts({ data }: { data: HomeAnalyticsData }) {
         <div
           className="proposal-split"
           role="img"
-          aria-label={`Incluses ${included}, hors périmètre ${outside}, à qualifier ${pending}`}
+          aria-label={`Corrections ${included}, hors scope ${outside}, à clarifier ${pending}`}
         >
           <span className="is-included" style={{ width: share(included) }} />
           <span className="is-outside" style={{ width: share(outside) }} />
@@ -59,13 +59,13 @@ export function ScopeCharts({ data }: { data: HomeAnalyticsData }) {
         </div>
         <ul className="chart-legend">
           <li>
-            <i className="legend-swatch is-included" aria-hidden="true" /> Incluses <b>{included}</b>
+            <i className="legend-swatch is-included" aria-hidden="true" /> Corrections <b>{included}</b>
           </li>
           <li>
-            <i className="legend-swatch is-outside" aria-hidden="true" /> Hors périmètre <b>{outside}</b>
+            <i className="legend-swatch is-outside" aria-hidden="true" /> Hors scope <b>{outside}</b>
           </li>
           <li>
-            <i className="legend-swatch is-pending" aria-hidden="true" /> À qualifier <b>{pending}</b>
+            <i className="legend-swatch is-pending" aria-hidden="true" /> À clarifier <b>{pending}</b>
           </li>
         </ul>
         <dl className="chart-facts">
@@ -161,7 +161,7 @@ export function RegisterTable({ rows }: { rows: HomeAnalyticsData["register"] })
               <td>{row.amount ? `${row.amount} · ${row.deadline}` : "—"}</td>
               <td>
                 {row.decision !== "Hors périmètre" ? (
-                  <span className="proposal-meta is-inline">{row.decision === "Inclus" ? "Inclus au devis" : "—"}</span>
+                  <span className="proposal-meta is-inline">{row.decision === "Inclus" ? "Incluse au scope" : "—"}</span>
                 ) : (
                   <span
                     className={`decision-badge ${

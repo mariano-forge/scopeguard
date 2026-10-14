@@ -8,11 +8,11 @@ import {
   Check,
   Eye,
   Lock,
-  MessageSquare,
   X,
 } from "lucide-react";
 import type { DeliverableType } from "@/components/deliverableKinds";
-import { Composer, ThreadPopover, isCorrection, type Area, type ComposerResult, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
+import { Composer, ThreadPopover, requestKind, type Area, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
+import { RequestPanel, type InspectorTab } from "@/app/(agency)/editor/EditorInspector";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "@/app/(agency)/editor/ReviewCanvas";
 
 
@@ -142,7 +142,7 @@ export default function ClientReviewPage() {
   /** The selected thread is open on the canvas. */
   const [threadOpen, setThreadOpen] = useState(false);
   const [composer, setComposer] = useState<CanvasComposer | null>(null);
-  const [panelTab, setPanelTab] = useState<"remarques" | "corrections">("remarques");
+  const [panelTab, setPanelTab] = useState<InspectorTab>("comment");
   const [proposalStates, setProposalStates] = useState<ProposalStates>({});
   const [proposalDecisions, setProposalDecisions] = useState<ProposalDecisions>({});
   const [adaptationRequests, setAdaptationRequests] = useState<AdaptationRequests>({});
@@ -353,9 +353,9 @@ export default function ClientReviewPage() {
     return reviewStatus === "approved" || deliverable.locked || deliverable.status === "Approuvée" || deliverable.status === "Remplacée";
   }
 
-  /** Publishes the remark written on the canvas. */
-  function submitRemark(result: ComposerResult) {
-    if (isReadOnlyVersion() || !composer) return;
+  /** Publishes a comment written on the canvas, or by hand (no position) from the panel. */
+  function addComment(message: string, spot: CanvasComposer | null) {
+    if (isReadOnlyVersion()) return;
     const id = Math.max(...comments.map((comment) => comment.id), 0) + 1;
     setComments((current) => [
       ...current,
@@ -365,19 +365,19 @@ export default function ClientReviewPage() {
         author: "Claire Martin",
         initials: "CM",
         time: "À l'instant",
-        message: result.message,
-        location: composer.target,
+        message,
+        location: spot?.target ?? "Livrable (général)",
         decision: "À qualifier",
         kind: "remark",
-        page: composer.page,
-        position: { x: composer.x, y: composer.y },
-        area: composer.area,
+        page: spot?.page ?? 1,
+        position: spot ? { x: spot.x, y: spot.y } : undefined,
+        area: spot?.area,
       },
     ]);
     setComposer(null);
     setCommentSent(true);
     setSelectedCommentId(id);
-    setPanelTab("remarques");
+    setPanelTab("comment");
     setThreadOpen(true);
   }
 
@@ -611,9 +611,6 @@ export default function ClientReviewPage() {
     ...comment,
     decision: comment.decision === "Inclus" || comment.decision === "Hors périmètre" ? comment.decision : "À qualifier",
   }));
-  const panelComments = canvasComments
-    .filter((comment) => (panelTab === "corrections" ? isCorrection(comment) : !isCorrection(comment)))
-    .sort((left, right) => right.id - left.id);
   const sharedProposalComments = sharedComments.filter(
     (comment) => comment.decision === "Hors périmètre" && proposalStates[comment.id] === "sent",
   );
@@ -678,13 +675,13 @@ export default function ClientReviewPage() {
             composer={composer}
             onCompose={(next) => {
               setThreadOpen(false);
-              setComposer({ ...next, mode: "remark" });
+              setComposer(next);
             }}
             onPinClick={(comment) => {
               setComposer(null);
               setSelectedCommentId(comment.id);
               setThreadOpen((open) => !(open && comment.id === selectedCommentId));
-              setPanelTab(isCorrection(comment) ? "corrections" : "remarques");
+              setPanelTab(requestKind(comment));
             }}
             onBackgroundClick={() => {
               setThreadOpen(false);
@@ -701,7 +698,6 @@ export default function ClientReviewPage() {
             }
             renderThread={(comment) => {
               const locked = isCommercialDecisionLocked(comment.id);
-              const linked = canvasComments.find((candidate) => candidate.sourceId === comment.id);
               return (
                 <ThreadPopover
                   key={comment.id}
@@ -718,10 +714,8 @@ export default function ClientReviewPage() {
                         }
                       : undefined
                   }
-                  linkedCorrection={linked ? { id: linked.id, title: linked.title ?? linked.message } : undefined}
-                  onOpenThread={focusThread}
                   onDelete={
-                    comment.initials === "CM" && !isCorrection(comment) && !isReadOnlyVersion() && !locked
+                    comment.initials === "CM" && requestKind(comment) === "comment" && !isReadOnlyVersion() && !locked
                       ? () => {
                           deleteComment(comment.id);
                           setThreadOpen(false);
@@ -737,9 +731,8 @@ export default function ClientReviewPage() {
                 key={`${current.x}-${current.y}`}
                 x={current.x}
                 y={current.y}
-                mode="remark"
                 target={current.target}
-                onSubmit={submitRemark}
+                onSubmit={(result) => addComment(result.message, current)}
                 onCancel={() => setComposer(null)}
               />
             )}
@@ -748,66 +741,16 @@ export default function ClientReviewPage() {
           <aside className="client-side-panel" aria-label="Vos retours">
             <div className="client-side-heading">
               <h2>Vos retours</h2>
-              <p>Cliquez sur le livrable, ou dessinez une zone, pour laisser une remarque. L’équipe la transforme en correction.</p>
+              <p>Commentez un élément ou dessinez une zone sur le livrable. L’équipe qualifie chaque commentaire : correction incluse, ou ajout hors scope chiffré.</p>
             </div>
-            <div className="inspector-tabs" role="tablist" aria-label="Retours">
-              <button role="tab" aria-selected={panelTab === "remarques"} className={panelTab === "remarques" ? "is-active" : ""} onClick={() => setPanelTab("remarques")}>
-                Remarques <span>{canvasComments.filter((comment) => !isCorrection(comment)).length}</span>
-              </button>
-              <button role="tab" aria-selected={panelTab === "corrections"} className={panelTab === "corrections" ? "is-active" : ""} onClick={() => setPanelTab("corrections")}>
-                Corrections <span>{canvasComments.filter(isCorrection).length}</span>
-              </button>
-            </div>
-            <div className="inspector-list" role="tabpanel">
-              {panelComments.length === 0 ? (
-                <div className="inspector-empty-state">
-                  <MessageSquare aria-hidden="true" />
-                  <p>
-                    {panelTab === "remarques"
-                      ? "Aucune remarque pour l’instant. Cliquez sur le livrable pour en laisser une."
-                      : "Aucune correction pour l’instant : l’équipe les rédige à partir de vos remarques."}
-                  </p>
-                </div>
-              ) : (
-                <ul>
-                  {panelComments.map((comment) => (
-                    <li key={comment.id}>
-                      <button
-                        className={`thread-row ${threadOpen && comment.id === selectedCommentId ? "is-selected" : ""}`}
-                        onClick={() => focusThread(comment.id)}
-                      >
-                        <span className={`thread-avatar ${comment.initials === "AM" ? "is-agency" : "is-client"}`} aria-hidden="true">
-                          {comment.initials}
-                        </span>
-                        <span className="thread-row-body">
-                          <span className="thread-row-meta">
-                            <b>{comment.author}</b>
-                            <small>
-                              #{comment.id} · {comment.time}
-                            </small>
-                          </span>
-                          <span className={`thread-row-text ${isCorrection(comment) ? "is-title" : ""}`}>
-                            {isCorrection(comment) ? (comment.title ?? comment.message) : comment.message}
-                          </span>
-                          <span className="thread-row-tags">
-                            {isCorrection(comment) && (
-                              <span className={`decision-badge ${comment.decision === "Inclus" ? "decision-included" : comment.decision === "Hors périmètre" ? "decision-outside" : "decision-pending"}`}>
-                                {comment.decision === "Inclus" ? "Incluse" : comment.decision === "Hors périmètre" ? "Hors périmètre" : "À clarifier"}
-                              </span>
-                            )}
-                            {(comment.replies?.length ?? 0) > 0 && (
-                              <small>
-                                {comment.replies?.length} réponse{(comment.replies?.length ?? 0) > 1 ? "s" : ""}
-                              </small>
-                            )}
-                          </span>
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <RequestPanel
+              comments={canvasComments}
+              selectedId={threadOpen ? selectedCommentId : null}
+              tab={panelTab}
+              onTab={setPanelTab}
+              onFocus={focusThread}
+              onAddComment={isReadOnlyVersion() ? undefined : (message) => addComment(message, null)}
+            />
           </aside>
         </div>
         {sharedProposalComments.length > 0 && (
@@ -851,7 +794,7 @@ export default function ClientReviewPage() {
           </section>
         )}
         <div className="client-review-actions">
-          <p>{commentSent ? "Votre remarque a été transmise à l'équipe." : "Cliquez ou dessinez une zone sur le livrable pour laisser une remarque."}</p>
+          <p>{commentSent ? "Votre commentaire a été transmis à l'équipe." : "Cliquez ou dessinez une zone sur le livrable pour laisser un commentaire."}</p>
           {reviewStatus === "changes-requested" && (
             <div className="client-status-banner"><span className="status-dot changes-dot" />Modifications demandées · en attente d'une nouvelle version de l'agence</div>
           )}

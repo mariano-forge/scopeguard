@@ -30,7 +30,7 @@ function statusLabel(status: TabStatus) {
     case "changes-requested":
       return "Modifications demandées par le client";
     case "to-qualify":
-      return `${plural(status.count, "demande")} à qualifier`;
+      return `${plural(status.count, "commentaire")} à clarifier`;
     case "awaiting-client":
       return `${plural(status.count, "proposition")} en attente du client`;
     case "approved":

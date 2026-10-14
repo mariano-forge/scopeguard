@@ -151,7 +151,7 @@ export function ProposalsView({
         <div className="proposals-heading">
           <h1 className="page-title">Propositions financières</h1>
           <p>
-            Demandes hors périmètre de « {livrableName} » à chiffrer, puis à proposer au client.
+            Ajouts hors scope de « {livrableName} » à chiffrer, puis à proposer au client.
           </p>
         </div>
         <div className="proposals-header-actions">
@@ -211,12 +211,12 @@ export function ProposalsView({
       </section>
 
       <section className="browser-section">
-        <h2>Demandes hors périmètre · {rows.length}</h2>
+        <h2>Ajouts hors scope · {rows.length}</h2>
         {rows.length === 0 ? (
           <div className="empty-state">
             <Receipt aria-hidden="true" />
-            <h2>Aucune demande hors périmètre</h2>
-            <p>Qualifiez une demande « Hors périmètre » sur le canevas : elle apparaîtra ici pour être chiffrée.</p>
+            <h2>Aucun ajout hors scope</h2>
+            <p>Qualifiez un commentaire « Hors scope » sur le canevas : il apparaîtra ici pour être chiffré.</p>
           </div>
         ) : (
           <div className="overview-table-wrap">

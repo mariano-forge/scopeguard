@@ -384,7 +384,7 @@ export function BrowserView({
             <StatusMark status={livrableStatus(livrableIdOf(record, deliverables))} />
           </span>
           <small>{modifiedLabel(record.importedAt)}</small>
-          {pending > 0 && <span className="browser-badge">{plural(pending, "demande")} à qualifier</span>}
+          {pending > 0 && <span className="browser-badge">{plural(pending, "commentaire")} à clarifier</span>}
         </span>
       </>,
       <>
@@ -782,8 +782,8 @@ function HomePage({
   const tiles = [
     { label: "En attente du client", value: euros(figures.pendingEuros), note: plural(figures.pendingCount, "proposition") },
     { label: "Taux de conversion", value: percent(figures.conversionRate), note: "des propositions tranchées acceptées" },
-    { label: "Retours à traiter", value: String(figures.toQualify), note: "remarques sans correction, corrections à clarifier" },
-    { label: "Part hors périmètre", value: percent(figures.outsideRate), note: "des demandes qualifiées" },
+    { label: "Commentaires à clarifier", value: String(figures.toQualify), note: "demandes pas encore qualifiées" },
+    { label: "Part hors scope", value: percent(figures.outsideRate), note: "des demandes qualifiées" },
     { label: "Total des demandes", value: String(figures.totalDemands), note: "toutes versions confondues" },
     { label: "Versions approuvées", value: `${figures.approved} / ${figures.livrables}`, note: "livrables validés par le client" },
   ];
@@ -863,8 +863,8 @@ function HomePage({
                       {column}
                     </th>
                   ))}
-                  <th scope="col">À qualifier</th>
-                  <th scope="col">Hors périmètre</th>
+                  <th scope="col">À clarifier</th>
+                  <th scope="col">Hors scope</th>
                   <th scope="col">Revenu accepté</th>
                 </tr>
               </thead>

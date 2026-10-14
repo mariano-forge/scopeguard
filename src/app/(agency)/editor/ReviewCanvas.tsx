@@ -2,24 +2,20 @@
 
 import { useRef, useState, type RefObject } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
-import { ClipboardCheck, Maximize, MessageCirclePlus, Minus, MousePointer2, Plus } from "lucide-react";
+import { Maximize, MessageCirclePlus, Minus, MousePointer2, Plus } from "lucide-react";
 import { DeliverableContent } from "@/components/DeliverableContent";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { CommentPin, TargetHighlight, describeTarget, type Area, type TargetBox, type ThreadComment } from "./CanvasComments";
 
-/** Canvas tools: move (pan, open threads), remark (default), correction (agency only). */
-export type CanvasTool = "move" | "remark" | "correction";
-/** Where a new remark / correction is being written. */
+/** Canvas tools: move (pan, open threads) and comment (default). Requests are qualified from a comment. */
+export type CanvasTool = "move" | "remark";
+/** Where a new comment is being written. */
 export type CanvasComposer = {
-  mode: "remark" | "correction";
   page: number;
   x: number;
   y: number;
   target: string;
   area?: Area;
-  sourceId?: number;
-  initialTitle?: string;
-  initialDescription?: string;
 };
 type CanvasComment = ThreadComment & { page?: number };
 type ViewedDeliverable = { name: string; type: DeliverableType; fileData?: string; url?: string; coverData?: string };
@@ -193,7 +189,6 @@ export function ReviewCanvas({
       const round = (value: number) => Math.round(value * 10) / 10;
       const area = { x: round(box.left), y: round(box.top), w: round(box.width), h: round(box.height) };
       onCompose({
-        mode: tool === "correction" ? "correction" : "remark",
         page: drawing.page,
         x: area.x,
         y: area.y,
@@ -224,7 +219,6 @@ export function ReviewCanvas({
     const element = targetElement(event.target);
     setHover(null);
     onCompose({
-      mode: tool === "correction" ? "correction" : "remark",
       page: point.page,
       x: point.x,
       y: point.y,
@@ -250,8 +244,7 @@ export function ReviewCanvas({
 
   const toolButtons: Record<CanvasTool, { icon: React.ReactNode; label: string; title: string }> = {
     move: { icon: <MousePointer2 />, label: "", title: "Déplacer (V)" },
-    remark: { icon: <MessageCirclePlus />, label: "Remarque", title: "Laisser une remarque : cliquez ou dessinez une zone (C)" },
-    correction: { icon: <ClipboardCheck />, label: "Correction", title: "Écrire une correction : titre, description, qualification (R)" },
+    remark: { icon: <MessageCirclePlus />, label: "Commentaire", title: "Commenter : cliquez sur un élément ou dessinez une zone (C)" },
   };
 
   return (
@@ -319,11 +312,6 @@ export function ReviewCanvas({
         </TransformWrapper>
       </div>
 
-      {tool === "correction" && !readOnly && !composer && (
-        <p className="canvas-hint" role="status">
-          Cliquez ou dessinez une zone pour écrire une correction · <kbd>Échap</kbd> pour revenir aux remarques
-        </p>
-      )}
       <div className="canvas-toolbar" role="toolbar" aria-label="Outils du canevas">
         <div className="tool-group">
           {tools.map((option) => (

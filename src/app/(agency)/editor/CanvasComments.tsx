@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowRight, ArrowUp, Check, ClipboardCheck, Trash2, X } from "lucide-react";
+import { ArrowRight, ArrowUp, BadgeEuro, ClipboardCheck, Tag, Trash2, Undo2, X } from "lucide-react";
 
+/**
+ * One request, three states:
+ * - "À qualifier" → Commentaire (to clarify): written on the canvas or by hand;
+ * - "Inclus"      → Correction: qualified as part of the scope;
+ * - "Hors périmètre" → Hors scope: qualified as an addition, leads to a proposal.
+ * Corrections and out-of-scope requests only come from qualifying a comment.
+ */
 export type Qualification = "À qualifier" | "Inclus" | "Hors périmètre";
-export const qualifications: { value: Qualification; label: string }[] = [
-  { value: "Inclus", label: "Incluse" },
-  { value: "Hors périmètre", label: "Hors périmètre" },
-  { value: "À qualifier", label: "À clarifier" },
-];
+export type RequestKind = "comment" | "correction" | "outside";
 
 type ThreadReply = { id: number; author: string; initials: string; message: string; time: string };
 /** Rectangle drawn on a page, in % of the page box. */
@@ -18,36 +21,40 @@ export type ThreadComment = {
   author: string;
   initials: string;
   time: string;
-  /** Remark text, or the description of a correction. */
+  /** The comment as written (first message of the thread). */
   message: string;
-  /** Short title of a correction. */
+  /** Set when qualified: what has to be done, stated clearly. */
   title?: string;
+  description?: string;
   location: string;
   decision: Qualification;
-  /** "request" = correction (clear, qualified work item); otherwise a remark (conversation). */
   kind?: "remark" | "request";
-  /** Remark a correction was written from. */
   sourceId?: number;
   position?: { x: number; y: number };
   area?: Area;
   replies?: ThreadReply[];
 };
 
-/** A correction is a clear work item with a qualification; a remark is only a conversation. */
-export const isCorrection = (comment: Pick<ThreadComment, "kind" | "decision">) =>
-  comment.kind === "request" || (comment.kind === undefined && comment.decision !== "À qualifier");
+export const requestKind = (comment: Pick<ThreadComment, "decision">): RequestKind =>
+  comment.decision === "Inclus" ? "correction" : comment.decision === "Hors périmètre" ? "outside" : "comment";
+export const isQualified = (comment: Pick<ThreadComment, "decision">) => requestKind(comment) !== "comment";
+export const kindLabels: Record<RequestKind, string> = { comment: "Commentaire", correction: "Correction", outside: "Hors scope" };
+/** Short status shown on badges. */
+export const statusLabels: Record<RequestKind, string> = { comment: "À clarifier", correction: "Correction", outside: "Hors scope" };
+export const statusTones: Record<RequestKind, string> = { comment: "decision-pending", correction: "decision-included", outside: "decision-outside" };
+/** What a request asks, in one line: its title once qualified, else the comment. */
+export const requestText = (comment: Pick<ThreadComment, "title" | "message">) => comment.title ?? comment.message;
 
-/** Hovered zone with a comment tool, in % of the page box. */
+/** Hovered zone with the comment tool, in % of the page box. */
 export type TargetBox = { left: number; top: number; width: number; height: number; label: string };
 
 const side = (x: number) => (x > 58 ? "is-left" : "is-right");
 const vertical = (y: number) => (y > 62 ? "is-up" : "");
 
-/** Opens the bubble on the side where it fits in the visible canvas (flips when it would be cut off). */
+/** Opens the bubble on the side where it fits in the visible canvas (flips at most once). */
 function useFittingSide(x: number) {
   const ref = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState(side(x));
-  // Flip at most once: when neither side fits (narrow canvas), keep the second one instead of looping.
   const flipped = useRef(false);
   useLayoutEffect(() => {
     const bubble = ref.current;
@@ -62,73 +69,66 @@ function useFittingSide(x: number) {
   }, [placement]);
   return [ref, placement] as const;
 }
-const toneOf = (decision: Qualification) => (decision === "Hors périmètre" ? "scope" : decision === "Inclus" ? "included" : "clarify");
 
 export function CommentPin({ comment, active, onOpen }: { comment: ThreadComment; active: boolean; onOpen: () => void }) {
-  const correction = isCorrection(comment);
+  const kind = requestKind(comment);
   return (
     <button
       type="button"
       data-pin={comment.id}
-      className={`canvas-pin ${correction ? `is-correction is-${toneOf(comment.decision)}` : "is-remark"} ${active ? "is-active" : ""} ${comment.initials === "AM" ? "is-agency" : "is-client"}`}
+      className={`canvas-pin is-${kind} ${active ? "is-active" : ""} ${comment.initials === "AM" ? "is-agency" : "is-client"}`}
       style={{ left: `${comment.position?.x ?? 50}%`, top: `${comment.position?.y ?? 50}%` }}
       onClick={(event) => {
         event.stopPropagation();
         onOpen();
       }}
-      aria-label={correction ? `Correction #${comment.id} : ${comment.title ?? comment.message}` : `Remarque #${comment.id} de ${comment.author} : ${comment.message}`}
+      aria-label={`${kindLabels[kind]} #${comment.id} : ${requestText(comment)}`}
       aria-expanded={active}
     >
-      {correction ? <ClipboardCheck aria-hidden="true" /> : <span>{comment.initials}</span>}
+      {kind === "correction" ? <ClipboardCheck aria-hidden="true" /> : kind === "outside" ? <BadgeEuro aria-hidden="true" /> : <span>{comment.initials}</span>}
     </button>
   );
 }
 
-function QualificationChips({
-  value,
-  disabled,
-  onChange,
-}: {
-  value: Qualification | null;
-  disabled?: boolean;
-  onChange: (value: Qualification) => void;
-}) {
+/** Correction / Hors scope switch. */
+function ScopeChoice({ value, onChange }: { value: Qualification; onChange: (value: Qualification) => void }) {
+  const options: { value: Qualification; label: string; hint: string }[] = [
+    { value: "Inclus", label: "Correction", hint: "Incluse dans le scope" },
+    { value: "Hors périmètre", label: "Hors scope", hint: "Ajout à chiffrer" },
+  ];
   return (
-    <div className="thread-qualify" role="radiogroup" aria-label="Qualification">
-      {qualifications.map((option) => (
+    <div className="scope-choice" role="radiogroup" aria-label="Qualification">
+      {options.map((option) => (
         <button
           key={option.value}
           type="button"
           role="radio"
           aria-checked={value === option.value}
-          className={`qualify-chip qualify-${toneOf(option.value)} ${value === option.value ? "is-selected" : ""}`}
-          disabled={disabled}
+          className={`scope-option is-${option.value === "Inclus" ? "correction" : "outside"} ${value === option.value ? "is-selected" : ""}`}
           onClick={() => onChange(option.value)}
         >
-          {value === option.value && <Check aria-hidden="true" />}
-          {option.label}
+          <b>{option.label}</b>
+          <small>{option.hint}</small>
         </button>
       ))}
     </div>
   );
 }
 
+export type Qualified = { title: string; description: string; decision: Qualification };
+
 /**
- * Bubble next to its pin (Figma-like).
- * Remark: the conversation, a reply box, and "Créer une correction".
- * Correction: title, description, qualification (and proposal when out of scope), then its discussion.
+ * Bubble next to its pin (Figma-like). A comment shows its conversation and "Qualifier" (agency);
+ * qualifying turns the same request into a correction or an out-of-scope addition, with a clear title.
  */
 export function ThreadPopover({
   comment,
   readOnly,
   locked,
   proposalLabel,
-  linkedCorrection,
   onReply,
   onQualify,
   onOpenProposal,
-  onCreateCorrection,
-  onOpenThread,
   onDelete,
   onClose,
 }: {
@@ -137,40 +137,37 @@ export function ThreadPopover({
   /** Decision locked by an accepted/refused proposal. */
   locked: boolean;
   proposalLabel: string | null;
-  /** Correction already written from this remark. */
-  linkedCorrection?: { id: number; title: string };
   onReply: (message: string) => void;
-  onQualify?: (decision: Qualification) => void;
+  /** Agency only: qualify a comment, change a qualification, or send it back to clarify. */
+  onQualify?: (qualified: Qualified) => void;
   onOpenProposal?: () => void;
-  /** Writes a correction from this remark (agency only). */
-  onCreateCorrection?: () => void;
-  onOpenThread?: (commentId: number) => void;
-  /** Only for the agency's own threads that are still open. */
   onDelete?: () => void;
   onClose: () => void;
 }) {
+  const kind = requestKind(comment);
   const [draft, setDraft] = useState("");
+  const [qualifying, setQualifying] = useState(false);
+  const [title, setTitle] = useState(comment.title ?? (comment.message.length > 70 ? `${comment.message.slice(0, 70)}…` : comment.message));
+  const [description, setDescription] = useState(comment.description ?? comment.message);
+  const [decision, setDecision] = useState<Qualification>(kind === "outside" ? "Hors périmètre" : "Inclus");
   const listRef = useRef<HTMLDivElement>(null);
   const x = comment.position?.x ?? 50;
   const y = comment.position?.y ?? 50;
   const [bubbleRef, placement] = useFittingSide(x);
-  const correction = isCorrection(comment);
   const canWrite = !readOnly && !locked;
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [comment.replies?.length]);
 
-  const messages = correction
-    ? (comment.replies ?? [])
-    : [{ id: 0, author: comment.author, initials: comment.initials, message: comment.message, time: comment.time }, ...(comment.replies ?? [])];
+  const messages = [{ id: 0, author: comment.author, initials: comment.initials, message: comment.message, time: comment.time }, ...(comment.replies ?? [])];
   return (
     <div
       ref={bubbleRef}
-      className={`thread ${correction ? "is-correction" : ""} ${placement} ${vertical(y)}`}
+      className={`thread is-${kind} ${qualifying ? "is-qualifying" : ""} ${placement} ${vertical(y)}`}
       style={{ left: `${x}%`, top: `${y}%` }}
       role="dialog"
-      aria-label={correction ? `Correction #${comment.id}` : `Remarque #${comment.id}`}
+      aria-label={`${kindLabels[kind]} #${comment.id}`}
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
@@ -179,7 +176,9 @@ export function ThreadPopover({
     >
       <header className="thread-header">
         <span className="thread-title">
-          {correction ? `Correction #${comment.id}` : `Remarque #${comment.id}`}
+          <span className="thread-title-line">
+            <span className={`decision-badge ${statusTones[kind]}`}>{statusLabels[kind]}</span> #{comment.id}
+          </span>
           <small>{comment.location}</small>
         </span>
         <span className="thread-header-actions">
@@ -194,130 +193,140 @@ export function ThreadPopover({
         </span>
       </header>
 
-      {correction && (
-        <div className="correction-body">
-          <p className="correction-title">{comment.title ?? comment.message}</p>
-          {comment.title && <p className="correction-description">{comment.message}</p>}
-          <p className="thread-meta">
-            <small>
-              {comment.author} · {comment.time}
-            </small>
-          </p>
-          {onQualify ? (
-            <QualificationChips value={comment.decision} disabled={!canWrite} onChange={onQualify} />
-          ) : (
-            <span className={`qualify-chip qualify-${toneOf(comment.decision)} is-selected is-static`}>
-              {qualifications.find((option) => option.value === comment.decision)?.label}
-            </span>
-          )}
-          {comment.decision === "Hors périmètre" && onOpenProposal && (
-            <button type="button" className="thread-proposal" onClick={onOpenProposal} disabled={readOnly}>
-              {proposalLabel ?? "Faire une proposition"} <ArrowRight aria-hidden="true" />
-            </button>
-          )}
-          {comment.sourceId && onOpenThread && (
-            <button type="button" className="thread-link" onClick={() => onOpenThread(comment.sourceId ?? 0)}>
-              Issue de la remarque #{comment.sourceId}
-            </button>
-          )}
-        </div>
-      )}
-
-      {messages.length > 0 && (
-        <div className="thread-messages" ref={listRef}>
-          {messages.map((message) => (
-            <div key={message.id} className={`thread-message ${message.initials === "AM" ? "is-agency" : "is-client"}`}>
-              <span className="thread-avatar" aria-hidden="true">
-                {message.initials}
-              </span>
-              <div>
-                <p className="thread-meta">
-                  <b>{message.author}</b> <small>{message.time}</small>
-                </p>
-                <p className="thread-text">{message.message}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!correction && (linkedCorrection || onCreateCorrection) && (
-        <div className="thread-actions">
-          {linkedCorrection ? (
-            <button type="button" className="thread-link" onClick={() => onOpenThread?.(linkedCorrection.id)}>
-              <ClipboardCheck aria-hidden="true" /> Correction #{linkedCorrection.id} : {linkedCorrection.title}
-            </button>
-          ) : (
-            <button type="button" className="secondary-button thread-create" onClick={onCreateCorrection} disabled={readOnly}>
-              <ClipboardCheck aria-hidden="true" /> Créer une correction
-            </button>
-          )}
-        </div>
-      )}
-
-      {canWrite ? (
+      {qualifying ? (
         <form
-          className="thread-reply"
+          className="qualify-form"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!draft.trim()) return;
-            onReply(draft.trim());
-            setDraft("");
+            if (!title.trim()) return;
+            onQualify?.({ title: title.trim(), description: description.trim(), decision });
+            setQualifying(false);
           }}
         >
-          <input
-            autoFocus={!correction}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder={correction ? "Commenter la correction…" : "Répondre…"}
-            aria-label="Répondre"
-          />
-          <button type="submit" className="thread-send" disabled={!draft.trim()} aria-label="Envoyer la réponse">
-            <ArrowUp />
-          </button>
+          <ScopeChoice value={decision} onChange={setDecision} />
+          <label>
+            Titre de la demande
+            <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex. Raccourcir le titre principal" />
+          </label>
+          <label>
+            Description
+            <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} placeholder="Ce qui doit être fait, précisément." />
+          </label>
+          <div className="qualify-form-actions">
+            <button type="button" className="ghost-button" onClick={() => setQualifying(false)}>
+              Annuler
+            </button>
+            <button type="submit" className="primary-button" disabled={!title.trim()}>
+              {kind === "comment" ? "Qualifier" : "Enregistrer"}
+            </button>
+          </div>
         </form>
       ) : (
-        <p className="thread-locked">{readOnly ? "Version en lecture seule." : "Décision verrouillée par la proposition."}</p>
+        <>
+          {kind !== "comment" && (
+            <div className="request-body">
+              <p className="request-title">{requestText(comment)}</p>
+              {comment.description && <p className="request-description">{comment.description}</p>}
+              {kind === "outside" && onOpenProposal && (
+                <button type="button" className="thread-proposal" onClick={onOpenProposal} disabled={readOnly}>
+                  {proposalLabel ?? "Faire une proposition"} <ArrowRight aria-hidden="true" />
+                </button>
+              )}
+              {onQualify && canWrite && (
+                <div className="request-actions">
+                  <button type="button" className="thread-link" onClick={() => setQualifying(true)}>
+                    <Tag aria-hidden="true" /> Modifier
+                  </button>
+                  <button
+                    type="button"
+                    className="thread-link"
+                    onClick={() => onQualify({ title: comment.title ?? "", description: comment.description ?? "", decision: "À qualifier" })}
+                  >
+                    <Undo2 aria-hidden="true" /> Remettre à clarifier
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="thread-messages" ref={listRef}>
+            {messages.map((message) => (
+              <div key={message.id} className={`thread-message ${message.initials === "AM" ? "is-agency" : "is-client"}`}>
+                <span className="thread-avatar" aria-hidden="true">
+                  {message.initials}
+                </span>
+                <div>
+                  <p className="thread-meta">
+                    <b>{message.author}</b> <small>{message.time}</small>
+                  </p>
+                  <p className="thread-text">{message.message}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {kind === "comment" && onQualify && canWrite && (
+            <div className="thread-actions">
+              <button type="button" className="secondary-button thread-create" onClick={() => setQualifying(true)}>
+                <Tag aria-hidden="true" /> Qualifier la demande
+              </button>
+            </div>
+          )}
+
+          {canWrite ? (
+            <form
+              className="thread-reply"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!draft.trim()) return;
+                onReply(draft.trim());
+                setDraft("");
+              }}
+            >
+              <input
+                autoFocus={kind === "comment"}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder={kind === "comment" ? "Répondre, demander une précision…" : "Commenter la demande…"}
+                aria-label="Répondre"
+              />
+              <button type="submit" className="thread-send" disabled={!draft.trim()} aria-label="Envoyer la réponse">
+                <ArrowUp />
+              </button>
+            </form>
+          ) : (
+            <p className="thread-locked">{readOnly ? "Version en lecture seule." : "Décision verrouillée par la proposition."}</p>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-export type ComposerResult = { message: string; title?: string; decision: Qualification };
+export type ComposerResult = { message: string };
 
-/**
- * Where a remark or a correction is written, right where the canvas was clicked (or the area drawn).
- * A correction is a small form: title, description, qualification (Incluse by default).
- */
+/** Where a new comment is written, right where the canvas was clicked (or the area drawn). */
 export function Composer({
   x,
   y,
-  mode,
   target,
-  initialTitle = "",
-  initialDescription = "",
   onSubmit,
   onCancel,
 }: {
   x: number;
   y: number;
-  mode: "remark" | "correction";
   target: string;
-  initialTitle?: string;
-  initialDescription?: string;
   onSubmit: (result: ComposerResult) => void;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState(initialDescription);
-  const [title, setTitle] = useState(initialTitle);
-  const [decision, setDecision] = useState<Qualification>("Inclus");
+  const [draft, setDraft] = useState("");
   const [bubbleRef, placement] = useFittingSide(x);
   return (
     <>
       <span className="composer-pin" style={{ left: `${x}%`, top: `${y}%` }} aria-hidden="true" />
       <div
         ref={bubbleRef}
-        className={`thread composer ${mode === "correction" ? "is-correction" : ""} ${placement} ${vertical(y)}`}
+        className={`thread composer ${placement} ${vertical(y)}`}
         style={{ left: `${x}%`, top: `${y}%` }}
         onClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
@@ -327,60 +336,31 @@ export function Composer({
       >
         <header className="thread-header">
           <span className="thread-title">
-            {mode === "remark" ? "Nouvelle remarque" : "Nouvelle correction"}
+            Nouveau commentaire
             <small>{target}</small>
           </span>
           <button type="button" className="thread-icon-button" onClick={onCancel} aria-label="Annuler">
             <X />
           </button>
         </header>
-        {mode === "remark" ? (
-          <form
-            className="thread-reply"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (draft.trim()) onSubmit({ message: draft.trim(), decision: "À qualifier" });
-            }}
-          >
-            <input autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Écrire une remarque…" aria-label="Remarque" />
-            <button type="submit" className="thread-send" disabled={!draft.trim()} aria-label="Publier">
-              <ArrowUp />
-            </button>
-          </form>
-        ) : (
-          <form
-            className="correction-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (title.trim() && draft.trim()) onSubmit({ title: title.trim(), message: draft.trim(), decision });
-            }}
-          >
-            <label>
-              Titre
-              <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex. Raccourcir le titre principal" />
-            </label>
-            <label>
-              Description
-              <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ce qui doit être fait, précisément." rows={3} />
-            </label>
-            <span className="correction-form-label">Qualification</span>
-            <QualificationChips value={decision} onChange={setDecision} />
-            <div className="correction-form-actions">
-              <button type="button" className="ghost-button" onClick={onCancel}>
-                Annuler
-              </button>
-              <button type="submit" className="primary-button" disabled={!title.trim() || !draft.trim()}>
-                Créer la correction
-              </button>
-            </div>
-          </form>
-        )}
+        <form
+          className="thread-reply"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (draft.trim()) onSubmit({ message: draft.trim() });
+          }}
+        >
+          <input autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Écrire un commentaire…" aria-label="Commentaire" />
+          <button type="submit" className="thread-send" disabled={!draft.trim()} aria-label="Publier">
+            <ArrowUp />
+          </button>
+        </form>
       </div>
     </>
   );
 }
 
-/** Blue outline on the zone under the pointer (comment tools), like Agentation. */
+/** Blue outline on the zone under the pointer (comment tool), like Agentation. */
 export function TargetHighlight({ box, drawing }: { box: TargetBox; drawing?: boolean }) {
   return (
     <div

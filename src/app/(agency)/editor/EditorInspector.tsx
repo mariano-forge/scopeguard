@@ -1,30 +1,151 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ClipboardCheck, Copy, Download, Eye, MessageSquare, Share2 } from "lucide-react";
-import { isCorrection, type ThreadComment } from "./CanvasComments";
+import { Check, Copy, Download, Eye, MessageSquare, Plus, Share2 } from "lucide-react";
+import { kindLabels, requestKind, requestText, statusLabels, statusTones, type RequestKind, type ThreadComment } from "./CanvasComments";
 
-export type InspectorTab = "remarques" | "corrections";
+export type InspectorTab = RequestKind;
 
-const decisionLabel = { "À qualifier": "À clarifier", Inclus: "Incluse", "Hors périmètre": "Hors périmètre" } as const;
-const decisionTone = { "À qualifier": "decision-pending", Inclus: "decision-included", "Hors périmètre": "decision-outside" } as const;
+const tabs: { kind: RequestKind; label: string; empty: string }[] = [
+  { kind: "comment", label: "À clarifier", empty: "Aucun commentaire à clarifier. Commentez le livrable sur le canevas, ou ajoutez-en un ici." },
+  { kind: "correction", label: "Corrections", empty: "Aucune correction. Qualifiez un commentaire « Correction » quand il fait partie du scope." },
+  { kind: "outside", label: "Hors scope", empty: "Aucun ajout hors scope. Qualifiez un commentaire « Hors scope » pour le chiffrer." },
+];
 
-/** Markdown summary of every thread of the version (copy / export). */
+/** Markdown summary of every request of the version (copy / export). */
 export function threadsToMarkdown(title: string, comments: ThreadComment[]) {
-  const block = (label: string, list: ThreadComment[]) =>
-    list.length === 0
-      ? ""
-      : `## ${label}\n\n${list
-          .map((comment) =>
-            [
-              isCorrection(comment)
-                ? `- **Correction #${comment.id} · ${decisionLabel[comment.decision]} — ${comment.title ?? comment.message}** (${comment.location})${comment.title ? `\n  ${comment.message}` : ""}`
-                : `- **#${comment.id}** — ${comment.author} (${comment.location}) : ${comment.message}`,
-              ...(comment.replies ?? []).map((reply) => `  - ${reply.author} : ${reply.message}`),
-            ].join("\n"),
-          )
-          .join("\n")}\n\n`;
-  return `# ${title}\n\n${block("Corrections", comments.filter(isCorrection))}${block("Remarques", comments.filter((comment) => !isCorrection(comment)))}`.trim() + "\n";
+  const section = (kind: RequestKind, label: string) => {
+    const list = comments.filter((comment) => requestKind(comment) === kind);
+    if (list.length === 0) return "";
+    return `## ${label}\n\n${list
+      .map((comment) =>
+        [
+          `- **#${comment.id} · ${requestText(comment)}** (${comment.location})${comment.description ? `\n  ${comment.description}` : ""}`,
+          `  - ${comment.author} : ${comment.message}`,
+          ...(comment.replies ?? []).map((reply) => `  - ${reply.author} : ${reply.message}`),
+        ].join("\n"),
+      )
+      .join("\n")}\n\n`;
+  };
+  return `# ${title}\n\n${section("correction", "Corrections")}${section("outside", "Hors scope")}${section("comment", "À clarifier")}`.trim() + "\n";
+}
+
+/**
+ * Requests of a version in three tabs (À clarifier · Corrections · Hors scope), with a manual comment form.
+ * Used by the agency inspector and by the client page.
+ */
+export function RequestPanel({
+  comments,
+  selectedId,
+  tab,
+  onTab,
+  onFocus,
+  proposalLabel,
+  onAddComment,
+}: {
+  comments: ThreadComment[];
+  selectedId: number | null;
+  tab: InspectorTab;
+  onTab: (tab: InspectorTab) => void;
+  /** Shows that request on the canvas. */
+  onFocus: (commentId: number) => void;
+  proposalLabel?: (comment: ThreadComment) => string | null;
+  /** Adds a comment by hand (not tied to a spot of the canvas); absent when read-only. */
+  onAddComment?: (message: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
+  const count = (kind: RequestKind) => comments.filter((comment) => requestKind(comment) === kind).length;
+  const list = comments.filter((comment) => requestKind(comment) === tab).sort((left, right) => right.id - left.id);
+  const current = tabs.find((option) => option.kind === tab) ?? tabs[0];
+
+  return (
+    <>
+      <div className="inspector-tabs" role="tablist" aria-label="Demandes">
+        {tabs.map((option) => (
+          <button key={option.kind} role="tab" aria-selected={tab === option.kind} className={tab === option.kind ? "is-active" : ""} onClick={() => onTab(option.kind)}>
+            {option.label} <span>{count(option.kind)}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="inspector-list" role="tabpanel">
+        {tab === "comment" && onAddComment && (
+          <div className="manual-comment">
+            {adding ? (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!draft.trim()) return;
+                  onAddComment(draft.trim());
+                  setDraft("");
+                  setAdding(false);
+                }}
+              >
+                <textarea autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} placeholder="Un retour sur le livrable dans son ensemble…" aria-label="Nouveau commentaire" />
+                <div className="manual-comment-actions">
+                  <button type="button" className="ghost-button" onClick={() => setAdding(false)}>
+                    Annuler
+                  </button>
+                  <button type="submit" className="primary-button" disabled={!draft.trim()}>
+                    Ajouter
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <button type="button" className="manual-comment-trigger" onClick={() => setAdding(true)}>
+                <Plus aria-hidden="true" /> Commentaire
+              </button>
+            )}
+          </div>
+        )}
+        {list.length === 0 ? (
+          <div className="inspector-empty-state">
+            <MessageSquare aria-hidden="true" />
+            <p>{current.empty}</p>
+          </div>
+        ) : (
+          <ul>
+            {list.map((comment) => {
+              const kind = requestKind(comment);
+              return (
+                <li key={comment.id}>
+                  <button
+                    className={`thread-row ${comment.id === selectedId ? "is-selected" : ""}`}
+                    aria-current={comment.id === selectedId ? "true" : undefined}
+                    aria-label={`${kindLabels[kind]} #${comment.id}`}
+                    onClick={() => onFocus(comment.id)}
+                  >
+                    <span className={`thread-avatar ${comment.initials === "AM" ? "is-agency" : "is-client"}`} aria-hidden="true">
+                      {comment.initials}
+                    </span>
+                    <span className="thread-row-body">
+                      <span className="thread-row-meta">
+                        <b>{comment.author}</b>
+                        <small>
+                          #{comment.id} · {comment.time}
+                        </small>
+                      </span>
+                      <span className={`thread-row-text ${kind !== "comment" ? "is-title" : ""}`}>{requestText(comment)}</span>
+                      <span className="thread-row-tags">
+                        <span className={`decision-badge ${statusTones[kind]}`}>{statusLabels[kind]}</span>
+                        {kind === "outside" && proposalLabel?.(comment) && <small>{proposalLabel(comment)}</small>}
+                        {(comment.replies?.length ?? 0) > 0 && (
+                          <small>
+                            {comment.replies?.length} réponse{(comment.replies?.length ?? 0) > 1 ? "s" : ""}
+                          </small>
+                        )}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </>
+  );
 }
 
 export function EditorInspector({
@@ -35,6 +156,7 @@ export function EditorInspector({
   onTab,
   onFocus,
   proposalLabel,
+  onAddComment,
   versionLabel,
   versionChip,
   validation,
@@ -47,9 +169,9 @@ export function EditorInspector({
   selectedId: number | null;
   tab: InspectorTab;
   onTab: (tab: InspectorTab) => void;
-  /** Shows that thread on the canvas. */
   onFocus: (commentId: number) => void;
   proposalLabel: (comment: ThreadComment) => string | null;
+  onAddComment?: (message: string) => void;
   versionLabel: string;
   versionChip?: { label: string; tone: string };
   validation: string;
@@ -57,10 +179,6 @@ export function EditorInspector({
   onPreview: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const linkedCorrection = (remarkId: number) => comments.find((comment) => comment.sourceId === remarkId)?.id;
-  const corrections = comments.filter(isCorrection);
-  const remarks = comments.filter((comment) => !isCorrection(comment));
-  const list = [...(tab === "corrections" ? corrections : remarks)].sort((left, right) => right.id - left.id);
 
   async function copy() {
     try {
@@ -75,13 +193,13 @@ export function EditorInspector({
     const url = URL.createObjectURL(new Blob([threadsToMarkdown(title, comments)], { type: "text/markdown" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${title.replace(/[^\p{L}\p{N}]+/gu, "-")}-commentaires.md`;
+    link.download = `${title.replace(/[^\p{L}\p{N}]+/gu, "-")}-demandes.md`;
     link.click();
     URL.revokeObjectURL(url);
   }
 
   return (
-    <aside className="inspector editor-inspector" aria-label="Partage et fils de discussion">
+    <aside className="inspector editor-inspector" aria-label="Partage et demandes">
       <div className="inspector-top">
         <button className="inspector-primary" onClick={onShare}>
           <Share2 /> Partager
@@ -99,71 +217,15 @@ export function EditorInspector({
         <p className="inspector-meta">{validation}</p>
       </section>
 
-      <div className="inspector-tabs" role="tablist" aria-label="Historique">
-        <button role="tab" aria-selected={tab === "remarques"} className={tab === "remarques" ? "is-active" : ""} onClick={() => onTab("remarques")}>
-          Remarques <span>{remarks.length}</span>
-        </button>
-        <button role="tab" aria-selected={tab === "corrections"} className={tab === "corrections" ? "is-active" : ""} onClick={() => onTab("corrections")}>
-          Corrections <span>{corrections.length}</span>
-        </button>
-      </div>
-
-      <div className="inspector-list" role="tabpanel">
-        {list.length === 0 ? (
-          <div className="inspector-empty-state">
-            <MessageSquare aria-hidden="true" />
-            <p>
-              {tab === "remarques"
-                ? "Aucune remarque. Cliquez sur le livrable pour en laisser une."
-                : "Aucune correction. Créez-en une depuis une remarque, ou avec l’outil Correction (R)."}
-            </p>
-          </div>
-        ) : (
-          <ul>
-            {list.map((comment) => (
-              <li key={comment.id}>
-                <button
-                  className={`thread-row ${comment.id === selectedId ? "is-selected" : ""}`}
-                  aria-current={comment.id === selectedId ? "true" : undefined}
-                  onClick={() => onFocus(comment.id)}
-                >
-                  <span className={`thread-avatar ${comment.initials === "AM" ? "is-agency" : "is-client"}`} aria-hidden="true">
-                    {comment.initials}
-                  </span>
-                  <span className="thread-row-body">
-                    <span className="thread-row-meta">
-                      <b>{comment.author}</b>
-                      <small>
-                        #{comment.id} · {comment.time}
-                      </small>
-                    </span>
-                    <span className={`thread-row-text ${isCorrection(comment) ? "is-title" : ""}`}>
-                      {isCorrection(comment) ? (comment.title ?? comment.message) : comment.message}
-                    </span>
-                    <span className="thread-row-tags">
-                      {isCorrection(comment) ? (
-                        <span className={`decision-badge ${decisionTone[comment.decision]}`}>{decisionLabel[comment.decision]}</span>
-                      ) : (
-                        linkedCorrection(comment.id) && (
-                          <small className="thread-row-link">
-                            <ClipboardCheck aria-hidden="true" /> Correction #{linkedCorrection(comment.id)}
-                          </small>
-                        )
-                      )}
-                      {isCorrection(comment) && proposalLabel(comment) && <small>{proposalLabel(comment)}</small>}
-                      {(comment.replies?.length ?? 0) > 0 && (
-                        <small>
-                          {comment.replies?.length} réponse{(comment.replies?.length ?? 0) > 1 ? "s" : ""}
-                        </small>
-                      )}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <RequestPanel
+        comments={comments}
+        selectedId={selectedId}
+        tab={tab}
+        onTab={onTab}
+        onFocus={onFocus}
+        proposalLabel={proposalLabel}
+        onAddComment={onAddComment}
+      />
 
       <div className="inspector-footer">
         <button className="ghost-button" onClick={copy} disabled={comments.length === 0}>
