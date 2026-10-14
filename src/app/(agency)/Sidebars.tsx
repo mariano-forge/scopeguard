@@ -5,17 +5,15 @@ import Link from "next/link";
 import {
   Bell,
   ChevronDown,
-  ChevronRight,
   Clock,
   CircleHelp,
   FileText,
   FolderClosed,
   House,
   Layers,
-  LayoutDashboard,
   Lock,
   PanelLeftClose,
-  Paperclip,
+  Settings,
   Plus,
   Receipt,
   Search,
@@ -23,12 +21,8 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
-import { KoraMark } from "@/components/KoraMark";
-import { StatusMark, type TabStatus } from "./TabBar";
 import { href, type AgencyView } from "./routes";
 import { SpaceAvatar } from "./BrowserView";
-import type { DeliverableType } from "@/components/deliverableKinds";
-import { DeliverableIcon } from "@/components/DeliverableIcon";
 import { MenuButton, type MenuEntry } from "./editor/MenuButton";
 
 type Notification = { id: number; message: string };
@@ -187,22 +181,13 @@ export function HomeSidebar({
   );
 }
 
-export type SidebarLivrable = {
-  livrableId: number;
-  name: string;
-  type: DeliverableType;
-  href: string;
-  status: TabStatus;
-  active: boolean;
-};
 /** A version is shown like a Figma page: older ones are frozen (read-only). */
 export type SidebarVersion = { id: number; label: string; meta: string; href: string; active: boolean; frozen: boolean };
-export type SidebarAnnex = { id: number; name: string; meta: string; href: string };
 export type PanelMode = "livrables";
 
 /**
- * Inside a deliverable (canvas, dashboard, proposals): icon rail + collapsible panel (Figma file view).
- * The logo opens the main menu; every rail action is about the open deliverable.
+ * Inside a deliverable (canvas, proposals): icon rail + collapsible panel (Figma file view).
+ * The gear opens the main menu; every rail action stays in the deliverable tab.
  */
 export function ProjectSidebar({
   project,
@@ -210,21 +195,15 @@ export function ProjectSidebar({
   livrableName,
   livrableMenu,
   systemMenu,
-  livrables,
   versions,
-  annexes,
-  onAddAnnex,
   versionChip,
   view,
   panel,
   onPanel,
-  dashboardHref,
   proposalsHref,
   canvasHref,
   proposalsBadge,
-  onSearch,
   onNavigate,
-  onNewDeliverable,
   notifications,
 }: {
   project: Project;
@@ -234,40 +213,28 @@ export function ProjectSidebar({
   livrableMenu: MenuEntry[];
   /** Main menu, under the logo. */
   systemMenu: MenuEntry[];
-  livrables: SidebarLivrable[];
   versions: SidebarVersion[];
-  annexes: SidebarAnnex[];
-  onAddAnnex: (file: File) => void;
   versionChip?: { label: string; tone: "resolved" | "high" | "medium" | "neutral" };
   view: AgencyView;
   /** Panel content, or null when collapsed. */
   panel: PanelMode | null;
   onPanel: (mode: PanelMode | null) => void;
-  dashboardHref: string;
   proposalsHref: string;
-  /** Canvas of the deliverable (from the dashboard or the proposals page). */
+  /** Canvas of the deliverable (from the proposals page). */
   canvasHref: string;
   /** Out-of-scope requests still waiting for a client decision. */
   proposalsBadge: number;
-  onSearch: () => void;
-  /** Switches view inside the deliverable's tab (canvas, proposals, dashboard). */
+  /** Switches view inside the deliverable's tab (canvas, proposals). */
   onNavigate: (target: string) => void;
-  onNewDeliverable: () => void;
   notifications: Notification[];
 }) {
-  const [othersOpen, setOthersOpen] = useState(false);
   return (
     <aside className={`sidebar project-sidebar ${panel ? "" : "is-collapsed"}`} aria-label="Navigation du livrable">
       <nav className="rail" aria-label="Outils">
         <MenuButton
           className="rail-logo"
           label="Menu principal"
-          trigger={
-            <>
-              <KoraMark />
-              <ChevronDown className="rail-logo-chevron" />
-            </>
-          }
+          trigger={<Settings />}
           menuClassName="system-menu"
           entries={systemMenu}
         />
@@ -303,18 +270,6 @@ export function ProjectSidebar({
         >
           <Receipt />
           {proposalsBadge > 0 && <span className="rail-badge">{proposalsBadge}</span>}
-        </button>
-        <button
-          className={`rail-button ${view.kind === "dashboard" ? "is-active" : ""}`}
-          onClick={() => onNavigate(dashboardHref)}
-          aria-label="Tableau de bord du livrable"
-          aria-pressed={view.kind === "dashboard"}
-          title="Tableau de bord du livrable"
-        >
-          <LayoutDashboard />
-        </button>
-        <button className="rail-button" onClick={onSearch} aria-label="Rechercher" title="Rechercher (Ctrl K)">
-          <Search />
         </button>
         <span className="rail-spacer" />
         <Notifications notifications={notifications} compact />
@@ -377,68 +332,6 @@ export function ProjectSidebar({
               </ul>
             </section>
 
-            <section className="panel-section" aria-label="Annexes">
-              <div className="panel-section-header">
-                <h2>Annexes</h2>
-                <label className="sidebar-icon-button" title="Importer une annexe">
-                  <Plus />
-                  <input
-                    type="file"
-                    className="sr-only"
-                    aria-label="Importer une annexe"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      event.target.value = "";
-                      if (file) onAddAnnex(file);
-                    }}
-                  />
-                </label>
-              </div>
-              {annexes.length === 0 ? (
-                <p className="panel-empty">Brief, charte, contrat… joignez ici les pièces utiles à ce livrable.</p>
-              ) : (
-                <ul>
-                  {annexes.map((annex) => (
-                    <li key={annex.id}>
-                      <a className="panel-item" href={annex.href} download={annex.name} title={`Télécharger ${annex.name}`}>
-                        <Paperclip />
-                        <span className="panel-item-label">{annex.name}</span>
-                        <small className="panel-item-meta">{annex.meta}</small>
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section className="panel-section" aria-label="Livrables du projet">
-              <div className="panel-section-header">
-                <button className="panel-section-toggle" onClick={() => setOthersOpen((open) => !open)} aria-expanded={othersOpen}>
-                  <ChevronRight className={othersOpen ? "is-open" : ""} />
-                  <h2>Livrables du projet</h2>
-                </button>
-                <button className="sidebar-icon-button" onClick={onNewDeliverable} aria-label="Nouveau livrable" title="Nouveau livrable">
-                  <Plus />
-                </button>
-              </div>
-              {othersOpen && (
-                <ul>
-                  {livrables.map((livrable) => (
-                    <li key={livrable.livrableId}>
-                      <Link
-                        className={`panel-item ${livrable.active ? "is-active" : ""}`}
-                        href={livrable.href}
-                        aria-current={livrable.active ? "page" : undefined}
-                      >
-                        <DeliverableIcon type={livrable.type} />
-                        <span className="panel-item-label">{livrable.name}</span>
-                        <StatusMark status={livrable.status} />
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
           </div>
         </div>
       )}

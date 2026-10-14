@@ -6421,3 +6421,31 @@ label.sidebar-icon-button:focus-within {
     border-top: 1px solid var(--border);
   }
 }
+
+/* Home analytics filters (project, deliverable) */
+.overview-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: calc(-1 * var(--s-4));
+}
+
+/* Rail: the gear opens the main menu */
+button.rail-logo {
+  width: 36px;
+  padding: 0;
+  justify-content: center;
+}
+button.rail-logo .lucide {
+  width: 20px;
+  height: 20px;
+}
+.overview .stat-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 900px) {
+  .overview .stat-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

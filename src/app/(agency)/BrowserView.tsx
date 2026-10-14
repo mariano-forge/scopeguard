@@ -39,9 +39,16 @@ export type HomeOverview = {
   toQualify: number;
   /** Share of qualified requests that are out of scope, null when nothing is qualified yet. */
   outsideRate: number | null;
+  /** Accepted share of the proposals the client answered, null before any answer. */
+  conversionRate: number | null;
   approved: number;
   livrables: number;
-  spaces: { client: Client; projects: number; livrables: number; toQualify: number; outside: number; acceptedEuros: number }[];
+  /** Rows under the figures: spaces, or the deliverables of the filtered project, or the versions of the filtered deliverable. */
+  breakdown: {
+    kind: "space" | "livrable" | "version";
+    rows: { key: string; label: string; href: string; client?: Client; counts: number[]; toQualify: number; outside: number; acceptedEuros: number }[];
+  };
+  filter: { projectId: number | null; livrableId: number | null };
   activity: { id: number; description: string; actor: string; timestamp: string }[];
 };
 
@@ -58,6 +65,8 @@ type BrowserViewProps = {
   error?: string;
   onNewClient: () => void;
   onNewProject: () => void;
+  /** Home analytics scope (null = everything). */
+  onOverviewFilter: (projectId: number | null, livrableId: number | null) => void;
   onNewDeliverable: () => void;
   onRenameClient: (clientId: number, name: string) => void;
   onRenameProject: (projectId: number, name: string) => void;
@@ -224,6 +233,7 @@ export function BrowserView({
   error,
   onNewClient,
   onNewProject,
+  onOverviewFilter,
   onNewDeliverable,
   onRenameClient,
   onRenameProject,
@@ -722,8 +732,33 @@ export function BrowserView({
       value: overview.outsideRate === null ? "—" : `${overview.outsideRate} %`,
       note: "des demandes qualifiées",
     },
+    {
+      label: "Taux d’acceptation",
+      value: overview.conversionRate === null ? "—" : `${overview.conversionRate} %`,
+      note: "des propositions tranchées par le client",
+    },
     { label: "Versions approuvées", value: `${overview.approved} / ${overview.livrables}`, note: "livrables validés par le client" },
   ];
+  // Filter choices: every project (with its space), then the deliverables of the chosen one.
+  const projectOptions = [
+    { value: "", label: "Tous les projets" },
+    ...projects.map((project) => ({
+      value: String(project.id),
+      label: `${clients.find((client) => client.id === (project.clientId ?? 1))?.name ?? "—"} / ${project.name}`,
+    })),
+  ];
+  const livrableOptions = [
+    { value: "", label: "Tous les livrables" },
+    ...[
+      ...new Map(
+        deliverables
+          .filter((record) => overview.filter.projectId !== null && (record.projectId ?? 1) === overview.filter.projectId)
+          .map((record) => [livrableIdOf(record, deliverables), record.name] as const),
+      ),
+    ].map(([id, name]) => ({ value: String(id), label: name })),
+  ];
+  const breakdownTitle = { space: "Par espace", livrable: "Par livrable", version: "Par version" }[overview.breakdown.kind];
+  const breakdownColumns = { space: ["Espace", "Projets", "Livrables"], livrable: ["Livrable", "Versions"], version: ["Version"] }[overview.breakdown.kind];
   return (
     <div className="browser">
       <PageNav />
@@ -733,6 +768,30 @@ export function BrowserView({
           <Plus /> Projet
         </button>
       </header>
+
+      <div className="overview-filters" role="group" aria-label="Filtrer les analyses">
+        <Select
+          label="Projet"
+          prefix="Projet"
+          value={overview.filter.projectId === null ? "" : String(overview.filter.projectId)}
+          options={projectOptions}
+          onChange={(value) => onOverviewFilter(value ? Number(value) : null, null)}
+        />
+        {overview.filter.projectId !== null && (
+          <Select
+            label="Livrable"
+            prefix="Livrable"
+            value={overview.filter.livrableId === null ? "" : String(overview.filter.livrableId)}
+            options={livrableOptions}
+            onChange={(value) => onOverviewFilter(overview.filter.projectId, value ? Number(value) : null)}
+          />
+        )}
+        {overview.filter.projectId !== null && (
+          <button className="ghost-button" onClick={() => onOverviewFilter(null, null)}>
+            Réinitialiser
+          </button>
+        )}
+      </div>
 
       <section className="overview" aria-label="Indicateurs">
         <div className="hero-stat">
@@ -768,34 +827,35 @@ export function BrowserView({
         </section>
       )}
 
-      {overview.spaces.length > 0 && (
+      {overview.breakdown.rows.length > 0 && (
         <section className="browser-section">
-          <h2>
-            <Link href={href.spaces()}>Par espace</Link>
-          </h2>
+          <h2>{overview.breakdown.kind === "space" ? <Link href={href.spaces()}>{breakdownTitle}</Link> : breakdownTitle}</h2>
           <div className="overview-table-wrap">
             <table className="overview-table">
               <thead>
                 <tr>
-                  <th scope="col">Espace</th>
-                  <th scope="col">Projets</th>
-                  <th scope="col">Livrables</th>
+                  {breakdownColumns.map((column) => (
+                    <th scope="col" key={column}>
+                      {column}
+                    </th>
+                  ))}
                   <th scope="col">À qualifier</th>
                   <th scope="col">Hors périmètre</th>
                   <th scope="col">Revenu accepté</th>
                 </tr>
               </thead>
               <tbody>
-                {overview.spaces.map((row) => (
-                  <tr key={row.client.id}>
+                {overview.breakdown.rows.map((row) => (
+                  <tr key={row.key}>
                     <th scope="row">
-                      <Link href={href.client(row.client.id)}>
-                        <SpaceAvatar client={row.client} size="sm" />
-                        <span>{row.client.name}</span>
+                      <Link href={row.href}>
+                        {row.client && <SpaceAvatar client={row.client} size="sm" />}
+                        <span>{row.label}</span>
                       </Link>
                     </th>
-                    <td>{row.projects}</td>
-                    <td>{row.livrables}</td>
+                    {row.counts.map((count, index) => (
+                      <td key={index}>{count}</td>
+                    ))}
                     <td>{row.toQualify}</td>
                     <td>{row.outside}</td>
                     <td>{euros(row.acceptedEuros)}</td>

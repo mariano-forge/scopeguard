@@ -42,7 +42,6 @@ import {
   type ReactZoomPanPinchRef,
 } from "react-zoom-pan-pinch";
 import {
-  ArrowLeft,
   ArrowRight,
   ArrowUpRight,
   Check,
@@ -54,27 +53,21 @@ import {
   Keyboard,
   Lock,
   MessageCirclePlus,
-  Paperclip,
   Receipt,
   Search,
   Settings,
   Star,
-  Coins,
-  FileText,
   Hourglass,
   House,
   Inbox,
-  LayoutDashboard,
   Maximize,
   Minus,
   MousePointer2,
   Pencil,
   Plus,
-  Scale,
   RotateCcw,
   ScrollText,
   Share2,
-  ShieldCheck,
   FileCheck,
   Upload,
   X,
@@ -83,7 +76,7 @@ import { BrowserView, type HomeOverview } from "./BrowserView";
 import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
 import { isAgencyAction, todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
-import { HomeSidebar, ProjectSidebar, type PanelMode, type SidebarFavorite, type SidebarLivrable, type SidebarVersion } from "./Sidebars";
+import { HomeSidebar, ProjectSidebar, type PanelMode, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
 import { href, hrefForRecord, livrableIdOf, parseAgencyPath, versionsOfLivrable } from "./routes";
 import { DeliverableContent } from "@/components/DeliverableContent";
 import { MAX_FILE_BYTES, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
@@ -195,8 +188,7 @@ type ProposalVersions = Record<number, ProposalVersion[]>;
 type ImportMode = "version" | "deliverable";
 /** Canvas tools: move (pan, open threads), remark, request (qualified at creation). */
 type CanvasTool = "move" | "remark" | "request";
-/** File attached to a deliverable (brief, charter, contract…), kept per deliverable. */
-type Annex = { id: number; name: string; size: number; fileData: string; addedAt: string };
+
 type Notification = {
   id: number;
   message: string;
@@ -317,7 +309,11 @@ export function AgencyApp() {
   const router = useRouter();
   const pathname = usePathname();
   const view = parseAgencyPath(pathname);
-  const focusedCommentId = Number(useSearchParams().get("demande")) || null;
+  const searchParams = useSearchParams();
+  const focusedCommentId = Number(searchParams.get("demande")) || null;
+  // Home analytics filters.
+  const filterProjectId = Number(searchParams.get("projet")) || null;
+  const filterLivrableId = Number(searchParams.get("livrable")) || null;
   const [projects, setProjects] = useState(initialProjects);
   const [clients, setClients] = useState(initialClients);
   const [deliverables, setDeliverables] = useState(initialDeliverables);
@@ -344,9 +340,9 @@ export function AgencyApp() {
       ? view.clientId
       : (projects.find((project) => project.id === selectedProjectId)?.clientId ?? clients[0]?.id ?? 0);
   const viewVersions =
-    view.kind === "deliverable" || view.kind === "dashboard" || view.kind === "proposals" ? versionsOfLivrable(view.livrableId, deliverables) : [];
+    view.kind === "deliverable" || view.kind === "proposals" ? versionsOfLivrable(view.livrableId, deliverables) : [];
   const viewRecord =
-    view.kind === "dashboard" || view.kind === "proposals"
+    view.kind === "proposals"
       ? viewVersions[0]
       : view.kind === "deliverable"
       ? view.version
@@ -359,7 +355,7 @@ export function AgencyApp() {
       .filter((deliverable) => (deliverable.projectId ?? 1) === selectedProjectId)
       .sort((left, right) => right.version - left.version)[0]?.id ??
     0;
-  const activeTab = view.kind === "dashboard" ? "dashboard" : view.kind === "proposals" ? "proposals" : "review";
+  const activeTab = view.kind === "proposals" ? "proposals" : "review";
   const isBrowserView =
     view.kind === "home" ||
     view.kind === "todo" ||
@@ -367,11 +363,6 @@ export function AgencyApp() {
     view.kind === "shared" ||
     view.kind === "trash" ||
     view.kind === "spaces" || view.kind === "client" || view.kind === "project" || view.kind === "not-found";
-
-  function openRecord(recordId: number) {
-    const record = deliverables.find((deliverable) => deliverable.id === recordId);
-    if (record) router.push(hrefForRecord(record, deliverables));
-  }
 
   const [comments, setComments] = useState(initialComments);
   const [selectedId, setSelectedId] = useState(1);
@@ -409,7 +400,6 @@ export function AgencyApp() {
   /** Zone under the pointer with a comment tool (Agentation-like targeting). */
   const [hoverTarget, setHoverTarget] = useState<{ page: number; box: TargetBox; element: Element } | null>(null);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("remarques");
-  const [annexes, setAnnexes] = useState<Record<number, Annex[]>>({});
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameError, setRenameError] = useState("");
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -462,7 +452,6 @@ export function AgencyApp() {
         lastReminderAt?: number | null;
         auditEvents?: AuditEvent[];
         trash?: TrashItem[];
-        annexes?: Record<number, Annex[]>;
       };
 
       if (parsedState.projects)
@@ -505,7 +494,6 @@ export function AgencyApp() {
       if (parsedState.lastReminderAt)
         setLastReminderAt(parsedState.lastReminderAt);
       if (parsedState.auditEvents) setAuditEvents(parsedState.auditEvents);
-      if (parsedState.annexes) setAnnexes(parsedState.annexes);
       if (parsedState.trash) {
         const limit = Date.now() - TRASH_DAYS * 24 * 60 * 60 * 1000;
         setTrash(parsedState.trash.filter((item) => item.deletedAt >= limit));
@@ -526,7 +514,6 @@ export function AgencyApp() {
           projects?: Project[];
           clients?: Client[];
           trash?: TrashItem[];
-          annexes?: Record<number, Annex[]>;
           comments?: Comment[];
           proposalStates?: ProposalStates;
           proposalDecisions?: ProposalDecisions;
@@ -559,7 +546,6 @@ export function AgencyApp() {
         // Spaces and projects too: a tab left open must not write back an older list and drop another tab’s new project.
         if (parsedState.clients) setClients(parsedState.clients);
         if (parsedState.trash) setTrash(parsedState.trash);
-        if (parsedState.annexes) setAnnexes(parsedState.annexes);
         if (parsedState.projects) setProjects(parsedState.projects);
         if (parsedState.deliverables) setDeliverables(migrateReviewStatus(parsedState));
         if (parsedState.reviewLinks) setReviewLinks(parsedState.reviewLinks);
@@ -593,7 +579,6 @@ export function AgencyApp() {
       lastReminderAt,
       auditEvents,
       trash,
-      annexes,
     });
 
     if (window.localStorage.getItem(storageKey) === newSerialized) return;
@@ -618,7 +603,6 @@ export function AgencyApp() {
     lastReminderAt,
     auditEvents,
     trash,
-    annexes,
     stateHydrated,
   ]);
 
@@ -675,54 +659,10 @@ export function AgencyApp() {
   const reminderBlocked =
     lastReminderAt !== null && Date.now() - lastReminderAt < 24 * 60 * 60 * 1000;
 
-  // Dashboard figures: every version of the deliverable being looked at.
-  const projectDeliverables = viewVersions;
-  const projectDeliverableIds = new Set(projectDeliverables.map((d) => d.id));
-  const projectComments = comments.filter((comment) =>
-    projectDeliverableIds.has(comment.deliverableId ?? deliverables[0]?.id ?? 1),
-  );
-  const totalProjectDemands = projectComments.length;
-  const includedDemands = projectComments.filter((c) => c.decision === "Inclus");
-  const outsideDemands = projectComments.filter((c) => c.decision === "Hors périmètre");
-  const pendingDemands = projectComments.filter((c) => c.decision === "À qualifier" || !c.decision);
-
-  let totalQuotedEuros = 0;
-  let totalAcceptedEuros = 0;
-  let totalQuotedDays = 0;
-  let totalAcceptedDays = 0;
-
-  outsideDemands.forEach((comment) => {
-    const proposal = activeProposalFor(comment.id);
-    const decision = proposalDecisionFor(comment.id);
-    if (proposal) {
-      const numAmount = parseNumericAmount(proposal.amount);
-      totalQuotedEuros += numAmount;
-      if (decision === "accepted") {
-        totalAcceptedEuros += numAmount;
-      }
-
-      const numDays = parseNumericDays(proposal.deadline);
-      totalQuotedDays += numDays;
-      if (decision === "accepted") {
-        totalAcceptedDays += numDays;
-      }
-    }
-  });
-
-  const outsideRate =
-    totalProjectDemands > 0
-      ? Math.round((outsideDemands.length / totalProjectDemands) * 100)
-      : 0;
-  const acceptedProposalsCount = outsideDemands.filter(
-    (c) => proposalDecisionFor(c.id) === "accepted",
-  ).length;
-  const refusedProposalsCount = outsideDemands.filter(
-    (c) => proposalDecisionFor(c.id) === "refused",
-  ).length;
-  const pendingProposalsCount = outsideDemands.filter(
-    (c) =>
-      proposalDecisionFor(c.id) === "none" && proposalStateFor(c.id) === "sent",
-  ).length;
+  // The deliverable dashboard is gone: its analytics live on the home page, filtered on that deliverable.
+  useEffect(() => {
+    if (view.kind === "dashboard") router.replace(`/?projet=${view.projectId}&livrable=${view.livrableId}`);
+  }, [view, router]);
 
   // A deliverable URL that no longer matches the data (deleted, wrong project, unknown version)
   // falls back to its project page, or to its latest version when only the version is wrong.
@@ -737,7 +677,7 @@ export function AgencyApp() {
   // Always the deliverable root id (the URL may point at any of its versions), so recents and tabs never list it twice.
   // Canvas, dashboard and proposals all belong to the deliverable's tab.
   const viewLivrableId =
-    (view.kind === "deliverable" || view.kind === "dashboard" || view.kind === "proposals") && viewRecord
+    (view.kind === "deliverable" || view.kind === "proposals") && viewRecord
       ? livrableIdOf(viewRecord, deliverables)
       : null;
   useEffect(() => {
@@ -1383,21 +1323,6 @@ export function AgencyApp() {
     recordAudit("reply.created", "Réponse agence ajoutée", commentId);
   }
 
-  /** Attaches a file to the open deliverable (all its versions). */
-  async function addAnnex(file: File) {
-    if (file.size > MAX_FILE_BYTES) {
-      setDeliverableError(`Annexe trop lourde pour la démo : ${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).`);
-      return;
-    }
-    const fileData = await readFileAsDataUrl(file);
-    setAnnexes((current) => ({
-      ...current,
-      [livrableRootId]: [{ id: Date.now(), name: file.name, size: file.size, fileData, addedAt: nowLabel() }, ...(current[livrableRootId] ?? [])],
-    }));
-    setDeliverableError("");
-    recordAudit("annex.added", `Annexe « ${file.name} » ajoutée`);
-  }
-
   /** "Nouvelle version" from the menus: the previous version is frozen. */
   function importVersionFile(file: File) {
     const type = kindFromFile(file);
@@ -1762,8 +1687,21 @@ export function AgencyApp() {
   todoItems.sort((left, right) => todoOrder.indexOf(left.kind) - todoOrder.indexOf(right.kind));
   const agencyActionCount = todoItems.filter(isAgencyAction).length;
 
-  // Home overview: figures across every space (proposals count whatever version they were raised on).
-  const outsideComments = comments.filter((comment) => comment.decision === "Hors périmètre");
+  // Home overview: figures across every space, or one project / one deliverable (?projet=, ?livrable=).
+  // Proposals count whatever version they were raised on.
+  const filterProject = projects.find((project) => project.id === filterProjectId) ?? null;
+  const filterLivrable =
+    filterProject && filterLivrableId !== null
+      ? (versionsOfLivrable(filterLivrableId, deliverables).find((record) => (record.projectId ?? 1) === filterProject.id) ?? null)
+      : null;
+  const scopeRecords = filterLivrable
+    ? versionsOfLivrable(filterLivrableId ?? 0, deliverables)
+    : filterProject
+      ? deliverables.filter((record) => (record.projectId ?? 1) === filterProject.id)
+      : deliverables;
+  const scopeIds = new Set(scopeRecords.map((record) => record.id));
+  const scopeComments = comments.filter((comment) => scopeIds.has(comment.deliverableId ?? -1));
+  const outsideComments = scopeComments.filter((comment) => comment.decision === "Hors périmètre");
   const sumAmounts = (list: Comment[]) =>
     list.reduce((total, comment) => total + parseNumericAmount(activeProposalFor(comment.id)?.amount), 0);
   const acceptedComments = outsideComments.filter((comment) => proposalDecisionFor(comment.id) === "accepted");
@@ -1771,13 +1709,67 @@ export function AgencyApp() {
     (comment) => proposalStateFor(comment.id) === "sent" && proposalDecisionFor(comment.id) === "none",
   );
   const latestIds = new Set(
-    deliverables
+    scopeRecords
       .filter((record) => versionsOfLivrable(livrableIdOf(record, deliverables), deliverables)[0]?.id === record.id)
       .map((record) => record.id),
   );
-  const latestComments = comments.filter((comment) => latestIds.has(comment.deliverableId ?? -1));
+  const latestComments = scopeComments.filter((comment) => latestIds.has(comment.deliverableId ?? -1));
   const qualified = latestComments.filter((comment) => comment.decision && comment.decision !== "À qualifier");
   const projectsOfClient = (clientId: number) => projects.filter((project) => (project.clientId ?? 1) === clientId);
+  const figuresOf = (recordIds: Set<number>) => {
+    const own = scopeComments.filter((comment) => recordIds.has(comment.deliverableId ?? -1));
+    return {
+      toQualify: own.filter((comment) => latestIds.has(comment.deliverableId ?? -1) && (comment.decision === "À qualifier" || !comment.decision)).length,
+      outside: own.filter((comment) => comment.decision === "Hors périmètre").length,
+      acceptedEuros: sumAmounts(acceptedComments.filter((comment) => recordIds.has(comment.deliverableId ?? -1))),
+    };
+  };
+  const breakdown: HomeOverview["breakdown"] = filterLivrable
+    ? {
+        kind: "version",
+        rows: scopeRecords.map((record) => ({
+          key: `v${record.id}`,
+          label: `Version ${String(record.version).padStart(2, "0")}`,
+          href: hrefForRecord(record, deliverables),
+          counts: [],
+          ...figuresOf(new Set([record.id])),
+        })),
+      }
+    : filterProject
+      ? {
+          kind: "livrable",
+          rows: scopeRecords
+            .filter((record) => latestIds.has(record.id))
+            .map((record) => {
+              const versions = versionsOfLivrable(livrableIdOf(record, deliverables), deliverables);
+              return {
+                key: `l${record.id}`,
+                label: record.name,
+                href: hrefForRecord(record, deliverables),
+                counts: [versions.length],
+                ...figuresOf(new Set(versions.map((version) => version.id))),
+              };
+            }),
+        }
+      : {
+          kind: "space",
+          rows: clients.map((client) => {
+            const projectIds = new Set(projectsOfClient(client.id).map((project) => project.id));
+            const recordIds = new Set(deliverables.filter((record) => projectIds.has(record.projectId ?? 1)).map((record) => record.id));
+            return {
+              key: `s${client.id}`,
+              label: client.name,
+              href: href.client(client.id),
+              client,
+              counts: [projectIds.size, [...latestIds].filter((id) => recordIds.has(id)).length],
+              ...figuresOf(recordIds),
+            };
+          }),
+        };
+  const scopeCommentIds = new Set(scopeComments.map((comment) => comment.id));
+  // The home "À traiter" list follows the same filter.
+  const scopeHrefs = new Set(scopeRecords.map((record) => hrefForRecord(record, deliverables)));
+  const homeTodoItems = filterProject ? todoItems.filter((item) => scopeHrefs.has(item.href.split("?")[0])) : todoItems;
   const overview: HomeOverview = {
     acceptedEuros: sumAmounts(acceptedComments),
     acceptedCount: acceptedComments.length,
@@ -1786,22 +1778,17 @@ export function AgencyApp() {
     pendingCount: pendingComments.length,
     toQualify: latestComments.length - qualified.length,
     outsideRate: qualified.length ? Math.round((qualified.filter((comment) => comment.decision === "Hors périmètre").length / qualified.length) * 100) : null,
+    conversionRate: outsideComments.some((comment) => proposalDecisionFor(comment.id) !== "none")
+      ? Math.round((acceptedComments.length / outsideComments.filter((comment) => proposalDecisionFor(comment.id) !== "none").length) * 100)
+      : null,
     approved: deliverables.filter((record) => latestIds.has(record.id) && record.reviewStatus === "approved").length,
     livrables: latestIds.size,
-    spaces: clients.map((client) => {
-      const projectIds = new Set(projectsOfClient(client.id).map((project) => project.id));
-      const recordIds = new Set(deliverables.filter((record) => projectIds.has(record.projectId ?? 1)).map((record) => record.id));
-      const spaceComments = comments.filter((comment) => recordIds.has(comment.deliverableId ?? -1));
-      return {
-        client,
-        projects: projectIds.size,
-        livrables: [...latestIds].filter((id) => recordIds.has(id)).length,
-        toQualify: latestComments.filter((comment) => recordIds.has(comment.deliverableId ?? -1) && (comment.decision === "À qualifier" || !comment.decision)).length,
-        outside: spaceComments.filter((comment) => comment.decision === "Hors périmètre").length,
-        acceptedEuros: sumAmounts(acceptedComments.filter((comment) => recordIds.has(comment.deliverableId ?? -1))),
-      };
-    }),
-    activity: auditEvents.slice(0, 5).map((event) => ({ id: event.id, description: event.description, actor: event.actor, timestamp: event.timestamp })),
+    breakdown,
+    filter: { projectId: filterProject?.id ?? null, livrableId: filterLivrable ? filterLivrableId : null },
+    activity: auditEvents
+      .filter((event) => (!filterProject ? true : event.commentId !== undefined && scopeCommentIds.has(event.commentId)))
+      .slice(0, 5)
+      .map((event) => ({ id: event.id, description: event.description, actor: event.actor, timestamp: event.timestamp })),
   };
 
   // ⌘K palette index: everything reachable, plus a few actions.
@@ -1921,7 +1908,6 @@ export function AgencyApp() {
   const livrableMenu: MenuEntry[] = [
     { kind: "section", label: "Ce livrable" },
     { label: "Importer une nouvelle version", icon: <Upload />, onFile: importVersionFile, accept: "application/pdf,image/*,video/*" },
-    { label: "Importer une annexe", icon: <Paperclip />, onFile: (file) => void addAnnex(file) },
     { label: "Partager la revue", icon: <Share2 />, onSelect: openShareDialog },
     { label: "Aperçu client", icon: <Eye />, onSelect: openClientPreview },
     { kind: "section", label: "Suivi" },
@@ -1929,7 +1915,6 @@ export function AgencyApp() {
     { label: "Synthèse & export", icon: <FileCheck />, onSelect: () => setProofOpen(true) },
     { label: "Historique & journal", icon: <ScrollText />, onSelect: () => setHistoryOpen(true) },
     { label: "Propositions financières", icon: <Receipt />, onSelect: () => router.push(href.proposals(selectedProjectId, livrableRootId)) },
-    { label: "Tableau de bord", icon: <LayoutDashboard />, onSelect: () => router.push(href.dashboard(selectedProjectId, livrableRootId)) },
     { kind: "section", label: "Organisation" },
     { label: "Renommer…", icon: <Pencil />, onSelect: () => { setRenameError(""); setRenameOpen(true); } },
     {
@@ -1967,20 +1952,7 @@ export function AgencyApp() {
   });
 
   // Project workspace panel: deliverables of the project, versions of the open one.
-  const inProject = (view.kind === "deliverable" || view.kind === "dashboard" || view.kind === "proposals") && Boolean(selectedProject);
-  const sidebarLivrables: SidebarLivrable[] = latestRecords
-    .filter((record) => (record.projectId ?? 1) === selectedProjectId)
-    .map((record) => {
-      const livrableId = livrableIdOf(record, deliverables);
-      return {
-        livrableId,
-        name: record.name,
-        type: record.type,
-        href: openTabs.find((tab) => tab.livrableId === livrableId)?.href ?? hrefForRecord(record, deliverables),
-        status: statusOf(record),
-        active: livrableId === viewLivrableId,
-      };
-    });
+  const inProject = (view.kind === "deliverable" || view.kind === "proposals") && Boolean(selectedProject);
   const sidebarVersions: SidebarVersion[] = viewVersions.map((record) => ({
     id: record.id,
     label: `V${String(record.version).padStart(2, "0")}`,
@@ -2025,21 +1997,15 @@ export function AgencyApp() {
           livrableName={viewVersions[0]?.name ?? "Livrable"}
           livrableMenu={livrableMenu}
           systemMenu={systemMenu}
-          livrables={sidebarLivrables}
           versions={sidebarVersions}
-          annexes={(annexes[livrableRootId] ?? []).map((annex) => ({ id: annex.id, name: annex.name, meta: annex.addedAt.split(",")[0], href: annex.fileData }))}
-          onAddAnnex={addAnnex}
           versionChip={versionChip}
           view={view}
           panel={sidebarPanel}
           onPanel={showPanel}
-          dashboardHref={href.dashboard(selectedProject.id, livrableRootId)}
           proposalsHref={href.proposals(selectedProject.id, livrableRootId)}
           canvasHref={href.deliverable(selectedProject.id, livrableRootId)}
           proposalsBadge={proposalRows.filter((row) => row.state === "to-quote" || row.state === "adaptation").length}
-          onSearch={() => setPaletteOpen(true)}
           onNavigate={(target) => router.push(target)}
-          onNewDeliverable={() => setNewDeliverableOpen(true)}
           notifications={notifications}
         />
       ) : (
@@ -2063,10 +2029,13 @@ export function AgencyApp() {
               deliverables={deliverables}
               comments={comments}
               recentLivrableIds={recentLivrableIds}
-              todoItems={todoItems}
+              todoItems={view.kind === "home" ? homeTodoItems : todoItems}
               error={deliverableError}
               onNewClient={() => setNewClientOpen(true)}
               onNewProject={() => setNewProjectOpen(true)}
+              onOverviewFilter={(projectId, livrableId) =>
+                router.replace(projectId === null ? href.home() : `/?projet=${projectId}${livrableId === null ? "" : `&livrable=${livrableId}`}`, { scroll: false })
+              }
               onNewDeliverable={() => setNewDeliverableOpen(true)}
               onRenameClient={renameClient}
               onRenameProject={renameProject}
@@ -2096,255 +2065,8 @@ export function AgencyApp() {
               onOpenProposal={openProposal}
               onOpenCanvas={(target) => router.push(target)}
             />
-          ) : activeTab === "dashboard" ? (
-            <div className="dashboard-view">
-              <div className="project-heading">
-                <div>
-                  <div className="eyebrow">PILOTAGE COMMERCIAL · {selectedProject?.name ?? "PROJET"}</div>
-                  <div className="project-selector-row">
-                    <h1>Tableau de bord : {viewRecord?.name ?? "Livrable"}</h1>
-                  </div>
-                  <p>
-                    Indicateurs de dérive de périmètre (scope creep), revenus supplémentaires contractualisés et registre des décisions.
-                  </p>
-                </div>
-                <div className="heading-actions">
-                  <button
-                    className="secondary-button"
-                    onClick={() => view.kind === "dashboard" && router.push(href.deliverable(view.projectId, view.livrableId))}
-                  >
-                    <ArrowLeft /> Revenir à la revue
-                  </button>
-                  <button className="secondary-button" onClick={() => setProofOpen(true)}>
-                    Synthèse & export <ArrowUpRight />
-                  </button>
-                </div>
-              </div>
-
-              <div className="dashboard-kpi-grid">
-                <div className="kpi-card highlight-green">
-                  <div className="kpi-header">
-                    <span className="kpi-icon"><Coins /></span>
-                    <span className="kpi-title">Revenu supplémentaire accepté</span>
-                  </div>
-                  <div className="kpi-value">{totalAcceptedEuros.toLocaleString("fr-FR")} €</div>
-                  <div className="kpi-sub">
-                    Sur <b>{totalQuotedEuros.toLocaleString("fr-FR")} €</b> de propositions chiffrées
-                  </div>
-                </div>
-
-                <div className="kpi-card highlight-coral">
-                  <div className="kpi-header">
-                    <span className="kpi-icon"><ShieldCheck /></span>
-                    <span className="kpi-title">Scope creep évité (Planning)</span>
-                  </div>
-                  <div className="kpi-value">+{totalAcceptedDays} jours</div>
-                  <div className="kpi-sub">
-                    Délai supplémentaire formalisé et accepté par le client
-                  </div>
-                </div>
-
-                <div className="kpi-card">
-                  <div className="kpi-header">
-                    <span className="kpi-icon"><FileText /></span>
-                    <span className="kpi-title">Total des demandes</span>
-                  </div>
-                  <div className="kpi-value">{totalProjectDemands}</div>
-                  <div className="kpi-sub">
-                    Dont <b>{outsideDemands.length}</b> hors périmètre ({outsideRate}%)
-                  </div>
-                </div>
-
-                <div className="kpi-card">
-                  <div className="kpi-header">
-                    <span className="kpi-icon"><Scale /></span>
-                    <span className="kpi-title">Taux de conversion devis</span>
-                  </div>
-                  <div className="kpi-value">
-                    {outsideDemands.length > 0
-                      ? Math.round((acceptedProposalsCount / outsideDemands.length) * 100)
-                      : 0}%
-                  </div>
-                  <div className="kpi-sub">
-                    <b>{acceptedProposalsCount}</b> acceptée{acceptedProposalsCount > 1 ? "s" : ""}, <b>{refusedProposalsCount}</b> refusée{refusedProposalsCount > 1 ? "s" : ""}, <b>{pendingProposalsCount}</b> en cours
-                  </div>
-                </div>
-              </div>
-
-              <div className="dashboard-sections-grid">
-                <div className="dashboard-section-card">
-                  <div className="section-card-header">
-                    <h3>Répartition des arbitrages de périmètre</h3>
-                    <span>Sur {projectDeliverables.length} version{projectDeliverables.length > 1 ? "s" : ""}</span>
-                  </div>
-                  <div className="scope-bar-wrap">
-                    <div className="scope-progress-bar">
-                      {totalProjectDemands > 0 ? (
-                        <>
-                          <div
-                            className="bar-segment included"
-                            style={{ width: `${(includedDemands.length / totalProjectDemands) * 100}%` }}
-                            title={`Incluses: ${includedDemands.length}`}
-                          />
-                          <div
-                            className="bar-segment outside"
-                            style={{ width: `${(outsideDemands.length / totalProjectDemands) * 100}%` }}
-                            title={`Hors périmètre: ${outsideDemands.length}`}
-                          />
-                          <div
-                            className="bar-segment pending"
-                            style={{ width: `${(pendingDemands.length / totalProjectDemands) * 100}%` }}
-                            title={`À qualifier: ${pendingDemands.length}`}
-                          />
-                        </>
-                      ) : (
-                        <div className="bar-segment empty" style={{ width: "100%" }} />
-                      )}
-                    </div>
-                    <div className="scope-legend">
-                      <span className="legend-item"><i className="legend-dot included" /> Incluses ({includedDemands.length})</span>
-                      <span className="legend-item"><i className="legend-dot outside" /> Hors périmètre ({outsideDemands.length})</span>
-                      <span className="legend-item"><i className="legend-dot pending" /> À qualifier ({pendingDemands.length})</span>
-                    </div>
-                  </div>
-
-                  <div className="kpi-mini-stats">
-                    <div className="mini-stat">
-                      <small>Temps non facturé évité</small>
-                      <b>~{totalAcceptedDays * 7}h</b>
-                    </div>
-                    <div className="mini-stat">
-                      <small>Montant moyen / devis</small>
-                      <b>{outsideDemands.length > 0 ? Math.round(totalQuotedEuros / outsideDemands.length) : 0} €</b>
-                    </div>
-                    <div className="mini-stat">
-                      <small>Versions</small>
-                      <b>{projectDeliverables.length}</b>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="dashboard-section-card">
-                  <div className="section-card-header">
-                    <h3>Statut des propositions commerciales</h3>
-                    <span>{outsideDemands.length} proposition{outsideDemands.length > 1 ? "s" : ""} au total</span>
-                  </div>
-                  <div className="proposals-status-list">
-                    <div className="status-row">
-                      <span className="status-label"><span className="status-dot approved-dot" /> Acceptées par le client</span>
-                      <b>{acceptedProposalsCount} ({totalAcceptedEuros.toLocaleString("fr-FR")} €)</b>
-                    </div>
-                    <div className="status-row">
-                      <span className="status-label"><span className="status-dot changes-dot" /> Refusées par le client</span>
-                      <b>{refusedProposalsCount}</b>
-                    </div>
-                    <div className="status-row">
-                      <span className="status-label"><span className="status-dot" /> En attente de décision / adaptation</span>
-                      <b>{pendingProposalsCount}</b>
-                    </div>
-                    <div className="status-row highlight">
-                      <span className="status-label"><b>Total valeur commerciale capturée</b></span>
-                      <b>+{totalAcceptedEuros.toLocaleString("fr-FR")} €</b>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="dashboard-table-card">
-                <div className="section-card-header">
-                  <div>
-                    <h3>Registre des demandes et décisions de périmètre</h3>
-                    <p>Historique complet des arbitrages du projet, versions et montants associés.</p>
-                  </div>
-                </div>
-                {projectComments.length === 0 ? (
-                  <p className="empty-table-note">Aucune demande enregistrée sur ce projet pour le moment.</p>
-                ) : (
-                  <div className="arbitrage-table-wrap">
-                    <table className="arbitrage-table">
-                      <thead>
-                        <tr>
-                          <th>Livrable</th>
-                          <th>Demande / Remarque</th>
-                          <th>Auteur</th>
-                          <th>Qualification</th>
-                          <th>Chiffrage & Planning</th>
-                          <th>Accord Client</th>
-                          <th>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {projectComments.map((comment) => {
-                          const deliverableRecord = deliverables.find((d) => d.id === comment.deliverableId);
-                          const proposal = activeProposalFor(comment.id);
-                          const decision = proposalDecisionFor(comment.id);
-                          return (
-                            <tr key={comment.id}>
-                              <td>
-                                <b>{deliverableRecord?.name ?? "Livrable"}</b>
-                                <small>V{deliverableRecord ? String(deliverableRecord.version).padStart(2, "0") : "01"}</small>
-                              </td>
-                              <td className="demand-cell">
-                                <p>{comment.message}</p>
-                                <small>#{comment.id} · {comment.location}</small>
-                              </td>
-                              <td>
-                                <span className={`avatar light-avatar ${comment.initials === "AM" ? "agency-avatar" : "client-avatar"}`}>
-                                  {comment.initials}
-                                </span>
-                              </td>
-                              <td>
-                                <span className={`decision-badge ${decisionStyles[comment.decision]}`}>
-                                  {comment.decision}
-                                </span>
-                              </td>
-                              <td>
-                                {comment.decision === "Hors périmètre" && proposal ? (
-                                  <div>
-                                    <b>{formatProposalAmount(proposal.amount)}</b>
-                                    <small>{formatProposalDeadline(proposal.deadline)}</small>
-                                  </div>
-                                ) : (
-                                  <span className="text-muted">—</span>
-                                )}
-                              </td>
-                              <td>
-                                {comment.decision === "Hors périmètre" ? (
-                                  <span
-                                    className={`decision-badge ${
-                                      decision === "accepted"
-                                        ? "decision-included"
-                                        : decision === "refused"
-                                          ? "decision-outside"
-                                          : "decision-pending"
-                                    }`}
-                                  >
-                                    {decision === "accepted" ? <>Acceptée <Check /></> : decision === "refused" ? "Refusée" : "En attente"}
-                                  </span>
-                                ) : (
-                                  <span className="text-muted">Inclus au devis</span>
-                                )}
-                              </td>
-                              <td>
-                                <button
-                                  className="action-link"
-                                  onClick={() => {
-                                    setSelectedId(comment.id);
-                                    if (comment.deliverableId) openRecord(comment.deliverableId);
-                                  }}
-                                >
-                                  Ouvrir <ArrowUpRight />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
+          ) : view.kind === "dashboard" ? (
+            null
           ) : (
             <>
           <div className="editor">

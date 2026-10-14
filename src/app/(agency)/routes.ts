@@ -10,7 +10,7 @@
 //   /projets/:projectId                            deliverables of a project
 //   /projets/:projectId/livrables/:livrableId      latest version of a deliverable
 //   /projets/:projectId/livrables/:livrableId/versions/:version
-//   /projets/:projectId/livrables/:livrableId/tableau-de-bord   deliverable dashboard
+//   /projets/:projectId/livrables/:livrableId/tableau-de-bord   (old) redirects to the home analytics filtered on it
 //   /projets/:projectId/livrables/:livrableId/propositions      out-of-scope requests and their proposals
 //   ?demande=:commentId on a deliverable URL focuses that comment
 
