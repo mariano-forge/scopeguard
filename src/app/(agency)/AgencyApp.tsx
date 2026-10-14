@@ -217,6 +217,9 @@ const sidebarKey = "kora-sidebar";
 const nowLabel = () =>
   new Date().toLocaleString("fr-FR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const favoritesKey = "kora-favorites";
+/** Widths of the side panels, set by dragging their edge (per browser). */
+const panelWidthsKey = "kora-panel-widths";
+const defaultWidths = { panel: 248, inspector: 340 };
 
 const initialProjects: Project[] = [
   {
@@ -397,6 +400,26 @@ export function AgencyApp() {
   const [threadOpen, setThreadOpen] = useState(false);
   const [composer, setComposer] = useState<CanvasComposer | null>(null);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("comment");
+  const [panelWidths, setPanelWidths] = useState(defaultWidths);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(panelWidthsKey) ?? "null");
+      if (saved && typeof saved.panel === "number" && typeof saved.inspector === "number") setPanelWidths(saved);
+    } catch {
+      // Default widths when storage is unavailable.
+    }
+  }, []);
+  function resizePanel(which: keyof typeof defaultWidths, width: number) {
+    setPanelWidths((current) => {
+      const next = { ...current, [which]: width };
+      try {
+        window.localStorage.setItem(panelWidthsKey, JSON.stringify(next));
+      } catch {
+        // Ignore storage failures (private mode, quota).
+      }
+      return next;
+    });
+  }
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameError, setRenameError] = useState("");
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -899,6 +922,26 @@ export function AgencyApp() {
       commentId,
     );
     setInspectorTab(back ? "comment" : qualified.decision === "Inclus" ? "correction" : "outside");
+    if (qualified.quote && qualified.decision === "Hors périmètre" && proposalStateFor(commentId) !== "sent") {
+      const quote = qualified.quote;
+      setProposalStates((current) => ({ ...current, [commentId]: "draft" }));
+      setProposalVersions((current) => ({
+        ...current,
+        [commentId]: [
+          {
+            id: Date.now(),
+            version: 1,
+            commentId,
+            description: qualified.title,
+            amount: quote.amount,
+            deadline: quote.days,
+            status: "draft",
+            createdAt: new Date().toLocaleString("fr-FR"),
+          },
+        ],
+      }));
+      recordAudit("proposal.drafted", `Chiffrage préparé : ${quote.amount} € · ${quote.days} j`, commentId);
+    }
   }
 
   function createProject(event: React.FormEvent<HTMLFormElement>) {
@@ -1316,7 +1359,7 @@ export function AgencyApp() {
     recordAudit("proposal.sent", "Proposition envoyée au client", proposalCommentId);
     setProposalVersions((current) => ({
       ...current,
-      [proposalCommentId]: current[proposalCommentId]?.length
+      [proposalCommentId]: current[proposalCommentId]?.some((proposal) => proposal.status !== "draft")
         ? current[proposalCommentId]
         : [{
             id: Date.now(),
@@ -1757,7 +1800,9 @@ export function AgencyApp() {
             ? "Adaptation demandée"
             : proposalStateFor(comment.id) === "sent"
               ? "Proposition envoyée"
-              : "Proposition à créer";
+              : proposalStateFor(comment.id) === "draft"
+                ? "Chiffrée · à envoyer"
+                : "Proposition à créer";
 
   // Deliverable workspace (canvas, dashboard, proposals): everything below is about this deliverable.
   const livrableRootId = "livrableId" in view ? view.livrableId : 0;
@@ -1780,7 +1825,9 @@ export function AgencyApp() {
                 ? "adaptation"
                 : proposalStateFor(comment.id) === "sent"
                   ? "sent"
-                  : "to-quote";
+                  : proposalStateFor(comment.id) === "draft"
+                    ? "draft"
+                    : "to-quote";
         return {
           commentId: comment.id,
           message: comment.title ?? comment.message,
@@ -1885,6 +1932,8 @@ export function AgencyApp() {
     <main className="app-shell">
       {inProject && selectedProject ? (
         <ProjectSidebar
+          panelWidth={panelWidths.panel}
+          onPanelResize={(width) => resizePanel("panel", width)}
           project={selectedProject}
           client={clients.find((client) => client.id === (selectedProject.clientId ?? 1))}
           livrableName={viewVersions[0]?.name ?? "Livrable"}
@@ -1960,7 +2009,7 @@ export function AgencyApp() {
             null
           ) : (
             <>
-          <div className="editor">
+          <div className="editor" style={{ gridTemplateColumns: `minmax(0, 1fr) ${panelWidths.inspector}px` }}>
             <ReviewCanvas
               deliverable={currentDeliverable}
               comments={activeComments}
@@ -2016,8 +2065,13 @@ export function AgencyApp() {
                   readOnly={isReadOnlyVersion}
                   locked={isDecisionLocked(comment.id)}
                   proposalLabel={proposalLabel(comment as Comment)}
+                  quote={(() => {
+                    const draft = proposalStateFor(comment.id) === "draft" ? activeProposalFor(comment.id) : undefined;
+                    return draft ? { amount: parseNumericAmount(draft.amount), days: parseNumericDays(draft.deadline) } : undefined;
+                  })()}
                   onReply={(message) => replyTo(comment.id, message)}
-                  onQualify={(qualified) => qualifyComment(comment.id, qualified)}
+                  // Once a proposal has been sent to the client, the qualification no longer changes.
+                  onQualify={proposalStateFor(comment.id) === "sent" ? undefined : (qualified) => qualifyComment(comment.id, qualified)}
                   onOpenProposal={() => openProposal(comment.id)}
                   onDelete={
                     comment.initials === "AM" && !isReadOnlyVersion && !isDecisionLocked(comment.id)
@@ -2035,7 +2089,6 @@ export function AgencyApp() {
                   key={`${current.x}-${current.y}`}
                   x={current.x}
                   y={current.y}
-                  target={current.target}
                   onSubmit={(result) => addComment(result.message, current)}
                   onCancel={() => setComposer(null)}
                 />
@@ -2051,18 +2104,10 @@ export function AgencyApp() {
               onFocus={focusThread}
               proposalLabel={(comment) => proposalLabel(comment as Comment)}
               onAddComment={isReadOnlyVersion ? undefined : (message) => addComment(message, null)}
-              versionLabel={`Version ${String(currentDeliverable.version).padStart(2, "0")}`}
-              versionChip={versionChip}
-              validation={[
-                `Importée ${currentDeliverable.importedAt}`,
-                reviewStatus === "changes-requested"
-                  ? "modifications demandées par le client"
-                  : approved
-                    ? `approuvée par le client${approvedAt ? ` le ${approvedAt}` : ""}`
-                    : "en attente de validation client",
-              ].join(" · ")}
               onShare={openShareDialog}
               onPreview={openClientPreview}
+              width={panelWidths.inspector}
+              onResize={(width) => resizePanel("inspector", width)}
             />
           </div>
           </>

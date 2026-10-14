@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Check, Copy, Eye, MapPin, Printer, Receipt, Send } from "lucide-react";
 
-export type ProposalRowState = "to-quote" | "sent" | "adaptation" | "accepted" | "refused";
+export type ProposalRowState = "to-quote" | "draft" | "sent" | "adaptation" | "accepted" | "refused";
 export type ProposalRow = {
   commentId: number;
   message: string;
@@ -22,6 +22,7 @@ export type ProposalRow = {
 
 const stateLabel: Record<ProposalRowState, string> = {
   "to-quote": "À chiffrer",
+  draft: "Chiffrée, à envoyer",
   sent: "Envoyée",
   adaptation: "Adaptation demandée",
   accepted: "Acceptée",
@@ -29,13 +30,14 @@ const stateLabel: Record<ProposalRowState, string> = {
 };
 const stateTone: Record<ProposalRowState, string> = {
   "to-quote": "decision-pending",
+  draft: "decision-pending",
   sent: "decision-sent",
   adaptation: "decision-pending",
   accepted: "decision-included",
   refused: "decision-outside",
 };
 // What needs the agency first, then what waits on the client, then what is settled.
-const stateOrder: ProposalRowState[] = ["to-quote", "adaptation", "sent", "accepted", "refused"];
+const stateOrder: ProposalRowState[] = ["to-quote", "draft", "adaptation", "sent", "accepted", "refused"];
 const euros = (value: number) => `${value.toLocaleString("fr-FR")} €`;
 const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "s" : ""}`;
 
@@ -249,9 +251,9 @@ export function ProposalsView({
                     <td>{row.state === "to-quote" ? "—" : euros(row.amount)}</td>
                     <td>
                       <span className="proposal-actions">
-                        {row.editable && row.state === "to-quote" && (
+                        {row.editable && (row.state === "to-quote" || row.state === "draft") && (
                           <button className="primary-button small-button" onClick={() => onOpenProposal(row.commentId)}>
-                            <Send /> Faire une proposition
+                            <Send /> {row.state === "draft" ? "Envoyer la proposition" : "Faire une proposition"}
                           </button>
                         )}
                         {row.editable && (row.state === "sent" || row.state === "adaptation") && (

@@ -8,6 +8,7 @@ import {
   Check,
   Eye,
   Lock,
+  Plus,
   X,
 } from "lucide-react";
 import type { DeliverableType } from "@/components/deliverableKinds";
@@ -143,6 +144,7 @@ export default function ClientReviewPage() {
   const [threadOpen, setThreadOpen] = useState(false);
   const [composer, setComposer] = useState<CanvasComposer | null>(null);
   const [panelTab, setPanelTab] = useState<InspectorTab>("comment");
+  const [addingComment, setAddingComment] = useState(false);
   const [proposalStates, setProposalStates] = useState<ProposalStates>({});
   const [proposalDecisions, setProposalDecisions] = useState<ProposalDecisions>({});
   const [adaptationRequests, setAdaptationRequests] = useState<AdaptationRequests>({});
@@ -731,7 +733,6 @@ export default function ClientReviewPage() {
                 key={`${current.x}-${current.y}`}
                 x={current.x}
                 y={current.y}
-                target={current.target}
                 onSubmit={(result) => addComment(result.message, current)}
                 onCancel={() => setComposer(null)}
               />
@@ -739,16 +740,27 @@ export default function ClientReviewPage() {
           />
 
           <aside className="client-side-panel" aria-label="Vos retours">
-            <div className="client-side-heading">
-              <h2>Vos retours</h2>
-              <p>Commentez un élément ou dessinez une zone sur le livrable. L’équipe qualifie chaque commentaire : inclus dans le scope, ou hors scope (chiffré à part).</p>
-            </div>
+            <header className="requests-header">
+              <div className="requests-heading">
+                <h2>Vos retours</h2>
+                <p>Commentez un élément ou dessinez une zone : l’équipe qualifie chaque demande.</p>
+              </div>
+              {!isReadOnlyVersion() && (
+                <div className="requests-actions">
+                  <button className="icon-action" onClick={() => setAddingComment(true)} aria-label="Ajouter un commentaire" title="Ajouter un commentaire">
+                    <Plus />
+                  </button>
+                </div>
+              )}
+            </header>
             <RequestPanel
               comments={canvasComments}
               selectedId={threadOpen ? selectedCommentId : null}
               tab={panelTab}
               onTab={setPanelTab}
               onFocus={focusThread}
+              adding={addingComment}
+              onAddingChange={setAddingComment}
               onAddComment={isReadOnlyVersion() ? undefined : (message) => addComment(message, null)}
             />
           </aside>

@@ -24,6 +24,7 @@ import {
 import { href, type AgencyView } from "./routes";
 import { SpaceAvatar } from "./BrowserView";
 import { MenuButton, type MenuEntry } from "./editor/MenuButton";
+import { ResizeHandle } from "./editor/ResizeHandle";
 
 type Notification = { id: number; message: string };
 type Client = { id: number; name: string; email: string };
@@ -205,6 +206,8 @@ export function ProjectSidebar({
   proposalsBadge,
   onNavigate,
   notifications,
+  panelWidth,
+  onPanelResize,
 }: {
   project: Project;
   client?: Client;
@@ -227,6 +230,8 @@ export function ProjectSidebar({
   /** Switches view inside the deliverable's tab (canvas, proposals). */
   onNavigate: (target: string) => void;
   notifications: Notification[];
+  panelWidth: number;
+  onPanelResize: (width: number) => void;
 }) {
   return (
     <aside className={`sidebar project-sidebar ${panel ? "" : "is-collapsed"}`} aria-label="Navigation du livrable">
@@ -279,7 +284,8 @@ export function ProjectSidebar({
       </nav>
 
       {panel && (
-        <div className="panel">
+        <div className="panel" style={{ width: panelWidth }}>
+          <ResizeHandle edge="right" width={panelWidth} min={200} max={420} defaultWidth={248} label="Largeur du panneau des versions" onResize={onPanelResize} />
           <div className="panel-header">
             <MenuButton
               className="panel-title"

@@ -51,21 +51,24 @@ export type TargetBox = { left: number; top: number; width: number; height: numb
 const side = (x: number) => (x > 58 ? "is-left" : "is-right");
 const vertical = (y: number) => (y > 62 ? "is-up" : "");
 
-/** Opens the bubble on the side where it fits in the visible canvas (flips at most once). */
-function useFittingSide(x: number) {
+/**
+ * Opens the bubble where it fits in the visible canvas: on its preferred side, else the other side,
+ * else centered on its pin (each step tried once, so it never loops).
+ */
+function useFittingSide(x: number, initial?: "is-center") {
   const ref = useRef<HTMLDivElement>(null);
-  const [placement, setPlacement] = useState(side(x));
-  const flipped = useRef(false);
+  const [placement, setPlacement] = useState<"is-left" | "is-right" | "is-center">(initial ?? side(x));
+  const tried = useRef(new Set<string>());
   useLayoutEffect(() => {
     const bubble = ref.current;
     const frame = bubble?.closest(".artboard-transform-wrapper");
-    if (!bubble || !frame || flipped.current) return;
+    if (!bubble || !frame) return;
+    tried.current.add(placement);
     const box = bubble.getBoundingClientRect();
     const bounds = frame.getBoundingClientRect();
-    const overflow = placement === "is-right" ? box.right > bounds.right : box.left < bounds.left;
-    if (!overflow) return;
-    flipped.current = true;
-    setPlacement(placement === "is-right" ? "is-left" : "is-right");
+    if (box.left >= bounds.left && box.right <= bounds.right) return;
+    const next = (["is-right", "is-left", "is-center"] as const).find((option) => !tried.current.has(option));
+    if (next) setPlacement(next);
   }, [placement]);
   return [ref, placement] as const;
 }
@@ -115,7 +118,9 @@ function ScopeChoice({ value, onChange }: { value: Qualification; onChange: (val
   );
 }
 
-export type Qualified = { title: string; description: string; decision: Qualification };
+/** Optional quote typed while qualifying an out-of-scope request (prefills the proposal, sends nothing). */
+export type Quote = { amount: number; days: number };
+export type Qualified = { title: string; description: string; decision: Qualification; quote?: Quote };
 
 /**
  * Bubble next to its pin (Figma-like). A comment shows its conversation and "Qualifier" (agency);
@@ -126,6 +131,7 @@ export function ThreadPopover({
   readOnly,
   locked,
   proposalLabel,
+  quote,
   onReply,
   onQualify,
   onOpenProposal,
@@ -137,6 +143,8 @@ export function ThreadPopover({
   /** Decision locked by an accepted/refused proposal. */
   locked: boolean;
   proposalLabel: string | null;
+  /** Quote already typed for this request (not sent yet). */
+  quote?: Quote;
   onReply: (message: string) => void;
   /** Agency only: qualify a comment, change a qualification, or send it back to clarify. */
   onQualify?: (qualified: Qualified) => void;
@@ -150,10 +158,15 @@ export function ThreadPopover({
   const [title, setTitle] = useState(comment.title ?? (comment.message.length > 70 ? `${comment.message.slice(0, 70)}…` : comment.message));
   const [description, setDescription] = useState(comment.description ?? comment.message);
   const [decision, setDecision] = useState<Qualification>(kind === "outside" ? "Hors périmètre" : "Inclus");
+  const [quoteOn, setQuoteOn] = useState(Boolean(quote));
+  const [amount, setAmount] = useState(quote ? String(quote.amount) : "");
+  const [days, setDays] = useState(quote ? String(quote.days) : "");
+  const quoteReady = !quoteOn || decision !== "Hors périmètre" || Number(amount) > 0;
   const listRef = useRef<HTMLDivElement>(null);
+  // A comment added by hand has no spot: its bubble opens at the top of the page, centered.
   const x = comment.position?.x ?? 50;
-  const y = comment.position?.y ?? 50;
-  const [bubbleRef, placement] = useFittingSide(x);
+  const y = comment.position?.y ?? 3;
+  const [bubbleRef, placement] = useFittingSide(x, comment.position ? undefined : "is-center");
   const canWrite = !readOnly && !locked;
 
   useEffect(() => {
@@ -179,7 +192,6 @@ export function ThreadPopover({
           <span className="thread-title-line">
             <span className={`decision-badge ${statusTones[kind]}`}>{statusLabels[kind]}</span> #{comment.id}
           </span>
-          <small>{comment.location}</small>
         </span>
         <span className="thread-header-actions">
           {onDelete && (
@@ -198,8 +210,13 @@ export function ThreadPopover({
           className="qualify-form"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!title.trim()) return;
-            onQualify?.({ title: title.trim(), description: description.trim(), decision });
+            if (!title.trim() || !quoteReady) return;
+            onQualify?.({
+              title: title.trim(),
+              description: description.trim(),
+              decision,
+              quote: decision === "Hors périmètre" && quoteOn ? { amount: Number(amount), days: Number(days) || 0 } : undefined,
+            });
             setQualifying(false);
           }}
         >
@@ -212,12 +229,41 @@ export function ThreadPopover({
             Description
             <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} placeholder="Ce qui doit être fait, précisément." />
           </label>
+          {decision === "Hors périmètre" && (
+            <div className="quote-block">
+              <label className="quote-toggle">
+                <span>
+                  <b>Chiffrer maintenant</b>
+                  <small>Pré-remplit la proposition, rien n’est envoyé au client.</small>
+                </span>
+                <input type="checkbox" role="switch" checked={quoteOn} onChange={(event) => setQuoteOn(event.target.checked)} />
+              </label>
+              {quoteOn && (
+                <div className="quote-fields">
+                  <label>
+                    Montant HT
+                    <span className="input-with-addon">
+                      <input type="number" min="0" step="10" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="850" />
+                      <span className="input-addon">€</span>
+                    </span>
+                  </label>
+                  <label>
+                    Délai
+                    <span className="input-with-addon">
+                      <input type="number" min="0" step="1" value={days} onChange={(event) => setDays(event.target.value)} placeholder="3" />
+                      <span className="input-addon">jours</span>
+                    </span>
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
           <div className="qualify-form-actions">
             <button type="button" className="ghost-button" onClick={() => setQualifying(false)}>
               Annuler
             </button>
-            <button type="submit" className="primary-button" disabled={!title.trim()}>
-              {kind === "comment" ? "Qualifier" : "Enregistrer"}
+            <button type="submit" className="primary-button" disabled={!title.trim() || !quoteReady}>
+              {kind === "comment" ? "Créer la demande" : "Enregistrer"}
             </button>
           </div>
         </form>
@@ -268,7 +314,7 @@ export function ThreadPopover({
           {kind === "comment" && onQualify && canWrite && (
             <div className="thread-actions">
               <button type="button" className="secondary-button thread-create" onClick={() => setQualifying(true)}>
-                <Tag aria-hidden="true" /> Qualifier la demande
+                <Tag aria-hidden="true" /> Créer une demande
               </button>
             </div>
           )}
@@ -309,13 +355,11 @@ export type ComposerResult = { message: string };
 export function Composer({
   x,
   y,
-  target,
   onSubmit,
   onCancel,
 }: {
   x: number;
   y: number;
-  target: string;
   onSubmit: (result: ComposerResult) => void;
   onCancel: () => void;
 }) {
@@ -337,7 +381,6 @@ export function Composer({
         <header className="thread-header">
           <span className="thread-title">
             Nouveau commentaire
-            <small>{target}</small>
           </span>
           <button type="button" className="thread-icon-button" onClick={onCancel} aria-label="Annuler">
             <X />

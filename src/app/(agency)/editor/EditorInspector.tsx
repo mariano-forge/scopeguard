@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Download, Eye, MessageSquare, Plus, Share2 } from "lucide-react";
+import { Copy, Download, Eye, MessageSquare, MoreHorizontal, Plus, Share2 } from "lucide-react";
+import { MenuButton } from "./MenuButton";
+import { ResizeHandle } from "./ResizeHandle";
 import { kindLabels, requestKind, requestText, statusLabels, statusTones, type RequestKind, type ThreadComment } from "./CanvasComments";
 
 export type InspectorTab = RequestKind;
@@ -41,6 +43,8 @@ export function RequestPanel({
   onTab,
   onFocus,
   proposalLabel,
+  adding,
+  onAddingChange,
   onAddComment,
 }: {
   comments: ThreadComment[];
@@ -50,10 +54,12 @@ export function RequestPanel({
   /** Shows that request on the canvas. */
   onFocus: (commentId: number) => void;
   proposalLabel?: (comment: ThreadComment) => string | null;
+  /** The manual comment form is open (opened from the panel header's "+"). */
+  adding: boolean;
+  onAddingChange: (adding: boolean) => void;
   /** Adds a comment by hand (not tied to a spot of the canvas); absent when read-only. */
   onAddComment?: (message: string) => void;
 }) {
-  const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
   const count = (kind: RequestKind) => comments.filter((comment) => requestKind(comment) === kind).length;
   const list = comments.filter((comment) => requestKind(comment) === tab).sort((left, right) => right.id - left.id);
@@ -69,36 +75,41 @@ export function RequestPanel({
         ))}
       </div>
 
-      <div className="inspector-list" role="tabpanel">
-        {tab === "comment" && onAddComment && (
-          <div className="manual-comment">
-            {adding ? (
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (!draft.trim()) return;
-                  onAddComment(draft.trim());
-                  setDraft("");
-                  setAdding(false);
-                }}
-              >
-                <textarea autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} placeholder="Un retour sur le livrable dans son ensemble…" aria-label="Nouveau commentaire" />
-                <div className="manual-comment-actions">
-                  <button type="button" className="ghost-button" onClick={() => setAdding(false)}>
-                    Annuler
-                  </button>
-                  <button type="submit" className="primary-button" disabled={!draft.trim()}>
-                    Ajouter
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <button type="button" className="manual-comment-trigger" onClick={() => setAdding(true)}>
-                <Plus aria-hidden="true" /> Commentaire
-              </button>
-            )}
+      {adding && onAddComment && (
+        <form
+          className="manual-comment"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!draft.trim()) return;
+            onAddComment(draft.trim());
+            setDraft("");
+            onAddingChange(false);
+            onTab("comment");
+          }}
+        >
+          <textarea
+            autoFocus
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") onAddingChange(false);
+            }}
+            rows={3}
+            placeholder="Un retour sur le livrable dans son ensemble…"
+            aria-label="Nouveau commentaire"
+          />
+          <div className="manual-comment-actions">
+            <button type="button" className="ghost-button" onClick={() => onAddingChange(false)}>
+              Annuler
+            </button>
+            <button type="submit" className="primary-button" disabled={!draft.trim()}>
+              Ajouter
+            </button>
           </div>
-        )}
+        </form>
+      )}
+
+      <div className="inspector-list" role="tabpanel">
         {list.length === 0 ? (
           <div className="inspector-empty-state">
             <MessageSquare aria-hidden="true" />
@@ -148,6 +159,10 @@ export function RequestPanel({
   );
 }
 
+/**
+ * Right panel of the deliverable: where requests are handled.
+ * Header: "Demandes" + add a comment, share, client preview, and copy / export in "⋯".
+ */
 export function EditorInspector({
   title,
   comments,
@@ -157,11 +172,10 @@ export function EditorInspector({
   onFocus,
   proposalLabel,
   onAddComment,
-  versionLabel,
-  versionChip,
-  validation,
   onShare,
   onPreview,
+  width,
+  onResize,
 }: {
   /** "Livrable — V03", used by copy / export. */
   title: string;
@@ -172,23 +186,14 @@ export function EditorInspector({
   onFocus: (commentId: number) => void;
   proposalLabel: (comment: ThreadComment) => string | null;
   onAddComment?: (message: string) => void;
-  versionLabel: string;
-  versionChip?: { label: string; tone: string };
-  validation: string;
   onShare: () => void;
   onPreview: () => void;
+  width: number;
+  onResize: (width: number) => void;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const toClarify = comments.filter((comment) => requestKind(comment) === "comment").length;
 
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(threadsToMarkdown(title, comments));
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-    } catch {
-      // Clipboard refused (permissions): export stays available.
-    }
-  }
   function exportFile() {
     const url = URL.createObjectURL(new Blob([threadsToMarkdown(title, comments)], { type: "text/markdown" }));
     const link = document.createElement("a");
@@ -199,23 +204,37 @@ export function EditorInspector({
   }
 
   return (
-    <aside className="inspector editor-inspector" aria-label="Partage et demandes">
-      <div className="inspector-top">
-        <button className="inspector-primary" onClick={onShare}>
-          <Share2 /> Partager
-        </button>
-        <button className="secondary-button inspector-preview" onClick={onPreview} title="Ouvrir la page que voit le client">
-          <Eye /> Aperçu client
-        </button>
-      </div>
-
-      <section className="inspector-version">
-        <div className="inspector-heading">
-          <h2>{versionLabel}</h2>
-          {versionChip && <span className={`chip chip-${versionChip.tone}`}>{versionChip.label}</span>}
+    <aside className="inspector editor-inspector" aria-label="Demandes">
+      <ResizeHandle edge="left" width={width} min={300} max={560} defaultWidth={340} label="Largeur du panneau des demandes" onResize={onResize} />
+      <header className="requests-header">
+        <div className="requests-heading">
+          <h2>Demandes</h2>
+          <p>{toClarify > 0 ? `${toClarify} commentaire${toClarify > 1 ? "s" : ""} à clarifier` : "Tout est qualifié"}</p>
         </div>
-        <p className="inspector-meta">{validation}</p>
-      </section>
+        <div className="requests-actions">
+          {onAddComment && (
+            <button className="icon-action" onClick={() => setAdding(true)} aria-label="Ajouter un commentaire" title="Ajouter un commentaire">
+              <Plus />
+            </button>
+          )}
+          <button className="icon-action" onClick={onPreview} aria-label="Aperçu client" title="Aperçu client : la page que voit le client">
+            <Eye />
+          </button>
+          <MenuButton
+            className="icon-action"
+            label="Plus d’actions"
+            trigger={<MoreHorizontal />}
+            menuClassName="requests-menu"
+            entries={[
+              { label: "Copier les demandes", icon: <Copy />, onSelect: () => void navigator.clipboard?.writeText(threadsToMarkdown(title, comments)), disabled: comments.length === 0 },
+              { label: "Exporter (.md)", icon: <Download />, onSelect: exportFile, disabled: comments.length === 0 },
+            ]}
+          />
+          <button className="primary-button requests-share" onClick={onShare}>
+            <Share2 /> Partager
+          </button>
+        </div>
+      </header>
 
       <RequestPanel
         comments={comments}
@@ -224,17 +243,10 @@ export function EditorInspector({
         onTab={onTab}
         onFocus={onFocus}
         proposalLabel={proposalLabel}
+        adding={adding}
+        onAddingChange={setAdding}
         onAddComment={onAddComment}
       />
-
-      <div className="inspector-footer">
-        <button className="ghost-button" onClick={copy} disabled={comments.length === 0}>
-          {copied ? <Check /> : <Copy />} {copied ? "Copié" : "Copier"}
-        </button>
-        <button className="ghost-button" onClick={exportFile} disabled={comments.length === 0}>
-          <Download /> Exporter
-        </button>
-      </div>
     </aside>
   );
 }

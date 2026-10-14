@@ -5585,8 +5585,9 @@ a.page-nav-label:hover {
   background: var(--ink);
   color: var(--paper);
 }
-.canvas-pin.is-correction,
-.canvas-pin.is-outside {
+/* Every request pin has the same shape (a tag pointing at its spot); only the content and color change. */
+.canvas-pin,
+.composer-pin {
   border-radius: var(--r-button) var(--r-button) var(--r-button) 0;
 }
 .canvas-pin.is-correction .lucide,
@@ -5638,6 +5639,10 @@ a.page-nav-label:hover {
 }
 .thread.is-left {
   --tx: calc(-100% - 12px);
+}
+.thread.is-center {
+  --tx: -50%;
+  --ty: 14px;
 }
 .thread.is-up {
   --ty: calc(-100% + 8px);
@@ -7023,4 +7028,196 @@ button.rail-logo .lucide {
 }
 .client-workspace {
   grid-template-columns: minmax(0, 1fr) 340px;
+}
+
+/* Requests panel: one header that says what the panel is for */
+.editor-inspector,
+.project-sidebar .panel {
+  position: relative;
+}
+.requests-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-4) var(--s-4) var(--s-3);
+}
+.requests-heading {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.requests-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font: 600 var(--t-h3) var(--font-display);
+}
+.requests-heading p {
+  margin: 0;
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+.requests-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--s-1);
+}
+.icon-action {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
+.icon-action:hover,
+.icon-action[aria-expanded="true"] {
+  background: var(--mist);
+}
+.icon-action:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 2px;
+}
+.icon-action .lucide {
+  width: 16px;
+  height: 16px;
+}
+.requests-share {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 var(--s-3);
+}
+.requests-share .lucide {
+  width: 16px;
+  height: 16px;
+}
+.requests-menu {
+  right: 0;
+  left: auto;
+}
+.manual-comment {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--canvas);
+}
+
+/* Drag the edge of a side panel to resize it */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 20;
+  width: 8px;
+  cursor: col-resize;
+}
+.resize-handle.is-left {
+  left: -4px;
+}
+.resize-handle.is-right {
+  right: -4px;
+}
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background var(--d-fast) var(--ease-out);
+}
+.resize-handle:hover::after,
+.resize-handle:focus-visible::after,
+body.is-resizing .resize-handle::after {
+  background: var(--action-ui);
+}
+.resize-handle:focus-visible {
+  outline: none;
+}
+body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* Optional quote while qualifying an out-of-scope request */
+.quote-block {
+  display: grid;
+  gap: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  padding: var(--s-2) var(--s-3);
+  background: var(--canvas);
+}
+.qualify-form .quote-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  cursor: pointer;
+}
+.quote-toggle span {
+  display: grid;
+  gap: 2px;
+}
+.quote-toggle b {
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.quote-toggle small {
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+.quote-toggle input[role="switch"] {
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--border-input);
+  cursor: pointer;
+  transition: background var(--d-fast) var(--ease-out);
+}
+.quote-toggle input[role="switch"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--paper);
+  transition: transform var(--d-fast) var(--ease-out);
+}
+.quote-toggle input[role="switch"]:checked {
+  background: var(--action-ui);
+}
+.quote-toggle input[role="switch"]:checked::after {
+  transform: translateX(16px);
+}
+.quote-toggle input[role="switch"]:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 2px;
+}
+.quote-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-2);
+}
+.quote-fields .input-with-addon {
+  display: flex;
+  align-items: center;
+}
+.quote-fields .input-with-addon input {
+  min-width: 0;
+  flex: 1;
 }

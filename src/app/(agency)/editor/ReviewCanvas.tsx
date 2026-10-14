@@ -244,7 +244,7 @@ export function ReviewCanvas({
 
   const toolButtons: Record<CanvasTool, { icon: React.ReactNode; label: string; title: string }> = {
     move: { icon: <MousePointer2 />, label: "", title: "Déplacer (V)" },
-    remark: { icon: <MessageCirclePlus />, label: "Commentaire", title: "Commenter : cliquez sur un élément ou dessinez une zone (C)" },
+    remark: { icon: <MessageCirclePlus />, label: "", title: "Commenter : cliquez sur un élément ou dessinez une zone (C)" },
   };
 
   return (
@@ -319,7 +319,7 @@ export function ReviewCanvas({
               key={option}
               className={`tool-button ${toolButtons[option].label ? "with-label" : ""} ${tool === option ? "selected" : ""}`}
               aria-pressed={tool === option}
-              aria-label={toolButtons[option].label || "Déplacer"}
+              aria-label={option === "move" ? "Déplacer" : "Commentaire"}
               onClick={() => onToolChange(option)}
               disabled={option !== "move" && readOnly}
               title={toolButtons[option].title}
