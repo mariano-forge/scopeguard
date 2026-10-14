@@ -5191,3 +5191,131 @@ a.page-nav-label:hover {
 .app-shell {
   background: var(--paper);
 }
+
+/* Space / project settings */
+.entity-settings {
+  position: relative;
+}
+.ghost-button.icon-only {
+  width: 40px;
+  padding: 0;
+}
+.settings-menu {
+  position: absolute;
+  top: calc(100% + var(--s-1));
+  right: 0;
+  z-index: 40;
+  display: grid;
+  min-width: 260px;
+  padding: var(--s-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+.settings-menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 36px;
+  padding: 0 var(--s-2);
+  border: 0;
+  border-radius: var(--r-field);
+  background: transparent;
+  color: var(--ink);
+  font: var(--t-ui) var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.settings-menu button:hover,
+.settings-menu button:focus-visible {
+  background: var(--mist);
+  outline: none;
+}
+.settings-menu button.is-danger {
+  color: var(--danger);
+}
+.settings-menu button.is-danger:hover,
+.settings-menu button.is-danger:focus-visible {
+  background: var(--status-high-bg);
+}
+.settings-dialog {
+  display: grid;
+  gap: var(--s-4);
+  width: min(440px, calc(100vw - 32px));
+}
+.settings-dialog .drawer-header {
+  margin-bottom: 0;
+}
+.settings-dialog .drawer-header h2 {
+  margin: 0;
+}
+.settings-dialog .drawer-intro {
+  margin: 0;
+}
+.settings-form {
+  display: grid;
+  gap: var(--s-4);
+}
+.settings-form label {
+  margin-bottom: 0;
+}
+.field {
+  display: grid;
+  gap: var(--s-2);
+}
+.field-label {
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+  font-weight: 600;
+}
+.field .select-trigger {
+  justify-content: space-between;
+  width: 100%;
+  height: 40px;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+.danger-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 40px;
+  padding: 0 var(--s-4);
+  border: 1px solid var(--danger);
+  border-radius: var(--r-button);
+  background: var(--status-high-bg);
+  color: var(--danger);
+  font: 600 var(--t-ui) var(--font-ui);
+  cursor: pointer;
+}
+.danger-button:hover {
+  filter: brightness(0.96);
+}
+.danger-button:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 2px;
+}
+
+/* Orphans ("À ranger") */
+.orphan-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 52px;
+  padding: 0 var(--s-4);
+}
+.orphan-row b {
+  overflow: hidden;
+  font: 500 var(--t-ui) var(--font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.orphan-row small {
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}

@@ -474,6 +474,8 @@ export function AgencyApp() {
 
       try {
         const parsedState = JSON.parse(event.newValue) as {
+          projects?: Project[];
+          clients?: Client[];
           comments?: Comment[];
           proposalStates?: ProposalStates;
           proposalDecisions?: ProposalDecisions;
@@ -503,6 +505,9 @@ export function AgencyApp() {
           setAdaptationRequests(parsedState.adaptationRequests);
         if (parsedState.proposalVersions)
           setProposalVersions(parsedState.proposalVersions);
+        // Spaces and projects too: a tab left open must not write back an older list and drop another tab’s new project.
+        if (parsedState.clients) setClients(parsedState.clients);
+        if (parsedState.projects) setProjects(parsedState.projects);
         if (parsedState.deliverables) setDeliverables(migrateReviewStatus(parsedState));
         if (parsedState.reviewLinks) setReviewLinks(parsedState.reviewLinks);
         if (parsedState.reviewLink) setReviewLink(parsedState.reviewLink);
@@ -951,6 +956,63 @@ export function AgencyApp() {
     setClients((current) => current.map((client) => (client.id === clientId ? { ...client, name } : client)));
     // Projects keep a copy of their client name (used by the proof export).
     setProjects((current) => current.map((project) => ((project.clientId ?? 1) === clientId ? { ...project, client: name } : project)));
+  }
+
+  /** Removes version records with their requests, proposals, adaptations and review links. */
+  function removeRecords(recordIds: Set<number>) {
+    const commentIds = new Set(comments.filter((comment) => recordIds.has(comment.deliverableId ?? -1)).map((comment) => comment.id));
+    const withoutComments = <T,>(map: Record<number, T>) =>
+      Object.fromEntries(Object.entries(map).filter(([key]) => !commentIds.has(Number(key)))) as Record<number, T>;
+    setDeliverables((current) => current.filter((record) => !recordIds.has(record.id)));
+    setComments((current) => current.filter((comment) => !commentIds.has(comment.id)));
+    setProposalStates((current) => withoutComments(current));
+    setProposalDecisions((current) => withoutComments(current));
+    setProposalVersions((current) => withoutComments(current));
+    setAdaptationRequests((current) => withoutComments(current));
+    setReviewLinks((current) =>
+      Object.fromEntries(Object.entries(current).filter(([, link]) => !recordIds.has(link.deliverableId ?? -1))),
+    );
+  }
+
+  function deleteProject(projectId: number, redirect = true) {
+    const project = projects.find((candidate) => candidate.id === projectId);
+    removeRecords(new Set(deliverables.filter((record) => (record.projectId ?? 1) === projectId).map((record) => record.id)));
+    setProjects((current) => current.filter((candidate) => candidate.id !== projectId));
+    recordAudit("project.deleted", `Projet « ${project?.name ?? projectId} » supprimé`);
+    if (redirect) router.push(project ? href.client(project.clientId ?? 1) : href.spaces());
+  }
+
+  function deleteClient(clientId: number) {
+    const client = clients.find((candidate) => candidate.id === clientId);
+    const projectIds = new Set(projects.filter((project) => (project.clientId ?? 1) === clientId).map((project) => project.id));
+    removeRecords(new Set(deliverables.filter((record) => projectIds.has(record.projectId ?? 1)).map((record) => record.id)));
+    setProjects((current) => current.filter((project) => !projectIds.has(project.id)));
+    setClients((current) => current.filter((candidate) => candidate.id !== clientId));
+    recordAudit("space.deleted", `Espace « ${client?.name ?? clientId} » supprimé`);
+    router.push(href.spaces());
+  }
+
+  function moveProject(projectId: number, clientId: number) {
+    const client = clients.find((candidate) => candidate.id === clientId);
+    if (!client) return;
+    setProjects((current) =>
+      current.map((project) => (project.id === projectId ? { ...project, clientId, client: client.name } : project)),
+    );
+  }
+
+  /** Re-attach a deliverable (every version) to another project; refused if that project has the same name. */
+  function moveLivrable(livrableId: number, projectId: number) {
+    const versions = versionsOfLivrable(livrableId, deliverables);
+    const name = versions[0]?.name;
+    if (!name) return false;
+    if (deliverables.some((record) => (record.projectId ?? 1) === projectId && record.name === name)) return false;
+    const ids = new Set(versions.map((record) => record.id));
+    setDeliverables((current) => current.map((record) => (ids.has(record.id) ? { ...record, projectId } : record)));
+    return true;
+  }
+
+  function deleteLivrable(livrableId: number) {
+    removeRecords(new Set(versionsOfLivrable(livrableId, deliverables).map((record) => record.id)));
   }
 
   function renameProject(projectId: number, name: string) {
@@ -2113,6 +2175,11 @@ export function AgencyApp() {
               onNewDeliverable={() => setNewDeliverableOpen(true)}
               onRenameClient={renameClient}
               onRenameProject={renameProject}
+              onDeleteClient={deleteClient}
+              onDeleteProject={deleteProject}
+              onMoveProject={moveProject}
+              onMoveLivrable={moveLivrable}
+              onDeleteLivrable={deleteLivrable}
               overview={overview}
               favorites={favorites}
               onToggleFavorite={toggleFavorite}

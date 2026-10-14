@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, FolderClosed, LayoutGrid, List, Pencil, Plus, Share2, Star } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderClosed, LayoutGrid, List, Pencil, Plus, Share2, Star, Trash2 } from "lucide-react";
 import { DeliverableCover } from "@/components/DeliverableCover";
 import { Select } from "@/components/Select";
 import { href, hrefForRecord, livrableIdOf, versionsOfLivrable, type AgencyView } from "./routes";
 import { TodoList, isAgencyAction, type TodoItem } from "./TodoList";
 import { StatusMark, type TabStatus } from "./TabBar";
+import { ConfirmDeleteDialog, EntitySettings } from "./EntitySettings";
+import { DeliverableIcon } from "@/components/DeliverableIcon";
 import type { DeliverableType } from "@/components/deliverableKinds";
 
 type Client = { id: number; name: string; email: string };
@@ -59,6 +61,12 @@ type BrowserViewProps = {
   onRenameClient: (clientId: number, name: string) => void;
   onRenameProject: (projectId: number, name: string) => void;
   onToggleFavorite: (key: string) => void;
+  onDeleteClient: (clientId: number) => void;
+  onDeleteProject: (projectId: number) => void;
+  onMoveProject: (projectId: number, clientId: number) => void;
+  /** Returns false when the target project already has a deliverable with that name. */
+  onMoveLivrable: (livrableId: number, projectId: number) => boolean;
+  onDeleteLivrable: (livrableId: number) => void;
   /** Review status of a deliverable (its latest version), as shown on tabs. */
   livrableStatus: (livrableId: number) => TabStatus;
 };
@@ -214,6 +222,11 @@ export function BrowserView({
   onRenameProject,
   onToggleFavorite,
   livrableStatus,
+  onDeleteClient,
+  onDeleteProject,
+  onMoveProject,
+  onMoveLivrable,
+  onDeleteLivrable,
 }: BrowserViewProps) {
   const router = useRouter();
   const [sort, setSort] = useState<SortKey>("recent");
@@ -261,6 +274,18 @@ export function BrowserView({
       sort === "name" ? left.name.localeCompare(right.name, "fr") : lastActivity(right.id) - lastActivity(left.id),
     );
   const projectsOf = (clientId: number) => projects.filter((project) => (project.clientId ?? 1) === clientId);
+  /** "2 projets, 5 livrables et 12 demandes" — what a deletion takes with it. */
+  const impactOf = (projectIds: number[]) => {
+    const latest = projectIds.flatMap((projectId) => latestOf(projectId));
+    const recordIds = new Set(deliverables.filter((record) => projectIds.includes(record.projectId ?? 1)).map((record) => record.id));
+    const requests = comments.filter((comment) => recordIds.has(comment.deliverableId ?? -1)).length;
+    const parts = [
+      ...(projectIds.length > 1 || view.kind === "client" ? [plural(projectIds.length, "projet")] : []),
+      plural(latest.length, "livrable"),
+      plural(requests, "demande"),
+    ].filter((part) => !part.startsWith("0 "));
+    return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} et ${parts.at(-1)}` : (parts[0] ?? "");
+  };
   const toQualify = (record: Deliverable) =>
     comments.filter((comment) => comment.deliverableId === record.id && comment.decision === "À qualifier").length;
 
@@ -433,9 +458,18 @@ export function BrowserView({
             <SpaceAvatar client={client} size="lg" />
             <RenamableTitle value={client.name} label="Renommer l’espace" onRename={(name) => onRenameClient(client.id, name)} />
           </div>
-          <button className="primary-button" onClick={onNewProject}>
-            <Plus /> Projet
-          </button>
+          <div className="page-actions">
+            <EntitySettings
+              kind="espace"
+              name={client.name}
+              deleteImpact={impactOf(list.map((project) => project.id))}
+              onRename={(name) => onRenameClient(client.id, name)}
+              onDelete={() => onDeleteClient(client.id)}
+            />
+            <button className="primary-button" onClick={onNewProject}>
+              <Plus /> Projet
+            </button>
+          </div>
         </header>
         <div className="page-toolbar">
           <span className="page-count">{plural(list.length, "projet")}</span>
@@ -466,6 +500,16 @@ export function BrowserView({
             <RenamableTitle value={project.name} label="Renommer le projet" onRename={(name) => onRenameProject(project.id, name)} />
           </div>
           <div className="page-actions">
+            <EntitySettings
+              kind="projet"
+              name={project.name}
+              deleteImpact={impactOf([project.id])}
+              onRename={(name) => onRenameProject(project.id, name)}
+              onDelete={() => onDeleteProject(project.id)}
+              moveTargets={clients.map((candidate) => ({ id: candidate.id, label: candidate.name }))}
+              currentTargetId={project.clientId ?? 1}
+              onMove={(clientId) => onMoveProject(project.id, clientId)}
+            />
             <button className="primary-button" onClick={onNewDeliverable}>
               <Plus /> Livrable
             </button>
@@ -519,6 +563,15 @@ export function BrowserView({
         ) : (
           <div className="space-grid">{sorted.map(spaceCard)}</div>
         )}
+        <OrphansSection
+          clients={clients}
+          projects={projects}
+          deliverables={deliverables}
+          onMoveProject={onMoveProject}
+          onDeleteProject={(projectId) => onDeleteProject(projectId)}
+          onMoveLivrable={onMoveLivrable}
+          onDeleteLivrable={onDeleteLivrable}
+        />
       </div>
     );
   }
@@ -739,6 +792,100 @@ export function BrowserView({
         </section>
       )}
     </div>
+  );
+}
+
+/**
+ * Projects whose space no longer exists, deliverables whose project no longer exists
+ * (e.g. lost by an older multi-tab save): re-attach or delete them.
+ */
+function OrphansSection({
+  clients,
+  projects,
+  deliverables,
+  onMoveProject,
+  onDeleteProject,
+  onMoveLivrable,
+  onDeleteLivrable,
+}: {
+  clients: Client[];
+  projects: Project[];
+  deliverables: Deliverable[];
+  onMoveProject: (projectId: number, clientId: number) => void;
+  onDeleteProject: (projectId: number) => void;
+  onMoveLivrable: (livrableId: number, projectId: number) => boolean;
+  onDeleteLivrable: (livrableId: number) => void;
+}) {
+  const [confirm, setConfirm] = useState<{ title: string; run: () => void } | null>(null);
+  const [error, setError] = useState("");
+  const clientIds = new Set(clients.map((client) => client.id));
+  const projectIds = new Set(projects.map((project) => project.id));
+  const orphanProjects = projects.filter((project) => !clientIds.has(project.clientId ?? 1));
+  const orphanLivrables = [...new Set(deliverables.filter((record) => !projectIds.has(record.projectId ?? 1)).map((record) => livrableIdOf(record, deliverables)))]
+    .map((livrableId) => ({ livrableId, latest: versionsOfLivrable(livrableId, deliverables)[0] }))
+    .filter((item) => item.latest);
+  if (orphanProjects.length === 0 && orphanLivrables.length === 0) return null;
+
+  const spaceOptions = [{ value: "", label: "Rattacher à un espace…" }, ...clients.map((client) => ({ value: String(client.id), label: client.name }))];
+  const projectOptions = [
+    { value: "", label: "Rattacher à un projet…" },
+    ...projects
+      .filter((project) => clientIds.has(project.clientId ?? 1))
+      .map((project) => ({ value: String(project.id), label: `${clients.find((client) => client.id === (project.clientId ?? 1))?.name} / ${project.name}` })),
+  ];
+  return (
+    <section className="browser-section orphans">
+      <h2>À ranger</h2>
+      <p className="browser-empty">Ces éléments ne sont plus rattachés à un espace ou à un projet. Rattachez-les ailleurs ou supprimez-les.</p>
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+      <ul className="browser-list">
+        {orphanProjects.map((project) => (
+          <li key={`p-${project.id}`} className="orphan-row">
+            <FolderClosed className="folder-icon" aria-hidden="true" />
+            <b>{project.name}</b>
+            <small>Projet sans espace</small>
+            <Select label={`Rattacher ${project.name}`} value="" options={spaceOptions} onChange={(value) => value && onMoveProject(project.id, Number(value))} />
+            <button type="button" className="ghost-button icon-only" aria-label={`Supprimer ${project.name}`} title="Supprimer" onClick={() => setConfirm({ title: `Supprimer le projet « ${project.name} » ?`, run: () => onDeleteProject(project.id) })}>
+              <Trash2 />
+            </button>
+          </li>
+        ))}
+        {orphanLivrables.map(({ livrableId, latest }) => (
+          <li key={`l-${livrableId}`} className="orphan-row">
+            <DeliverableIcon type={latest!.type} className="folder-icon" aria-hidden="true" />
+            <b>{latest!.name}</b>
+            <small>Livrable sans projet</small>
+            <Select
+              label={`Rattacher ${latest!.name}`}
+              value=""
+              options={projectOptions}
+              onChange={(value) => {
+                if (!value) return;
+                setError(onMoveLivrable(livrableId, Number(value)) ? "" : `Ce projet contient déjà un livrable nommé « ${latest!.name} ».`);
+              }}
+            />
+            <button type="button" className="ghost-button icon-only" aria-label={`Supprimer ${latest!.name}`} title="Supprimer" onClick={() => setConfirm({ title: `Supprimer le livrable « ${latest!.name} » ?`, run: () => onDeleteLivrable(livrableId) })}>
+              <Trash2 />
+            </button>
+          </li>
+        ))}
+      </ul>
+      {confirm && (
+        <ConfirmDeleteDialog
+          title={confirm.title}
+          impact=""
+          onClose={() => setConfirm(null)}
+          onConfirm={() => {
+            confirm.run();
+            setConfirm(null);
+          }}
+        />
+      )}
+    </section>
   );
 }
 
