@@ -5378,3 +5378,62 @@ a.page-nav-label:hover {
   color: var(--graphite);
   font-size: var(--t-caption-size);
 }
+
+/* Deliverable card "⋯" menu (bottom-right, shown on hover / focus / open) */
+.card-menu {
+  position: absolute;
+  right: var(--s-2);
+  bottom: var(--s-2);
+  z-index: 3;
+}
+.card-menu-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--r-button);
+  background: transparent;
+  color: var(--graphite);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--d-fast) var(--ease-out);
+}
+.card-wrap:hover .card-menu-button,
+.card-menu.is-open .card-menu-button,
+.card-menu-button:focus-visible {
+  opacity: 1;
+}
+.card-menu-button:hover,
+.card-menu.is-open .card-menu-button {
+  background: var(--mist);
+  color: var(--ink);
+}
+.card-menu-button:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 2px;
+}
+.card-menu-list {
+  top: auto;
+  bottom: calc(100% + var(--s-1));
+  min-width: 240px;
+}
+.card-menu-location {
+  margin: 0 0 var(--s-1);
+  padding: var(--s-2);
+  border-bottom: 1px solid var(--border);
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+.card-menu-location.is-orphan {
+  color: var(--status-high-text);
+}
+/* keep the title clear of the menu button */
+.card-wrap .file-card-body {
+  padding-right: 44px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-menu-button {
+    transition: none;
+  }
+}

@@ -1088,6 +1088,18 @@ export function AgencyApp() {
   }
 
   /** Re-attach a deliverable (every version) to another project; refused if that project has the same name. */
+  /** Renames every version of a deliverable; refused when its project already has that name. */
+  function renameLivrable(livrableId: number, name: string): string | null {
+    const versions = versionsOfLivrable(livrableId, deliverables);
+    if (!versions[0]) return "Livrable introuvable.";
+    const projectId = versions[0].projectId ?? 1;
+    const ids = new Set(versions.map((record) => record.id));
+    if (deliverables.some((record) => !ids.has(record.id) && (record.projectId ?? 1) === projectId && record.name.toLowerCase() === name.toLowerCase()))
+      return "Un autre livrable porte déjà ce nom dans ce projet.";
+    setDeliverables((current) => current.map((record) => (ids.has(record.id) ? { ...record, name } : record)));
+    return null;
+  }
+
   function moveLivrable(livrableId: number, projectId: number) {
     const versions = versionsOfLivrable(livrableId, deliverables);
     const name = versions[0]?.name;
@@ -2264,6 +2276,7 @@ export function AgencyApp() {
               onMoveProject={moveProject}
               onMoveLivrable={moveLivrable}
               onDeleteLivrable={deleteLivrable}
+              onRenameLivrable={renameLivrable}
               trash={trash}
               onRestore={restoreFromTrash}
               onPurge={purgeFromTrash}

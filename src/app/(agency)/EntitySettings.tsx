@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { FolderInput, Pencil, Settings, Trash2, X } from "lucide-react";
+import { Ellipsis, FolderInput, Pencil, Pin, Settings, Trash2, X } from "lucide-react";
 import { Select } from "@/components/Select";
 
 type Target = { id: number; label: string };
@@ -160,16 +160,20 @@ function DialogFrame({ title, onClose, children }: { title: string; onClose: () 
 export function RenameDialog({
   title,
   value,
+  error: externalError = "",
   onClose,
   onSave,
 }: {
   title: string;
   value: string;
+  /** Error coming from the caller (e.g. name already used). */
+  error?: string;
   onClose: () => void;
   onSave: (name: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
-  const [error, setError] = useState("");
+  const [localError, setError] = useState("");
+  const error = localError || externalError;
   return (
     <DialogFrame title={title} onClose={onClose}>
       <form
@@ -303,5 +307,111 @@ export function ConfirmDeleteDialog({
         </button>
       </div>
     </DialogFrame>
+  );
+}
+
+/**
+ * "⋯" menu on a deliverable card: where it lives, rename, pin to favorites, move to the trash.
+ * The location line tells apart deliverables that share a name.
+ */
+export function LivrableMenu({
+  name,
+  location,
+  pinned,
+  deleteImpact,
+  onTogglePin,
+  onRename,
+  onDelete,
+}: {
+  name: string;
+  /** "Espace / Projet", or null when it belongs to no space. */
+  location: string | null;
+  pinned: boolean;
+  deleteImpact: string;
+  onTogglePin: () => void;
+  /** Returns an error message when the name cannot be used. */
+  onRename: (name: string) => string | null;
+  onDelete: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [dialog, setDialog] = useState<"rename" | "delete" | null>(null);
+  const [renameError, setRenameError] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function close(event: MouseEvent | KeyboardEvent) {
+      if (event instanceof KeyboardEvent) {
+        if (event.key === "Escape") {
+          setMenuOpen(false);
+          triggerRef.current?.focus();
+        }
+      } else if (!rootRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [menuOpen]);
+
+  return (
+    <div className={`card-menu ${menuOpen ? "is-open" : ""}`} ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="card-menu-button"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        aria-label={`Actions sur ${name}`}
+        title="Actions"
+        onClick={() => setMenuOpen((current) => !current)}
+      >
+        <Ellipsis />
+      </button>
+      {menuOpen && (
+        <div className="settings-menu card-menu-list" role="menu" aria-label={`Actions sur ${name}`}>
+          <p className={`card-menu-location ${location ? "" : "is-orphan"}`}>
+            {location ? `Dans ${location}` : "Hors de tout espace et projet"}
+          </p>
+          <button type="button" role="menuitem" autoFocus onClick={() => (setMenuOpen(false), setRenameError(""), setDialog("rename"))}>
+            <Pencil aria-hidden="true" /> Renommer
+          </button>
+          <button type="button" role="menuitem" onClick={() => (setMenuOpen(false), onTogglePin())}>
+            <Pin aria-hidden="true" /> {pinned ? "Retirer des favoris" : "Épingler aux favoris"}
+          </button>
+          <button type="button" role="menuitem" className="is-danger" onClick={() => (setMenuOpen(false), setDialog("delete"))}>
+            <Trash2 aria-hidden="true" /> Mettre à la corbeille
+          </button>
+        </div>
+      )}
+      {dialog === "rename" && (
+        <RenameDialog
+          title="Renommer le livrable"
+          value={name}
+          error={renameError}
+          onClose={() => setDialog(null)}
+          onSave={(next) => {
+            const problem = onRename(next);
+            if (problem) setRenameError(problem);
+            else setDialog(null);
+          }}
+        />
+      )}
+      {dialog === "delete" && (
+        <ConfirmDeleteDialog
+          title={`Supprimer le livrable « ${name} » ?`}
+          impact={deleteImpact}
+          toTrash
+          onClose={() => setDialog(null)}
+          onConfirm={() => {
+            setDialog(null);
+            onDelete();
+          }}
+        />
+      )}
+    </div>
   );
 }

@@ -9,7 +9,7 @@ import { Select } from "@/components/Select";
 import { href, hrefForRecord, livrableIdOf, versionsOfLivrable, type AgencyView } from "./routes";
 import { TodoList, isAgencyAction, type TodoItem } from "./TodoList";
 import { StatusMark, type TabStatus } from "./TabBar";
-import { ConfirmDeleteDialog, EntitySettings } from "./EntitySettings";
+import { ConfirmDeleteDialog, EntitySettings, LivrableMenu } from "./EntitySettings";
 import type { TrashItem } from "./AgencyApp";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
 import type { DeliverableType } from "@/components/deliverableKinds";
@@ -68,6 +68,8 @@ type BrowserViewProps = {
   /** Returns false when the target project already has a deliverable with that name. */
   onMoveLivrable: (livrableId: number, projectId: number) => boolean;
   onDeleteLivrable: (livrableId: number) => void;
+  /** Returns an error message when the name cannot be used. */
+  onRenameLivrable: (livrableId: number, name: string) => string | null;
   /** Review status of a deliverable (its latest version), as shown on tabs. */
   livrableStatus: (livrableId: number) => TabStatus;
   trash: TrashItem[];
@@ -232,6 +234,7 @@ export function BrowserView({
   onMoveProject,
   onMoveLivrable,
   onDeleteLivrable,
+  onRenameLivrable,
   trash,
   onRestore,
   onPurge,
@@ -341,6 +344,21 @@ export function BrowserView({
       ) : (
         <span className="card-version card-version-single">{versionLabel(record)}</span>
       );
+    const livrableId = livrableIdOf(record, deliverables);
+    const project = projects.find((candidate) => candidate.id === (record.projectId ?? 1));
+    const space = project && clients.find((client) => client.id === (project.clientId ?? 1));
+    const requests = comments.filter((comment) => versions.some((version) => version.id === comment.deliverableId)).length;
+    const menu = (
+      <LivrableMenu
+        name={record.name}
+        location={project && space ? `${space.name} / ${project.name}` : null}
+        pinned={favorites.includes(`l:${livrableId}`)}
+        deleteImpact={[plural(versions.length, "version"), requests ? plural(requests, "demande") : null].filter(Boolean).join(" et ")}
+        onTogglePin={() => onToggleFavorite(`l:${livrableId}`)}
+        onRename={(name) => onRenameLivrable(livrableId, name)}
+        onDelete={() => onDeleteLivrable(livrableId)}
+      />
+    );
     return card(
       `l:${livrableIdOf(record, deliverables)}`,
       hrefForRecord(record, deliverables),
@@ -357,7 +375,10 @@ export function BrowserView({
           {pending > 0 && <span className="browser-badge">{plural(pending, "demande")} à qualifier</span>}
         </span>
       </>,
-      corner,
+      <>
+        {corner}
+        {menu}
+      </>,
     );
   }
 
@@ -810,7 +831,9 @@ const trashKinds = { space: "Espace", project: "Projet", livrable: "Livrable" } 
 /** Deleted spaces, projects and deliverables: restore them, or erase them for good. */
 function TrashPage({ items, onRestore, onPurge }: { items: TrashItem[]; onRestore: (id: number) => void; onPurge: (id?: number) => void }) {
   const [confirm, setConfirm] = useState<{ title: string; run: () => void } | null>(null);
-  const daysLeft = (deletedAt: number) => Math.max(0, 30 - Math.floor((Date.now() - deletedAt) / (24 * 60 * 60 * 1000)));
+  // Time is read once when the page opens (render must stay pure).
+  const [now] = useState(() => Date.now());
+  const daysLeft = (deletedAt: number) => Math.max(0, 30 - Math.floor((now - deletedAt) / (24 * 60 * 60 * 1000)));
   const contentOf = (item: TrashItem) => {
     const livrables = new Set(item.data.deliverables.map((record) => `${record.projectId}:${record.name}`)).size;
     return [
