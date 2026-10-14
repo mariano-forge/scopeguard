@@ -202,6 +202,8 @@ type ProposalVersion = {
   createdAt: string;
   /** Closed by a refused adaptation: what the client had asked. */
   adaptation?: string;
+  /** The client may counter-propose (ask for an adaptation); absent on older data = allowed. */
+  allowCounter?: boolean;
 };
 type ProposalVersions = Record<number, ProposalVersion[]>;
 type ImportMode = "version" | "deliverable";
@@ -393,6 +395,7 @@ export function AgencyApp() {
   const [newProposalVersionOpen, setNewProposalVersionOpen] = useState(false);
   /** The version form re-quotes a refused proposal: it saves a draft, sent later after confirmation. */
   const [requoting, setRequoting] = useState(false);
+  const [newProposalCounter, setNewProposalCounter] = useState(false);
   const [newProposalDescription, setNewProposalDescription] = useState("");
   const [newProposalAmount, setNewProposalAmount] = useState("");
   const [newProposalDeadline, setNewProposalDeadline] = useState("");
@@ -989,6 +992,7 @@ export function AgencyApp() {
               description: qualified.title,
               amount: quote.amount,
               deadline: quote.days,
+              allowCounter: quote.counter,
               status: "draft",
               createdAt: new Date().toLocaleString("fr-FR"),
             },
@@ -1497,6 +1501,7 @@ export function AgencyApp() {
     setNewProposalDescription(existing?.description ?? source?.title ?? source?.message ?? "");
     setNewProposalAmount(existing ? String(parseNumericAmount(existing.amount)) : "");
     setNewProposalDeadline(existing ? String(parseNumericDays(existing.deadline)) : "");
+    setNewProposalCounter(existing?.allowCounter ?? false);
     setProposalOpen(false);
     setRequoting(true);
     setNewProposalVersionOpen(true);
@@ -1522,6 +1527,7 @@ export function AgencyApp() {
           description: newProposalDescription.trim(),
           amount: parseNumericAmount(newProposalAmount),
           deadline: parseNumericDays(newProposalDeadline),
+          allowCounter: newProposalCounter,
           status: "draft",
           createdAt: new Date().toLocaleString("fr-FR"),
         },
@@ -1577,6 +1583,7 @@ export function AgencyApp() {
             description: newProposalDescription.trim(),
             amount: numericAmount,
             deadline: numericDays,
+            allowCounter: newProposalCounter,
             status: "sent",
             createdAt: new Date().toLocaleString("fr-FR"),
           },
@@ -2294,7 +2301,7 @@ export function AgencyApp() {
                   onSendProposal={() => setConfirmSendId(comment.id)}
                   quote={(() => {
                     const draft = proposalStateFor(comment.id) === "draft" ? activeProposalFor(comment.id) : undefined;
-                    return draft ? { amount: parseNumericAmount(draft.amount), days: parseNumericDays(draft.deadline) } : undefined;
+                    return draft ? { amount: parseNumericAmount(draft.amount), days: parseNumericDays(draft.deadline), counter: draft.allowCounter ?? false } : undefined;
                   })()}
                   onReply={(message) => replyTo(comment.id, message)}
                   // Once a proposal has been sent to the client, the qualification no longer changes.
@@ -2346,7 +2353,6 @@ export function AgencyApp() {
               }}
               onSendProposal={setConfirmSendId}
               onOpenProposal={openProposal}
-              onRequote={openRequote}
               proposalSummary={(comment) => {
                 if (proposalStateFor(comment.id) === "none") return null;
                 const proposal = activeProposalFor(comment.id);
@@ -2382,6 +2388,7 @@ export function AgencyApp() {
               setNewProposalDescription(proposal?.description ?? "");
               setNewProposalAmount(proposal ? String(parseNumericAmount(proposal.amount)) : "");
               setNewProposalDeadline(proposal ? String(parseNumericDays(proposal.deadline)) : "");
+              setNewProposalCounter(proposal?.allowCounter ?? false);
               setRequoting(false);
               setNewProposalVersionOpen(true);
             };
@@ -2405,7 +2412,7 @@ export function AgencyApp() {
                       <Button variant="outline" onClick={() => setProposalOpen(false)}>
                         Fermer
                       </Button>
-                      <Button onClick={() => openRequote(id)}>Chiffrer une nouvelle version</Button>
+                      <Button onClick={() => openRequote(id)}>Faire une nouvelle proposition</Button>
                     </>
                   ) : adaptationPending ? (
                     <>
@@ -2458,6 +2465,10 @@ export function AgencyApp() {
                       <div>
                         <span>Impact planning</span>
                         <b>{formatProposalDeadline(proposal?.deadline ?? 0)}</b>
+                      </div>
+                      <div>
+                        <span>Contre-proposition</span>
+                        <b>{proposal?.allowCounter === false ? "Non autorisée · un refus est définitif" : "Autorisée"}</b>
                       </div>
                     </div>
                     {selectedAdaptationRequest && (
@@ -3006,7 +3017,7 @@ export function AgencyApp() {
               setNewProposalVersionOpen(false);
               setRequoting(false);
             }}
-            title={requoting ? "Chiffrer une nouvelle version" : "Nouvelle version de la proposition"}
+            title={requoting ? "Nouvelle proposition" : "Nouvelle version de la proposition"}
             description={
               requoting
                 ? "La version refusée reste dans l’historique. Vous enverrez la nouvelle version après confirmation."
@@ -3041,6 +3052,13 @@ export function AgencyApp() {
               <Field id="version-deadline" label="Impact planning">
                 <AddonInput id="version-deadline" addon="jours" type="number" min="0" step="1" placeholder="3" value={newProposalDeadline} onChange={(event) => setNewProposalDeadline(event.target.value)} />
               </Field>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="version-counter" className="grid gap-0.5 text-sm font-normal">
+                Le client peut faire une contre-proposition
+                <span className="text-xs text-muted-foreground">Sinon, un refus est définitif.</span>
+              </Label>
+              <Switch id="version-counter" checked={newProposalCounter} onCheckedChange={setNewProposalCounter} />
             </div>
           </Modal>
         </div>

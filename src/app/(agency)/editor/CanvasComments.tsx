@@ -166,7 +166,8 @@ function ScopeChoice({ value, onChange }: { value: Qualification; onChange: (val
 }
 
 /** Optional quote typed while qualifying an out-of-scope request (prefills the proposal, sends nothing). */
-export type Quote = { amount: number; days: number };
+/** `counter`: the client may answer with a counter-proposal; otherwise a refusal is final. */
+export type Quote = { amount: number; days: number; counter: boolean };
 /** Where an out-of-scope request stands: not quoted, quoted (not sent), or sent (label says what follows). */
 /** `retry`: the client refused (or the adaptation was refused): the agency can quote a new version. */
 export type ProposalStage = { stage: "none" } | { stage: "draft" } | { stage: "sent"; label: string; retry?: boolean };
@@ -224,6 +225,7 @@ export function ThreadPopover({
   const [quoteOn, setQuoteOn] = useState(Boolean(quote) || Boolean(startQuoting));
   const [amount, setAmount] = useState(quote ? String(quote.amount) : "");
   const [days, setDays] = useState(quote ? String(quote.days) : "");
+  const [counter, setCounter] = useState(quote?.counter ?? false);
   const quoteReady = !quoteOn || decision !== "Hors périmètre" || Number(amount) > 0;
   const listRef = useRef<HTMLDivElement>(null);
   // A comment added by hand has no spot: its bubble opens at the top of the page, centered.
@@ -278,7 +280,7 @@ export function ThreadPopover({
               title: title.trim(),
               description: description.trim(),
               decision,
-              quote: decision === "Hors périmètre" && quoteOn ? { amount: Number(amount), days: Number(days) || 0 } : undefined,
+              quote: decision === "Hors périmètre" && quoteOn ? { amount: Number(amount), days: Number(days) || 0, counter } : undefined,
             });
             setQualifying(false);
           }}
@@ -310,6 +312,13 @@ export function ThreadPopover({
                   <label>
                     Délai (jours)
                     <input type="number" min="0" step="1" value={days} onChange={(event) => setDays(event.target.value)} placeholder="3" />
+                  </label>
+                  <label className="quote-check">
+                    <input type="checkbox" checked={counter} onChange={(event) => setCounter(event.target.checked)} />
+                    <span>
+                      Le client peut faire une contre-proposition
+                      <small>Sinon, un refus est définitif.</small>
+                    </span>
                   </label>
                 </div>
               )}

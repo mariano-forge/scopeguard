@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, MessageSquare, Plus, Share2 } from "lucide-react";
+import { Eye, History, MessageSquare, Plus, Share2 } from "lucide-react";
 import type { ProposalStage } from "./CanvasComments";
 import { ResizeHandle } from "./ResizeHandle";
 import { kindLabels, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
@@ -48,8 +48,8 @@ export function RequestPanel({
   onQuote,
   onSendProposal,
   onOpenProposal,
-  onRequote,
   proposalSummary,
+  unread,
   adding,
   onAddingChange,
   onAddComment,
@@ -65,10 +65,10 @@ export function RequestPanel({
   onQuote?: (commentId: number) => void;
   onSendProposal?: (commentId: number) => void;
   onOpenProposal?: (commentId: number) => void;
-  /** After a refusal: quote a new version (the refused one stays in the history). */
-  onRequote?: (commentId: number) => void;
   /** Out-of-scope requests: amount, delay and where the decision stands, above the actions. */
   proposalSummary?: (comment: ThreadComment) => React.ReactNode;
+  /** Has news the reader hasn't opened yet (a reply, a proposal): dot on the row and its tab. */
+  unread?: (comment: ThreadComment) => boolean;
   /** The manual comment form is open (opened from the panel header's "+"). */
   adding: boolean;
   onAddingChange: (adding: boolean) => void;
@@ -78,6 +78,7 @@ export function RequestPanel({
   const [draft, setDraft] = useState("");
   const now = useNow();
   const count = (kind: RequestKind) => comments.filter((comment) => requestKind(comment) === kind).length;
+  const hasUnread = (kind: RequestKind) => Boolean(unread) && comments.some((comment) => requestKind(comment) === kind && unread?.(comment));
   const list = comments.filter((comment) => requestKind(comment) === tab).sort((left, right) => right.id - left.id);
   const current = tabs.find((option) => option.kind === tab) ?? tabs[0];
 
@@ -87,6 +88,7 @@ export function RequestPanel({
         {tabs.map((option) => (
           <button key={option.kind} role="tab" aria-selected={tab === option.kind} className={tab === option.kind ? "is-active" : ""} onClick={() => onTab(option.kind)}>
             {option.label} <span>{count(option.kind)}</span>
+            {hasUnread(option.kind) && <i className="unread-dot" aria-label="Nouvelle réponse" />}
           </button>
         ))}
       </div>
@@ -148,7 +150,10 @@ export function RequestPanel({
                     </span>
                     <span className="thread-row-body">
                       <span className="thread-row-meta">
-                        <span>{comment.author}</span>
+                        <span className="inline-flex items-center gap-1.5">
+                          {unread?.(comment) && <i className="unread-dot" aria-label="Nouvelle réponse" />}
+                          {comment.author}
+                        </span>
                         {timeLabel(comment, now) && <small>{timeLabel(comment, now)}</small>}
                       </span>
                       <span className={`thread-row-text ${kind !== "comment" ? "is-title" : ""}`}>{requestText(comment)}</span>
@@ -169,14 +174,11 @@ export function RequestPanel({
                         <div className="row-actions">
                           {proposalSummary?.(comment)}
                           {stage.stage === "sent" && stage.retry ? (
-                            <>
-                              <button type="button" className="secondary-button small-button" onClick={() => onOpenProposal?.(comment.id)}>
-                                Historique
-                              </button>
-                              <button type="button" className="secondary-button small-button" onClick={() => onRequote?.(comment.id)}>
-                                Chiffrer à nouveau
-                              </button>
-                            </>
+                            <Hint label="Historique et nouvelle proposition">
+                              <Button variant="outline" size="icon-sm" className="ml-auto shrink-0" aria-label="Historique de la proposition" onClick={() => onOpenProposal?.(comment.id)}>
+                                <History />
+                              </Button>
+                            </Hint>
                           ) : stage.stage === "sent" ? (
                             <button type="button" className="secondary-button small-button" onClick={() => onOpenProposal?.(comment.id)}>
                               {stage.label}
@@ -224,7 +226,6 @@ export function EditorInspector({
   onQuote,
   onSendProposal,
   onOpenProposal,
-  onRequote,
   proposalSummary,
   onAddComment,
   onShare,
@@ -241,7 +242,6 @@ export function EditorInspector({
   onQuote: (commentId: number) => void;
   onSendProposal: (commentId: number) => void;
   onOpenProposal: (commentId: number) => void;
-  onRequote: (commentId: number) => void;
   proposalSummary: (comment: ThreadComment) => React.ReactNode;
   onAddComment?: (message: string) => void;
   onShare: () => void;
@@ -286,7 +286,6 @@ export function EditorInspector({
         onQuote={onQuote}
         onSendProposal={onSendProposal}
         onOpenProposal={onOpenProposal}
-        onRequote={onRequote}
         proposalSummary={proposalSummary}
         adding={adding}
         onAddingChange={setAdding}

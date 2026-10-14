@@ -7432,3 +7432,84 @@ body.is-resizing {
 .proposal-history .decision-badge {
   margin-left: auto;
 }
+
+/* Proposal line of a request row: one line (amount, delay, status), the history button at its end */
+.client-proposal-line {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  width: auto;
+  min-width: 0;
+  white-space: nowrap;
+}
+.client-proposal-line .decision-badge {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inspector-list .row-actions:has(.client-proposal-line) {
+  align-items: center;
+}
+/* New reply / proposal the reader hasn't opened */
+.unread-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--attention-fill);
+}
+.inspector-tabs .unread-dot {
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+/* Quote form: "the client may counter-propose" */
+.quote-fields .quote-check {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: flex-start;
+  gap: var(--s-2);
+  cursor: pointer;
+}
+.quote-fields .quote-check input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--action-ui);
+}
+.quote-check span {
+  display: grid;
+  gap: 2px;
+}
+.quote-check small {
+  color: var(--graphite);
+}
+
+/* Client top bar: current version + status (one group), then the actions */
+.client-version-state {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-right: var(--s-2);
+}
+.client-version-state .version-chip {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--paper);
+  color: var(--ink);
+  font: 500 var(--t-caption-size) var(--font-mono);
+}
+.client-review-state-chip {
+  height: 28px;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-field);
+  font-size: var(--t-caption-size);
+}
+.client-review-state-chip .lucide {
+  width: 14px;
+  height: 14px;
+}
+.client-review-state-chip.is-pending {
+  background: var(--status-low-bg);
+  color: var(--status-low-text);
+}

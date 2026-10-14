@@ -129,6 +129,8 @@ type ProposalVersion = {
   deadline: number | string;
   status: "draft" | "sent" | "superseded" | "accepted" | "refused";
   createdAt: string;
+  /** The client may counter-propose; absent on older data = allowed. */
+  allowCounter?: boolean;
 };
 type ProposalVersions = Record<number, ProposalVersion[]>;
 
@@ -143,6 +145,16 @@ export default function ClientReviewPage() {
   /** "Northstar · Refonte site": where the shared deliverable lives. */
   const [context, setContext] = useState("");
   const [panelWidth, setPanelWidth] = useState(340);
+  /** Agency replies and proposals the client has opened ("c12", "r1739…", "p1739…"); read once, in the browser. */
+  const [seen, setSeen] = useState<string[] | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(`kora-client-seen-${window.location.pathname.split("/").pop()}`) ?? "[]");
+      return Array.isArray(saved) ? saved.filter((key) => typeof key === "string") : [];
+    } catch {
+      return [];
+    }
+  });
   const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
   const [selectedCommentId, setSelectedCommentId] = useState<number | null>(null);
   const [tool, setTool] = useState<CanvasTool>("remark");
@@ -362,6 +374,34 @@ export default function ClientReviewPage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Read state of the agency's answers, per review link.
+  const seenKey = `kora-client-seen-${params.token}`;
+  function markSeen(keys: string[]) {
+    setSeen((current) => {
+      const base = current ?? [];
+      const fresh = keys.filter((key) => !base.includes(key));
+      if (fresh.length === 0) return current;
+      const next = [...base, ...fresh];
+      try {
+        window.localStorage.setItem(seenKey, JSON.stringify(next));
+      } catch {
+        // Unread dots come back on reload when storage is unavailable.
+      }
+      return next;
+    });
+  }
+  /** Keys of the agency's answers on a request: its replies (or the request itself if the agency wrote it), and the proposal sent. */
+  function agencyKeysOf(comment: ClientComment) {
+    const keys = [
+      ...(comment.initials === "AM" ? [`c${comment.id}`] : []),
+      ...(comment.replies ?? []).filter((reply) => reply.initials === "AM").map((reply) => `r${reply.id}`),
+    ];
+    const proposal = proposalStates[comment.id] === "sent" ? activeProposalFor(comment.id) : undefined;
+    if (proposal) keys.push(`p${proposal.id}`);
+    return keys;
+  }
+  const isUnread = (comment: ClientComment) => seen !== null && agencyKeysOf(comment).some((key) => !seen.includes(key));
+
   function isReadOnlyVersion() {
     return reviewStatus === "approved" || deliverable.locked || deliverable.status === "Approuvée" || deliverable.status === "Remplacée";
   }
@@ -402,6 +442,7 @@ export default function ClientReviewPage() {
 
   /** Opens a thread from the side list and brings its pin into view. */
   function focusThread(commentId: number) {
+    readThread(commentId);
     setSelectedCommentId(commentId);
     setComposer(null);
     setThreadOpen(true);
@@ -602,8 +643,13 @@ export default function ClientReviewPage() {
       || Boolean(adaptationRequests[commentId]?.decision);
   }
 
+  /** The agency let the client answer with a counter-proposal (adaptation). */
+  function canCounter(commentId: number) {
+    return activeProposalFor(commentId)?.allowCounter !== false;
+  }
+
   function openAdaptationRequest(commentId: number) {
-    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
+    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId) || !canCounter(commentId)) return;
     setAdaptationCommentId(commentId);
     setAdaptationMessage("");
     setAdaptationBudget("");
@@ -643,6 +689,24 @@ export default function ClientReviewPage() {
   }
 
   const sharedDeliverableId = reviewLink?.deliverableId ?? deliverable.id;
+  const unreadCount = seen === null ? 0 : comments.filter((comment) => (comment.deliverableId ?? sharedDeliverableId) === sharedDeliverableId).flatMap(agencyKeysOf).filter((key) => !seen.includes(key)).length;
+  const previousUnread = useRef<number | null>(null);
+  useEffect(() => {
+    if (seen === null) return;
+    if (previousUnread.current !== null && unreadCount > previousUnread.current) toast("Nouvelle réponse de l’agence", { description: "Un point marqué d’un rond orange vous attend dans « Vos retours »." });
+    previousUnread.current = unreadCount;
+  }, [unreadCount, seen]);
+  /** Opening a thread marks the agency's replies as read. */
+  function readThread(commentId: number) {
+    const comment = comments.find((candidate) => candidate.id === commentId);
+    if (comment) markSeen(agencyKeysOf(comment).filter((key) => !key.startsWith("p")));
+  }
+  /** Opening a proposal marks it as read. */
+  function openProposalModal(commentId: number) {
+    const proposal = activeProposalFor(commentId);
+    if (proposal) markSeen([`p${proposal.id}`]);
+    setProposalPreviewCommentId(commentId);
+  }
   const sharedComments = comments.filter(
     (comment) => (comment.deliverableId ?? comments[0]?.deliverableId ?? sharedDeliverableId) === sharedDeliverableId,
   );
@@ -681,12 +745,13 @@ export default function ClientReviewPage() {
   const versionLabel = `V${String(deliverable.version).padStart(2, "0")}`;
   const reviewState =
     reviewStatus === "approved"
-      ? { tone: "approved", icon: <Check />, label: `Version approuvée${approvedAt ? ` · ${approvedAt}` : ""}` }
+      ? { tone: "approved", icon: <Check />, label: "Validée", hint: approvedAt ? `Validée le ${approvedAt}` : "Version validée" }
       : reviewStatus === "changes-requested"
-        ? { tone: "changes", icon: <PenLine />, label: "Modifications demandées · en attente d’une nouvelle version" }
+        ? { tone: "changes", icon: <PenLine />, label: "Modifications demandées", hint: "En attente d’une nouvelle version de l’agence" }
         : deliverable.status === "Remplacée"
-          ? { tone: "replaced", icon: <Lock />, label: "Version remplacée" }
-          : null;
+          ? { tone: "replaced", icon: <Lock />, label: "Remplacée", hint: "Une version plus récente existe" }
+          : { tone: "pending", icon: <Clock />, label: "À valider", hint: "En attente de votre validation" };
+  const canValidate = !isReadOnlyVersion() && reviewStatus === "pending";
   /** Where the client's decision on a proposal stands. */
   const proposalStatus = (commentId: number) => {
     const adaptation = adaptationRequests[commentId];
@@ -709,24 +774,29 @@ export default function ClientReviewPage() {
           <div className="min-w-0">
             <h1 className="client-topbar-title">
               <span className="truncate">{deliverable.name}</span>
-              <span className="version-chip">{versionLabel}</span>
             </h1>
             {context && <p className="client-topbar-context">{context}</p>}
           </div>
         </div>
         <div className="client-topbar-actions">
-          {reviewState ? (
-            <span className={`client-review-state-chip is-${reviewState.tone}`} role="status">
-              {reviewState.icon}
-              {reviewState.label}
-            </span>
-          ) : (
+          <div className="client-version-state">
+            <Hint label="Version actuelle du livrable">
+              <span className="version-chip">{versionLabel}</span>
+            </Hint>
+            <Hint label={reviewState.hint}>
+              <span className={`client-review-state-chip is-${reviewState.tone}`} role="status">
+                {reviewState.icon}
+                {reviewState.label}
+              </span>
+            </Hint>
+          </div>
+          {canValidate && (
             <>
-              <Button variant="outline" onClick={() => setChangesRequestOpen(true)} disabled={isReadOnlyVersion()}>
+              <Button variant="outline" onClick={() => setChangesRequestOpen(true)}>
                 Demander des modifications
               </Button>
-              <Button onClick={() => setApprovalOpen(true)} disabled={isReadOnlyVersion()}>
-                <Check /> Approuver cette version
+              <Button onClick={() => setApprovalOpen(true)}>
+                <Check /> Valider cette version
               </Button>
             </>
           )}
@@ -748,6 +818,7 @@ export default function ClientReviewPage() {
             setComposer(next);
           }}
           onPinClick={(comment) => {
+            readThread(comment.id);
             setComposer(null);
             setSelectedCommentId(comment.id);
             setThreadOpen((open) => !(open && comment.id === selectedCommentId));
@@ -782,7 +853,7 @@ export default function ClientReviewPage() {
                   comment.decision === "Hors périmètre" && proposalStates[comment.id] === "sent"
                     ? () => {
                         setThreadOpen(false);
-                        setProposalPreviewCommentId(comment.id);
+                        openProposalModal(comment.id);
                       }
                     : undefined
                 }
@@ -830,7 +901,8 @@ export default function ClientReviewPage() {
             onTab={setPanelTab}
             onFocus={focusThread}
             proposalStage={(comment) => (proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : null)}
-            onOpenProposal={(commentId) => setProposalPreviewCommentId(commentId)}
+            onOpenProposal={openProposalModal}
+            unread={(comment) => isUnread(comment as ClientComment)}
             proposalSummary={(comment) => {
               const proposal = activeProposalFor(comment.id);
               const status = proposalStatus(comment.id);
@@ -856,16 +928,18 @@ export default function ClientReviewPage() {
         footer={
           previewProposal && proposalPreviewCommentId !== null && canDecide(proposalPreviewCommentId) ? (
             <>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  const id = proposalPreviewCommentId;
-                  setProposalPreviewCommentId(null);
-                  openAdaptationRequest(id);
-                }}
-              >
-                Demander une adaptation
-              </Button>
+              {canCounter(proposalPreviewCommentId) && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const id = proposalPreviewCommentId;
+                    setProposalPreviewCommentId(null);
+                    openAdaptationRequest(id);
+                  }}
+                >
+                  Faire une contre-proposition
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={() => {
@@ -913,6 +987,9 @@ export default function ClientReviewPage() {
               <span className={`decision-badge ${proposalStatus(proposalPreviewCommentId).tone}`}>{proposalStatus(proposalPreviewCommentId).label}</span>
               <span className="text-muted-foreground">Version {previewProposal.version} de la proposition</span>
             </p>
+            {!canCounter(proposalPreviewCommentId) && canDecide(proposalPreviewCommentId) && (
+              <p className="text-sm text-muted-foreground">L’agence ne propose pas de contre-proposition sur ce devis : un refus est définitif.</p>
+            )}
             {previewAdaptationRequest && (
               <div className="adaptation-request-summary">
                 <span>Votre demande d’adaptation · {previewAdaptationRequest.requestedAt}</span>
@@ -925,7 +1002,7 @@ export default function ClientReviewPage() {
       <Modal
         open={adaptationCommentId !== null}
         onClose={() => setAdaptationCommentId(null)}
-        title="Demander une adaptation"
+        title="Faire une contre-proposition"
         description="L’agence reste responsable du chiffrage. Décrivez votre besoin et, si vous le souhaitez, indiquez un budget ou un délai cible."
         onSubmit={submitAdaptationRequest}
         footer={
@@ -976,14 +1053,14 @@ export default function ClientReviewPage() {
         open={approvalOpen}
         onClose={() => setApprovalOpen(false)}
         role="alertdialog"
-        title="Approuver cette version ?"
-        description="Vous confirmez que cette version est validée. L’agence en est informée et la version passe en lecture seule."
+        title="Valider cette version ?"
+        description="L’agence en est informée et la version passe en lecture seule."
         footer={
           <>
             <Button variant="outline" onClick={() => setApprovalOpen(false)}>
               Annuler
             </Button>
-            <Button onClick={confirmApproval}>Confirmer l’approbation</Button>
+            <Button onClick={confirmApproval}>Confirmer la validation</Button>
           </>
         }
       />
