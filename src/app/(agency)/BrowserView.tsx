@@ -72,6 +72,13 @@ const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "
 const euros = (value: number) => `${value.toLocaleString("fr-FR").replace(/\u202f/g, "\u00a0")}\u00a0€`;
 const layoutKey = "kora-browser-layout";
 
+/** "Modifié aujourd'hui à 14:32" / "Modifié le 14 oct. 2026, 10:32". */
+const modifiedLabel = (importedAt: string) => {
+  const text = importedAt.trim();
+  if (!text) return "Date inconnue";
+  return /^\d/.test(text) ? `Modifié le ${text}` : `Modifié ${text.charAt(0).toLowerCase()}${text.slice(1)}`;
+};
+
 /** Space avatar colors: status pairs, all ≥ 7:1 (see tokens.css). */
 const avatarTones = ["low", "resolved", "scope", "clarify", "medium", "high"];
 
@@ -208,6 +215,7 @@ export function BrowserView({
   onToggleFavorite,
   livrableStatus,
 }: BrowserViewProps) {
+  const router = useRouter();
   const [sort, setSort] = useState<SortKey>("recent");
   const [layout, setLayout] = useState<Layout>("grid");
   const [recentFilter, setRecentFilter] = useState<RecentFilter>("all");
@@ -257,13 +265,14 @@ export function BrowserView({
     comments.filter((comment) => comment.deliverableId === record.id && comment.decision === "À qualifier").length;
 
   /** Starrable card wrapper (the star sits beside the link: no button inside a link). */
-  function card(key: string, target: string, className: string, label: string, children: React.ReactNode) {
+  function card(key: string, target: string, className: string, label: string, children: React.ReactNode, corner?: React.ReactNode) {
     const starred = favorites.includes(key);
     return (
       <div className="card-wrap" key={key}>
         <Link className={className} href={target}>
           {children}
         </Link>
+        {corner}
         <button
           type="button"
           className={`star-button ${starred ? "is-starred" : ""}`}
@@ -278,9 +287,27 @@ export function BrowserView({
     );
   }
 
-  function livrableCard(record: Deliverable, showProject = false) {
-    const project = projects.find((candidate) => candidate.id === (record.projectId ?? 1));
+  function livrableCard(record: Deliverable) {
     const pending = toQualify(record);
+    const versions = versionsOfLivrable(livrableIdOf(record, deliverables), deliverables);
+    const versionLabel = (version: Deliverable) => `V${String(version.version).padStart(2, "0")}`;
+    // Top-right of the cover: latest version by default, every version when there are several.
+    const corner =
+      versions.length > 1 ? (
+        <div className="card-version">
+          <Select
+            label={`Version de ${record.name}`}
+            value={String(record.id)}
+            options={versions.map((version) => ({ value: String(version.id), label: versionLabel(version) }))}
+            onChange={(id) => {
+              const version = versions.find((candidate) => String(candidate.id) === id);
+              if (version) router.push(hrefForRecord(version, deliverables));
+            }}
+          />
+        </div>
+      ) : (
+        <span className="card-version card-version-single">{versionLabel(record)}</span>
+      );
     return card(
       `l:${livrableIdOf(record, deliverables)}`,
       hrefForRecord(record, deliverables),
@@ -293,12 +320,11 @@ export function BrowserView({
             <b>{record.name}</b>
             <StatusMark status={livrableStatus(livrableIdOf(record, deliverables))} />
           </span>
-          <small>
-            {showProject && project ? `${project.name} · ` : ""}V{String(record.version).padStart(2, "0")} · {record.importedAt}
-          </small>
+          <small>{modifiedLabel(record.importedAt)}</small>
           {pending > 0 && <span className="browser-badge">{plural(pending, "demande")} à qualifier</span>}
         </span>
       </>,
+      corner,
     );
   }
 
@@ -560,7 +586,7 @@ export function BrowserView({
         ) : shown.length === 0 ? (
           <EmptyState icon={Star} title="Aucun livrable pour ce filtre" text="Essayez un autre filtre ou revenez à « Tous »." />
         ) : (
-          <div className="file-grid">{shown.map((record) => livrableCard(record, true))}</div>
+          <div className="file-grid">{shown.map((record) => livrableCard(record))}</div>
         )}
       </div>
     );

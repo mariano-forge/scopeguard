@@ -5150,3 +5150,44 @@ a.page-nav-label:hover {
   padding: 0 var(--s-3);
   border: 1px solid var(--border);
 }
+
+/* Cards: star top-left, version picker top-right of the cover */
+.card-wrap .star-button {
+  right: auto;
+  left: var(--s-2);
+}
+.card-version {
+  position: absolute;
+  top: var(--s-2);
+  right: var(--s-2);
+  z-index: 2;
+}
+.card-version .select-trigger,
+.card-version-single {
+  height: 28px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--paper);
+  color: var(--ink);
+  font: 500 var(--t-mono) var(--font-mono);
+}
+.card-version-single {
+  display: inline-flex;
+  align-items: center;
+}
+.card-version .select-trigger .lucide {
+  width: 14px;
+  height: 14px;
+}
+.card-version .select-menu {
+  min-width: 96px;
+}
+.card-version .select-option {
+  font-family: var(--font-mono);
+}
+
+/* Browser pages on a clean white background (feedback); cards keep their hairline border */
+.app-shell {
+  background: var(--paper);
+}

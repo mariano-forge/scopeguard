@@ -199,6 +199,9 @@ const recentsKey = "kora-recent-deliverables";
 const tabsKey = "kora-open-tabs";
 const maxTabs = 12;
 const sidebarKey = "kora-sidebar";
+/** Import date stored on a version, e.g. "14 oct. 2026, 10:32". */
+const nowLabel = () =>
+  new Date().toLocaleString("fr-FR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const favoritesKey = "kora-favorites";
 const mobileQuery = "(max-width: 680px)";
 function subscribeMobile(onChange: () => void) {
@@ -987,7 +990,7 @@ export function AgencyApp() {
       size: input.file?.size ?? 0,
       version: 1,
       status: "En attente client",
-      importedAt: "À l'instant",
+      importedAt: nowLabel(),
       locked: false,
       fileData,
       url: input.url,
@@ -1018,7 +1021,7 @@ export function AgencyApp() {
       size: file.size,
       version: nextVersion,
       status: "En attente client",
-      importedAt: "À l'instant",
+      importedAt: nowLabel(),
       locked: false,
       fileData,
     };
