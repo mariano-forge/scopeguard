@@ -48,6 +48,7 @@ export function RequestPanel({
   onQuote,
   onSendProposal,
   onOpenProposal,
+  onRequote,
   proposalSummary,
   unread,
   adding,
@@ -65,6 +66,8 @@ export function RequestPanel({
   onQuote?: (commentId: number) => void;
   onSendProposal?: (commentId: number) => void;
   onOpenProposal?: (commentId: number) => void;
+  /** Refused proposal: quote a new version (the refused one stays in the history). */
+  onRequote?: (commentId: number) => void;
   /** Out-of-scope requests: amount, delay and where the decision stands, above the actions. */
   proposalSummary?: (comment: ThreadComment) => React.ReactNode;
   /** Has news the reader hasn't opened yet (a reply, a proposal): dot on the row and its tab. */
@@ -174,11 +177,23 @@ export function RequestPanel({
                         <div className="row-actions">
                           {proposalSummary?.(comment)}
                           {stage.stage === "sent" && stage.retry ? (
-                            <Hint label="Historique et nouvelle proposition">
-                              <Button variant="outline" size="icon-sm" className="ml-auto shrink-0" aria-label="Historique de la proposition" onClick={() => onOpenProposal?.(comment.id)}>
-                                <History />
-                              </Button>
-                            </Hint>
+                            <>
+                              <Hint label="Historique de la proposition">
+                                <Button variant="outline" size="icon-sm" className="ml-auto shrink-0" aria-label="Historique de la proposition" onClick={() => onOpenProposal?.(comment.id)}>
+                                  <History />
+                                </Button>
+                              </Hint>
+                              {onRequote && (
+                                <span className="row-buttons">
+                                  <button type="button" className="secondary-button small-button" onClick={() => onRequote(comment.id)}>
+                                    Chiffrer
+                                  </button>
+                                  <button type="button" className="secondary-button small-button" disabled title="Chiffrez d’abord la nouvelle proposition">
+                                    Envoyer la proposition
+                                  </button>
+                                </span>
+                              )}
+                            </>
                           ) : stage.stage === "sent" ? (
                             <button type="button" className="secondary-button small-button" onClick={() => onOpenProposal?.(comment.id)}>
                               {stage.label}
@@ -226,6 +241,7 @@ export function EditorInspector({
   onQuote,
   onSendProposal,
   onOpenProposal,
+  onRequote,
   proposalSummary,
   onAddComment,
   onShare,
@@ -242,6 +258,7 @@ export function EditorInspector({
   onQuote: (commentId: number) => void;
   onSendProposal: (commentId: number) => void;
   onOpenProposal: (commentId: number) => void;
+  onRequote: (commentId: number) => void;
   proposalSummary: (comment: ThreadComment) => React.ReactNode;
   onAddComment?: (message: string) => void;
   onShare: () => void;
@@ -286,6 +303,7 @@ export function EditorInspector({
         onQuote={onQuote}
         onSendProposal={onSendProposal}
         onOpenProposal={onOpenProposal}
+        onRequote={onRequote}
         proposalSummary={proposalSummary}
         adding={adding}
         onAddingChange={setAdding}

@@ -2353,6 +2353,7 @@ export function AgencyApp() {
               }}
               onSendProposal={setConfirmSendId}
               onOpenProposal={openProposal}
+              onRequote={openRequote}
               proposalSummary={(comment) => {
                 if (proposalStateFor(comment.id) === "none") return null;
                 const proposal = activeProposalFor(comment.id);

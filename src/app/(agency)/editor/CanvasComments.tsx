@@ -257,6 +257,13 @@ export function ThreadPopover({
           {kind === "comment" ? "Commentaire" : "Demande"} n°{comment.id}
         </span>
         <span className="thread-header-actions">
+          {kind === "comment" && onQualify && canWrite && !qualifying && (
+            <Hint label="Créer une demande (à traiter ou hors scope)">
+              <button type="button" className="thread-icon-button thread-create" onClick={() => setQualifying(true)} aria-label="Créer une demande">
+                <Tag />
+              </button>
+            </Hint>
+          )}
           {onDelete && (
             <Hint label="Supprimer">
               <button type="button" className="thread-icon-button" onClick={onDelete} aria-label="Supprimer">
@@ -419,13 +426,6 @@ export function ThreadPopover({
           </div>
           )}
 
-          {kind === "comment" && onQualify && canWrite && (
-            <div className="thread-actions">
-              <button type="button" className="secondary-button thread-create" onClick={() => setQualifying(true)}>
-                <Tag aria-hidden="true" /> Créer une demande
-              </button>
-            </div>
-          )}
 
           {kind !== "comment" ? (
             <p className="thread-locked">

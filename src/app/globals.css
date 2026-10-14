@@ -5244,8 +5244,9 @@ a.page-nav-label:hover {
   transform: scale(var(--inv-zoom)) translate(var(--tx), var(--ty));
   transform-origin: 0 0;
 }
+/* The pin is centered on its point: the bubble keeps clear of it on both sides (never covers its own pin) */
 .thread.is-left {
-  --tx: calc(-100% - 12px);
+  --tx: calc(-100% - 28px);
 }
 .thread.is-center {
   --tx: -50%;
@@ -6272,18 +6273,7 @@ button.rail-logo .lucide {
   justify-self: start;
   cursor: default;
 }
-.thread-actions {
-  padding: var(--s-2) var(--s-3);
-  border-top: 1px solid var(--border);
-}
-.thread-create {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  justify-content: center;
-}
-.thread-create .lucide,
+/* (.thread-create is now an icon of the bubble header) */
 .thread-link .lucide {
   width: 14px;
   height: 14px;
@@ -6305,10 +6295,6 @@ button.rail-logo .lucide {
   text-decoration: underline;
 }
 .thread-link:focus-visible,
-.thread-create:focus-visible {
-  outline: 2px solid var(--action-ui);
-  outline-offset: 2px;
-}
 .thread.composer.is-correction {
   width: 340px;
 }
@@ -7015,7 +7001,6 @@ body.is-resizing {
   color: var(--ink);
   font: 400 var(--t-ui) var(--font-ui);
 }
-.thread-actions,
 .thread-reply {
   padding: var(--s-2) var(--s-4) var(--s-3);
   border-top-color: var(--mist);
@@ -7512,4 +7497,25 @@ body.is-resizing {
 .client-review-state-chip.is-pending {
   background: var(--status-low-bg);
   color: var(--status-low-text);
+}
+
+/* Unread / count indicators: quiet blue, never red (red is for refusals and errors) */
+.unread-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--action-ui);
+}
+.notification-count {
+  background: var(--action-ui);
+  color: var(--paper);
+}
+.tab-status-messages {
+  background: var(--status-low-bg);
+  color: var(--status-low-text);
+}
+/* Refused proposal row: history icon on the summary line, then Chiffrer / Envoyer */
+.row-actions .row-buttons {
+  display: flex;
+  flex-basis: 100%;
+  gap: var(--s-2);
 }
