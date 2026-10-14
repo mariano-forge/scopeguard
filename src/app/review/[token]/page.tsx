@@ -741,7 +741,7 @@ export default function ClientReviewPage() {
           <aside className="client-side-panel" aria-label="Vos retours">
             <div className="client-side-heading">
               <h2>Vos retours</h2>
-              <p>Commentez un élément ou dessinez une zone sur le livrable. L’équipe qualifie chaque commentaire : correction incluse, ou ajout hors scope chiffré.</p>
+              <p>Commentez un élément ou dessinez une zone sur le livrable. L’équipe qualifie chaque commentaire : inclus dans le scope, ou hors scope (chiffré à part).</p>
             </div>
             <RequestPanel
               comments={canvasComments}

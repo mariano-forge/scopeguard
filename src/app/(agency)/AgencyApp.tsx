@@ -895,7 +895,7 @@ export function AgencyApp() {
     );
     recordAudit(
       "scope.classified",
-      back ? "Demande remise à clarifier" : `Demande qualifiée « ${qualified.decision === "Inclus" ? "Correction" : "Hors scope"} » : ${qualified.title}`,
+      back ? "Demande remise à clarifier" : `Demande qualifiée « ${qualified.decision === "Inclus" ? "Inclus" : "Hors scope"} » : ${qualified.title}`,
       commentId,
     );
     setInspectorTab(back ? "comment" : qualified.decision === "Inclus" ? "correction" : "outside");

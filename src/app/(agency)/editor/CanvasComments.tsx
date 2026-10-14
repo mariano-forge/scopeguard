@@ -6,9 +6,9 @@ import { ArrowRight, ArrowUp, BadgeEuro, ClipboardCheck, Tag, Trash2, Undo2, X }
 /**
  * One request, three states:
  * - "À qualifier" → Commentaire (to clarify): written on the canvas or by hand;
- * - "Inclus"      → Correction: qualified as part of the scope;
+ * - "Inclus"      → Inclus: qualified as part of the scope;
  * - "Hors périmètre" → Hors scope: qualified as an addition, leads to a proposal.
- * Corrections and out-of-scope requests only come from qualifying a comment.
+ * Included and out-of-scope requests only come from qualifying a comment.
  */
 export type Qualification = "À qualifier" | "Inclus" | "Hors périmètre";
 export type RequestKind = "comment" | "correction" | "outside";
@@ -38,9 +38,9 @@ export type ThreadComment = {
 export const requestKind = (comment: Pick<ThreadComment, "decision">): RequestKind =>
   comment.decision === "Inclus" ? "correction" : comment.decision === "Hors périmètre" ? "outside" : "comment";
 export const isQualified = (comment: Pick<ThreadComment, "decision">) => requestKind(comment) !== "comment";
-export const kindLabels: Record<RequestKind, string> = { comment: "Commentaire", correction: "Correction", outside: "Hors scope" };
+export const kindLabels: Record<RequestKind, string> = { comment: "Commentaire", correction: "Demande incluse", outside: "Demande hors scope" };
 /** Short status shown on badges. */
-export const statusLabels: Record<RequestKind, string> = { comment: "À clarifier", correction: "Correction", outside: "Hors scope" };
+export const statusLabels: Record<RequestKind, string> = { comment: "À clarifier", correction: "Inclus", outside: "Hors scope" };
 export const statusTones: Record<RequestKind, string> = { comment: "decision-pending", correction: "decision-included", outside: "decision-outside" };
 /** What a request asks, in one line: its title once qualified, else the comment. */
 export const requestText = (comment: Pick<ThreadComment, "title" | "message">) => comment.title ?? comment.message;
@@ -90,10 +90,10 @@ export function CommentPin({ comment, active, onOpen }: { comment: ThreadComment
   );
 }
 
-/** Correction / Hors scope switch. */
+/** Inclus / Hors scope switch. */
 function ScopeChoice({ value, onChange }: { value: Qualification; onChange: (value: Qualification) => void }) {
   const options: { value: Qualification; label: string; hint: string }[] = [
-    { value: "Inclus", label: "Correction", hint: "Incluse dans le scope" },
+    { value: "Inclus", label: "Inclus", hint: "Dans le scope prévu" },
     { value: "Hors périmètre", label: "Hors scope", hint: "Ajout à chiffrer" },
   ];
   return (

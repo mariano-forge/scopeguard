@@ -8,7 +8,7 @@ export type InspectorTab = RequestKind;
 
 const tabs: { kind: RequestKind; label: string; empty: string }[] = [
   { kind: "comment", label: "À clarifier", empty: "Aucun commentaire à clarifier. Commentez le livrable sur le canevas, ou ajoutez-en un ici." },
-  { kind: "correction", label: "Corrections", empty: "Aucune correction. Qualifiez un commentaire « Correction » quand il fait partie du scope." },
+  { kind: "correction", label: "Inclus", empty: "Aucune demande incluse. Qualifiez un commentaire « Inclus » quand il fait partie du scope." },
   { kind: "outside", label: "Hors scope", empty: "Aucun ajout hors scope. Qualifiez un commentaire « Hors scope » pour le chiffrer." },
 ];
 
@@ -27,11 +27,11 @@ export function threadsToMarkdown(title: string, comments: ThreadComment[]) {
       )
       .join("\n")}\n\n`;
   };
-  return `# ${title}\n\n${section("correction", "Corrections")}${section("outside", "Hors scope")}${section("comment", "À clarifier")}`.trim() + "\n";
+  return `# ${title}\n\n${section("correction", "Inclus")}${section("outside", "Hors scope")}${section("comment", "À clarifier")}`.trim() + "\n";
 }
 
 /**
- * Requests of a version in three tabs (À clarifier · Corrections · Hors scope), with a manual comment form.
+ * Requests of a version in three tabs (À clarifier · Inclus · Hors scope), with a manual comment form.
  * Used by the agency inspector and by the client page.
  */
 export function RequestPanel({
