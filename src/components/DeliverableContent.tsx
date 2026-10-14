@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import "react-pdf/dist/Page/TextLayer.css";
 import { ArrowUpRight, Download } from "lucide-react";
 import { DeliverableCover } from "./DeliverableCover";
@@ -39,6 +39,21 @@ export function DeliverableContent({
   renderPage?: (page: number, content: React.ReactNode) => React.ReactNode;
 }) {
   const [pageCount, setPageCount] = useState(1);
+  // The PDF is drawn at the width its pages actually take (the artboard is responsive), so the
+  // text layer used for targeting lines up with the drawn text.
+  const [pagesWidth, setPagesWidth] = useState(760);
+  const observer = useRef<ResizeObserver | null>(null);
+  const measurePages = useCallback((element: HTMLDivElement | null) => {
+    observer.current?.disconnect();
+    if (!element) return;
+    const measure = () => {
+      const width = Math.round(element.clientWidth);
+      if (width > 0) setPagesWidth((current) => (Math.abs(current - width) > 2 ? width : current));
+    };
+    measure();
+    observer.current = new ResizeObserver(measure);
+    observer.current.observe(element);
+  }, []);
   const source = deliverable.fileData ?? objectUrl ?? undefined;
 
   if (renderPage && deliverable.type === "PDF" && deliverable.fileData)
@@ -51,11 +66,11 @@ export function DeliverableContent({
         }}
         loading="Chargement du PDF..."
       >
-        <div className="canvas-pages">
+        <div className="canvas-pages" ref={measurePages}>
           {Array.from({ length: pageCount }, (_, index) =>
             <div key={index + 1}>
               {/* Text layer on: each text line can be targeted by a comment. */}
-              {renderPage(index + 1, <PdfPage pageNumber={index + 1} width={760} renderTextLayer renderAnnotationLayer={false} />)}
+              {renderPage(index + 1, <PdfPage pageNumber={index + 1} width={pagesWidth} renderTextLayer renderAnnotationLayer={false} />)}
             </div>,
           )}
         </div>

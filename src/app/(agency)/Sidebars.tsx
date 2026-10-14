@@ -321,6 +321,7 @@ export function ProjectSidebar({
   /** A file becomes a new deliverable of the project. */
   onImportLivrable: (file: File) => void;
 }) {
+  const [livrablesOpen, setLivrablesOpen] = useState(true);
   return (
     <aside className={`sidebar project-sidebar ${panel ? "" : "is-collapsed"}`} aria-label="Navigation du livrable">
       <nav className="rail" aria-label="Outils">
@@ -393,22 +394,6 @@ export function ProjectSidebar({
           </div>
 
           <div className="panel-scroll">
-            <section className="panel-section" aria-label="Livrables">
-              <div className="panel-section-header">
-                <h2>Livrables</h2>
-                <FileAddButton label="Ajouter un fichier comme nouveau livrable" onFile={onImportLivrable} />
-              </div>
-              <ul>
-                {livrables.map((livrable) => (
-                  <li key={livrable.id}>
-                    <Link className={`panel-item ${livrable.active ? "is-active" : ""}`} href={livrable.href} aria-current={livrable.active ? "page" : undefined}>
-                      <FileText className="panel-item-icon" aria-hidden="true" />
-                      <span className="panel-item-label">{livrable.name}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
             <section className="panel-section" aria-label="Versions">
               <div className="panel-section-header">
                 <h2>Versions</h2>
@@ -433,6 +418,28 @@ export function ProjectSidebar({
                   </li>
                 ))}
               </ul>
+            </section>
+            <section className="panel-section" aria-label="Livrables">
+              <div className="panel-section-header">
+                <button type="button" className="panel-section-toggle" aria-expanded={livrablesOpen} onClick={() => setLivrablesOpen((open) => !open)}>
+                  <ChevronDown aria-hidden="true" className={livrablesOpen ? "" : "is-closed"} />
+                  <h2>Livrables</h2>
+                  <span className="panel-section-count">{livrables.length}</span>
+                </button>
+                <FileAddButton label="Ajouter un fichier comme nouveau livrable" onFile={onImportLivrable} />
+              </div>
+              {livrablesOpen && (
+                <ul>
+                  {livrables.map((livrable) => (
+                    <li key={livrable.id}>
+                      <Link className={`panel-item ${livrable.active ? "is-active" : ""}`} href={livrable.href} aria-current={livrable.active ? "page" : undefined}>
+                        <FileText className="panel-item-icon" aria-hidden="true" />
+                        <span className="panel-item-label">{livrable.name}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
 
           </div>

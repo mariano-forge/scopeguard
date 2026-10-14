@@ -2323,12 +2323,19 @@ export function AgencyApp() {
                 <>
                   {isReadOnlyVersion && latestVersionRecord && (
                     <div className="canvas-banner" role="status">
-                      <Lock aria-hidden="true" />
-                      <span>V{String(currentDeliverable.version).padStart(2, "0")} est figée : lecture seule.</span>
+                      <span className="canvas-banner-icon" aria-hidden="true">
+                        <Lock />
+                      </span>
+                      <span className="canvas-banner-text">
+                        <b>V{String(currentDeliverable.version).padStart(2, "0")} · lecture seule</b>
+                        <small>{currentDeliverable.status === "Approuvée" || approved ? "Version validée par le client" : "Une version plus récente existe"}</small>
+                      </span>
                       {latestVersionRecord.id !== currentDeliverable.id && (
-                        <Link href={hrefForRecord(latestVersionRecord, deliverables)}>
-                          Aller à la V{String(latestVersionRecord.version).padStart(2, "0")} <ArrowRight />
-                        </Link>
+                        <Button asChild size="sm">
+                          <Link href={hrefForRecord(latestVersionRecord, deliverables)}>
+                            Aller à la V{String(latestVersionRecord.version).padStart(2, "0")} <ArrowRight />
+                          </Link>
+                        </Button>
                       )}
                     </div>
                   )}

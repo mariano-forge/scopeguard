@@ -836,8 +836,13 @@ export default function ClientReviewPage() {
           overlay={
             isReadOnlyVersion() ? (
               <div className="canvas-banner" role="status">
-                <Lock aria-hidden="true" />
-                <span>Cette version est en lecture seule.</span>
+                <span className="canvas-banner-icon" aria-hidden="true">
+                  <Lock />
+                </span>
+                <span className="canvas-banner-text">
+                  <b>Lecture seule</b>
+                  <small>{reviewStatus === "approved" ? "Vous avez validé cette version" : "Une version plus récente existe"}</small>
+                </span>
               </div>
             ) : null
           }

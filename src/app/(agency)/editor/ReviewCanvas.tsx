@@ -96,6 +96,34 @@ export function ReviewCanvas({
     return () => window.removeEventListener("keydown", cancel);
   }, [moving]);
   const selected = comments.find((comment) => comment.id === selectedId);
+  // An open bubble (or the new-comment form) stays fully visible: when it opens or grows (qualify form),
+  // the canvas pans so it sits between the top of the canvas and the toolbar.
+  const bubbleKey = `${threadOpen ? `${selectedId}-${selected?.decision}` : ""}|${composer ? `${composer.page}-${composer.x}-${composer.y}` : ""}`;
+  useEffect(() => {
+    const panel = panelRef.current;
+    const bubble = panel?.querySelector<HTMLElement>(".thread");
+    if (!panel || !bubble) return;
+    const reveal = () => {
+      const zoomApi = transformRef.current;
+      const frame = panel.querySelector(".artboard-transform-wrapper")?.getBoundingClientRect();
+      if (!zoomApi || !frame) return;
+      const box = bubble.getBoundingClientRect();
+      const toolbarTop = panel.querySelector(".canvas-toolbar")?.getBoundingClientRect().top ?? frame.bottom;
+      const margin = 12;
+      let dy = 0;
+      if (box.bottom > toolbarTop - margin) dy = toolbarTop - margin - box.bottom;
+      if (box.top + dy < frame.top + margin) dy = frame.top + margin - box.top;
+      let dx = 0;
+      if (box.right > frame.right - margin) dx = frame.right - margin - box.right;
+      if (box.left + dx < frame.left + margin) dx = frame.left + margin - box.left;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+      const { positionX, positionY, scale } = zoomApi.state;
+      zoomApi.setTransform(positionX + dx, positionY + dy, scale, 200);
+    };
+    const resize = new ResizeObserver(() => requestAnimationFrame(reveal));
+    resize.observe(bubble);
+    return () => resize.disconnect();
+  }, [bubbleKey, transformRef]);
   const pageKind =
     deliverable.type === "PDF" && deliverable.fileData
       ? "pdf"

@@ -7588,3 +7588,94 @@ body.is-resizing {
   height: 16px;
   color: var(--graphite);
 }
+
+/* Read-only version: a floating card like the canvas toolbar */
+.canvas-banner {
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgba(17, 17, 17, 0.06), 0 8px 24px rgba(17, 17, 17, 0.1);
+  color: var(--ink);
+}
+.canvas-banner-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-button);
+  background: var(--mist);
+  color: var(--graphite);
+}
+.canvas-banner-icon .lucide {
+  width: 16px;
+  height: 16px;
+}
+.canvas-banner-text {
+  display: grid;
+  margin-right: var(--s-2);
+  line-height: 1.3;
+}
+.canvas-banner-text b {
+  font-size: var(--t-ui-size, 14px);
+  font-weight: 600;
+}
+.canvas-banner-text small {
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+  font-weight: 400;
+}
+.canvas-banner {
+  width: max-content;
+}
+.canvas-banner-text {
+  white-space: nowrap;
+}
+/* the CTA keeps its own colors (an older rule painted banner links) */
+.canvas-banner a[data-slot="button"] {
+  color: var(--cta-text);
+}
+
+/* Qualify form: title above the choice */
+.scope-field {
+  display: grid;
+  gap: var(--s-1);
+}
+.scope-field-label {
+  font-size: var(--t-caption-size);
+  font-weight: 600;
+  color: var(--graphite);
+}
+
+/* Side panel: collapsible "Livrables" section */
+.panel-section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.panel-section-toggle .lucide {
+  width: 14px;
+  height: 14px;
+  color: var(--graphite);
+  transition: transform var(--d-fast) var(--ease-out);
+}
+.panel-section-toggle .lucide.is-closed {
+  transform: rotate(-90deg);
+}
+.panel-section-toggle:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 2px;
+  border-radius: var(--r-field);
+}
+.panel-section-count {
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}

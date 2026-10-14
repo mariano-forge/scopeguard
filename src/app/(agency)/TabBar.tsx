@@ -42,8 +42,10 @@ function statusLabel(status: TabStatus) {
   }
 }
 
-export function StatusMark({ status }: { status: TabStatus }) {
+export function StatusMark({ status, inTab }: { status: TabStatus; inTab?: boolean }) {
   if (status.kind === "none") return null;
+  // Tabs only alert on what's new (client messages) and decisions; "changes requested" lives in the notifications.
+  if (inTab && status.kind === "changes-requested") return null;
   const label = statusLabel(status);
   return (
     <span className={`tab-status tab-status-${status.kind}`} title={label}>
@@ -103,7 +105,7 @@ export function TabBar({
               <Link className="tab-link" href={tab.href} aria-current={active ? "page" : undefined} title={`${tab.context} / ${tab.name}`}>
                 <DeliverableIcon type={tab.type} />
                 <span className="tab-name">{tab.name}</span>
-                <StatusMark status={tab.status} />
+                <StatusMark status={tab.status} inTab />
               </Link>
               <button
                 type="button"

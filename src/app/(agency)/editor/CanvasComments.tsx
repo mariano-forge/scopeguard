@@ -401,7 +401,12 @@ export function ThreadPopover({
             setQualifying(false);
           }}
         >
-          <ScopeChoice value={decision} onChange={setDecision} />
+          <div className="scope-field">
+            <span className="scope-field-label" id={`scope-${comment.id}`}>
+              Qualifier la demande
+            </span>
+            <ScopeChoice value={decision} onChange={setDecision} />
+          </div>
           <label>
             Titre de la demande
             <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex. : Ajouter une section témoignages" />
