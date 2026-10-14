@@ -672,7 +672,6 @@ export function BrowserView({
   if (view.kind === "shared")
     return (
       <div className="browser">
-        <PageNav />
         <header className="page-header">
           <h1 className="page-title">Partagés avec moi</h1>
         </header>
@@ -711,7 +710,6 @@ export function BrowserView({
     const shown = recentRecords.filter((record) => matches(record, recentFilter));
     return (
       <div className="browser">
-        <PageNav />
         <header className="page-header">
           <h1 className="page-title">Récents</h1>
           <div className="filter-chips" role="group" aria-label="Filtrer les livrables récents">
@@ -748,7 +746,6 @@ export function BrowserView({
   if (view.kind === "todo") {
     return (
       <div className="browser">
-        <PageNav />
         <header className="page-header">
           <div>
             <h1 className="page-title">À traiter</h1>
@@ -839,7 +836,6 @@ function HomePage({
 
   return (
     <div className="browser">
-      <PageNav />
       <header className="page-header">
         <h1 className="page-title">Vue d’ensemble</h1>
         <button className="primary-button" onClick={onNewProject}>
@@ -945,7 +941,6 @@ function TrashPage({ items, onRestore, onPurge }: { items: TrashItem[]; onRestor
   };
   return (
     <div className="browser">
-      <PageNav />
       <header className="page-header">
         <div>
           <h1 className="page-title">Corbeille</h1>
