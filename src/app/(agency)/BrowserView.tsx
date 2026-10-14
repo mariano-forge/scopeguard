@@ -538,9 +538,11 @@ export function BrowserView({
       </div>
     );
 
+  // One card per deliverable, even if older saves stored several ids for it.
   const recentRecords = recentLivrableIds
     .map((livrableId) => versionsOfLivrable(livrableId, deliverables)[0])
-    .filter((record): record is Deliverable => Boolean(record));
+    .filter((record): record is Deliverable => Boolean(record))
+    .filter((record, index, list) => list.findIndex((other) => other.id === record.id) === index);
 
   if (view.kind === "recents") {
     // Quick filters over recently opened deliverables (Figma "Recently viewed").

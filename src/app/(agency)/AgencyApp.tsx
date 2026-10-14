@@ -695,7 +695,8 @@ export function AgencyApp() {
   }, [stateHydrated, view, deliverables, viewRecord, router]);
 
   // Recently opened deliverables, most recent first (per browser, like Figma's "Recents").
-  const viewLivrableId = view.kind === "deliverable" && viewRecord ? view.livrableId : null;
+  // Always the deliverable root id (the URL may point at any of its versions), so recents and tabs never list it twice.
+  const viewLivrableId = view.kind === "deliverable" && viewRecord ? livrableIdOf(viewRecord, deliverables) : null;
   useEffect(() => {
     try {
       const saved = JSON.parse(window.localStorage.getItem(recentsKey) ?? "[]");
