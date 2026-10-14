@@ -86,6 +86,7 @@ import { EditorInspector, isRequest, type InspectorTab } from "./editor/EditorIn
 import { ProposalsView, type ProposalRow } from "./editor/ProposalsView";
 import type { MenuEntry } from "./editor/MenuButton";
 import { RenameDialog } from "./EntitySettings";
+import type { HomeAnalyticsData } from "./HomeAnalytics";
 
 
 type Decision = "À qualifier" | "Inclus" | "Hors périmètre";
@@ -659,9 +660,9 @@ export function AgencyApp() {
   const reminderBlocked =
     lastReminderAt !== null && Date.now() - lastReminderAt < 24 * 60 * 60 * 1000;
 
-  // The deliverable dashboard is gone: its analytics live on the home page, filtered on that deliverable.
+  // The deliverable dashboard is gone (its analytics are on the home page): old links open the deliverable.
   useEffect(() => {
-    if (view.kind === "dashboard") router.replace(`/?projet=${view.projectId}&livrable=${view.livrableId}`);
+    if (view.kind === "dashboard") router.replace(href.deliverable(view.projectId, view.livrableId));
   }, [view, router]);
 
   // A deliverable URL that no longer matches the data (deleted, wrong project, unknown version)
@@ -793,7 +794,12 @@ export function AgencyApp() {
     try {
       const saved = JSON.parse(window.localStorage.getItem(tabsKey) ?? "[]");
       if (Array.isArray(saved))
-        setOpenTabs(saved.filter((tab) => typeof tab?.livrableId === "number" && typeof tab?.href === "string"));
+        setOpenTabs(
+          saved
+            .filter((tab) => typeof tab?.livrableId === "number" && typeof tab?.href === "string")
+            // Tabs saved on the removed dashboard reopen the deliverable.
+            .map((tab) => ({ ...tab, href: tab.href.replace(/\/tableau-de-bord$/, "") })),
+        );
     } catch {
       // Tabs are a convenience: ignore unreadable storage.
     }
@@ -1767,6 +1773,39 @@ export function AgencyApp() {
           }),
         };
   const scopeCommentIds = new Set(scopeComments.map((comment) => comment.id));
+  const decidedNone = outsideComments.filter((comment) => proposalDecisionFor(comment.id) === "none");
+  const analytics: HomeAnalyticsData = {
+    totalDemands: scopeComments.length,
+    included: scopeComments.filter((comment) => comment.decision === "Inclus").length,
+    outside: outsideComments.length,
+    pending: scopeComments.filter((comment) => comment.decision === "À qualifier" || !comment.decision).length,
+    quotedEuros: sumAmounts(outsideComments),
+    acceptedEuros: sumAmounts(acceptedComments),
+    acceptedDays: acceptedComments.reduce((total, comment) => total + parseNumericDays(activeProposalFor(comment.id)?.deadline), 0),
+    acceptedCount: acceptedComments.length,
+    refusedCount: outsideComments.filter((comment) => proposalDecisionFor(comment.id) === "refused").length,
+    awaitingCount: decidedNone.filter((comment) => proposalStateFor(comment.id) === "sent").length,
+    versions: scopeRecords.length,
+    register: [...scopeComments]
+      .sort((left, right) => right.id - left.id)
+      .map((comment) => {
+        const record = deliverables.find((candidate) => candidate.id === comment.deliverableId);
+        const proposal = comment.decision === "Hors périmètre" ? activeProposalFor(comment.id) : undefined;
+        return {
+          id: comment.id,
+          livrable: record?.name ?? "Livrable",
+          version: `V${String(record?.version ?? 1).padStart(2, "0")}`,
+          message: comment.message,
+          location: comment.location,
+          initials: comment.initials,
+          decision: comment.decision,
+          amount: proposal ? formatProposalAmount(proposal.amount) : undefined,
+          deadline: proposal ? formatProposalDeadline(proposal.deadline) : undefined,
+          clientDecision: proposalDecisionFor(comment.id),
+          href: record ? `${hrefForRecord(record, deliverables)}?demande=${comment.id}` : href.home(),
+        };
+      }),
+  };
   // The home "À traiter" list follows the same filter.
   const scopeHrefs = new Set(scopeRecords.map((record) => hrefForRecord(record, deliverables)));
   const homeTodoItems = filterProject ? todoItems.filter((item) => scopeHrefs.has(item.href.split("?")[0])) : todoItems;
@@ -1778,12 +1817,10 @@ export function AgencyApp() {
     pendingCount: pendingComments.length,
     toQualify: latestComments.length - qualified.length,
     outsideRate: qualified.length ? Math.round((qualified.filter((comment) => comment.decision === "Hors périmètre").length / qualified.length) * 100) : null,
-    conversionRate: outsideComments.some((comment) => proposalDecisionFor(comment.id) !== "none")
-      ? Math.round((acceptedComments.length / outsideComments.filter((comment) => proposalDecisionFor(comment.id) !== "none").length) * 100)
-      : null,
     approved: deliverables.filter((record) => latestIds.has(record.id) && record.reviewStatus === "approved").length,
     livrables: latestIds.size,
     breakdown,
+    analytics,
     filter: { projectId: filterProject?.id ?? null, livrableId: filterLivrable ? filterLivrableId : null },
     activity: auditEvents
       .filter((event) => (!filterProject ? true : event.commentId !== undefined && scopeCommentIds.has(event.commentId)))

@@ -6441,11 +6441,20 @@ button.rail-logo .lucide {
   width: 20px;
   height: 20px;
 }
-.overview .stat-row {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+/* Request log on the home page: text columns read from the left */
+.register-table th[scope="row"] {
+  white-space: normal;
 }
-@media (max-width: 900px) {
-  .overview .stat-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.register-table td:nth-child(2),
+.register-table td:nth-child(3),
+.register-table td:nth-child(5),
+.register-table thead th:nth-child(2),
+.register-table thead th:nth-child(3),
+.register-table thead th:nth-child(5) {
+  text-align: left;
+}
+.register-table .action-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }

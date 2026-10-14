@@ -12,6 +12,7 @@ import { StatusMark, type TabStatus } from "./TabBar";
 import { ConfirmDeleteDialog, EntitySettings, LivrableMenu } from "./EntitySettings";
 import type { TrashItem } from "./AgencyApp";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
+import { HomeAnalytics, type HomeAnalyticsData } from "./HomeAnalytics";
 import type { DeliverableType } from "@/components/deliverableKinds";
 
 type Client = { id: number; name: string; email: string };
@@ -39,8 +40,6 @@ export type HomeOverview = {
   toQualify: number;
   /** Share of qualified requests that are out of scope, null when nothing is qualified yet. */
   outsideRate: number | null;
-  /** Accepted share of the proposals the client answered, null before any answer. */
-  conversionRate: number | null;
   approved: number;
   livrables: number;
   /** Rows under the figures: spaces, or the deliverables of the filtered project, or the versions of the filtered deliverable. */
@@ -49,6 +48,7 @@ export type HomeOverview = {
     rows: { key: string; label: string; href: string; client?: Client; counts: number[]; toQualify: number; outside: number; acceptedEuros: number }[];
   };
   filter: { projectId: number | null; livrableId: number | null };
+  analytics: HomeAnalyticsData;
   activity: { id: number; description: string; actor: string; timestamp: string }[];
 };
 
@@ -732,11 +732,6 @@ export function BrowserView({
       value: overview.outsideRate === null ? "—" : `${overview.outsideRate} %`,
       note: "des demandes qualifiées",
     },
-    {
-      label: "Taux d’acceptation",
-      value: overview.conversionRate === null ? "—" : `${overview.conversionRate} %`,
-      note: "des propositions tranchées par le client",
-    },
     { label: "Versions approuvées", value: `${overview.approved} / ${overview.livrables}`, note: "livrables validés par le client" },
   ];
   // Filter choices: every project (with its space), then the deliverables of the chosen one.
@@ -826,6 +821,8 @@ export function BrowserView({
           )}
         </section>
       )}
+
+      <HomeAnalytics data={overview.analytics} />
 
       {overview.breakdown.rows.length > 0 && (
         <section className="browser-section">
