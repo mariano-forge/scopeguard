@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 export type InspectorTab = RequestKind;
 
 const tabs: { kind: RequestKind; label: string; empty: string }[] = [
-  { kind: "comment", label: "À clarifier", empty: "Aucun commentaire à clarifier. Commentez le livrable sur le canevas, ou ajoutez-en un avec +." },
+  { kind: "comment", label: "À clarifier", empty: "Aucun commentaire. Commentez le livrable sur le canevas, ou ajoutez-en un avec +." },
   { kind: "correction", label: "À traiter", empty: "Aucune demande à traiter. Créez-en une depuis un commentaire quand elle fait partie du scope." },
   { kind: "outside", label: "Hors scope", empty: "Aucune demande hors scope. Créez-en une depuis un commentaire pour la chiffrer." },
 ];

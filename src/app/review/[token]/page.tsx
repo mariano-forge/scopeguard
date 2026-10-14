@@ -792,15 +792,11 @@ export default function ClientReviewPage() {
               </span>
             </Hint>
           </div>
+          {/* One call to action on this page: validating. Feedback goes through comments. */}
           {canValidate && (
-            <>
-              <Button variant="outline" onClick={() => setChangesRequestOpen(true)}>
-                Demander des modifications
-              </Button>
-              <Button onClick={() => setApprovalOpen(true)}>
-                <Check /> Valider cette version
-              </Button>
-            </>
+            <Button onClick={() => setApprovalOpen(true)}>
+              <Check /> Valider cette version
+            </Button>
           )}
         </div>
       </header>
@@ -909,10 +905,10 @@ export default function ClientReviewPage() {
           <ResizeHandle edge="left" width={panelWidth} min={300} max={560} defaultWidth={340} label="Largeur du panneau des retours" onResize={setPanelWidth} />
           <header className="requests-header">
             <h2>Vos retours</h2>
-            {!isReadOnlyVersion() && (
+            {!isReadOnlyVersion() && !addingComment && (
               <div className="requests-actions">
                 <Hint label="Un retour général, sans le placer sur le livrable">
-                  <Button className="requests-add" onClick={() => setAddingComment(true)}>
+                  <Button variant="outline" className="requests-add" onClick={() => setAddingComment(true)}>
                     <Plus /> Commentaire
                   </Button>
                 </Hint>
