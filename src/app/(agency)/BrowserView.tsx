@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { ViewTransition, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, FolderClosed, LayoutGrid, List, MessageSquare, Pencil, Plus, RotateCcw, Share2, Star, Trash2 } from "lucide-react";
@@ -404,7 +404,10 @@ export function BrowserView({
       record.name,
       <>
         <span className="file-card-cover">
-          <DeliverableCover type={record.type} coverData={record.coverData} />
+          {/* Shared with the editor canvas: the cover grows into it when the deliverable opens. */}
+          <ViewTransition name={`livrable-${livrableId}`} share="kora-open" default="none">
+            <DeliverableCover type={record.type} coverData={record.coverData} />
+          </ViewTransition>
           {unreadPill(livrableId)}
         </span>
         <span className="file-card-body">

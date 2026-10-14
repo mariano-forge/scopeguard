@@ -33,7 +33,7 @@ function formatProposalDeadline(deadline: number | string | undefined): string {
   if (num === 0) return "Aucun impact";
   return `+ ${num} jour${num > 1 ? "s" : ""}`;
 }
-import { useEffect, useRef, useState } from "react";
+import { ViewTransition, useEffect, useRef, useState } from "react";
 import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -2119,6 +2119,8 @@ export function AgencyApp() {
           ) : (
             <>
           <div className="editor" style={{ gridTemplateColumns: `minmax(0, 1fr) ${panelWidths.inspector}px` }}>
+            {/* Same name as the deliverable card cover: the cover grows into the canvas on open. */}
+            <ViewTransition name={`livrable-${livrableRootId}`} share="kora-open" default="none">
             <ReviewCanvas
               deliverable={currentDeliverable}
               comments={activeComments}
@@ -2236,6 +2238,7 @@ export function AgencyApp() {
                 />
               )}
             />
+            </ViewTransition>
 
             <EditorInspector
               comments={activeComments}

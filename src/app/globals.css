@@ -85,11 +85,11 @@ button {
   color: var(--graphite);
 }
 .nav-item.active {
-  color: var(--ink);
-  background: var(--mist);
+  color: var(--status-low-text);
+  background: var(--status-low-bg);
 }
 .nav-item.active > .nav-icon {
-  color: var(--ink);
+  color: var(--status-low-text);
 }
 .nav-item strong {
   margin-left: auto;
@@ -3587,7 +3587,8 @@ button {
   background: var(--canvas);
 }
 .home-sidebar .nav-item.active {
-  background: var(--mist);
+  background: var(--status-low-bg);
+  color: var(--status-low-text);
   font-weight: 600;
 }
 .home-sidebar .nav-item:focus-visible {
@@ -4107,7 +4108,7 @@ button {
   flex: 1;
 }
 
-/* Primary actions (CTA): white on black */
+/* Primary actions (CTA): Ink on the action blue */
 .primary-button,
 .inspector-primary {
   background: var(--cta-fill);
@@ -7194,5 +7195,31 @@ body.is-resizing {
   .browser-row-wrap .browser-row,
   .browser-row-wrap .browser-row:not(:has(.folder-icon)) {
     grid-template-columns: 40px minmax(0, 1fr) auto;
+  }
+}
+
+/* Opening a deliverable: its card cover grows into the canvas (React ViewTransition, share="kora-open") */
+::view-transition-group(.kora-open) {
+  animation-duration: 280ms;
+  animation-timing-function: var(--ease-out);
+}
+::view-transition-image-pair(.kora-open) {
+  animation-name: kora-open-blur;
+}
+@keyframes kora-open-blur {
+  40% {
+    filter: blur(2px);
+  }
+}
+/* The rest of the page crossfades quickly */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }
