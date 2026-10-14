@@ -735,7 +735,11 @@ export function AgencyApp() {
 
   // Recently opened deliverables, most recent first (per browser, like Figma's "Recents").
   // Always the deliverable root id (the URL may point at any of its versions), so recents and tabs never list it twice.
-  const viewLivrableId = view.kind === "deliverable" && viewRecord ? livrableIdOf(viewRecord, deliverables) : null;
+  // Canvas, dashboard and proposals all belong to the deliverable's tab.
+  const viewLivrableId =
+    (view.kind === "deliverable" || view.kind === "dashboard" || view.kind === "proposals") && viewRecord
+      ? livrableIdOf(viewRecord, deliverables)
+      : null;
   useEffect(() => {
     try {
       const saved = JSON.parse(window.localStorage.getItem(recentsKey) ?? "[]");
@@ -2012,7 +2016,7 @@ export function AgencyApp() {
     <TabBar
       tabs={tabInfos}
       activeLivrableId={viewLivrableId}
-      homeActive={view.kind !== "deliverable"}
+      homeActive={viewLivrableId === null}
       onClose={closeTab}
       onOpen={() => setPaletteOpen(true)}
     />
@@ -2034,6 +2038,7 @@ export function AgencyApp() {
           onPanel={showPanel}
           dashboardHref={href.dashboard(selectedProject.id, livrableRootId)}
           proposalsHref={href.proposals(selectedProject.id, livrableRootId)}
+          canvasHref={href.deliverable(selectedProject.id, livrableRootId)}
           proposalsBadge={proposalRows.filter((row) => row.state === "to-quote" || row.state === "adaptation").length}
           onSearch={() => setPaletteOpen(true)}
           onNewDeliverable={() => setNewDeliverableOpen(true)}

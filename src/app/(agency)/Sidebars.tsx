@@ -220,6 +220,7 @@ export function ProjectSidebar({
   onPanel,
   dashboardHref,
   proposalsHref,
+  canvasHref,
   proposalsBadge,
   onSearch,
   onNewDeliverable,
@@ -243,6 +244,8 @@ export function ProjectSidebar({
   onPanel: (mode: PanelMode | null) => void;
   dashboardHref: string;
   proposalsHref: string;
+  /** Canvas of the deliverable (from the dashboard or the proposals page). */
+  canvasHref: string;
   /** Out-of-scope requests still waiting for a client decision. */
   proposalsBadge: number;
   onSearch: () => void;
@@ -265,15 +268,27 @@ export function ProjectSidebar({
           menuClassName="system-menu"
           entries={systemMenu}
         />
-        <button
-          className={`rail-button ${panel && view.kind === "deliverable" ? "is-active" : ""}`}
-          onClick={() => onPanel(panel ? null : "livrables")}
-          aria-label="Versions et annexes"
-          aria-pressed={Boolean(panel)}
-          title="Versions et annexes"
-        >
-          <Layers />
-        </button>
+        {view.kind === "deliverable" ? (
+          <button
+            className={`rail-button ${panel ? "is-active" : ""}`}
+            onClick={() => onPanel(panel ? null : "livrables")}
+            aria-label="Canevas, versions et annexes"
+            aria-pressed={Boolean(panel)}
+            title="Canevas, versions et annexes"
+          >
+            <Layers />
+          </button>
+        ) : (
+          <Link
+            className="rail-button"
+            href={canvasHref}
+            onClick={() => onPanel("livrables")}
+            aria-label="Revenir au canevas"
+            title="Revenir au canevas"
+          >
+            <Layers />
+          </Link>
+        )}
         <Link
           className={`rail-button ${view.kind === "proposals" ? "is-active" : ""}`}
           href={proposalsHref}
