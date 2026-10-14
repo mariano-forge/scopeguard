@@ -5319,3 +5319,62 @@ a.page-nav-label:hover {
   color: var(--graphite);
   font-size: var(--t-caption-size);
 }
+
+/* Typed confirmation (space deletion) */
+.confirm-phrase {
+  display: grid;
+  gap: var(--s-2);
+}
+.confirm-phrase label {
+  display: block;
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-ui-size);
+  font-weight: 400;
+}
+.confirm-phrase code {
+  padding: 1px var(--s-1);
+  border-radius: var(--r-field);
+  background: var(--mist);
+  font: 600 var(--t-mono) var(--font-mono);
+  user-select: all;
+}
+.confirm-phrase input {
+  height: 40px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--border-input);
+  border-radius: var(--r-field);
+  font: var(--t-mono) var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.danger-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+
+/* Trash */
+.trash-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 60px;
+  padding: 0 var(--s-4);
+}
+.trash-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.trash-name b {
+  overflow: hidden;
+  font: 500 var(--t-ui) var(--font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trash-name small,
+.trash-left {
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}

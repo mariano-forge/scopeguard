@@ -4,6 +4,7 @@
 //   /a-traiter                                     pending decisions across all projects
 //   /recents                                       recently opened projects and deliverables
 //   /partages                                      shared with me
+//   /corbeille                                     deleted items (restorable for 30 days)
 //   /espaces                                       all client spaces
 //   /espaces/:clientId                             projects of a client space
 //   /projets/:projectId                            deliverables of a project
@@ -17,6 +18,7 @@ export type AgencyView =
   | { kind: "todo" }
   | { kind: "recents" }
   | { kind: "shared" }
+  | { kind: "trash" }
   | { kind: "spaces" }
   | { kind: "client"; clientId: number }
   | { kind: "project"; projectId: number }
@@ -32,6 +34,7 @@ export function parseAgencyPath(pathname: string): AgencyView {
   if (first === "a-traiter" && !second) return { kind: "todo" };
   if (first === "recents" && !second) return { kind: "recents" };
   if (first === "partages" && !second) return { kind: "shared" };
+  if (first === "corbeille" && !second) return { kind: "trash" };
 
   if (first === "espaces") {
     if (!second) return { kind: "spaces" };
@@ -61,6 +64,7 @@ export const href = {
   todo: () => "/a-traiter",
   recents: () => "/recents",
   shared: () => "/partages",
+  trash: () => "/corbeille",
   spaces: () => "/espaces",
   /** A client space ("espace"). */
   client: (clientId: number) => `/espaces/${clientId}`,

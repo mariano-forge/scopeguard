@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, FolderClosed, LayoutGrid, List, Pencil, Plus, Share2, Star, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderClosed, LayoutGrid, List, Pencil, Plus, RotateCcw, Share2, Star, Trash2 } from "lucide-react";
 import { DeliverableCover } from "@/components/DeliverableCover";
 import { Select } from "@/components/Select";
 import { href, hrefForRecord, livrableIdOf, versionsOfLivrable, type AgencyView } from "./routes";
 import { TodoList, isAgencyAction, type TodoItem } from "./TodoList";
 import { StatusMark, type TabStatus } from "./TabBar";
 import { ConfirmDeleteDialog, EntitySettings } from "./EntitySettings";
+import type { TrashItem } from "./AgencyApp";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
 import type { DeliverableType } from "@/components/deliverableKinds";
 
@@ -69,6 +70,10 @@ type BrowserViewProps = {
   onDeleteLivrable: (livrableId: number) => void;
   /** Review status of a deliverable (its latest version), as shown on tabs. */
   livrableStatus: (livrableId: number) => TabStatus;
+  trash: TrashItem[];
+  onRestore: (itemId: number) => void;
+  /** Without an id: empty the whole trash. */
+  onPurge: (itemId?: number) => void;
 };
 
 type SortKey = "recent" | "name";
@@ -227,6 +232,9 @@ export function BrowserView({
   onMoveProject,
   onMoveLivrable,
   onDeleteLivrable,
+  trash,
+  onRestore,
+  onPurge,
 }: BrowserViewProps) {
   const router = useRouter();
   const [sort, setSort] = useState<SortKey>("recent");
@@ -576,6 +584,8 @@ export function BrowserView({
     );
   }
 
+  if (view.kind === "trash") return <TrashPage items={trash} onRestore={onRestore} onPurge={onPurge} />;
+
   if (view.kind === "shared")
     return (
       <div className="browser">
@@ -795,6 +805,95 @@ export function BrowserView({
   );
 }
 
+const trashKinds = { space: "Espace", project: "Projet", livrable: "Livrable" } as const;
+
+/** Deleted spaces, projects and deliverables: restore them, or erase them for good. */
+function TrashPage({ items, onRestore, onPurge }: { items: TrashItem[]; onRestore: (id: number) => void; onPurge: (id?: number) => void }) {
+  const [confirm, setConfirm] = useState<{ title: string; run: () => void } | null>(null);
+  const daysLeft = (deletedAt: number) => Math.max(0, 30 - Math.floor((Date.now() - deletedAt) / (24 * 60 * 60 * 1000)));
+  const contentOf = (item: TrashItem) => {
+    const livrables = new Set(item.data.deliverables.map((record) => `${record.projectId}:${record.name}`)).size;
+    return [
+      item.kind === "space" ? plural(item.data.projects.length, "projet") : null,
+      item.kind !== "livrable" ? plural(livrables, "livrable") : null,
+      plural(item.data.comments.length, "demande"),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  };
+  return (
+    <div className="browser">
+      <PageNav />
+      <header className="page-header">
+        <div>
+          <h1 className="page-title">Corbeille</h1>
+          <p className="page-subtitle">Les éléments supprimés restent 30 jours ici avant d’être effacés.</p>
+        </div>
+        {items.length > 0 && (
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={() => setConfirm({ title: "Vider la corbeille ?", run: () => onPurge() })}
+          >
+            <Trash2 /> Vider la corbeille
+          </button>
+        )}
+      </header>
+      {items.length === 0 ? (
+        <EmptyState icon={Trash2} title="La corbeille est vide" text="Les espaces, projets et livrables supprimés apparaîtront ici." />
+      ) : (
+        <ul className="browser-list">
+          {items.map((item) => (
+            <li key={item.id} className="trash-row">
+              {item.kind === "space" ? (
+                <SpaceAvatar client={item.data.clients[0] ?? { id: item.id, name: item.name, email: "" }} size="sm" />
+              ) : item.kind === "project" ? (
+                <FolderClosed className="folder-icon" aria-hidden="true" />
+              ) : (
+                <DeliverableIcon type={item.data.deliverables[0]?.type ?? "PDF"} className="folder-icon" aria-hidden="true" />
+              )}
+              <span className="trash-name">
+                <b>{item.name}</b>
+                <small>
+                  {trashKinds[item.kind]}
+                  {item.origin ? ` · ${item.origin}` : ""} · {contentOf(item)}
+                </small>
+              </span>
+              <small className="trash-left">
+                {daysLeft(item.deletedAt) === 0 ? "Effacé aujourd’hui" : `Encore ${plural(daysLeft(item.deletedAt), "jour")}`}
+              </small>
+              <button type="button" className="ghost-button" onClick={() => onRestore(item.id)}>
+                <RotateCcw /> Restaurer
+              </button>
+              <button
+                type="button"
+                className="ghost-button icon-only"
+                aria-label={`Supprimer définitivement ${item.name}`}
+                title="Supprimer définitivement"
+                onClick={() => setConfirm({ title: `Supprimer définitivement « ${item.name} » ?`, run: () => onPurge(item.id) })}
+              >
+                <Trash2 />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {confirm && (
+        <ConfirmDeleteDialog
+          title={confirm.title}
+          impact=""
+          confirmLabel="Supprimer définitivement"
+          onClose={() => setConfirm(null)}
+          onConfirm={() => {
+            confirm.run();
+            setConfirm(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 /**
  * Projects whose space no longer exists, deliverables whose project no longer exists
  * (e.g. lost by an older multi-tab save): re-attach or delete them.
@@ -868,7 +967,7 @@ function OrphansSection({
                 setError(onMoveLivrable(livrableId, Number(value)) ? "" : `Ce projet contient déjà un livrable nommé « ${latest!.name} ».`);
               }}
             />
-            <button type="button" className="ghost-button icon-only" aria-label={`Supprimer ${latest!.name}`} title="Supprimer" onClick={() => setConfirm({ title: `Supprimer le livrable « ${latest!.name} » ?`, run: () => onDeleteLivrable(livrableId) })}>
+            <button type="button" className="ghost-button icon-only" aria-label={`Supprimer ${latest!.name}`} title="Mettre à la corbeille" onClick={() => setConfirm({ title: `Supprimer le livrable « ${latest!.name} » ?`, run: () => onDeleteLivrable(livrableId) })}>
               <Trash2 />
             </button>
           </li>
@@ -878,6 +977,7 @@ function OrphansSection({
         <ConfirmDeleteDialog
           title={confirm.title}
           impact=""
+          toTrash
           onClose={() => setConfirm(null)}
           onConfirm={() => {
             confirm.run();

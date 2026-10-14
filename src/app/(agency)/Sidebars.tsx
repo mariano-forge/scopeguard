@@ -17,6 +17,7 @@ import {
   Plus,
   Search,
   Share2,
+  Trash2,
   Users,
 } from "lucide-react";
 import { KoraMark } from "@/components/KoraMark";
@@ -125,6 +126,7 @@ export function HomeSidebar({
         {navLink(href.home(), view.kind === "home", <House />, "Accueil")}
         {navLink(href.recents(), view.kind === "recents", <Clock />, "Récents")}
         {navLink(href.shared(), view.kind === "shared", <Share2 />, "Partagés avec moi")}
+        {navLink(href.trash(), view.kind === "trash", <Trash2 />, "Corbeille")}
 
         <div className="nav-section">
           <span>Favoris</span>

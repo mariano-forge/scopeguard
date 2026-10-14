@@ -195,6 +195,8 @@ type AuditEvent = {
 };
 
 const storageKey = "scopeguard-review-state";
+/** Deleted items stay restorable this long, then are purged on load. */
+const TRASH_DAYS = 30;
 const recentsKey = "kora-recent-deliverables";
 const tabsKey = "kora-open-tabs";
 const maxTabs = 12;
@@ -247,6 +249,28 @@ const decisionStyles: Record<string, string> = {
   "Hors périmètre": "decision-outside",
 };
 
+/** Everything a deletion removed, so it can be restored as it was. */
+type TrashSnapshot = {
+  clients: Client[];
+  projects: Project[];
+  deliverables: Deliverable[];
+  comments: Comment[];
+  proposalStates: ProposalStates;
+  proposalDecisions: ProposalDecisions;
+  proposalVersions: ProposalVersions;
+  adaptationRequests: AdaptationRequests;
+  reviewLinks: ReviewLinks;
+};
+export type TrashItem = {
+  id: number;
+  kind: "space" | "project" | "livrable";
+  name: string;
+  /** Where it was: space name for a project, "space / project" for a deliverable. */
+  origin?: string;
+  deletedAt: number;
+  data: TrashSnapshot;
+};
+
 /**
  * Older saves kept one review status for the whole app. Move it onto the versions:
  * an "Approuvée" version is approved; a pending "changes requested" goes to the shared version.
@@ -285,6 +309,7 @@ export function AgencyApp() {
   const lastPanelRef = useRef<PanelMode>("demandes");
   /** Starred items, "p:<projectId>" or "l:<livrableId>" (per browser for now). */
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [trash, setTrash] = useState<TrashItem[]>([]);
   const [openTabs, setOpenTabs] = useState<{ livrableId: number; href: string }[]>([]);
 
   // Selection comes from the URL (see routes.ts); outside a project the first project is the fallback.
@@ -320,6 +345,7 @@ export function AgencyApp() {
     view.kind === "todo" ||
     view.kind === "recents" ||
     view.kind === "shared" ||
+    view.kind === "trash" ||
     view.kind === "spaces" || view.kind === "client" || view.kind === "project" || view.kind === "not-found";
 
   function openRecord(recordId: number) {
@@ -419,6 +445,7 @@ export function AgencyApp() {
         proposalVersions?: ProposalVersions;
         lastReminderAt?: number | null;
         auditEvents?: AuditEvent[];
+        trash?: TrashItem[];
       };
 
       if (parsedState.projects)
@@ -461,6 +488,10 @@ export function AgencyApp() {
       if (parsedState.lastReminderAt)
         setLastReminderAt(parsedState.lastReminderAt);
       if (parsedState.auditEvents) setAuditEvents(parsedState.auditEvents);
+      if (parsedState.trash) {
+        const limit = Date.now() - TRASH_DAYS * 24 * 60 * 60 * 1000;
+        setTrash(parsedState.trash.filter((item) => item.deletedAt >= limit));
+      }
       setStateHydrated(true);
     } catch {
       window.localStorage.removeItem(storageKey);
@@ -476,6 +507,7 @@ export function AgencyApp() {
         const parsedState = JSON.parse(event.newValue) as {
           projects?: Project[];
           clients?: Client[];
+          trash?: TrashItem[];
           comments?: Comment[];
           proposalStates?: ProposalStates;
           proposalDecisions?: ProposalDecisions;
@@ -507,6 +539,7 @@ export function AgencyApp() {
           setProposalVersions(parsedState.proposalVersions);
         // Spaces and projects too: a tab left open must not write back an older list and drop another tab’s new project.
         if (parsedState.clients) setClients(parsedState.clients);
+        if (parsedState.trash) setTrash(parsedState.trash);
         if (parsedState.projects) setProjects(parsedState.projects);
         if (parsedState.deliverables) setDeliverables(migrateReviewStatus(parsedState));
         if (parsedState.reviewLinks) setReviewLinks(parsedState.reviewLinks);
@@ -539,6 +572,7 @@ export function AgencyApp() {
       notifications,
       lastReminderAt,
       auditEvents,
+      trash,
     });
 
     if (window.localStorage.getItem(storageKey) === newSerialized) return;
@@ -562,6 +596,7 @@ export function AgencyApp() {
     notifications,
     lastReminderAt,
     auditEvents,
+    trash,
     stateHydrated,
   ]);
 
@@ -958,38 +993,90 @@ export function AgencyApp() {
     setProjects((current) => current.map((project) => ((project.clientId ?? 1) === clientId ? { ...project, client: name } : project)));
   }
 
-  /** Removes version records with their requests, proposals, adaptations and review links. */
-  function removeRecords(recordIds: Set<number>) {
-    const commentIds = new Set(comments.filter((comment) => recordIds.has(comment.deliverableId ?? -1)).map((comment) => comment.id));
-    const withoutComments = <T,>(map: Record<number, T>) =>
-      Object.fromEntries(Object.entries(map).filter(([key]) => !commentIds.has(Number(key)))) as Record<number, T>;
+  /** Takes version records out with their requests, proposals, adaptations and review links; returns what was taken. */
+  function takeRecords(recordIds: Set<number>): Omit<TrashSnapshot, "clients" | "projects"> {
+    const takenComments = comments.filter((comment) => recordIds.has(comment.deliverableId ?? -1));
+    const commentIds = new Set(takenComments.map((comment) => comment.id));
+    const pick = <T,>(map: Record<number, T>, keep: boolean) =>
+      Object.fromEntries(Object.entries(map).filter(([key]) => commentIds.has(Number(key)) === keep)) as Record<number, T>;
+    const pickLinks = (map: ReviewLinks, keep: boolean) =>
+      Object.fromEntries(Object.entries(map).filter(([, link]) => recordIds.has(link.deliverableId ?? -1) === keep));
+    const taken = {
+      deliverables: deliverables.filter((record) => recordIds.has(record.id)),
+      comments: takenComments,
+      proposalStates: pick(proposalStates, true),
+      proposalDecisions: pick(proposalDecisions, true),
+      proposalVersions: pick(proposalVersions, true),
+      adaptationRequests: pick(adaptationRequests, true),
+      reviewLinks: pickLinks(reviewLinks, true),
+    };
     setDeliverables((current) => current.filter((record) => !recordIds.has(record.id)));
     setComments((current) => current.filter((comment) => !commentIds.has(comment.id)));
-    setProposalStates((current) => withoutComments(current));
-    setProposalDecisions((current) => withoutComments(current));
-    setProposalVersions((current) => withoutComments(current));
-    setAdaptationRequests((current) => withoutComments(current));
-    setReviewLinks((current) =>
-      Object.fromEntries(Object.entries(current).filter(([, link]) => !recordIds.has(link.deliverableId ?? -1))),
-    );
+    setProposalStates((current) => pick(current, false));
+    setProposalDecisions((current) => pick(current, false));
+    setProposalVersions((current) => pick(current, false));
+    setAdaptationRequests((current) => pick(current, false));
+    setReviewLinks((current) => pickLinks(current, false));
+    return taken;
   }
 
-  function deleteProject(projectId: number, redirect = true) {
+  function putInTrash(kind: TrashItem["kind"], name: string, origin: string | undefined, data: TrashSnapshot) {
+    setTrash((current) => [{ id: Date.now(), kind, name, origin, deletedAt: Date.now(), data }, ...current]);
+  }
+
+  function deleteProject(projectId: number) {
     const project = projects.find((candidate) => candidate.id === projectId);
-    removeRecords(new Set(deliverables.filter((record) => (record.projectId ?? 1) === projectId).map((record) => record.id)));
+    if (!project) return;
+    const taken = takeRecords(new Set(deliverables.filter((record) => (record.projectId ?? 1) === projectId).map((record) => record.id)));
     setProjects((current) => current.filter((candidate) => candidate.id !== projectId));
-    recordAudit("project.deleted", `Projet « ${project?.name ?? projectId} » supprimé`);
-    if (redirect) router.push(project ? href.client(project.clientId ?? 1) : href.spaces());
+    putInTrash("project", project.name, clients.find((client) => client.id === (project.clientId ?? 1))?.name, { ...taken, clients: [], projects: [project] });
+    recordAudit("project.deleted", `Projet « ${project.name} » placé dans la corbeille`);
+    router.push(href.client(project.clientId ?? 1));
   }
 
   function deleteClient(clientId: number) {
     const client = clients.find((candidate) => candidate.id === clientId);
-    const projectIds = new Set(projects.filter((project) => (project.clientId ?? 1) === clientId).map((project) => project.id));
-    removeRecords(new Set(deliverables.filter((record) => projectIds.has(record.projectId ?? 1)).map((record) => record.id)));
+    if (!client) return;
+    const spaceProjects = projects.filter((project) => (project.clientId ?? 1) === clientId);
+    const projectIds = new Set(spaceProjects.map((project) => project.id));
+    const taken = takeRecords(new Set(deliverables.filter((record) => projectIds.has(record.projectId ?? 1)).map((record) => record.id)));
     setProjects((current) => current.filter((project) => !projectIds.has(project.id)));
     setClients((current) => current.filter((candidate) => candidate.id !== clientId));
-    recordAudit("space.deleted", `Espace « ${client?.name ?? clientId} » supprimé`);
+    putInTrash("space", client.name, undefined, { ...taken, clients: [client], projects: spaceProjects });
+    recordAudit("space.deleted", `Espace « ${client.name} » placé dans la corbeille`);
     router.push(href.spaces());
+  }
+
+  function deleteLivrable(livrableId: number) {
+    const versions = versionsOfLivrable(livrableId, deliverables);
+    if (!versions[0]) return;
+    const project = projects.find((candidate) => candidate.id === (versions[0].projectId ?? 1));
+    const client = clients.find((candidate) => candidate.id === (project?.clientId ?? 1));
+    const taken = takeRecords(new Set(versions.map((record) => record.id)));
+    putInTrash("livrable", versions[0].name, project ? [client?.name, project.name].filter(Boolean).join(" / ") : undefined, { ...taken, clients: [], projects: [] });
+  }
+
+  /** Puts everything back as it was (merging by id, so a partial restore never duplicates). */
+  function restoreFromTrash(itemId: number) {
+    const item = trash.find((candidate) => candidate.id === itemId);
+    if (!item) return;
+    const merge = <T extends { id: number }>(current: T[], back: T[]) => [...current, ...back.filter((entry) => !current.some((other) => other.id === entry.id))];
+    const { data } = item;
+    setClients((current) => merge(current, data.clients));
+    setProjects((current) => merge(current, data.projects));
+    setDeliverables((current) => merge(current, data.deliverables));
+    setComments((current) => merge(current, data.comments));
+    setProposalStates((current) => ({ ...data.proposalStates, ...current }));
+    setProposalDecisions((current) => ({ ...data.proposalDecisions, ...current }));
+    setProposalVersions((current) => ({ ...data.proposalVersions, ...current }));
+    setAdaptationRequests((current) => ({ ...data.adaptationRequests, ...current }));
+    setReviewLinks((current) => ({ ...data.reviewLinks, ...current }));
+    setTrash((current) => current.filter((candidate) => candidate.id !== itemId));
+    recordAudit("trash.restored", `« ${item.name} » restauré depuis la corbeille`);
+  }
+
+  function purgeFromTrash(itemId?: number) {
+    setTrash((current) => (itemId === undefined ? [] : current.filter((candidate) => candidate.id !== itemId)));
   }
 
   function moveProject(projectId: number, clientId: number) {
@@ -1011,9 +1098,6 @@ export function AgencyApp() {
     return true;
   }
 
-  function deleteLivrable(livrableId: number) {
-    removeRecords(new Set(versionsOfLivrable(livrableId, deliverables).map((record) => record.id)));
-  }
 
   function renameProject(projectId: number, name: string) {
     setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, name } : project)));
@@ -2180,6 +2264,9 @@ export function AgencyApp() {
               onMoveProject={moveProject}
               onMoveLivrable={moveLivrable}
               onDeleteLivrable={deleteLivrable}
+              trash={trash}
+              onRestore={restoreFromTrash}
+              onPurge={purgeFromTrash}
               overview={overview}
               favorites={favorites}
               onToggleFavorite={toggleFavorite}

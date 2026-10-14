@@ -6,6 +6,9 @@ import { Select } from "@/components/Select";
 
 type Target = { id: number; label: string };
 
+/** What to type to confirm a space deletion: its name in capitals, without spaces ("NORTHSTARSTUDIO"). */
+export const confirmPhraseOf = (name: string) => name.toUpperCase().replace(/\s+/g, "");
+
 /**
  * Settings of a space or a project: rename, move (projects), delete with a confirmation
  * that spells out what goes with it.
@@ -117,6 +120,8 @@ export function EntitySettings({
         <ConfirmDeleteDialog
           title={`Supprimer ${label} « ${name} » ?`}
           impact={deleteImpact}
+          toTrash
+          confirmPhrase={kind === "espace" ? confirmPhraseOf(name) : undefined}
           onClose={() => setDialog(null)}
           onConfirm={() => {
             setDialog(null);
@@ -247,23 +252,54 @@ export function ConfirmDeleteDialog({
   impact,
   onClose,
   onConfirm,
+  toTrash = false,
+  confirmPhrase,
+  confirmLabel = "Supprimer",
 }: {
   title: string;
   impact: string;
   onClose: () => void;
   onConfirm: () => void;
+  /** Goes to the trash (restorable) rather than being erased. */
+  toTrash?: boolean;
+  /** When set, the user must type it exactly to enable the button. */
+  confirmPhrase?: string;
+  confirmLabel?: string;
 }) {
+  const [typed, setTyped] = useState("");
+  const inputId = useId();
+  const ready = !confirmPhrase || typed.trim() === confirmPhrase;
   return (
     <DialogFrame title={title} onClose={onClose}>
       <p className="drawer-intro">
-        {impact ? `${impact} seront supprimés définitivement. ` : ""}Cette action ne peut pas être annulée.
+        {toTrash
+          ? `${impact ? `${impact} seront placés` : "Il sera placé"} dans la corbeille. Vous pourrez restaurer pendant 30 jours.`
+          : `${impact ? `${impact} seront supprimés définitivement. ` : ""}Cette action ne peut pas être annulée.`}
       </p>
+      {confirmPhrase && (
+        <div className="confirm-phrase">
+          <label htmlFor={inputId}>
+            Pour confirmer, tapez <code>{confirmPhrase}</code>
+          </label>
+          <input
+            id={inputId}
+            autoFocus
+            autoComplete="off"
+            spellCheck={false}
+            value={typed}
+            onChange={(event) => setTyped(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && ready) onConfirm();
+            }}
+          />
+        </div>
+      )}
       <div className="dialog-actions">
-        <button type="button" className="ghost-button" autoFocus onClick={onClose}>
+        <button type="button" className="ghost-button" autoFocus={!confirmPhrase} onClick={onClose}>
           Annuler
         </button>
-        <button type="button" className="danger-button" onClick={onConfirm}>
-          <Trash2 aria-hidden="true" /> Supprimer
+        <button type="button" className="danger-button" onClick={onConfirm} disabled={!ready}>
+          <Trash2 aria-hidden="true" /> {confirmLabel}
         </button>
       </div>
     </DialogFrame>
