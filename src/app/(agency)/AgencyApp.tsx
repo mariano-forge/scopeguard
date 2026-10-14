@@ -33,8 +33,7 @@ function formatProposalDeadline(deadline: number | string | undefined): string {
   if (num === 0) return "Aucun impact";
   return `+ ${num} jour${num > 1 ? "s" : ""}`;
 }
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -47,16 +46,25 @@ import {
   ArrowRight,
   ArrowUpRight,
   Check,
-  ChevronDown,
-  ChevronUp,
+  CircleHelp,
+  ClipboardCheck,
+  Eye,
+  FilePlus,
+  FolderClosed,
+  Keyboard,
+  Lock,
+  MessageCirclePlus,
+  Paperclip,
+  Receipt,
+  Search,
+  Settings,
+  Star,
   Coins,
-  Crosshair,
   FileText,
   Hourglass,
   House,
   Inbox,
   LayoutDashboard,
-  LayoutGrid,
   Maximize,
   Minus,
   MousePointer2,
@@ -69,7 +77,6 @@ import {
   ShieldCheck,
   FileCheck,
   Upload,
-  Trash2,
   X,
 } from "lucide-react";
 import { BrowserView, type HomeOverview } from "./BrowserView";
@@ -81,6 +88,11 @@ import { href, hrefForRecord, livrableIdOf, parseAgencyPath, versionsOfLivrable 
 import { DeliverableContent } from "@/components/DeliverableContent";
 import { MAX_FILE_BYTES, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
 import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialog";
+import { CommentPin, Composer, TargetHighlight, ThreadPopover, describeTarget, type TargetBox } from "./editor/CanvasComments";
+import { EditorInspector, isRequest, type InspectorTab } from "./editor/EditorInspector";
+import { ProposalsView, type ProposalRow } from "./editor/ProposalsView";
+import type { MenuEntry } from "./editor/MenuButton";
+import { RenameDialog } from "./EntitySettings";
 
 
 type Decision = "À qualifier" | "Inclus" | "Hors périmètre";
@@ -102,6 +114,8 @@ type Comment = {
   message: string;
   location: string;
   decision: Decision;
+  /** Created as a request (qualified up front) or as a remark (qualified later, or never). */
+  kind?: "remark" | "request";
   page?: number;
   position?: { x: number; y: number };
   replies?: Reply[];
@@ -178,8 +192,11 @@ type ProposalVersion = {
   createdAt: string;
 };
 type ProposalVersions = Record<number, ProposalVersion[]>;
-type CommentFilter = "all" | "pending" | "outside" | "included" | "refused";
 type ImportMode = "version" | "deliverable";
+/** Canvas tools: move (pan, open threads), remark, request (qualified at creation). */
+type CanvasTool = "move" | "remark" | "request";
+/** File attached to a deliverable (brief, charter, contract…), kept per deliverable. */
+type Annex = { id: number; name: string; size: number; fileData: string; addedAt: string };
 type Notification = {
   id: number;
   message: string;
@@ -205,12 +222,6 @@ const sidebarKey = "kora-sidebar";
 const nowLabel = () =>
   new Date().toLocaleString("fr-FR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const favoritesKey = "kora-favorites";
-const mobileQuery = "(max-width: 680px)";
-function subscribeMobile(onChange: () => void) {
-  const query = window.matchMedia(mobileQuery);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-}
 
 const initialProjects: Project[] = [
   {
@@ -292,6 +303,16 @@ function migrateReviewStatus(saved: {
   });
 }
 
+/** New client review link for a version, valid 7 days. */
+function createReviewLink(deliverableId: number, version: number): ReviewLink {
+  const token =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString("fr-FR");
+  return { token, active: true, expiresAt, autoExpire: true, deliverableId, version };
+}
+
 export function AgencyApp() {
   const router = useRouter();
   const pathname = usePathname();
@@ -303,10 +324,9 @@ export function AgencyApp() {
   const [recentLivrableIds, setRecentLivrableIds] = useState<number[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [newDeliverableOpen, setNewDeliverableOpen] = useState(false);
-  const isMobile = useSyncExternalStore(subscribeMobile, () => window.matchMedia(mobileQuery).matches, () => false);
-  const [sidebarPanel, setSidebarPanel] = useState<PanelMode | null>("demandes");
+  const [sidebarPanel, setSidebarPanel] = useState<PanelMode | null>("livrables");
   // Last open mode, read by the Ctrl+\ handler (a ref, so the listener never sees a stale value).
-  const lastPanelRef = useRef<PanelMode>("demandes");
+  const lastPanelRef = useRef<PanelMode>("livrables");
   /** Starred items, "p:<projectId>" or "l:<livrableId>" (per browser for now). */
   const [favorites, setFavorites] = useState<string[]>([]);
   const [trash, setTrash] = useState<TrashItem[]>([]);
@@ -324,9 +344,9 @@ export function AgencyApp() {
       ? view.clientId
       : (projects.find((project) => project.id === selectedProjectId)?.clientId ?? clients[0]?.id ?? 0);
   const viewVersions =
-    view.kind === "deliverable" || view.kind === "dashboard" ? versionsOfLivrable(view.livrableId, deliverables) : [];
+    view.kind === "deliverable" || view.kind === "dashboard" || view.kind === "proposals" ? versionsOfLivrable(view.livrableId, deliverables) : [];
   const viewRecord =
-    view.kind === "dashboard"
+    view.kind === "dashboard" || view.kind === "proposals"
       ? viewVersions[0]
       : view.kind === "deliverable"
       ? view.version
@@ -339,7 +359,7 @@ export function AgencyApp() {
       .filter((deliverable) => (deliverable.projectId ?? 1) === selectedProjectId)
       .sort((left, right) => right.version - left.version)[0]?.id ??
     0;
-  const activeTab = view.kind === "dashboard" ? "dashboard" : "review";
+  const activeTab = view.kind === "dashboard" ? "dashboard" : view.kind === "proposals" ? "proposals" : "review";
   const isBrowserView =
     view.kind === "home" ||
     view.kind === "todo" ||
@@ -382,8 +402,17 @@ export function AgencyApp() {
   const [deliverableError, setDeliverableError] = useState("");
   const [pendingImport, setPendingImport] = useState<{ file: File; type: DeliverableType } | null>(null);
   const [previewZoom, setPreviewZoom] = useState(100);
-  const [pdfPage, setPdfPage] = useState(1);
-  const [pdfPageCount, setPdfPageCount] = useState(1);
+  const [canvasTool, setCanvasTool] = useState<CanvasTool>("move");
+  /** The selected thread is open on the canvas. */
+  const [threadOpen, setThreadOpen] = useState(false);
+  const [composer, setComposer] = useState<{ mode: "remark" | "request"; page: number; x: number; y: number; target: string } | null>(null);
+  /** Zone under the pointer with a comment tool (Agentation-like targeting). */
+  const [hoverTarget, setHoverTarget] = useState<{ page: number; box: TargetBox; element: Element } | null>(null);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("remarques");
+  const [annexes, setAnnexes] = useState<Record<number, Annex[]>>({});
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameError, setRenameError] = useState("");
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [previewDragging, setPreviewDragging] = useState(false);
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const pointerMovedRef = useRef(false);
@@ -393,19 +422,6 @@ export function AgencyApp() {
   const [reviewLinks, setReviewLinks] = useState<ReviewLinks>({});
   const [shareOpen, setShareOpen] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
-  const [commentDraft, setCommentDraft] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-  const [commentText, setCommentText] = useState("");
-  const [replyingTo, setReplyingTo] = useState<number | null>(null);
-  const [replyText, setReplyText] = useState("");
-  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
-  const [editingCommentText, setEditingCommentText] = useState("");
-  const [editingReply, setEditingReply] = useState<{ commentId: number; replyId: number } | null>(null);
-  const [editingReplyText, setEditingReplyText] = useState("");
-  const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
-  const [commentFilter, setCommentFilter] = useState<CommentFilter>("all");
   const [changesOpen, setChangesOpen] = useState(false);
   const [changesMessage, setChangesMessage] = useState("");
   const [approvalOpen, setApprovalOpen] = useState(false);
@@ -446,6 +462,7 @@ export function AgencyApp() {
         lastReminderAt?: number | null;
         auditEvents?: AuditEvent[];
         trash?: TrashItem[];
+        annexes?: Record<number, Annex[]>;
       };
 
       if (parsedState.projects)
@@ -488,6 +505,7 @@ export function AgencyApp() {
       if (parsedState.lastReminderAt)
         setLastReminderAt(parsedState.lastReminderAt);
       if (parsedState.auditEvents) setAuditEvents(parsedState.auditEvents);
+      if (parsedState.annexes) setAnnexes(parsedState.annexes);
       if (parsedState.trash) {
         const limit = Date.now() - TRASH_DAYS * 24 * 60 * 60 * 1000;
         setTrash(parsedState.trash.filter((item) => item.deletedAt >= limit));
@@ -508,6 +526,7 @@ export function AgencyApp() {
           projects?: Project[];
           clients?: Client[];
           trash?: TrashItem[];
+          annexes?: Record<number, Annex[]>;
           comments?: Comment[];
           proposalStates?: ProposalStates;
           proposalDecisions?: ProposalDecisions;
@@ -540,6 +559,7 @@ export function AgencyApp() {
         // Spaces and projects too: a tab left open must not write back an older list and drop another tab’s new project.
         if (parsedState.clients) setClients(parsedState.clients);
         if (parsedState.trash) setTrash(parsedState.trash);
+        if (parsedState.annexes) setAnnexes(parsedState.annexes);
         if (parsedState.projects) setProjects(parsedState.projects);
         if (parsedState.deliverables) setDeliverables(migrateReviewStatus(parsedState));
         if (parsedState.reviewLinks) setReviewLinks(parsedState.reviewLinks);
@@ -573,6 +593,7 @@ export function AgencyApp() {
       lastReminderAt,
       auditEvents,
       trash,
+      annexes,
     });
 
     if (window.localStorage.getItem(storageKey) === newSerialized) return;
@@ -597,6 +618,7 @@ export function AgencyApp() {
     lastReminderAt,
     auditEvents,
     trash,
+    annexes,
     stateHydrated,
   ]);
 
@@ -650,29 +672,6 @@ export function AgencyApp() {
     proposalPreviewCommentId === null
       ? undefined
       : adaptationRequests[proposalPreviewCommentId];
-  const activeIncludedComments = activeComments.filter(
-    (comment) => comment.decision === "Inclus",
-  );
-  const activeRefusedComments = activeComments.filter(
-    (comment) =>
-      comment.decision === "Hors périmètre" &&
-      proposalDecisionFor(comment.id) === "refused",
-  );
-  const filteredComments = (() => {
-    const commentsForFilter =
-      commentFilter === "all"
-        ? [...activeComments].sort((a, b) => b.id - a.id)
-        : commentFilter === "pending"
-          ? activeComments.filter((comment) => comment.decision === "À qualifier" || !comment.decision)
-          : commentFilter === "outside"
-            ? activeComments.filter((comment) => comment.decision === "Hors périmètre")
-            : commentFilter === "included"
-              ? activeIncludedComments
-              : activeRefusedComments;
-    const selectedCommentIndex = commentsForFilter.findIndex((comment) => comment.id === selectedId);
-    if (selectedCommentIndex <= 0) return commentsForFilter;
-    return [commentsForFilter[selectedCommentIndex], ...commentsForFilter.slice(0, selectedCommentIndex), ...commentsForFilter.slice(selectedCommentIndex + 1)];
-  })();
   const reminderBlocked =
     lastReminderAt !== null && Date.now() - lastReminderAt < 24 * 60 * 60 * 1000;
 
@@ -763,10 +762,7 @@ export function AgencyApp() {
     try {
       const saved = window.localStorage.getItem(sidebarKey);
       if (saved === "collapsed") setSidebarPanel(null);
-      else if (saved === "livrables" || saved === "demandes") {
-        setSidebarPanel(saved);
-        lastPanelRef.current = saved;
-      }
+      else if (saved) setSidebarPanel("livrables");
     } catch {
       // Keep the default panel when storage is unavailable.
     }
@@ -805,6 +801,28 @@ export function AgencyApp() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // Canvas tools from the keyboard (as in Figma): V move, C remark, D request, Escape closes and goes back to move.
+  const editorOpen = view.kind === "deliverable";
+  useEffect(() => {
+    if (!editorOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (event.ctrlKey || event.metaKey || event.altKey || target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      const key = event.key.toLowerCase();
+      if (key === "v") setCanvasTool("move");
+      else if (key === "c" && !isReadOnlyVersion) setCanvasTool("remark");
+      else if (key === "d" && !isReadOnlyVersion) setCanvasTool("request");
+      else if (event.key === "Escape") {
+        setComposer(null);
+        setThreadOpen(false);
+        setHoverTarget(null);
+        setCanvasTool("move");
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [editorOpen, isReadOnlyVersion]);
 
   useEffect(() => {
     try {
@@ -879,8 +897,9 @@ export function AgencyApp() {
   }, [currentDeliverable?.id, currentDeliverable?.version, reviewLink?.deliverableId, reviewLink?.version, reviewLinks]);
 
   useEffect(() => {
-    setPdfPage(1);
-    setPdfPageCount(1);
+    setComposer(null);
+    setThreadOpen(false);
+    setHoverTarget(null);
   }, [currentDeliverable?.id]);
 
   useEffect(() => {
@@ -892,17 +911,18 @@ export function AgencyApp() {
   // ?demande=ID (from "À traiter"): select that comment once, then drop the param so clicks work normally.
   useEffect(() => {
     if (focusedCommentId === null || !activeComments.some((comment) => comment.id === focusedCommentId)) return;
+    const focused = activeComments.find((comment) => comment.id === focusedCommentId);
     setSelectedId(focusedCommentId);
+    setThreadOpen(true);
+    if (focused) setInspectorTab(isRequest(focused) ? "demandes" : "remarques");
     router.replace(pathname, { scroll: false });
-    requestAnimationFrame(() => document.querySelector(".selected-card")?.scrollIntoView({ block: "nearest" }));
+    // Bring its pin into view once the canvas has laid out the pages.
+    window.setTimeout(() => {
+      const pin = document.querySelector<HTMLElement>(`[data-pin="${focusedCommentId}"]`);
+      const zoom = transformRef.current;
+      if (pin && zoom) void zoom.zoomToElement(pin, zoom.state.scale, 300);
+    }, 400);
   }, [focusedCommentId, activeComments, pathname, router]);
-
-  function selectDeliverableName(name: string) {
-    const latestVersion = activeDeliverables
-      .filter((deliverable) => deliverable.name === name)
-      .sort((left, right) => right.version - left.version)[0];
-    if (latestVersion) openRecord(latestVersion.id);
-  }
 
   function recordAudit(type: string, description: string, commentId?: number) {
     setAuditEvents((current) => [
@@ -918,18 +938,12 @@ export function AgencyApp() {
     ]);
   }
 
-  function classifyComment(decision: Decision) {
-    if (isReadOnlyVersion || !selectedComment || isDecisionLocked(selectedComment.id)) return;
-    setComments((current) =>
-      current.map((comment) =>
-        comment.id === selectedComment.id ? { ...comment, decision } : comment,
-      ),
-    );
-    recordAudit("scope.classified", `Demande classée « ${decision} »`, selectedComment.id);
-  }
-
-  function selectComment(commentId: number) {
-    setSelectedId(commentId);
+  /** Qualification chosen in a thread: a remark qualified "Incluse" or "Hors périmètre" becomes a request. */
+  function qualifyComment(commentId: number, decision: Decision) {
+    if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
+    setComments((current) => current.map((comment) => (comment.id === commentId ? { ...comment, decision } : comment)));
+    recordAudit("scope.classified", `Demande classée « ${decision} »`, commentId);
+    if (decision !== "À qualifier") setInspectorTab("demandes");
   }
 
   function createProject(event: React.FormEvent<HTMLFormElement>) {
@@ -1115,26 +1129,6 @@ export function AgencyApp() {
     setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, name } : project)));
   }
 
-  function importDeliverable(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-
-    if (!file) return;
-
-    const type = kindFromFile(file);
-    if (!type) {
-      setDeliverableError("Format non pris en charge. Choisissez une image, un PDF, une vidéo ou un document.");
-      return;
-    }
-    if (file.size > MAX_FILE_BYTES) {
-      setDeliverableError(`Fichier trop lourd pour la démo : ${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).`);
-      return;
-    }
-
-    setPendingImport({ file, type });
-    setDeliverableError("");
-  }
-
   /** "Nouveau livrable" dialog: a new deliverable (version 1) in the current project. */
   async function createDeliverable(input: NewDeliverable) {
     const [fileData, coverData] = await Promise.all([
@@ -1185,8 +1179,6 @@ export function AgencyApp() {
       fileData,
     };
 
-    setPdfPage(1);
-    setPdfPageCount(1);
     router.push(hrefForRecord(importedDeliverable, [importedDeliverable, ...deliverables]));
     setDeliverables((current) => [
       importedDeliverable,
@@ -1211,18 +1203,115 @@ export function AgencyApp() {
     });
   }
 
-  function startComment(event: React.MouseEvent<HTMLDivElement>) {
-    if (isReadOnlyVersion) return;
+  /** Page under a canvas event and the point in % of that page. */
+  function pagePoint(event: React.MouseEvent) {
+    const page = (event.target as Element).closest<HTMLElement>("[data-page]");
+    if (!page) return null;
+    const bounds = page.getBoundingClientRect();
+    const percent = (value: number) => Math.min(100, Math.max(0, Math.round(value * 1000) / 10));
+    return {
+      page: Number(page.dataset.page) || 1,
+      bounds,
+      x: percent((event.clientX - bounds.left) / bounds.width),
+      y: percent((event.clientY - bounds.top) / bounds.height),
+    };
+  }
+
+  /** Meaningful element under the pointer (a button rather than its label), or null for plain media. */
+  function targetElement(target: EventTarget | null) {
+    const element = target instanceof Element ? target : null;
+    const content = element?.closest(".canvas-page-content");
+    if (!element || !content || element === content) return null;
+    const zone = element.closest("button, a, h1, h2, h3, h4, h5, h6, p, li, nav, small, img, svg, [class^='mock-'], [class*=' mock-']");
+    const picked = zone && content.contains(zone) ? zone : element;
+    // A rendered PDF page or an image has no inner structure to target.
+    if (picked.matches("canvas, img, video, iframe, .react-pdf__Page, .react-pdf__Document") || picked === content) return null;
+    return picked;
+  }
+
+  /** Comment tools: outline the zone under the pointer. */
+  function trackCanvasHover(event: React.PointerEvent<HTMLDivElement>) {
+    if (canvasTool === "move" || composer || (event.target as Element).closest(".thread, .canvas-pin")) {
+      if (hoverTarget) setHoverTarget(null);
+      return;
+    }
+    const element = targetElement(event.target);
+    if (element === hoverTarget?.element) return;
+    const point = pagePoint(event);
+    if (!element || !point) {
+      if (hoverTarget) setHoverTarget(null);
+      return;
+    }
+    const rect = element.getBoundingClientRect();
+    setHoverTarget({
+      page: point.page,
+      element,
+      box: {
+        left: ((rect.left - point.bounds.left) / point.bounds.width) * 100,
+        top: ((rect.top - point.bounds.top) / point.bounds.height) * 100,
+        width: (rect.width / point.bounds.width) * 100,
+        height: (rect.height / point.bounds.height) * 100,
+        label: describeTarget(element),
+      },
+    });
+  }
+
+  /**
+   * Click on the canvas (capture phase, so the deliverable's own buttons don't swallow it):
+   * with the move tool it closes the open thread; with a comment tool it opens the composer there.
+   */
+  function handleCanvasClick(event: React.MouseEvent<HTMLDivElement>) {
+    if ((event.target as Element).closest(".thread, .canvas-pin")) return;
     if (pointerMovedRef.current) {
       pointerMovedRef.current = false;
       return;
     }
-    const bounds = event.currentTarget.getBoundingClientRect();
-    setCommentDraft({
-      x: Math.round(((event.clientX - bounds.left) / bounds.width) * 100),
-      y: Math.round(((event.clientY - bounds.top) / bounds.height) * 100),
+    if (canvasTool === "move") {
+      setThreadOpen(false);
+      setComposer(null);
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (isReadOnlyVersion) return;
+    const point = pagePoint(event);
+    if (!point) return;
+    const element = targetElement(event.target);
+    setThreadOpen(false);
+    setHoverTarget(null);
+    setComposer({
+      mode: canvasTool,
+      page: point.page,
+      x: point.x,
+      y: point.y,
+      target: [`Page ${point.page}`, element ? describeTarget(element) : null].filter(Boolean).join(" · "),
     });
-    setCommentText("");
+  }
+
+  /** Brings a pin to the middle of the canvas, keeping the zoom. */
+  function centerOnPin(commentId: number) {
+    const pin = document.querySelector<HTMLElement>(`[data-pin="${commentId}"]`);
+    const zoom = transformRef.current;
+    if (!pin || !zoom) return;
+    void zoom.zoomToElement(pin, zoom.state.scale, 300);
+  }
+
+  /** Opens a thread from the inspector list: its pin comes into view with the conversation. */
+  function focusThread(commentId: number) {
+    setSelectedId(commentId);
+    setComposer(null);
+    setThreadOpen(true);
+    requestAnimationFrame(() => centerOnPin(commentId));
+  }
+
+  /** Fits the pages to the canvas width, from the top (100 % if they already fit). */
+  function resetCanvasView() {
+    const zoom = transformRef.current;
+    const wrapper = zoom?.instance.wrapperComponent;
+    const content = zoom?.instance.contentComponent?.querySelector<HTMLElement>(".artboard");
+    if (!zoom || !wrapper || !content) return;
+    const scale = Math.min(1, (wrapper.clientWidth - 64) / content.offsetWidth);
+    zoom.setTransform((wrapper.clientWidth - content.offsetWidth * scale) / 2 - content.offsetLeft * scale, 0, scale, 200);
   }
 
   function trackPreviewPointerDown(event: React.PointerEvent<HTMLDivElement>) {
@@ -1244,12 +1333,6 @@ export function AgencyApp() {
     setPreviewDragging(false);
   }
 
-  function startCommentAtCenter() {
-    if (isReadOnlyVersion) return;
-    setCommentDraft({ x: 50, y: 50 });
-    setCommentText("");
-  }
-
   function togglePreviewFullscreen() {
     if (!previewPanelRef.current) return;
     if (document.fullscreenElement) {
@@ -1259,81 +1342,71 @@ export function AgencyApp() {
     }
   }
 
-  function addComment(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (isReadOnlyVersion) return;
-    const message = commentText.trim();
-
-    if (!commentDraft || !message) return;
-
-    const newComment: Comment = {
+  /** Publishes the composer: a remark (to clarify) or a request already qualified. */
+  function submitComposer(message: string, decision: Decision) {
+    if (isReadOnlyVersion || !composer) return;
+    const created: Comment = {
       id: Math.max(...comments.map((comment) => comment.id), 0) + 1,
       deliverableId: currentDeliverable.id,
       author: "Alex Morgan",
       initials: "AM",
       time: "À l'instant",
       message,
-      location: `Page ${pdfPage} · position ${commentDraft.x}% / ${commentDraft.y}%`,
-      decision: "À qualifier",
-      page: pdfPage,
-      position: commentDraft,
+      location: composer.target,
+      decision,
+      kind: composer.mode,
+      page: composer.page,
+      position: { x: composer.x, y: composer.y },
     };
-
-    setComments((current) => [...current, newComment]);
-    recordAudit("comment.created", "Remarque agence ajoutée", newComment.id);
-    setSelectedId(newComment.id);
-    setCommentDraft(null);
-    setCommentText("");
-  }
-
-  function addReply(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (isReadOnlyVersion) return;
-    const message = replyText.trim();
-
-    if (!replyingTo || isDecisionLocked(replyingTo) || !message) return;
-
-    const reply: Reply = {
-      id: Date.now(),
-      author: "Alex Morgan",
-      initials: "AM",
-      message,
-      time: "À l'instant",
-    };
-
-    setComments((current) =>
-      current.map((comment) =>
-        comment.id === replyingTo
-          ? { ...comment, replies: [...(comment.replies ?? []), reply] }
-          : comment,
-      ),
+    setComments((current) => [...current, created]);
+    recordAudit(
+      composer.mode === "request" ? "request.created" : "comment.created",
+      composer.mode === "request" ? `Demande ajoutée, qualifiée « ${decision} »` : "Remarque agence ajoutée",
+      created.id,
     );
-    recordAudit("reply.created", "Réponse agence ajoutée", replyingTo);
-    setReplyText("");
-    setReplyingTo(null);
+    setSelectedId(created.id);
+    setInspectorTab(isRequest(created) ? "demandes" : "remarques");
+    setComposer(null);
+    setThreadOpen(true);
   }
 
-  function startEditComment(comment: Comment) {
-    if (isReadOnlyVersion || isDecisionLocked(comment.id) || comment.initials !== "AM") return;
-    setEditingCommentId(comment.id);
-    setEditingCommentText(comment.message);
-  }
-
-  function saveEditComment(commentId: number) {
+  function replyTo(commentId: number, message: string) {
     if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
-    const target = comments.find((c) => c.id === commentId);
-    if (target?.initials !== "AM") return;
-    const message = editingCommentText.trim();
-    if (!message) return;
-
+    const reply: Reply = { id: Date.now(), author: "Alex Morgan", initials: "AM", message, time: "À l'instant" };
     setComments((current) =>
-      current.map((comment) =>
-        comment.id === commentId ? { ...comment, message } : comment,
-      ),
+      current.map((comment) => (comment.id === commentId ? { ...comment, replies: [...(comment.replies ?? []), reply] } : comment)),
     );
-    recordAudit("comment.edited", "Remarque agence modifiée", commentId);
-    setEditingCommentId(null);
-    setEditingCommentText("");
+    recordAudit("reply.created", "Réponse agence ajoutée", commentId);
+  }
+
+  /** Attaches a file to the open deliverable (all its versions). */
+  async function addAnnex(file: File) {
+    if (file.size > MAX_FILE_BYTES) {
+      setDeliverableError(`Annexe trop lourde pour la démo : ${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).`);
+      return;
+    }
+    const fileData = await readFileAsDataUrl(file);
+    setAnnexes((current) => ({
+      ...current,
+      [livrableRootId]: [{ id: Date.now(), name: file.name, size: file.size, fileData, addedAt: nowLabel() }, ...(current[livrableRootId] ?? [])],
+    }));
+    setDeliverableError("");
+    recordAudit("annex.added", `Annexe « ${file.name} » ajoutée`);
+  }
+
+  /** "Nouvelle version" from the menus: the previous version is frozen. */
+  function importVersionFile(file: File) {
+    const type = kindFromFile(file);
+    if (!type) {
+      setDeliverableError("Format non pris en charge. Choisissez une image, un PDF, une vidéo ou un document.");
+      return;
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      setDeliverableError(`Fichier trop lourd pour la démo : ${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).`);
+      return;
+    }
+    setDeliverableError("");
+    void confirmImport("version", { file, type });
   }
 
   function deleteComment(commentId: number) {
@@ -1348,55 +1421,6 @@ export function AgencyApp() {
       return updated;
     });
     recordAudit("comment.deleted", "Remarque agence supprimée", commentId);
-  }
-
-  function startEditReply(commentId: number, reply: Reply) {
-    if (isReadOnlyVersion || isDecisionLocked(commentId) || reply.initials !== "AM") return;
-    setEditingReply({ commentId, replyId: reply.id });
-    setEditingReplyText(reply.message);
-  }
-
-  function saveEditReply(commentId: number, replyId: number) {
-    if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
-    const parent = comments.find((c) => c.id === commentId);
-    const target = parent?.replies?.find((r) => r.id === replyId);
-    if (target?.initials !== "AM") return;
-    const message = editingReplyText.trim();
-    if (!message) return;
-
-    setComments((current) =>
-      current.map((comment) =>
-        comment.id === commentId
-          ? {
-              ...comment,
-              replies: comment.replies?.map((reply) =>
-                reply.id === replyId ? { ...reply, message } : reply,
-              ),
-            }
-          : comment,
-      ),
-    );
-    recordAudit("reply.edited", "Réponse agence modifiée", commentId);
-    setEditingReply(null);
-    setEditingReplyText("");
-  }
-
-  function deleteReply(commentId: number, replyId: number) {
-    if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
-    const parent = comments.find((c) => c.id === commentId);
-    const target = parent?.replies?.find((r) => r.id === replyId);
-    if (target?.initials !== "AM") return;
-    setComments((current) =>
-      current.map((comment) =>
-        comment.id === commentId
-          ? {
-              ...comment,
-              replies: comment.replies?.filter((reply) => reply.id !== replyId),
-            }
-          : comment,
-      ),
-    );
-    recordAudit("reply.deleted", "Réponse agence supprimée", commentId);
   }
 
   function approveVersion() {
@@ -1615,33 +1639,31 @@ export function AgencyApp() {
     exportWindow.focus();
   }
 
-  function openShareDialog() {
+  /** Review link of the open version, created when missing (share dialog, client preview). */
+  function ensureReviewLink(): ReviewLink {
     const linkKey = `${currentDeliverable.id}:${currentDeliverable.version}`;
     const existingLink = reviewLinks[linkKey];
 
     if (!existingLink || !existingLink.active) {
-      const token =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const expiresAt = new Date(
-        Date.now() + 7 * 24 * 60 * 60 * 1000,
-      ).toLocaleDateString("fr-FR");
-      const newLink = {
-        token,
-        active: true,
-        expiresAt,
-        autoExpire: true,
-        deliverableId: currentDeliverable.id,
-        version: currentDeliverable.version,
-      };
+      const newLink = createReviewLink(currentDeliverable.id, currentDeliverable.version);
       setReviewLinks((current) => ({ ...current, [linkKey]: newLink }));
       setReviewLink(newLink);
-    } else {
-      setReviewLink(existingLink);
+      return newLink;
     }
+    setReviewLink(existingLink);
+    return existingLink;
+  }
+
+  function openShareDialog() {
+    ensureReviewLink();
     setLinkCopied(false);
     setShareOpen(true);
+  }
+
+  /** The page the client sees, in a new tab (the link is saved before the tab reads it). */
+  function openClientPreview() {
+    const link = ensureReviewLink();
+    window.setTimeout(() => window.open(`/review/${link.token}`, "_blank", "noopener"), 50);
   }
 
   function updateAutoExpire(autoExpire: boolean) {
@@ -1828,224 +1850,6 @@ export function AgencyApp() {
     ...paletteActions.slice(2),
   ];
 
-  // Full thread of a request (inspector): message, replies, proposal state, edit/reply actions.
-  const renderCommentThread = (comment: Comment) => (
-        <article
-          className={`comment-card ${comment.initials === "AM" ? "agency-comment" : "client-comment"} ${comment.id === selectedId ? "selected-card" : ""}`}
-          key={comment.id}
-          onClick={() => selectComment(comment.id)}
-        >
-          <div className="comment-top">
-          <span className={`avatar light-avatar ${comment.initials === "AM" ? "agency-avatar" : "client-avatar"}`}>
-              {comment.initials}
-            </span>
-            <div>
-              <b>{comment.author}</b>
-              <small>{comment.time}</small>
-            </div>
-            <span className="comment-number">{comment.id}</span>
-          </div>
-          {editingCommentId === comment.id ? (
-            <form
-              className="edit-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                saveEditComment(comment.id);
-              }}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <textarea
-                autoFocus
-                value={editingCommentText}
-                onChange={(event) =>
-                  setEditingCommentText(event.target.value)
-                }
-              />
-              <div className="edit-actions">
-                <button
-                  type="button"
-                  className="action-link"
-                  onClick={() => setEditingCommentId(null)}
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  className="save-button"
-                  disabled={!editingCommentText.trim()}
-                >
-                  Enregistrer
-                </button>
-              </div>
-            </form>
-          ) : (
-            <p>{comment.message}</p>
-          )}
-          <div className="comment-location">
-            <Crosshair /> {comment.location}
-          </div>
-          {(expandedReplies[comment.id] ? (comment.replies ?? []) : (comment.replies ?? []).slice(0, 2)).map((reply) => (
-            <div className="reply" key={reply.id}>
-              <span className={`avatar reply-avatar ${reply.initials === "AM" ? "agency-avatar" : "client-avatar"}`}>
-                {reply.initials}
-              </span>
-              <div>
-                <b>{reply.author}</b>
-                <small>{reply.time}</small>
-                {editingReply?.commentId === comment.id &&
-                editingReply?.replyId === reply.id ? (
-                  <form
-                    className="edit-reply-form"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      saveEditReply(comment.id, reply.id);
-                    }}
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <input
-                      autoFocus
-                      value={editingReplyText}
-                      onChange={(event) =>
-                        setEditingReplyText(event.target.value)
-                      }
-                    />
-                    <div className="edit-actions">
-                      <button
-                        type="button"
-                        className="action-link"
-                        onClick={() => setEditingReply(null)}
-                      >
-                        Annuler
-                      </button>
-                      <button
-                        type="submit"
-                        className="save-button"
-                        disabled={!editingReplyText.trim()}
-                      >
-                        Enregistrer
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <>
-                    <p>{reply.message}</p>
-                    {!isReadOnlyVersion && !isDecisionLocked(comment.id) && reply.initials === "AM" && (
-                      <div className="item-inline-actions">
-                        <button
-                          className="action-link"
-                          title="Modifier"
-                          aria-label="Modifier la réponse"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            startEditReply(comment.id, reply);
-                          }}
-                        >
-                          <Pencil />
-                        </button>
-                        <button
-                          className="action-link delete-link"
-                          title="Supprimer"
-                          aria-label="Supprimer la réponse"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            deleteReply(comment.id, reply.id);
-                          }}
-                        >
-                          <Trash2 />
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-          {(comment.replies?.length ?? 0) > 2 && (
-            <button
-              type="button"
-              className="replies-toggle"
-              onClick={(event) => {
-                event.stopPropagation();
-                setExpandedReplies((current) => ({ ...current, [comment.id]: !current[comment.id] }));
-              }}
-            >
-              {expandedReplies[comment.id] ? <><ChevronUp /> Réduire les réponses</> : <><ChevronDown /> Afficher les {(comment.replies?.length ?? 0) - 2} autres réponses</>}
-            </button>
-          )}
-          <div className="comment-decision">
-            <span className={`decision-badge ${decisionStyles[comment.decision]}`}>
-              {comment.decision}
-            </span>
-            <div className="comment-actions">
-                  {comment.decision === "Hors périmètre" && (proposalDecisionFor(comment.id) === "accepted" || adaptationRequests[comment.id]?.decision === "accepted" ? (
-                    <span className="proposal-accepted">Proposition acceptée <Check /></span>
-                  ) : proposalDecisionFor(comment.id) === "refused" || adaptationRequests[comment.id]?.decision === "refused" ? (
-                    <span className="proposal-refused">Proposition refusée</span>
-                  ) : proposalStateFor(comment.id) === "sent" ? (
-                    <button className="proposal-link" onClick={(event) => { event.stopPropagation(); openProposal(comment.id); }} disabled={isReadOnlyVersion}>Voir la proposition <ArrowRight /></button>
-                  ) : (
-                    <button className="proposal-link" onClick={(event) => { event.stopPropagation(); openProposal(comment.id); }} disabled={isReadOnlyVersion}>Créer une proposition <ArrowRight /></button>
-                  ))}
-              {!isReadOnlyVersion && !isDecisionLocked(comment.id) && editingCommentId !== comment.id && comment.initials === "AM" && (
-                <>
-                  <button
-                    className="action-link"
-                    title="Modifier"
-                    aria-label="Modifier le commentaire"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      startEditComment(comment);
-                    }}
-                  >
-                    <Pencil />
-                  </button>
-                  <button
-                    className="action-link delete-link"
-                    title="Supprimer"
-                    aria-label="Supprimer le commentaire"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      deleteComment(comment.id);
-                    }}
-                  >
-                    <Trash2 />
-                  </button>
-                </>
-              )}
-              {!isDecisionLocked(comment.id) && <button
-                className="reply-link"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setReplyingTo(comment.id);
-                  setReplyText("");
-                }}
-              >
-                Répondre
-              </button>}
-            </div>
-          </div>
-          {replyingTo === comment.id && !isDecisionLocked(comment.id) && (
-            <form
-              className="reply-form"
-              onSubmit={addReply}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <input
-                autoFocus
-                value={replyText}
-                onChange={(event) =>
-                  setReplyText(event.target.value)
-                }
-                placeholder="Écrire une réponse..."
-              />
-              <button type="submit" disabled={!replyText.trim()}>
-                Envoyer
-              </button>
-            </form>
-          )}
-        </article>
-  );
-
   const proposalLabel = (comment: Comment) =>
     comment.decision !== "Hors périmètre"
       ? null
@@ -2059,104 +1863,96 @@ export function AgencyApp() {
               ? "Proposition envoyée"
               : "Proposition à créer";
 
-  // Requests of the open version, in the left panel (and in the inspector on mobile).
-  const demandesList =
-    view.kind === "deliverable" ? (
-      <div className="demandes">
-        <div className="filter-row">
-          <button
-            className={`filter ${commentFilter === "all" ? "active-filter" : ""}`}
-            onClick={() => {
-              setCommentFilter("all");
-            }}
-          >
-            Toutes <span>{activeComments.length}</span>
-          </button>
-          <button
-            className={`filter ${commentFilter === "pending" ? "active-filter" : ""}`}
-            onClick={() => {
-              setCommentFilter("pending");
-            }}
-          >
-            À qualifier{" "}
-            <span>
-              {
-                  activeComments.filter(
-                  (comment) => comment.decision === "À qualifier" || !comment.decision,
-                ).length
-              }
-            </span>
-          </button>
-          <button
-            className={`filter ${commentFilter === "outside" ? "active-filter" : ""}`}
-            onClick={() => {
-              setCommentFilter("outside");
-            }}
-          >
-            Hors périmètre{" "}
-            <span>
-              {
-                activeComments.filter(
-                  (comment) => comment.decision === "Hors périmètre",
-                ).length
-              }
-            </span>
-          </button>
-          <button
-            className={`filter ${commentFilter === "included" ? "active-filter" : ""}`}
-            onClick={() => {
-              setCommentFilter("included");
-            }}
-          >
-            Incluses <span>{activeIncludedComments.length}</span>
-          </button>
-          <button
-            className={`filter ${commentFilter === "refused" ? "active-filter" : ""}`}
-            onClick={() => {
-              setCommentFilter("refused");
-            }}
-          >
-            Refusées <span>{activeRefusedComments.length}</span>
-          </button>
-        </div>
-        {filteredComments.length === 0 ? (
-          <p className="panel-empty">
-            {activeComments.length === 0 ? "Aucune demande sur cette version." : "Aucune demande pour ce filtre."}
-          </p>
-        ) : (
-          <ul className="demande-list">
-            {filteredComments.map((comment) => (
-              <li key={comment.id}>
-                <button
-                  type="button"
-                  className={`demande-row ${comment.id === selectedId ? "selected-card" : ""}`}
-                  aria-current={comment.id === selectedId ? "true" : undefined}
-                  onClick={() => selectComment(comment.id)}
-                >
-                  <span className={`demande-number ${comment.initials === "AM" ? "agency-pin" : "client-pin"}`}>{comment.id}</span>
-                  <span className="demande-body">
-                    <span className="demande-meta">
-                      <b>{comment.author}</b>
-                      <small>{comment.time}</small>
-                    </span>
-                    <span className="demande-excerpt">{comment.message}</span>
-                    <span className="demande-tags">
-                      <span className={`decision-badge ${decisionStyles[comment.decision]}`}>{comment.decision}</span>
-                      {proposalLabel(comment) && <small>{proposalLabel(comment)}</small>}
-                      {(comment.replies?.length ?? 0) > 0 && (
-                        <small>
-                          {comment.replies?.length} réponse{(comment.replies?.length ?? 0) > 1 ? "s" : ""}
-                        </small>
-                      )}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    ) : undefined;
+  // Deliverable workspace (canvas, dashboard, proposals): everything below is about this deliverable.
+  const livrableRootId = "livrableId" in view ? view.livrableId : 0;
+  const latestVersionRecord = viewVersions[0];
+  // How the canvas page is laid out (mirrors what DeliverableContent shows).
+  const pageKind = !currentDeliverable
+    ? "mock"
+    : currentDeliverable.type === "PDF" && currentDeliverable.fileData
+      ? "pdf"
+      : currentDeliverable.type === "Image" && currentDeliverable.fileData
+        ? "image"
+        : currentDeliverable.type === "Video" && currentDeliverable.fileData
+          ? "video"
+          : (currentDeliverable.type === "Link" && currentDeliverable.url) || (currentDeliverable.type === "Doc" && currentDeliverable.fileData)
+            ? "placeholder"
+            : "mock";
+
+  // Out-of-scope requests of every version, for the proposals page.
+  const proposalRows: ProposalRow[] = viewVersions.flatMap((record) =>
+    comments
+      .filter((comment) => comment.deliverableId === record.id && comment.decision === "Hors périmètre")
+      .map((comment) => {
+        const proposal = activeProposalFor(comment.id);
+        const decision = proposalDecisionFor(comment.id);
+        const adaptation = adaptationRequests[comment.id];
+        const state: ProposalRow["state"] =
+          decision === "accepted" || adaptation?.decision === "accepted"
+            ? "accepted"
+            : decision === "refused" || adaptation?.decision === "refused"
+              ? "refused"
+              : adaptation
+                ? "adaptation"
+                : proposalStateFor(comment.id) === "sent"
+                  ? "sent"
+                  : "to-quote";
+        return {
+          commentId: comment.id,
+          message: comment.message,
+          author: comment.author,
+          location: comment.location,
+          versionLabel: `V${String(record.version).padStart(2, "0")}`,
+          href: `${hrefForRecord(record, deliverables)}?demande=${comment.id}`,
+          state,
+          description: proposal?.description,
+          amount: parseNumericAmount(proposal?.amount),
+          days: parseNumericDays(proposal?.deadline),
+          editable: record.id === currentDeliverable?.id && !isReadOnlyVersion,
+        };
+      }),
+  );
+
+  // Under the deliverable name (panel title): shortcuts for this deliverable only.
+  const livrableMenu: MenuEntry[] = [
+    { kind: "section", label: "Ce livrable" },
+    { label: "Importer une nouvelle version", icon: <Upload />, onFile: importVersionFile, accept: "application/pdf,image/*,video/*" },
+    { label: "Importer une annexe", icon: <Paperclip />, onFile: (file) => void addAnnex(file) },
+    { label: "Partager la revue", icon: <Share2 />, onSelect: openShareDialog },
+    { label: "Aperçu client", icon: <Eye />, onSelect: openClientPreview },
+    { kind: "section", label: "Suivi" },
+    { label: "Rouvrir la validation", icon: <RotateCcw />, onSelect: () => { setChangesMessage(""); setChangesOpen(true); } },
+    { label: "Synthèse & export", icon: <FileCheck />, onSelect: () => setProofOpen(true) },
+    { label: "Historique & journal", icon: <ScrollText />, onSelect: () => setHistoryOpen(true) },
+    { label: "Propositions hors périmètre", icon: <Receipt />, href: href.proposals(selectedProjectId, livrableRootId) },
+    { label: "Tableau de bord", icon: <LayoutDashboard />, href: href.dashboard(selectedProjectId, livrableRootId) },
+    { kind: "section", label: "Organisation" },
+    { label: "Renommer…", icon: <Pencil />, onSelect: () => { setRenameError(""); setRenameOpen(true); } },
+    {
+      label: favorites.includes(`l:${livrableRootId}`) ? "Retirer des favoris" : "Épingler aux favoris",
+      icon: <Star />,
+      onSelect: () => toggleFavorite(`l:${livrableRootId}`),
+    },
+    { label: "Voir le projet", icon: <FolderClosed />, href: href.project(selectedProjectId) },
+  ];
+
+  // Under the logo: Kora's main menu.
+  const systemMenu: MenuEntry[] = [
+    { kind: "section", label: "Nouveau" },
+    { label: "Nouveau livrable", icon: <FilePlus />, onSelect: () => setNewDeliverableOpen(true) },
+    { label: "Nouvelle version", icon: <Upload />, onFile: importVersionFile, accept: "application/pdf,image/*,video/*" },
+    { kind: "section", label: "Fichier" },
+    { label: "Synthèse & export", icon: <FileCheck />, onSelect: () => setProofOpen(true) },
+    { label: "Historique & journal", icon: <ScrollText />, onSelect: () => setHistoryOpen(true) },
+    { kind: "section", label: "Aller à" },
+    { label: "Accueil", icon: <House />, href: href.home() },
+    { label: "À traiter", icon: <Inbox />, href: href.todo(), hint: agencyActionCount ? String(agencyActionCount) : undefined },
+    { label: "Rechercher", icon: <Search />, hint: "Ctrl K", onSelect: () => setPaletteOpen(true) },
+    { kind: "section", label: "Aide et réglages" },
+    { label: "Raccourcis clavier", icon: <Keyboard />, onSelect: () => setShortcutsOpen(true) },
+    { label: "Préférences", icon: <Settings />, hint: "Bientôt", disabled: true },
+    { label: "Aide et documentation", icon: <CircleHelp />, hint: "Bientôt", disabled: true },
+  ];
 
   const sidebarFavorites = favorites.flatMap((key): SidebarFavorite[] => {
     const [kind, rawId] = key.split(":");
@@ -2170,7 +1966,7 @@ export function AgencyApp() {
   });
 
   // Project workspace panel: deliverables of the project, versions of the open one.
-  const inProject = (view.kind === "deliverable" || view.kind === "dashboard") && Boolean(selectedProject);
+  const inProject = (view.kind === "deliverable" || view.kind === "dashboard" || view.kind === "proposals") && Boolean(selectedProject);
   const sidebarLivrables: SidebarLivrable[] = latestRecords
     .filter((record) => (record.projectId ?? 1) === selectedProjectId)
     .map((record) => {
@@ -2184,18 +1980,14 @@ export function AgencyApp() {
         active: livrableId === viewLivrableId,
       };
     });
-  const sidebarVersions: SidebarVersion[] =
-    view.kind === "deliverable"
-      ? viewVersions.map((record) => ({
-          id: record.id,
-          label: `V${String(record.version).padStart(2, "0")}`,
-          meta: [record.importedAt, record.reviewStatus === "approved" ? "approuvée" : record.status === "Remplacée" ? "remplacée" : null]
-            .filter(Boolean)
-            .join(" · "),
-          href: hrefForRecord(record, deliverables),
-          active: record.id === viewRecord?.id,
-        }))
-      : [];
+  const sidebarVersions: SidebarVersion[] = viewVersions.map((record) => ({
+    id: record.id,
+    label: `V${String(record.version).padStart(2, "0")}`,
+    meta: [record.importedAt, record.reviewStatus === "approved" ? "approuvée" : null].filter(Boolean).join(" · "),
+    href: hrefForRecord(record, deliverables),
+    active: view.kind === "deliverable" && record.id === viewRecord?.id,
+    frozen: Boolean(record.locked || record.status === "Approuvée" || record.status === "Remplacée"),
+  }));
   const versionChip =
     view.kind !== "deliverable" || !viewRecord
       ? undefined
@@ -2229,18 +2021,22 @@ export function AgencyApp() {
         <ProjectSidebar
           project={selectedProject}
           client={clients.find((client) => client.id === (selectedProject.clientId ?? 1))}
+          livrableName={viewVersions[0]?.name ?? "Livrable"}
+          livrableMenu={livrableMenu}
+          systemMenu={systemMenu}
           livrables={sidebarLivrables}
           versions={sidebarVersions}
+          annexes={(annexes[livrableRootId] ?? []).map((annex) => ({ id: annex.id, name: annex.name, meta: annex.addedAt.split(",")[0], href: annex.fileData }))}
+          onAddAnnex={addAnnex}
           versionChip={versionChip}
           view={view}
-          panel={view.kind === "dashboard" && sidebarPanel === "demandes" ? "livrables" : sidebarPanel}
-          dashboardHref={view.kind === "deliverable" || view.kind === "dashboard" ? href.dashboard(view.projectId, view.livrableId) : undefined}
+          panel={sidebarPanel}
           onPanel={showPanel}
-          demandes={demandesList}
-          demandesBadge={activeComments.filter((comment) => comment.decision === "À qualifier" || !comment.decision).length}
+          dashboardHref={href.dashboard(selectedProject.id, livrableRootId)}
+          proposalsHref={href.proposals(selectedProject.id, livrableRootId)}
+          proposalsBadge={proposalRows.filter((row) => row.state === "to-quote" || row.state === "adaptation").length}
           onSearch={() => setPaletteOpen(true)}
           onNewDeliverable={() => setNewDeliverableOpen(true)}
-          agencyActionCount={agencyActionCount}
           notifications={notifications}
         />
       ) : (
@@ -2287,6 +2083,14 @@ export function AgencyApp() {
                 const latest = versionsOfLivrable(livrableId, deliverables)[0];
                 return latest ? statusOf(latest) : { kind: "none" };
               }}
+            />
+          ) : activeTab === "proposals" ? (
+            <ProposalsView
+              livrableName={viewVersions[0]?.name ?? "Livrable"}
+              projectName={selectedProject?.name ?? ""}
+              clientName={selectedClient?.name ?? ""}
+              rows={proposalRows}
+              onOpenProposal={openProposal}
             />
           ) : activeTab === "dashboard" ? (
             <div className="dashboard-view">
@@ -2540,182 +2344,193 @@ export function AgencyApp() {
           ) : (
             <>
           <div className="editor">
-            <section className="preview-panel canvas" ref={previewPanelRef} aria-label="Canevas">
+            <section className={`preview-panel canvas tool-${canvasTool}`} ref={previewPanelRef} aria-label="Canevas">
+              {isReadOnlyVersion && latestVersionRecord && (
+                <div className="canvas-banner" role="status">
+                  <Lock aria-hidden="true" />
+                  <span>
+                    V{String(currentDeliverable.version).padStart(2, "0")} est figée : lecture seule.
+                  </span>
+                  {latestVersionRecord.id !== currentDeliverable.id && (
+                    <Link href={hrefForRecord(latestVersionRecord, deliverables)}>
+                      Aller à la V{String(latestVersionRecord.version).padStart(2, "0")} <ArrowRight />
+                    </Link>
+                  )}
+                </div>
+              )}
+              {deliverableError && (
+                <div className="canvas-error" role="alert">
+                  {deliverableError}
+                  <button className="thread-icon-button" onClick={() => setDeliverableError("")} aria-label="Fermer le message">
+                    <X />
+                  </button>
+                </div>
+              )}
               <div className="artboard-wrap">
                 <TransformWrapper
                   ref={transformRef}
                   initialScale={1}
-                  minScale={0.5}
-                  maxScale={3}
-                  centerOnInit
+                  minScale={0.25}
+                  maxScale={4}
+                  limitToBounds={false}
                   smooth={false}
-                  wheel={{ step: 0.1 }}
+                  doubleClick={{ disabled: true }}
+                  wheel={{ step: 0.08, wheelDisabled: true, excluded: ["thread"] }}
+                  trackPadPanning={{ disabled: false, velocityDisabled: true, excluded: ["thread"] }}
+                  panning={{ excluded: ["thread", "canvas-pin"], velocityDisabled: true }}
+                  onInit={() => requestAnimationFrame(resetCanvasView)}
                   onTransform={(_, state) => setPreviewZoom(Math.round(state.scale * 100))}
                 >
                   <TransformComponent wrapperClass={`artboard-transform-wrapper ${previewDragging ? "dragging" : ""}`} contentClass="artboard-transform-content">
-                    <div className="artboard" onClick={startComment} onPointerDown={trackPreviewPointerDown} onPointerMove={trackPreviewPointerMove} onPointerUp={trackPreviewPointerUp} onPointerCancel={trackPreviewPointerUp}>
-                  <DeliverableContent deliverable={currentDeliverable} pdfPage={pdfPage} onPdfLoad={setPdfPageCount} />
-                  {activeComments
-                    .filter((comment) => !comment.page || comment.page === pdfPage)
-                    .filter((comment) => comment.position)
-                    .map((comment) => (
-                      <button
-                        key={comment.id}
-                        className={`pin pin-new ${comment.initials === "AM" ? "agency-pin" : "client-pin"}`}
-                        style={{
-                          left: `${comment.position?.x}%`,
-                          top: `${comment.position?.y}%`,
-                        }}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          selectComment(comment.id);
-                        }}
-                      >
-                        {comment.id}
-                      </button>
-                    ))}
+                    <div
+                      className="artboard"
+                      style={{ "--inv-zoom": 100 / Math.max(previewZoom, 1) } as React.CSSProperties}
+                      onClickCapture={handleCanvasClick}
+                      onPointerDown={trackPreviewPointerDown}
+                      onPointerMove={(event) => {
+                        trackPreviewPointerMove(event);
+                        trackCanvasHover(event);
+                      }}
+                      onPointerLeave={() => setHoverTarget(null)}
+                      onPointerUp={trackPreviewPointerUp}
+                      onPointerCancel={trackPreviewPointerUp}
+                    >
+                      <DeliverableContent
+                        deliverable={currentDeliverable}
+                        renderPage={(page, content) => (
+                          <div className="canvas-page" data-page={page}>
+                            {currentDeliverable.type === "PDF" && <span className="canvas-page-label">Page {page}</span>}
+                            <div className={`canvas-page-content kind-${pageKind}`}>{content}</div>
+                            {hoverTarget?.page === page && <TargetHighlight box={hoverTarget.box} />}
+                            {activeComments
+                              .filter((comment) => (comment.page ?? 1) === page && comment.position)
+                              .map((comment) => (
+                                <CommentPin
+                                  key={comment.id}
+                                  comment={comment}
+                                  active={threadOpen && comment.id === selectedComment?.id}
+                                  onOpen={() => {
+                                    if (pointerMovedRef.current) return;
+                                    setComposer(null);
+                                    setSelectedId(comment.id);
+                                    setThreadOpen((open) => !(open && comment.id === selectedComment?.id));
+                                    setInspectorTab(isRequest(comment) ? "demandes" : "remarques");
+                                  }}
+                                />
+                              ))}
+                            {threadOpen && selectedComment && (selectedComment.page ?? 1) === page && (
+                              <ThreadPopover
+                                key={selectedComment.id}
+                                comment={selectedComment}
+                                readOnly={isReadOnlyVersion}
+                                locked={isDecisionLocked(selectedComment.id)}
+                                proposalLabel={proposalLabel(selectedComment)}
+                                onReply={(message) => replyTo(selectedComment.id, message)}
+                                onQualify={(decision) => qualifyComment(selectedComment.id, decision)}
+                                onOpenProposal={() => openProposal(selectedComment.id)}
+                                onDelete={selectedComment.initials === "AM" && !isReadOnlyVersion && !isDecisionLocked(selectedComment.id) ? () => {
+                                  deleteComment(selectedComment.id);
+                                  setThreadOpen(false);
+                                } : undefined}
+                                onClose={() => setThreadOpen(false)}
+                              />
+                            )}
+                            {composer?.page === page && (
+                              <Composer
+                                key={`${composer.x}-${composer.y}`}
+                                x={composer.x}
+                                y={composer.y}
+                                mode={composer.mode}
+                                target={composer.target}
+                                onSubmit={submitComposer}
+                                onCancel={() => setComposer(null)}
+                              />
+                            )}
+                          </div>
+                        )}
+                      />
                     </div>
                   </TransformComponent>
                 </TransformWrapper>
               </div>
-              <div className="panel-toolbar canvas-toolbar" role="toolbar" aria-label="Outils du canevas">
-                <div className="toolbar-left">
-                  <button className="tool-button selected" aria-label="Demandes" title="Demandes">
-                    <MousePointer2 /> <span>Demandes</span>
+
+              {canvasTool !== "move" && !isReadOnlyVersion && (
+                <p className="canvas-hint" role="status">
+                  {canvasTool === "remark"
+                    ? "Cliquez sur une zone pour laisser une remarque"
+                    : "Cliquez sur une zone pour ajouter une demande qualifiée"}{" "}
+                  · <kbd>Échap</kbd> pour quitter
+                </p>
+              )}
+              <div className="canvas-toolbar" role="toolbar" aria-label="Outils du canevas">
+                <div className="tool-group">
+                  <button
+                    className={`tool-button ${canvasTool === "move" ? "selected" : ""}`}
+                    aria-pressed={canvasTool === "move"}
+                    onClick={() => setCanvasTool("move")}
+                    title="Déplacer (V)"
+                    aria-label="Déplacer"
+                  >
+                    <MousePointer2 />
                   </button>
                   <button
-                    className="add-comment-tool"
-                    onClick={startCommentAtCenter}
+                    className={`tool-button with-label ${canvasTool === "remark" ? "selected" : ""}`}
+                    aria-pressed={canvasTool === "remark"}
+                    onClick={() => setCanvasTool("remark")}
                     disabled={isReadOnlyVersion}
-                    title="Ajouter une remarque"
-                    aria-label="Ajouter une remarque"
+                    title="Ajouter une remarque (C)"
                   >
-                    <Plus /> <span>Ajouter une remarque</span>
+                    <MessageCirclePlus /> <span>Remarque</span>
                   </button>
-                  <button className="tool-button" aria-label="Grille"><LayoutGrid /></button>
+                  <button
+                    className={`tool-button with-label ${canvasTool === "request" ? "selected" : ""}`}
+                    aria-pressed={canvasTool === "request"}
+                    onClick={() => setCanvasTool("request")}
+                    disabled={isReadOnlyVersion}
+                    title="Ajouter une demande déjà qualifiée (D)"
+                  >
+                    <ClipboardCheck /> <span>Demande</span>
+                  </button>
                 </div>
-                <div className="page-counter">
-                  {currentDeliverable.type === "PDF" ? (
-                    <>
-                      <button className="page-button" onClick={() => setPdfPage((page) => Math.max(1, page - 1))} disabled={pdfPage <= 1} aria-label="Page précédente">‹</button>
-                      {pdfPage} / {pdfPageCount}
-                      <button className="page-button" onClick={() => setPdfPage((page) => Math.min(pdfPageCount, page + 1))} disabled={pdfPage >= pdfPageCount} aria-label="Page suivante">›</button>
-                    </>
-                  ) : "1 / 1"}
-                </div>
-                <div className="toolbar-left">
-                  <button className="tool-button" onClick={() => transformRef.current?.zoomOut(0.1)} disabled={previewZoom <= 50} title="Réduire le zoom" aria-label="Réduire le zoom"><Minus /></button>
-                  <button className="zoom" onClick={() => transformRef.current?.resetTransform()} title="Réinitialiser le zoom">{previewZoom}%</button>
-                  <button className="tool-button" onClick={() => transformRef.current?.zoomIn(0.1)} disabled={previewZoom >= 300} title="Augmenter le zoom" aria-label="Augmenter le zoom"><Plus /></button>
-                  <button className="tool-button" onClick={togglePreviewFullscreen} title="Plein écran" aria-label="Plein écran"><Maximize /></button>
+                <span className="toolbar-divider" aria-hidden="true" />
+                <div className="tool-group">
+                  <button className="tool-button" onClick={() => transformRef.current?.zoomOut(0.2)} disabled={previewZoom <= 25} title="Réduire le zoom" aria-label="Réduire le zoom">
+                    <Minus />
+                  </button>
+                  <button className="zoom" onClick={resetCanvasView} title="Ajuster à la largeur">
+                    {previewZoom}%
+                  </button>
+                  <button className="tool-button" onClick={() => transformRef.current?.zoomIn(0.2)} disabled={previewZoom >= 400} title="Augmenter le zoom" aria-label="Augmenter le zoom">
+                    <Plus />
+                  </button>
+                  <button className="tool-button" onClick={togglePreviewFullscreen} title="Plein écran" aria-label="Plein écran">
+                    <Maximize />
+                  </button>
                 </div>
               </div>
             </section>
 
-            <aside className="inspector" aria-label="Version et demande sélectionnée">
-              <section className="inspector-section">
-                <div className="inspector-heading">
-                  <h2>Version {String(currentDeliverable.version).padStart(2, "0")}</h2>
-                  {versionChip && <span className={`chip chip-${versionChip.tone}`}>{versionChip.label}</span>}
-                </div>
-                <p className="inspector-meta">
-                  Importée {currentDeliverable.importedAt} · Échéance 24 sept. 2026
-                </p>
-                {/* Mobile only: on desktop the project panel lists deliverables and versions. */}
-                <div className="deliverable-selectors mobile-only">
-                <select className="deliverable-select" value={activeDeliverableName ?? ""} onChange={(event) => selectDeliverableName(event.target.value)} aria-label="Sélectionner un livrable">
-                  {deliverableNames.map((name) => <option value={name} key={name}>{name}</option>)}
-                </select>
-                <select className="version-select" value={currentDeliverable?.id ?? ""} onChange={(event) => openRecord(Number(event.target.value))} aria-label="Sélectionner une version">
-                  {activeVersions.map((deliverable) => <option value={deliverable.id} key={deliverable.id}>Version {String(deliverable.version).padStart(2, "0")}</option>)}
-                </select>
-                </div>
-                {deliverableError && (
-                  <div className="inline-error" role="alert">
-                    {deliverableError}
-                  </div>
-                )}
-                <button className="inspector-primary" onClick={openShareDialog}>
-                  <Share2 /> Partager la revue
-                </button>
-                <div className="inspector-actions">
-                  <label className="inspector-action">
-                    <Upload /> Importer un fichier
-                    <input type="file" accept="application/pdf,image/*" onChange={importDeliverable} />
-                  </label>
-                  <button className="inspector-action" onClick={() => setProofOpen(true)}>
-                    <FileCheck /> Synthèse & export
-                  </button>
-                  {view.kind === "deliverable" && (
-                    <Link className="inspector-action" href={href.dashboard(view.projectId, view.livrableId)}>
-                      <LayoutDashboard /> Tableau de bord du livrable
-                    </Link>
-                  )}
-                  <button className="inspector-action" onClick={() => setHistoryOpen(true)}>
-                    <ScrollText /> Historique et journal
-                  </button>
-                  <button
-                    className="inspector-action"
-                    onClick={() => {
-                      setChangesMessage("");
-                      setChangesOpen(true);
-                    }}
-                  >
-                    <RotateCcw /> Rouvrir la validation
-                  </button>
-                </div>
-                <p className={`agency-validation-status ${approved ? "is-approved" : ""}`}>
-                  <span className="status-dot" />
-                  {reviewStatus === "changes-requested"
-                    ? "Modifications demandées par le client"
-                    : approved
-                      ? `Version approuvée par le client${approvedAt ? ` · ${approvedAt}` : ""}`
-                      : "En attente de validation client"}
-                </p>
-              </section>
-
-              <section className="inspector-section">
-                {selectedComment ? (
-                  <>
-                    <h2>Demande #{selectedComment.id}</h2>
-                    <div className="decision-actions" role="group" aria-label="Qualifier la demande">
-                      <button
-                        className={selectedComment.decision === "Inclus" ? "active-decision" : ""}
-                        aria-pressed={selectedComment.decision === "Inclus"}
-                        onClick={() => classifyComment("Inclus")}
-                      >
-                        Incluse
-                      </button>
-                      <button
-                        className={selectedComment.decision === "Hors périmètre" ? "active-decision outside" : ""}
-                        aria-pressed={selectedComment.decision === "Hors périmètre"}
-                        onClick={() => classifyComment("Hors périmètre")}
-                      >
-                        Hors périmètre
-                      </button>
-                      <button
-                        className={selectedComment.decision === "À qualifier" || !selectedComment.decision ? "active-decision" : ""}
-                        aria-pressed={selectedComment.decision === "À qualifier" || !selectedComment.decision}
-                        onClick={() => classifyComment("À qualifier")}
-                      >
-                        À qualifier
-                      </button>
-                    </div>
-                    {renderCommentThread(selectedComment)}
-                  </>
-                ) : (
-                  <>
-                    <h2>Demande</h2>
-                    <p className="inspector-empty">
-                      Cliquez sur le livrable pour ajouter une remarque, ou choisissez une demande dans la liste.
-                    </p>
-                  </>
-                )}
-              </section>
-
-              {/* On mobile the side panel is hidden, so the requests list lives here. */}
-              {isMobile && <section className="inspector-section">{demandesList}</section>}
-            </aside>
+            <EditorInspector
+              title={`${currentDeliverable.name} — V${String(currentDeliverable.version).padStart(2, "0")}`}
+              comments={activeComments}
+              selectedId={threadOpen ? (selectedComment?.id ?? null) : null}
+              tab={inspectorTab}
+              onTab={setInspectorTab}
+              onFocus={focusThread}
+              proposalLabel={(comment) => proposalLabel(comment as Comment)}
+              versionLabel={`Version ${String(currentDeliverable.version).padStart(2, "0")}`}
+              versionChip={versionChip}
+              validation={[
+                `Importée ${currentDeliverable.importedAt}`,
+                reviewStatus === "changes-requested"
+                  ? "modifications demandées par le client"
+                  : approved
+                    ? `approuvée par le client${approvedAt ? ` le ${approvedAt}` : ""}`
+                    : "en attente de validation client",
+              ].join(" · ")}
+              onShare={openShareDialog}
+              onPreview={openClientPreview}
+            />
           </div>
           </>
         )}
@@ -2951,7 +2766,7 @@ export function AgencyApp() {
                     className="changes-button"
                     onClick={() => {
                       setApprovalOpen(false);
-                      showPanel("demandes");
+                      setInspectorTab("remarques");
                     }}
                   >
                     Revenir aux retours
@@ -3376,49 +3191,49 @@ export function AgencyApp() {
               </section>
             </div>
           )}
-          {commentDraft && previewPanelRef.current && createPortal(
-            <div className="modal-backdrop" role="presentation">
-              <form
-                className="project-modal comment-modal"
-                onSubmit={addComment}
-              >
+          {renameOpen && latestVersionRecord && (
+            <RenameDialog
+              title="Renommer le livrable"
+              value={latestVersionRecord.name}
+              error={renameError}
+              onClose={() => setRenameOpen(false)}
+              onSave={(name) => {
+                const error = renameLivrable(livrableRootId, name);
+                if (error) setRenameError(error);
+                else setRenameOpen(false);
+              }}
+            />
+          )}
+          {shortcutsOpen && (
+            <div className="modal-backdrop" role="presentation" onClick={() => setShortcutsOpen(false)}>
+              <section className="project-modal shortcuts-modal" role="dialog" aria-label="Raccourcis clavier" onClick={(event) => event.stopPropagation()}>
                 <div className="drawer-header">
-                  <div>
-                    <div className="eyebrow">NOUVELLE REMARQUE</div>
-                    <h2>Ajouter une remarque</h2>
-                  </div>
-                  <button
-                    type="button"
-                    className="close-button"
-                    onClick={() => setCommentDraft(null)}
-                    aria-label="Fermer"
-                  >
+                  <h2>Raccourcis clavier</h2>
+                  <button type="button" className="close-button" onClick={() => setShortcutsOpen(false)} aria-label="Fermer">
                     <X />
                   </button>
                 </div>
-                <p className="drawer-intro">
-                  Votre remarque sera attachée à la position {commentDraft.x}%
-                  / {commentDraft.y}% de la page.
-                </p>
-                <label>
-                  Remarque interne
-                  <textarea
-                    autoFocus
-                    value={commentText}
-                    onChange={(event) => setCommentText(event.target.value)}
-                    placeholder="Décrivez la consigne ou le point à qualifier..."
-                  />
-                </label>
-                <button
-                  className="send-proposal"
-                  type="submit"
-                  disabled={!commentText.trim()}
-                >
-                  Ajouter la remarque <ArrowRight />
-                </button>
-              </form>
-            </div>,
-            previewPanelRef.current,
+                <dl className="shortcuts-list">
+                  {[
+                    ["V", "Outil Déplacer"],
+                    ["C", "Outil Remarque"],
+                    ["D", "Outil Demande"],
+                    ["Échap", "Fermer le fil, quitter l’outil"],
+                    ["Molette", "Faire défiler les pages"],
+                    ["Ctrl + molette", "Zoomer"],
+                    ["Ctrl K", "Rechercher"],
+                    ["Ctrl \\", "Afficher / masquer le panneau"],
+                  ].map(([keys, action]) => (
+                    <div key={keys}>
+                      <dt>
+                        <kbd>{keys}</kbd>
+                      </dt>
+                      <dd>{action}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            </div>
           )}
           {changesOpen && (
             <div className="modal-backdrop" role="presentation">

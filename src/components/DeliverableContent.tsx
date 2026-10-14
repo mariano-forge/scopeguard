@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ArrowUpRight, Download } from "lucide-react";
 import { DeliverableCover } from "./DeliverableCover";
 import { MockArtboard } from "./MockArtboard";
@@ -19,21 +20,61 @@ const stop = (event: React.SyntheticEvent) => event.stopPropagation();
 /**
  * What the review canvas shows for a version (agency and client pages). Render it inside the artboard.
  * Clicks on media controls and links don't start a comment (they stop propagation).
+ * With `renderPage`, every page is shown one under the other (a PDF's pages, or the single page of
+ * anything else), each wrapped by the caller — that's where pins and threads of that page go.
  */
 export function DeliverableContent({
   deliverable,
   pdfPage = 1,
   onPdfLoad,
   objectUrl,
+  renderPage,
 }: {
   deliverable: ViewedDeliverable;
   pdfPage?: number;
   onPdfLoad?: (pages: number) => void;
   /** Just-imported file not yet persisted (agency page). */
   objectUrl?: string | null;
+  renderPage?: (page: number, content: React.ReactNode) => React.ReactNode;
 }) {
+  const [pageCount, setPageCount] = useState(1);
   const source = deliverable.fileData ?? objectUrl ?? undefined;
 
+  if (renderPage && deliverable.type === "PDF" && deliverable.fileData)
+    return (
+      <PdfDocument
+        file={deliverable.fileData}
+        onLoadSuccess={({ numPages }) => {
+          setPageCount(numPages);
+          onPdfLoad?.(numPages);
+        }}
+        loading="Chargement du PDF..."
+      >
+        <div className="canvas-pages">
+          {Array.from({ length: pageCount }, (_, index) =>
+            <div key={index + 1}>{renderPage(index + 1, <PdfPage pageNumber={index + 1} width={760} renderTextLayer={false} renderAnnotationLayer={false} />)}</div>,
+          )}
+        </div>
+      </PdfDocument>
+    );
+  if (renderPage) return <div className="canvas-pages">{renderPage(1, <SinglePage deliverable={deliverable} source={source} objectUrl={objectUrl} />)}</div>;
+
+  return <SinglePage deliverable={deliverable} source={source} objectUrl={objectUrl} pdfPage={pdfPage} onPdfLoad={onPdfLoad} />;
+}
+
+function SinglePage({
+  deliverable,
+  source,
+  objectUrl,
+  pdfPage = 1,
+  onPdfLoad,
+}: {
+  deliverable: ViewedDeliverable;
+  source?: string;
+  objectUrl?: string | null;
+  pdfPage?: number;
+  onPdfLoad?: (pages: number) => void;
+}) {
   if (deliverable.type === "Image" && source)
     // eslint-disable-next-line @next/next/no-img-element -- local data URL
     return <img className="real-deliverable-image" src={source} alt={deliverable.name} />;

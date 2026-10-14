@@ -11,6 +11,7 @@
 //   /projets/:projectId/livrables/:livrableId      latest version of a deliverable
 //   /projets/:projectId/livrables/:livrableId/versions/:version
 //   /projets/:projectId/livrables/:livrableId/tableau-de-bord   deliverable dashboard
+//   /projets/:projectId/livrables/:livrableId/propositions      out-of-scope requests and their proposals
 //   ?demande=:commentId on a deliverable URL focuses that comment
 
 export type AgencyView =
@@ -23,6 +24,7 @@ export type AgencyView =
   | { kind: "client"; clientId: number }
   | { kind: "project"; projectId: number }
   | { kind: "dashboard"; projectId: number; livrableId: number }
+  | { kind: "proposals"; projectId: number; livrableId: number }
   | { kind: "deliverable"; projectId: number; livrableId: number; version?: number }
   | { kind: "not-found" };
 
@@ -50,6 +52,7 @@ export function parseAgencyPath(pathname: string): AgencyView {
     if (third === "livrables" && livrableId !== null) {
       if (!fifth) return { kind: "deliverable", projectId, livrableId };
       if (fifth === "tableau-de-bord" && !sixth) return { kind: "dashboard", projectId, livrableId };
+      if (fifth === "propositions" && !sixth) return { kind: "proposals", projectId, livrableId };
       const version = id(sixth);
       if (fifth === "versions" && version !== null && !extra)
         return { kind: "deliverable", projectId, livrableId, version };
@@ -70,6 +73,7 @@ export const href = {
   client: (clientId: number) => `/espaces/${clientId}`,
   project: (projectId: number) => `/projets/${projectId}`,
   dashboard: (projectId: number, livrableId: number) => `/projets/${projectId}/livrables/${livrableId}/tableau-de-bord`,
+  proposals: (projectId: number, livrableId: number) => `/projets/${projectId}/livrables/${livrableId}/propositions`,
   deliverable: (projectId: number, livrableId: number, version?: number) =>
     `/projets/${projectId}/livrables/${livrableId}${version ? `/versions/${version}` : ""}`,
 };
