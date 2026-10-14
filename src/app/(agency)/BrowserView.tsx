@@ -287,7 +287,8 @@ export function BrowserView({
     );
   }
 
-  function livrableCard(record: Deliverable) {
+  /** `withContext`: also name the project, when another card on the page has the same name. */
+  function livrableCard(record: Deliverable, withContext = false) {
     const pending = toQualify(record);
     const versions = versionsOfLivrable(livrableIdOf(record, deliverables), deliverables);
     const versionLabel = (version: Deliverable) => `V${String(version.version).padStart(2, "0")}`;
@@ -320,7 +321,10 @@ export function BrowserView({
             <b>{record.name}</b>
             <StatusMark status={livrableStatus(livrableIdOf(record, deliverables))} />
           </span>
-          <small>{modifiedLabel(record.importedAt)}</small>
+          <small>
+            {withContext ? `${projects.find((project) => project.id === (record.projectId ?? 1))?.name ?? "Projet"} · ` : ""}
+            {modifiedLabel(record.importedAt)}
+          </small>
           {pending > 0 && <span className="browser-badge">{plural(pending, "demande")} à qualifier</span>}
         </span>
       </>,
@@ -588,7 +592,11 @@ export function BrowserView({
         ) : shown.length === 0 ? (
           <EmptyState icon={Star} title="Aucun livrable pour ce filtre" text="Essayez un autre filtre ou revenez à « Tous »." />
         ) : (
-          <div className="file-grid">{shown.map((record) => livrableCard(record))}</div>
+          <div className="file-grid">
+            {shown.map((record) =>
+              livrableCard(record, shown.filter((other) => other.name.toLowerCase() === record.name.toLowerCase()).length > 1),
+            )}
+          </div>
         )}
       </div>
     );
