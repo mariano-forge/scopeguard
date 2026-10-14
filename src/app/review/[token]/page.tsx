@@ -706,7 +706,7 @@ export default function ClientReviewPage() {
                   comment={comment}
                   readOnly={isReadOnlyVersion()}
                   locked={locked}
-                  proposalLabel="Voir la proposition"
+                  proposal={proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : undefined}
                   onReply={(message) => replyTo(comment.id, message)}
                   onOpenProposal={
                     comment.decision === "Hors périmètre" && proposalStates[comment.id] === "sent"

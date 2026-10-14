@@ -7334,3 +7334,60 @@ body.is-resizing {
   left: 50%;
   transform: translateX(-50%);
 }
+
+/* Qualification form: the bubble grows with it (never cut off) */
+.thread.is-qualifying {
+  max-height: none;
+}
+.quote-fields input {
+  width: 100%;
+}
+
+/* Proposal actions: the usual outline buttons, side by side */
+.request-proposal,
+.row-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--s-2);
+}
+.row-actions {
+  margin: 0 var(--s-4) var(--s-3) calc(var(--s-4) + 24px + var(--s-2));
+}
+.request-proposal .small-button,
+.row-actions .small-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.request-proposal .lucide,
+.row-actions .lucide {
+  width: 14px;
+  height: 14px;
+}
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.confirm-send-modal .approval-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+
+/* Proposals table: actions wrap instead of widening the table */
+.proposals-table td:last-child {
+  white-space: normal;
+}
+.proposals-table .proposal-actions {
+  flex-wrap: nowrap;
+}
+.proposals-table .proposal-actions button {
+  white-space: nowrap;
+}
+.proposals-table th[scope="row"] {
+  min-width: 180px;
+}
+.proposals-table .proposal-actions .lucide {
+  width: 14px;
+  height: 14px;
+}

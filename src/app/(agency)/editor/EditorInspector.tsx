@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Eye, MessageSquare, Plus, Receipt, Share2 } from "lucide-react";
+import type { ProposalStage } from "./CanvasComments";
 import { ResizeHandle } from "./ResizeHandle";
 import { kindLabels, requestKind, requestText, type RequestKind, type ThreadComment } from "./CanvasComments";
 
@@ -41,8 +42,10 @@ export function RequestPanel({
   tab,
   onTab,
   onFocus,
-  proposalLabel,
-  onProposal,
+  proposalStage,
+  onQuote,
+  onSendProposal,
+  onOpenProposal,
   adding,
   onAddingChange,
   onAddComment,
@@ -53,9 +56,11 @@ export function RequestPanel({
   onTab: (tab: InspectorTab) => void;
   /** Shows that request on the canvas. */
   onFocus: (commentId: number) => void;
-  /** Proposal action of an out-of-scope request ("Chiffrer", "Envoyer la proposition"…), agency only. */
-  proposalLabel?: (comment: ThreadComment) => string | null;
-  onProposal?: (commentId: number) => void;
+  /** Out-of-scope requests (agency only): where the proposal stands, and its actions. */
+  proposalStage?: (comment: ThreadComment) => ProposalStage | null;
+  onQuote?: (commentId: number) => void;
+  onSendProposal?: (commentId: number) => void;
+  onOpenProposal?: (commentId: number) => void;
   /** The manual comment form is open (opened from the panel header's "+"). */
   adding: boolean;
   onAddingChange: (adding: boolean) => void;
@@ -149,11 +154,35 @@ export function RequestPanel({
                       )}
                     </span>
                   </button>
-                  {kind === "outside" && onProposal && proposalLabel?.(comment) && (
-                    <button type="button" className="row-cta" onClick={() => onProposal(comment.id)}>
-                      <Receipt aria-hidden="true" /> {proposalLabel(comment)}
-                    </button>
-                  )}
+                  {kind === "outside" &&
+                    (() => {
+                      const stage = proposalStage?.(comment);
+                      if (!stage) return null;
+                      return (
+                        <div className="row-actions">
+                          {stage.stage === "sent" ? (
+                            <button type="button" className="secondary-button small-button" onClick={() => onOpenProposal?.(comment.id)}>
+                              <Receipt aria-hidden="true" /> {stage.label}
+                            </button>
+                          ) : (
+                            <>
+                              <button type="button" className="secondary-button small-button" onClick={() => onQuote?.(comment.id)}>
+                                {stage.stage === "draft" ? "Modifier" : "Chiffrer"}
+                              </button>
+                              <button
+                                type="button"
+                                className="secondary-button small-button"
+                                disabled={stage.stage !== "draft"}
+                                title={stage.stage === "draft" ? undefined : "Chiffrez d’abord la demande"}
+                                onClick={() => onSendProposal?.(comment.id)}
+                              >
+                                <Receipt aria-hidden="true" /> Envoyer la proposition
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })()}
                 </li>
               );
             })}
@@ -174,8 +203,10 @@ export function EditorInspector({
   tab,
   onTab,
   onFocus,
-  proposalLabel,
-  onProposal,
+  proposalStage,
+  onQuote,
+  onSendProposal,
+  onOpenProposal,
   onAddComment,
   onShare,
   onPreview,
@@ -187,8 +218,10 @@ export function EditorInspector({
   tab: InspectorTab;
   onTab: (tab: InspectorTab) => void;
   onFocus: (commentId: number) => void;
-  proposalLabel: (comment: ThreadComment) => string | null;
-  onProposal: (commentId: number) => void;
+  proposalStage: (comment: ThreadComment) => ProposalStage | null;
+  onQuote: (commentId: number) => void;
+  onSendProposal: (commentId: number) => void;
+  onOpenProposal: (commentId: number) => void;
   onAddComment?: (message: string) => void;
   onShare: () => void;
   onPreview: () => void;
@@ -222,8 +255,10 @@ export function EditorInspector({
         tab={tab}
         onTab={onTab}
         onFocus={onFocus}
-        proposalLabel={proposalLabel}
-        onProposal={onProposal}
+        proposalStage={proposalStage}
+        onQuote={onQuote}
+        onSendProposal={onSendProposal}
+        onOpenProposal={onOpenProposal}
         adding={adding}
         onAddingChange={setAdding}
         onAddComment={onAddComment}

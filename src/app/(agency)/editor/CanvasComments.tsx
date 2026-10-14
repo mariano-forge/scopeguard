@@ -119,30 +119,8 @@ function ScopeChoice({ value, onChange }: { value: Qualification; onChange: (val
 
 /** Optional quote typed while qualifying an out-of-scope request (prefills the proposal, sends nothing). */
 export type Quote = { amount: number; days: number };
-/** One-line field that grows with the text (up to 6 lines); Enter sends, Shift+Enter adds a line. */
-function GrowingField({ value, onChange, placeholder, label, autoFocus }: { value: string; onChange: (value: string) => void; placeholder: string; label: string; autoFocus?: boolean }) {
-  return (
-    <textarea
-      className="growing-field"
-      rows={1}
-      autoFocus={autoFocus}
-      value={value}
-      placeholder={placeholder}
-      aria-label={label}
-      onChange={(event) => {
-        onChange(event.target.value);
-        event.target.style.height = "auto";
-        event.target.style.height = `${Math.min(event.target.scrollHeight, 132)}px`;
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" && !event.shiftKey) {
-          event.preventDefault();
-          event.currentTarget.form?.requestSubmit();
-        }
-      }}
-    />
-  );
-}
+/** Where an out-of-scope request stands: not quoted, quoted (not sent), or sent (label says what follows). */
+export type ProposalStage = { stage: "none" } | { stage: "draft" } | { stage: "sent"; label: string };
 
 export type Qualified = { title: string; description: string; decision: Qualification; quote?: Quote };
 
@@ -154,10 +132,12 @@ export function ThreadPopover({
   comment,
   readOnly,
   locked,
-  proposalLabel,
+  proposal,
   quote,
+  startQuoting,
   onReply,
   onQualify,
+  onSendProposal,
   onOpenProposal,
   onDelete,
   onClose,
@@ -166,24 +146,29 @@ export function ThreadPopover({
   readOnly: boolean;
   /** Decision locked by an accepted/refused proposal. */
   locked: boolean;
-  /** Label of the proposal action for an out-of-scope request ("Chiffrer", "Envoyer la proposition"…). */
-  proposalLabel: string | null;
+  /** Out-of-scope requests: where the proposal stands (agency only). */
+  proposal?: ProposalStage;
   /** Quote already typed for this request (not sent yet). */
   quote?: Quote;
+  /** Opens directly on the qualification form with the quote switched on ("Chiffrer"). */
+  startQuoting?: boolean;
   onReply: (message: string) => void;
   /** Agency only: qualify a comment, change a qualification, or send it back to clarify. */
   onQualify?: (qualified: Qualified) => void;
+  /** Sends the quoted proposal (the caller asks for confirmation). */
+  onSendProposal?: () => void;
+  /** Follows a sent proposal (adaptation, new version). */
   onOpenProposal?: () => void;
   onDelete?: () => void;
   onClose: () => void;
 }) {
   const kind = requestKind(comment);
   const [draft, setDraft] = useState("");
-  const [qualifying, setQualifying] = useState(false);
+  const [qualifying, setQualifying] = useState(Boolean(startQuoting));
   const [title, setTitle] = useState(comment.title ?? (comment.message.length > 70 ? `${comment.message.slice(0, 70)}…` : comment.message));
   const [description, setDescription] = useState(comment.description ?? comment.message);
   const [decision, setDecision] = useState<Qualification>(kind === "outside" ? "Hors périmètre" : "Inclus");
-  const [quoteOn, setQuoteOn] = useState(Boolean(quote));
+  const [quoteOn, setQuoteOn] = useState(Boolean(quote) || Boolean(startQuoting));
   const [amount, setAmount] = useState(quote ? String(quote.amount) : "");
   const [days, setDays] = useState(quote ? String(quote.days) : "");
   const quoteReady = !quoteOn || decision !== "Hors périmètre" || Number(amount) > 0;
@@ -264,18 +249,12 @@ export function ThreadPopover({
               {quoteOn && (
                 <div className="quote-fields">
                   <label>
-                    Montant HT
-                    <span className="input-with-addon">
-                      <input type="number" min="0" step="10" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="850" />
-                      <span className="input-addon">€</span>
-                    </span>
+                    Montant HT (€)
+                    <input type="number" min="0" step="10" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="850" />
                   </label>
                   <label>
-                    Délai
-                    <span className="input-with-addon">
-                      <input type="number" min="0" step="1" value={days} onChange={(event) => setDays(event.target.value)} placeholder="3" />
-                      <span className="input-addon">jours</span>
-                    </span>
+                    Délai (jours)
+                    <input type="number" min="0" step="1" value={days} onChange={(event) => setDays(event.target.value)} placeholder="3" />
                   </label>
                 </div>
               )}
@@ -300,16 +279,46 @@ export function ThreadPopover({
               </p>
               <p className="request-title">{requestText(comment)}</p>
               {comment.description && <p className="request-description">{comment.description}</p>}
-              {kind === "outside" && onOpenProposal && proposalLabel && (
-                <button type="button" className="request-cta" onClick={onOpenProposal} disabled={readOnly}>
-                  <Receipt aria-hidden="true" /> {proposalLabel}
-                </button>
+              {kind === "outside" && proposal && (
+                <div className="request-proposal">
+                  {proposal.stage === "sent" ? (
+                    <button type="button" className="secondary-button small-button" onClick={onOpenProposal}>
+                      <Receipt aria-hidden="true" /> {proposal.label}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="secondary-button small-button"
+                        disabled={!canWrite}
+                        onClick={() => {
+                          setQuoteOn(true);
+                          setQualifying(true);
+                        }}
+                      >
+                        {proposal.stage === "draft" ? "Modifier" : "Chiffrer"}
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button small-button"
+                        disabled={proposal.stage !== "draft" || readOnly}
+                        title={proposal.stage === "draft" ? undefined : "Chiffrez d’abord la demande"}
+                        onClick={onSendProposal}
+                      >
+                        <Receipt aria-hidden="true" /> Envoyer la proposition
+                      </button>
+                    </>
+                  )}
+                </div>
               )}
               {onQualify && canWrite && (
                 <div className="request-actions">
-                  <button type="button" className="thread-link" onClick={() => setQualifying(true)}>
-                    <Tag aria-hidden="true" /> Modifier
-                  </button>
+                  {/* Out-of-scope requests are edited from their "Chiffrer / Modifier" button. */}
+                  {kind !== "outside" && (
+                    <button type="button" className="thread-link" onClick={() => setQualifying(true)}>
+                      <Tag aria-hidden="true" /> Modifier
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="thread-link"
@@ -360,7 +369,7 @@ export function ThreadPopover({
                 setDraft("");
               }}
             >
-              <GrowingField autoFocus value={draft} onChange={setDraft} placeholder="Répondre, demander une précision…" label="Répondre" />
+              <input autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Répondre, demander une précision…" aria-label="Répondre" />
               <button type="submit" className="thread-send" disabled={!draft.trim()} aria-label="Envoyer la réponse">
                 <ArrowUp />
               </button>
@@ -418,7 +427,7 @@ export function Composer({
             if (draft.trim()) onSubmit({ message: draft.trim() });
           }}
         >
-          <GrowingField autoFocus value={draft} onChange={setDraft} placeholder="Écrire un commentaire…" label="Commentaire" />
+          <input autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Écrire un commentaire…" aria-label="Commentaire" />
           <button type="submit" className="thread-send" disabled={!draft.trim()} aria-label="Publier">
             <ArrowUp />
           </button>

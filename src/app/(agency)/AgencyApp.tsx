@@ -78,6 +78,7 @@ import {
   Composer,
   ThreadPopover,
   requestKind,
+  type ProposalStage,
   type Qualified,
   type Area,
   } from "./editor/CanvasComments";
@@ -320,6 +321,8 @@ export function AgencyApp() {
   const view = parseAgencyPath(pathname);
   const searchParams = useSearchParams();
   const focusedCommentId = Number(searchParams.get("demande")) || null;
+  /** ?chiffrer=1 with ?demande= opens that request on its quote form. */
+  const quoteOnFocus = searchParams.get("chiffrer") === "1";
   const [projects, setProjects] = useState(initialProjects);
   const [clients, setClients] = useState(initialClients);
   const [deliverables, setDeliverables] = useState(initialDeliverables);
@@ -404,6 +407,10 @@ export function AgencyApp() {
   const [composer, setComposer] = useState<CanvasComposer | null>(null);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("comment");
   const [panelWidths, setPanelWidths] = useState(defaultWidths);
+  /** Request whose bubble opens on the quote form ("Chiffrer" from the panel or the proposals page). */
+  const [quotingId, setQuotingId] = useState<number | null>(null);
+  /** Proposal waiting for the "send to the client?" confirmation. */
+  const [confirmSendId, setConfirmSendId] = useState<number | null>(null);
   useEffect(() => {
     try {
       const saved = JSON.parse(window.localStorage.getItem(panelWidthsKey) ?? "null");
@@ -879,6 +886,7 @@ export function AgencyApp() {
     const focused = activeComments.find((comment) => comment.id === focusedCommentId);
     setSelectedId(focusedCommentId);
     setThreadOpen(true);
+    if (quoteOnFocus) setQuotingId(focusedCommentId);
     if (focused) setInspectorTab(requestKind(focused));
     router.replace(pathname, { scroll: false });
     // Bring its pin into view once the canvas has laid out the pages.
@@ -887,7 +895,7 @@ export function AgencyApp() {
       const zoom = transformRef.current;
       if (pin && zoom) void zoom.zoomToElement(pin, zoom.state.scale, 300);
     }, 400);
-  }, [focusedCommentId, activeComments, pathname, router]);
+  }, [focusedCommentId, quoteOnFocus, activeComments, pathname, router]);
 
   function recordAudit(type: string, description: string, commentId?: number) {
     setAuditEvents((current) => [
@@ -1389,6 +1397,17 @@ export function AgencyApp() {
     setProposalOpen(false);
   }
 
+  /** Sends the quoted proposal after confirmation: the draft becomes version 1, sent to the client. */
+  function sendQuotedProposal(commentId: number) {
+    const draft = proposalVersions[commentId]?.find((proposal) => proposal.status === "draft");
+    if (!draft || isReadOnlyVersion) return;
+    setProposalVersions((current) => ({ ...current, [commentId]: [{ ...draft, status: "sent", createdAt: new Date().toLocaleString("fr-FR") }] }));
+    setProposalStates((current) => ({ ...current, [commentId]: "sent" }));
+    setProposalDecisions((current) => ({ ...current, [commentId]: "none" }));
+    recordAudit("proposal.sent", `Proposition envoyée au client : ${formatProposalAmount(draft.amount)} · ${formatProposalDeadline(draft.deadline)}`, commentId);
+    setConfirmSendId(null);
+  }
+
   function activeProposalFor(commentId: number) {
     return proposalVersions[commentId]?.find((proposal) => proposal.status === "sent" || proposal.status === "accepted") ?? proposalVersions[commentId]?.at(-1);
   }
@@ -1803,6 +1822,14 @@ export function AgencyApp() {
     ...paletteActions.slice(2),
   ];
 
+  /** Where the proposal of an out-of-scope request stands: to quote, quoted (ready to send), or sent. */
+  const proposalStageOf = (comment: Comment): ProposalStage | null => {
+    if (comment.decision !== "Hors périmètre") return null;
+    const state = proposalStateFor(comment.id);
+    if (state === "sent") return { stage: "sent", label: proposalLabel(comment) ?? "Voir la proposition" };
+    return state === "draft" ? { stage: "draft" } : { stage: "none" };
+  };
+
   /** Next step of an out-of-scope request, used as the label of its proposal button. */
   const proposalLabel = (comment: Comment) =>
     comment.decision !== "Hors périmètre"
@@ -1845,13 +1872,14 @@ export function AgencyApp() {
                     : "to-quote";
         return {
           commentId: comment.id,
-          message: comment.title ?? comment.message,
+          // The original comment; the request title is the proposal description (or the title until quoted).
+          message: comment.message,
           author: comment.author,
           location: comment.location,
           versionLabel: `V${String(record.version).padStart(2, "0")}`,
           href: `${hrefForRecord(record, deliverables)}?demande=${comment.id}`,
           state,
-          description: proposal?.description,
+          description: proposal?.description ?? comment.title,
           amount: parseNumericAmount(proposal?.amount),
           days: parseNumericDays(proposal?.deadline),
           editable: record.id === currentDeliverable?.id && !isReadOnlyVersion,
@@ -2018,6 +2046,7 @@ export function AgencyApp() {
               clientName={selectedClient?.name ?? ""}
               rows={proposalRows}
               onOpenProposal={openProposal}
+              onSendProposal={setConfirmSendId}
               onOpenCanvas={(target) => router.push(target)}
             />
           ) : view.kind === "dashboard" ? (
@@ -2092,18 +2121,27 @@ export function AgencyApp() {
               }
               renderThread={(comment) => (
                 <ThreadPopover
-                  key={comment.id}
+                  key={`${comment.id}-${quotingId === comment.id ? "quote" : "view"}`}
                   comment={comment}
                   readOnly={isReadOnlyVersion}
                   locked={isDecisionLocked(comment.id)}
-                  proposalLabel={proposalLabel(comment as Comment)}
+                  proposal={proposalStageOf(comment as Comment) ?? undefined}
+                  startQuoting={quotingId === comment.id}
+                  onSendProposal={() => setConfirmSendId(comment.id)}
                   quote={(() => {
                     const draft = proposalStateFor(comment.id) === "draft" ? activeProposalFor(comment.id) : undefined;
                     return draft ? { amount: parseNumericAmount(draft.amount), days: parseNumericDays(draft.deadline) } : undefined;
                   })()}
                   onReply={(message) => replyTo(comment.id, message)}
                   // Once a proposal has been sent to the client, the qualification no longer changes.
-                  onQualify={proposalStateFor(comment.id) === "sent" ? undefined : (qualified) => qualifyComment(comment.id, qualified)}
+                  onQualify={
+                    proposalStateFor(comment.id) === "sent"
+                      ? undefined
+                      : (qualified) => {
+                          qualifyComment(comment.id, qualified);
+                          setQuotingId(null);
+                        }
+                  }
                   onOpenProposal={() => openProposal(comment.id)}
                   onDelete={
                     comment.initials === "AM" && !isReadOnlyVersion && !isDecisionLocked(comment.id)
@@ -2113,7 +2151,10 @@ export function AgencyApp() {
                         }
                       : undefined
                   }
-                  onClose={() => setThreadOpen(false)}
+                  onClose={() => {
+                    setThreadOpen(false);
+                    setQuotingId(null);
+                  }}
                 />
               )}
               renderComposer={(current) => (
@@ -2133,8 +2174,13 @@ export function AgencyApp() {
               tab={inspectorTab}
               onTab={setInspectorTab}
               onFocus={focusThread}
-              proposalLabel={(comment) => proposalLabel(comment as Comment)}
-              onProposal={openProposal}
+              proposalStage={(comment) => proposalStageOf(comment as Comment)}
+              onQuote={(commentId) => {
+                setQuotingId(commentId);
+                focusThread(commentId);
+              }}
+              onSendProposal={setConfirmSendId}
+              onOpenProposal={openProposal}
               onAddComment={isReadOnlyVersion ? undefined : (message) => addComment(message, null)}
               onShare={openShareDialog}
               onPreview={openClientPreview}
@@ -2148,7 +2194,6 @@ export function AgencyApp() {
             <div className="proposal-drawer">
               <div className="drawer-header">
                 <div>
-                  <div className="eyebrow">AJOUT HORS SCOPE</div>
                   <h2>
                     {proposalStateFor(proposalCommentId ?? 0) === "sent"
                       ? "Proposition complémentaire"
@@ -2801,6 +2846,49 @@ export function AgencyApp() {
               </section>
             </div>
           )}
+          {confirmSendId !== null &&
+            (() => {
+              const request = comments.find((comment) => comment.id === confirmSendId);
+              const draft = proposalVersions[confirmSendId]?.find((proposal) => proposal.status === "draft");
+              if (!request || !draft) return null;
+              return (
+                <div className="modal-backdrop" role="presentation">
+                  <section className="project-modal confirm-send-modal" role="alertdialog" aria-labelledby="confirm-send-title">
+                    <div className="drawer-header">
+                      <h2 id="confirm-send-title">Envoyer la proposition au client ?</h2>
+                      <button type="button" className="close-button" onClick={() => setConfirmSendId(null)} aria-label="Fermer">
+                        <X />
+                      </button>
+                    </div>
+                    <p className="drawer-intro">
+                      {selectedClient?.name ?? "Le client"} la recevra sur sa page de revue et pourra l’accepter, la refuser ou demander une adaptation.
+                    </p>
+                    <div className="proposal-summary">
+                      <div>
+                        <span>Demande</span>
+                        <b>{request.title ?? request.message}</b>
+                      </div>
+                      <div>
+                        <span>Montant HT</span>
+                        <b>{formatProposalAmount(draft.amount)}</b>
+                      </div>
+                      <div>
+                        <span>Délai</span>
+                        <b>{formatProposalDeadline(draft.deadline)}</b>
+                      </div>
+                    </div>
+                    <div className="approval-actions">
+                      <button type="button" className="ghost-button" onClick={() => setConfirmSendId(null)}>
+                        Annuler
+                      </button>
+                      <button type="button" className="primary-button" onClick={() => sendQuotedProposal(confirmSendId)}>
+                        Envoyer la proposition
+                      </button>
+                    </div>
+                  </section>
+                </div>
+              );
+            })()}
           {renameOpen && latestVersionRecord && (
             <RenameDialog
               title="Renommer le livrable"

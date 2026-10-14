@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Eye, MapPin, Printer, Receipt, Send } from "lucide-react";
+import { Check, Copy, Eye, MapPin, Printer, Receipt } from "lucide-react";
 
 export type ProposalRowState = "to-quote" | "draft" | "sent" | "adaptation" | "accepted" | "refused";
 export type ProposalRow = {
@@ -48,13 +48,17 @@ export function ProposalsView({
   clientName,
   rows,
   onOpenProposal,
+  onSendProposal,
   onOpenCanvas,
 }: {
   livrableName: string;
   projectName: string;
   clientName: string;
   rows: ProposalRow[];
+  /** Follows a sent proposal (adaptation, new version). */
   onOpenProposal: (commentId: number) => void;
+  /** Sends a quoted proposal (asks for confirmation). */
+  onSendProposal: (commentId: number) => void;
   /** Shows the request on its version's canvas (same tab). */
   onOpenCanvas: (href: string) => void;
 }) {
@@ -252,9 +256,19 @@ export function ProposalsView({
                     <td>
                       <span className="proposal-actions">
                         {row.editable && (row.state === "to-quote" || row.state === "draft") && (
-                          <button className="primary-button small-button" onClick={() => onOpenProposal(row.commentId)}>
-                            <Send /> {row.state === "draft" ? "Envoyer la proposition" : "Faire une proposition"}
-                          </button>
+                          <>
+                            <button className="secondary-button small-button" onClick={() => onOpenCanvas(`${row.href}&chiffrer=1`)}>
+                              {row.state === "draft" ? "Modifier" : "Chiffrer"}
+                            </button>
+                            <button
+                              className="secondary-button small-button"
+                              disabled={row.state !== "draft"}
+                              title={row.state === "draft" ? undefined : "Chiffrez d’abord la demande"}
+                              onClick={() => onSendProposal(row.commentId)}
+                            >
+                              <Receipt /> Envoyer la proposition
+                            </button>
+                          </>
                         )}
                         {row.editable && (row.state === "sent" || row.state === "adaptation") && (
                           <button className="secondary-button small-button" onClick={() => onOpenProposal(row.commentId)}>
