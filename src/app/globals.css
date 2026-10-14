@@ -1,5 +1,8 @@
 @import "../theme/tokens.css";
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "../theme/shadcn.css";
 
 * {
   box-sizing: border-box;
@@ -7626,3 +7629,4 @@ body.is-resizing {
   outline: 2px solid var(--action-fill);
   outline-offset: 2px;
 }
+

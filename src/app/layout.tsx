@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { IBM_Plex_Mono, Inter, Manrope } from "next/font/google";
 import { AgentationProvider } from "./AgentationProvider";
 import "./globals.css";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -33,7 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${manrope.variable} ${inter.variable} ${plexMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        {children}
+        <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
         <AgentationProvider />
       </body>
     </html>
