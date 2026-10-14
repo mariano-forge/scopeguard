@@ -81,6 +81,8 @@ type Reply = {
   initials: string;
   message: string;
   time: string;
+  /** When it was written (ms); older data only has `time`. */
+  createdAt?: number;
 };
 
 type ClientComment = {
@@ -89,6 +91,7 @@ type ClientComment = {
   author: string;
   initials: string;
   time: string;
+  createdAt?: number;
   message: string;
   location: string;
   decision?: "À qualifier" | "À traiter" | "Inclus" | "Hors périmètre";
@@ -367,6 +370,7 @@ export default function ClientReviewPage() {
         author: "Claire Martin",
         initials: "CM",
         time: "À l'instant",
+        createdAt: Date.now(),
         message,
         location: spot?.target ?? "Livrable (général)",
         decision: "À qualifier",
@@ -385,7 +389,7 @@ export default function ClientReviewPage() {
 
   function replyTo(commentId: number, message: string) {
     if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
-    const reply: Reply = { id: Date.now(), author: "Claire Martin", initials: "CM", message, time: "À l'instant" };
+    const reply: Reply = { id: Date.now(), author: "Claire Martin", initials: "CM", message, time: "À l'instant", createdAt: Date.now() };
     setComments((current) => current.map((comment) => (comment.id === commentId ? { ...comment, replies: [...(comment.replies ?? []), reply] } : comment)));
   }
 

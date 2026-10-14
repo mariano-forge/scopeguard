@@ -69,7 +69,6 @@ export function ProposalsView({
   const accepted = rows.filter((row) => row.state === "accepted");
   const waiting = rows.filter((row) => row.state === "sent" || row.state === "adaptation");
   const refused = rows.filter((row) => row.state === "refused");
-  const toQuote = rows.filter((row) => row.state === "to-quote");
   const total = sum(quoted);
   const proposed = quoted.filter((row) => row.state !== "refused");
   const days = proposed.reduce((count, row) => count + row.days, 0);
@@ -170,7 +169,7 @@ export function ProposalsView({
         </div>
       </header>
 
-      <section className="overview" aria-label="Montants">
+      <section className="overview is-single" aria-label="Montants">
         <div className="hero-stat">
           <span className="stat-label">Total chiffré</span>
           <span className="hero-value">{euros(total)}</span>
@@ -179,40 +178,25 @@ export function ProposalsView({
             {days > 0 ? ` · ${plural(days, "jour")} de travail` : ""}
           </span>
           {total > 0 && (
+            <>
             <div className="proposal-split" role="img" aria-label={`Accepté ${euros(sum(accepted))}, en attente ${euros(sum(waiting))}, refusé ${euros(sum(refused))}`}>
               <span className="is-accepted" style={{ width: `${share(accepted)}%` }} />
               <span className="is-waiting" style={{ width: `${share(waiting)}%` }} />
               <span className="is-refused" style={{ width: `${share(refused)}%` }} />
             </div>
+            <ul className="chart-legend">
+              <li>
+                <i className="legend-swatch is-accepted" aria-hidden="true" /> Accepté <b>{euros(sum(accepted))}</b>
+              </li>
+              <li>
+                <i className="legend-swatch is-waiting" aria-hidden="true" /> En attente <b>{euros(sum(waiting))}</b>
+              </li>
+              <li>
+                <i className="legend-swatch is-refused" aria-hidden="true" /> Refusé <b>{euros(sum(refused))}</b>
+              </li>
+            </ul>
+            </>
           )}
-        </div>
-        <div className="stat-row">
-          <div className="stat-tile">
-            <span className="stat-label">
-              <i className="legend-swatch is-accepted" aria-hidden="true" /> Accepté par le client
-            </span>
-            <span className="stat-value">{euros(sum(accepted))}</span>
-            <span className="stat-note">{plural(accepted.length, "proposition")}</span>
-          </div>
-          <div className="stat-tile">
-            <span className="stat-label">
-              <i className="legend-swatch is-waiting" aria-hidden="true" /> En attente du client
-            </span>
-            <span className="stat-value">{euros(sum(waiting))}</span>
-            <span className="stat-note">{plural(waiting.length, "proposition")}</span>
-          </div>
-          <div className="stat-tile">
-            <span className="stat-label">
-              <i className="legend-swatch is-refused" aria-hidden="true" /> Refusé
-            </span>
-            <span className="stat-value">{euros(sum(refused))}</span>
-            <span className="stat-note">{plural(refused.length, "proposition")}</span>
-          </div>
-          <div className="stat-tile">
-            <span className="stat-label">À chiffrer</span>
-            <span className="stat-value">{toQuote.length}</span>
-            <span className="stat-note">{toQuote.length > 1 ? "demandes sans proposition" : "demande sans proposition"}</span>
-          </div>
         </div>
       </section>
 

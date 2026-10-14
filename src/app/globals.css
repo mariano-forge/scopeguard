@@ -7391,3 +7391,83 @@ body.is-resizing {
   width: 14px;
   height: 14px;
 }
+
+/* Quote while qualifying: same look as the other fields (no grey box) */
+.qualify-form .quote-block {
+  gap: var(--s-3);
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+/* Requests list: light rows, the request text leads */
+.thread-row {
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+}
+.thread-row .thread-avatar {
+  width: 20px;
+  height: 20px;
+}
+.thread-row-meta span,
+.thread-row-meta small {
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.thread-row-text {
+  color: var(--ink);
+  font-weight: 400;
+}
+.thread-row-text.is-title {
+  font-weight: 500;
+}
+
+/* Panel header: "+ Commentaire" is the main action; preview and share are outline icons */
+.requests-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 var(--s-3);
+}
+.requests-add .lucide {
+  width: 16px;
+  height: 16px;
+}
+
+/* Tooltip on hover / keyboard focus (data-tooltip) */
+.has-tooltip {
+  position: relative;
+}
+.has-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 70;
+  width: max-content;
+  max-width: 220px;
+  border-radius: var(--r-field);
+  padding: var(--s-1) var(--s-2);
+  background: var(--ink);
+  color: var(--paper);
+  font: 500 var(--t-caption) var(--font-ui);
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--d-fast) var(--ease-out);
+}
+.has-tooltip:hover::after,
+.has-tooltip:focus-visible::after {
+  opacity: 1;
+  transition-delay: 300ms;
+}
+
+/* Proposals page: one total, its split and legend */
+.overview.is-single {
+  grid-template-columns: minmax(0, 560px);
+}
+.overview.is-single .chart-legend {
+  margin-top: var(--s-2);
+}

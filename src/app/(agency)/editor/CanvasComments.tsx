@@ -13,7 +13,29 @@ import { ArrowUp, BadgeEuro, ClipboardCheck, Receipt, Tag, Trash2, Undo2, X } fr
 export type Qualification = "À qualifier" | "Inclus" | "Hors périmètre";
 export type RequestKind = "comment" | "correction" | "outside";
 
-type ThreadReply = { id: number; author: string; initials: string; message: string; time: string };
+type ThreadReply = { id: number; author: string; initials: string; message: string; time: string; createdAt?: number };
+
+/** Current time, refreshed every minute (for "il y a 5 min"). */
+export function useNow() {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return now;
+}
+
+/** "À l'instant", "il y a 5 min", "il y a 3 h", "hier", "14 oct." — older data keeps its stored text. */
+export function timeLabel(item: { time: string; createdAt?: number }, now: number) {
+  if (!item.createdAt) return item.time;
+  const minutes = Math.floor((now - item.createdAt) / 60_000);
+  if (minutes < 1) return "À l’instant";
+  if (minutes < 60) return `il y a ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  if (hours < 48) return "hier";
+  return new Date(item.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
 /** Rectangle drawn on a page, in % of the page box. */
 export type Area = { x: number; y: number; w: number; h: number };
 export type ThreadComment = {
@@ -21,6 +43,8 @@ export type ThreadComment = {
   author: string;
   initials: string;
   time: string;
+  /** When it was written (ms); older data only has `time`. */
+  createdAt?: number;
   /** The comment as written (first message of the thread). */
   message: string;
   /** Set when qualified: what has to be done, stated clearly. */
@@ -165,8 +189,10 @@ export function ThreadPopover({
   const kind = requestKind(comment);
   const [draft, setDraft] = useState("");
   const [qualifying, setQualifying] = useState(Boolean(startQuoting));
-  const [title, setTitle] = useState(comment.title ?? (comment.message.length > 70 ? `${comment.message.slice(0, 70)}…` : comment.message));
-  const [description, setDescription] = useState(comment.description ?? comment.message);
+  // A new request starts empty (placeholders guide it); an existing one keeps its wording.
+  const [title, setTitle] = useState(comment.title ?? "");
+  const [description, setDescription] = useState(comment.description ?? "");
+  const now = useNow();
   const [decision, setDecision] = useState<Qualification>(kind === "outside" ? "Hors périmètre" : "Inclus");
   const [quoteOn, setQuoteOn] = useState(Boolean(quote) || Boolean(startQuoting));
   const [amount, setAmount] = useState(quote ? String(quote.amount) : "");
@@ -183,7 +209,7 @@ export function ThreadPopover({
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [comment.replies?.length]);
 
-  const messages = [{ id: 0, author: comment.author, initials: comment.initials, message: comment.message, time: comment.time }, ...(comment.replies ?? [])];
+  const messages = [{ id: 0, author: comment.author, initials: comment.initials, message: comment.message, time: comment.time, createdAt: comment.createdAt }, ...(comment.replies ?? [])];
   return (
     <div
       ref={bubbleRef}
@@ -231,11 +257,11 @@ export function ThreadPopover({
           <ScopeChoice value={decision} onChange={setDecision} />
           <label>
             Titre de la demande
-            <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex. Raccourcir le titre principal" />
+            <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ce qu’il faut faire, en une phrase" />
           </label>
           <label>
             Description
-            <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} placeholder="Ce qui doit être fait, précisément." />
+            <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} placeholder="Précisions utiles : où, comment, contraintes… (facultatif)" />
           </label>
           {decision === "Hors périmètre" && (
             <div className="quote-block">
@@ -339,7 +365,7 @@ export function ThreadPopover({
                 </span>
                 <div>
                   <p className="thread-meta">
-                    <b>{message.author}</b> <small>{message.time}</small>
+                    <b>{message.author}</b> <small>{timeLabel(message, now)}</small>
                   </p>
                   <p className="thread-text">{message.message}</p>
                 </div>

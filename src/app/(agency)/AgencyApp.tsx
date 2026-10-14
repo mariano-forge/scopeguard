@@ -99,6 +99,8 @@ type Reply = {
   initials: string;
   message: string;
   time: string;
+  /** When it was written (ms); older data only has `time`. */
+  createdAt?: number;
 };
 
 type Comment = {
@@ -107,6 +109,8 @@ type Comment = {
   author: string;
   initials: string;
   time: string;
+  /** When it was written (ms); older data only has `time`. */
+  createdAt?: number;
   message: string;
   location: string;
   decision: Decision;
@@ -223,6 +227,8 @@ const nowLabel = () =>
 const favoritesKey = "kora-favorites";
 /** Widths of the side panels, set by dragging their edge (per browser). */
 const panelWidthsKey = "kora-panel-widths";
+/** Comments the agency has opened (per browser): the tab alert only counts the others. */
+const seenKey = "kora-seen-comments";
 const defaultWidths = { panel: 248, inspector: 340 };
 
 const initialProjects: Project[] = [
@@ -407,6 +413,27 @@ export function AgencyApp() {
   const [composer, setComposer] = useState<CanvasComposer | null>(null);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("comment");
   const [panelWidths, setPanelWidths] = useState(defaultWidths);
+  const [seenIds, setSeenIds] = useState<number[]>([]);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(seenKey) ?? "[]");
+      if (Array.isArray(saved)) setSeenIds(saved.filter((value) => typeof value === "number"));
+    } catch {
+      // Everything unread when storage is unavailable.
+    }
+  }, []);
+  function markSeen(commentId: number) {
+    setSeenIds((current) => {
+      if (current.includes(commentId)) return current;
+      const next = [...current, commentId];
+      try {
+        window.localStorage.setItem(seenKey, JSON.stringify(next));
+      } catch {
+        // Ignore storage failures (private mode, quota).
+      }
+      return next;
+    });
+  }
   /** Request whose bubble opens on the quote form ("Chiffrer" from the panel or the proposals page). */
   const [quotingId, setQuotingId] = useState<number | null>(null);
   /** Proposal waiting for the "send to the client?" confirmation. */
@@ -880,6 +907,12 @@ export function AgencyApp() {
     }
   }, [currentDeliverable?.id, activeComments, selectedId]);
 
+  // A comment counts as read once its thread has been opened.
+  const openThreadId = threadOpen ? (selectedComment?.id ?? null) : null;
+  useEffect(() => {
+    if (openThreadId !== null) markSeen(openThreadId);
+  }, [openThreadId]);
+
   // ?demande=ID (from "À traiter"): select that comment once, then drop the param so clicks work normally.
   useEffect(() => {
     if (focusedCommentId === null || !activeComments.some((comment) => comment.id === focusedCommentId)) return;
@@ -1237,6 +1270,7 @@ export function AgencyApp() {
       author: "Alex Morgan",
       initials: "AM",
       time: "À l'instant",
+      createdAt: Date.now(),
       message,
       location: spot?.target ?? "Livrable (général)",
       decision: "À qualifier",
@@ -1266,7 +1300,7 @@ export function AgencyApp() {
 
   function replyTo(commentId: number, message: string) {
     if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
-    const reply: Reply = { id: Date.now(), author: "Alex Morgan", initials: "AM", message, time: "À l'instant" };
+    const reply: Reply = { id: Date.now(), author: "Alex Morgan", initials: "AM", message, time: "À l'instant", createdAt: Date.now() };
     setComments((current) =>
       current.map((comment) => (comment.id === commentId ? { ...comment, replies: [...(comment.replies ?? []), reply] } : comment)),
     );
@@ -1578,9 +1612,12 @@ export function AgencyApp() {
   }
 
   // Deliverable status = its latest version: what needs the agency first, then what waits on the client.
-  function statusOf(latest: Deliverable): TabStatus {
+  /** `unreadOnly`: tabs alert only on comments nobody has opened yet (agency comments are read by definition). */
+  function statusOf(latest: Deliverable, unreadOnly = false): TabStatus {
     const latestComments = comments.filter((comment) => comment.deliverableId === latest.id);
-    const toQualify = latestComments.filter((comment) => needsQualification(comment)).length;
+    const toQualify = latestComments.filter(
+      (comment) => needsQualification(comment) && (!unreadOnly || (comment.initials !== "AM" && !seenIds.includes(comment.id))),
+    ).length;
     const awaitingClient = latestComments.filter(
       (comment) =>
         comment.decision === "Hors périmètre" &&
@@ -1610,7 +1647,7 @@ export function AgencyApp() {
         name: latest.name,
         type: latest.type,
         context: [client?.name, project?.name].filter(Boolean).join(" / "),
-        status: statusOf(latest),
+        status: statusOf(latest, true),
       },
     ];
   });

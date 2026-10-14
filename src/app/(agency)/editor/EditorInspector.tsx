@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Eye, MessageSquare, Plus, Receipt, Share2 } from "lucide-react";
 import type { ProposalStage } from "./CanvasComments";
 import { ResizeHandle } from "./ResizeHandle";
-import { kindLabels, requestKind, requestText, type RequestKind, type ThreadComment } from "./CanvasComments";
+import { kindLabels, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
 
 export type InspectorTab = RequestKind;
 
@@ -68,6 +68,7 @@ export function RequestPanel({
   onAddComment?: (message: string) => void;
 }) {
   const [draft, setDraft] = useState("");
+  const now = useNow();
   const count = (kind: RequestKind) => comments.filter((comment) => requestKind(comment) === kind).length;
   const list = comments.filter((comment) => requestKind(comment) === tab).sort((left, right) => right.id - left.id);
   const current = tabs.find((option) => option.kind === tab) ?? tabs[0];
@@ -139,10 +140,8 @@ export function RequestPanel({
                     </span>
                     <span className="thread-row-body">
                       <span className="thread-row-meta">
-                        <b>{comment.author}</b>
-                        <small>
-                          #{comment.id} · {comment.time}
-                        </small>
+                        <span>{comment.author}</span>
+                        <small>{timeLabel(comment, now)}</small>
                       </span>
                       <span className={`thread-row-text ${kind !== "comment" ? "is-title" : ""}`}>{requestText(comment)}</span>
                       {(comment.replies?.length ?? 0) > 0 && (
@@ -235,17 +234,17 @@ export function EditorInspector({
       <header className="requests-header">
         <h2>Demandes</h2>
         <div className="requests-actions">
-          {onAddComment && (
-            <button className="icon-action" onClick={() => setAdding(true)} aria-label="Ajouter un commentaire" title="Ajouter un commentaire">
-              <Plus />
-            </button>
-          )}
-          <button className="icon-action" onClick={onPreview} aria-label="Aperçu client" title="Aperçu client : la page que voit le client">
+          <button className="icon-action has-tooltip" onClick={onPreview} aria-label="Aperçu client" data-tooltip="Aperçu : la page que voit le client">
             <Eye />
           </button>
-          <button className="primary-button requests-share" onClick={onShare}>
-            <Share2 /> Partager
+          <button className="icon-action has-tooltip" onClick={onShare} aria-label="Partager la revue" data-tooltip="Partager la revue avec le client">
+            <Share2 />
           </button>
+          {onAddComment && (
+            <button className="primary-button requests-add has-tooltip" onClick={() => setAdding(true)} data-tooltip="Un retour général, sans le placer sur le livrable">
+              <Plus /> Commentaire
+            </button>
+          )}
         </div>
       </header>
 
