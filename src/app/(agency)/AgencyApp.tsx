@@ -67,7 +67,7 @@ import { BrowserView, type HomeOverview } from "./BrowserView";
 import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
 import { isAgencyAction, todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
-import { HomeSidebar, ProjectSidebar, type ClientFeedback, type PanelMode, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
+import { HomeSidebar, ProjectSidebar, type ClientFeedback, type PanelMode, type SidebarLivrable, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
 import { href, hrefForRecord, livrableIdOf, parseAgencyPath, versionsOfLivrable } from "./routes";
 import { MAX_FILE_BYTES, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
 import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialog";
@@ -90,6 +90,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AddonInput, Field, FormError, Modal, selectClassName } from "@/components/modal";
 import { MenuButton, type MenuEntry } from "./editor/MenuButton";
 import { RenameDialog } from "./EntitySettings";
+import { Hint } from "@/components/hint";
 import type { HomeAnalyticsData } from "./HomeAnalytics";
 import type { LivrableGroup } from "./LivrableFilter";
 
@@ -104,6 +105,7 @@ type Reply = {
   time: string;
   /** When it was written (ms); older data only has `time`. */
   createdAt?: number;
+  edited?: boolean;
 };
 
 type Comment = {
@@ -115,6 +117,7 @@ type Comment = {
   /** When it was written (ms); older data only has `time`. */
   createdAt?: number;
   message: string;
+  edited?: boolean;
   location: string;
   decision: Decision;
   /** "request" = correction (title, description, qualification); otherwise a remark (conversation only). */
@@ -1337,6 +1340,41 @@ export function AgencyApp() {
     void confirmImport("version", { file, type });
   }
 
+  /** A dropped / picked file becomes a new deliverable of the project. */
+  function importLivrableFile(file: File) {
+    const type = kindFromFile(file);
+    if (!type) {
+      toast("Format non pris en charge", { description: "Choisissez une image, un PDF, une vidéo ou un document." });
+      return;
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      toast("Fichier trop lourd pour la démo", { description: `${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).` });
+      return;
+    }
+    void confirmImport("deliverable", { file, type });
+  }
+
+  /** Edits one of the agency's messages (0 = the comment itself). */
+  function editMessage(commentId: number, messageId: number, message: string) {
+    setComments((current) =>
+      current.map((comment) =>
+        comment.id !== commentId
+          ? comment
+          : messageId === 0
+            ? { ...comment, message, edited: true }
+            : { ...comment, replies: comment.replies?.map((reply) => (reply.id === messageId ? { ...reply, message, edited: true } : reply)) },
+      ),
+    );
+  }
+
+  /** Deletes one of the agency's replies. */
+  function deleteMessage(commentId: number, replyId: number) {
+    setComments((current) =>
+      current.map((comment) => (comment.id === commentId ? { ...comment, replies: comment.replies?.filter((reply) => reply.id !== replyId) } : comment)),
+    );
+    toast("Message supprimé");
+  }
+
   function deleteComment(commentId: number) {
     if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
     const target = comments.find((c) => c.id === commentId);
@@ -2116,6 +2154,14 @@ export function AgencyApp() {
 
   // Project workspace panel: deliverables of the project, versions of the open one.
   const inProject = view.kind === "deliverable" && Boolean(selectedProject);
+  // Deliverables of the open project (latest version of each), for the side panel.
+  const projectLivrables: SidebarLivrable[] = [
+    ...new Set(deliverables.filter((record) => (record.projectId ?? 1) === selectedProjectId).map((record) => livrableIdOf(record, deliverables))),
+  ]
+    .map((livrableId) => versionsOfLivrable(livrableId, deliverables)[0])
+    .filter((record): record is Deliverable => Boolean(record))
+    .map((record) => ({ id: record.id, name: record.name, href: hrefForRecord(record, deliverables), active: livrableIdOf(record, deliverables) === livrableRootId }));
+
   const sidebarVersions: SidebarVersion[] = viewVersions.map((record) => ({
     id: record.id,
     label: `V${String(record.version).padStart(2, "0")}`,
@@ -2161,6 +2207,9 @@ export function AgencyApp() {
           notifications={notifications}
           feedback={clientFeedback}
           onMarkAllRead={markAllRead}
+          livrables={projectLivrables}
+          onImportVersion={importVersionFile}
+          onImportLivrable={importLivrableFile}
         />
       ) : (
         <HomeSidebar
@@ -2249,6 +2298,8 @@ export function AgencyApp() {
               canMove={() => true}
               onMovePin={moveComment}
               toolbarExtra={
+                <>
+                <CanvasImportButton onFile={importVersionFile} disabled={!currentDeliverable} />
                 <MenuButton
                   className="tool-button"
                   label="Copier ou exporter les demandes"
@@ -2266,6 +2317,7 @@ export function AgencyApp() {
                     { label: "Exporter (.md)", icon: <FileDown />, disabled: activeComments.length === 0, onSelect: exportRequests },
                   ]}
                 />
+                </>
               }
               overlay={
                 <>
@@ -2304,6 +2356,9 @@ export function AgencyApp() {
                     return draft ? { amount: parseNumericAmount(draft.amount), days: parseNumericDays(draft.deadline), counter: draft.allowCounter ?? false } : undefined;
                   })()}
                   onReply={(message) => replyTo(comment.id, message)}
+                  me="AM"
+                  onEditMessage={(messageId, message) => editMessage(comment.id, messageId, message)}
+                  onDeleteMessage={(messageId) => deleteMessage(comment.id, messageId)}
                   // Once a proposal has been sent to the client, the qualification no longer changes.
                   onQualify={
                     proposalStateFor(comment.id) === "sent"
@@ -3097,4 +3152,31 @@ export function AgencyApp() {
       ...current,
     ]);
   }
+}
+
+/** Canvas toolbar: a file becomes the next version of this deliverable. */
+function CanvasImportButton({ onFile, disabled }: { onFile: (file: File) => void; disabled?: boolean }) {
+  const input = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <Hint label="Importer une nouvelle version" side="top">
+        <button type="button" className="tool-button" aria-label="Importer une nouvelle version" disabled={disabled} onClick={() => input.current?.click()}>
+          <Upload />
+        </button>
+      </Hint>
+      <input
+        ref={input}
+        type="file"
+        accept="application/pdf,image/*,video/*"
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file) onFile(file);
+        }}
+      />
+    </>
+  );
 }

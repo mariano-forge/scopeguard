@@ -141,7 +141,7 @@ export function RequestPanel({
             {list.map((comment) => {
               const kind = requestKind(comment);
               return (
-                <li key={comment.id}>
+                <li key={comment.id} className={`inspector-row ${comment.id === selectedId ? "is-selected" : ""}`}>
                   <button
                     className={`thread-row ${comment.id === selectedId ? "is-selected" : ""}`}
                     aria-current={comment.id === selectedId ? "true" : undefined}
@@ -177,23 +177,23 @@ export function RequestPanel({
                         <div className="row-actions">
                           {proposalSummary?.(comment)}
                           {stage.stage === "sent" && stage.retry ? (
-                            <>
-                              <Hint label="Historique de la proposition">
-                                <Button variant="outline" size="icon-sm" className="ml-auto shrink-0" aria-label="Historique de la proposition" onClick={() => onOpenProposal?.(comment.id)}>
-                                  <History />
-                                </Button>
-                              </Hint>
+                            <span className="row-buttons">
                               {onRequote && (
-                                <span className="row-buttons">
+                                <>
                                   <button type="button" className="secondary-button small-button" onClick={() => onRequote(comment.id)}>
                                     Chiffrer
                                   </button>
                                   <button type="button" className="secondary-button small-button" disabled title="Chiffrez d’abord la nouvelle proposition">
                                     Envoyer la proposition
                                   </button>
-                                </span>
+                                </>
                               )}
-                            </>
+                              <Hint label="Historique de la proposition">
+                                <Button variant="outline" size="icon-sm" className="ml-auto shrink-0" aria-label="Historique de la proposition" onClick={() => onOpenProposal?.(comment.id)}>
+                                  <History />
+                                </Button>
+                              </Hint>
+                            </span>
                           ) : stage.stage === "sent" ? (
                             <button type="button" className="secondary-button small-button" onClick={() => onOpenProposal?.(comment.id)}>
                               {stage.label}

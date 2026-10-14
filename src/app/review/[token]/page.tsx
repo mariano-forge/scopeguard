@@ -84,6 +84,7 @@ type Reply = {
   time: string;
   /** When it was written (ms); older data only has `time`. */
   createdAt?: number;
+  edited?: boolean;
 };
 
 type ClientComment = {
@@ -94,6 +95,7 @@ type ClientComment = {
   time: string;
   createdAt?: number;
   message: string;
+  edited?: boolean;
   location: string;
   decision?: "À qualifier" | "À traiter" | "Inclus" | "Hors périmètre";
   position?: { x: number; y: number };
@@ -849,6 +851,24 @@ export default function ClientReviewPage() {
                 locked={locked}
                 proposal={proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : undefined}
                 onReply={(message) => replyTo(comment.id, message)}
+                me="CM"
+                onEditMessage={(messageId, message) =>
+                  setComments((current) =>
+                    current.map((candidate) =>
+                      candidate.id !== comment.id
+                        ? candidate
+                        : messageId === 0
+                          ? { ...candidate, message, edited: true }
+                          : { ...candidate, replies: candidate.replies?.map((reply) => (reply.id === messageId ? { ...reply, message, edited: true } : reply)) },
+                    ),
+                  )
+                }
+                onDeleteMessage={(messageId) => {
+                  setComments((current) =>
+                    current.map((candidate) => (candidate.id === comment.id ? { ...candidate, replies: candidate.replies?.filter((reply) => reply.id !== messageId) } : candidate)),
+                  );
+                  toast("Message supprimé");
+                }}
                 onOpenProposal={
                   comment.decision === "Hors périmètre" && proposalStates[comment.id] === "sent"
                     ? () => {

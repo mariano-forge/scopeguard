@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import {
   Bell,
@@ -235,6 +235,36 @@ export function HomeSidebar({
   );
 }
 
+/** Deliverables of the project, in the side panel (the open one is active). */
+export type SidebarLivrable = { id: number; name: string; href: string; active: boolean };
+
+/** "+" of a panel section that picks a file (hidden input, like the menus). */
+function FileAddButton({ label, onFile }: { label: string; onFile: (file: File) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <Hint label={label}>
+        <button type="button" className="nav-section-action" aria-label={label} onClick={() => input.current?.click()}>
+          <Plus />
+        </button>
+      </Hint>
+      <input
+        ref={input}
+        type="file"
+        accept="application/pdf,image/*,video/*"
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file) onFile(file);
+        }}
+      />
+    </>
+  );
+}
+
 /** A version is shown like a Figma page: older ones are frozen (read-only). */
 export type SidebarVersion = { id: number; label: string; meta: string; href: string; active: boolean; frozen: boolean };
 export type PanelMode = "livrables";
@@ -260,6 +290,9 @@ export function ProjectSidebar({
   onMarkAllRead,
   panelWidth,
   onPanelResize,
+  livrables,
+  onImportVersion,
+  onImportLivrable,
 }: {
   project: Project;
   client?: Client;
@@ -282,6 +315,11 @@ export function ProjectSidebar({
   onMarkAllRead: () => void;
   panelWidth: number;
   onPanelResize: (width: number) => void;
+  livrables: SidebarLivrable[];
+  /** A file becomes the next version of the open deliverable. */
+  onImportVersion: (file: File) => void;
+  /** A file becomes a new deliverable of the project. */
+  onImportLivrable: (file: File) => void;
 }) {
   return (
     <aside className={`sidebar project-sidebar ${panel ? "" : "is-collapsed"}`} aria-label="Navigation du livrable">
@@ -355,9 +393,26 @@ export function ProjectSidebar({
           </div>
 
           <div className="panel-scroll">
+            <section className="panel-section" aria-label="Livrables">
+              <div className="panel-section-header">
+                <h2>Livrables</h2>
+                <FileAddButton label="Ajouter un fichier comme nouveau livrable" onFile={onImportLivrable} />
+              </div>
+              <ul>
+                {livrables.map((livrable) => (
+                  <li key={livrable.id}>
+                    <Link className={`panel-item ${livrable.active ? "is-active" : ""}`} href={livrable.href} aria-current={livrable.active ? "page" : undefined}>
+                      <FileText className="panel-item-icon" aria-hidden="true" />
+                      <span className="panel-item-label">{livrable.name}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
             <section className="panel-section" aria-label="Versions">
               <div className="panel-section-header">
                 <h2>Versions</h2>
+                <FileAddButton label="Importer un fichier comme nouvelle version" onFile={onImportVersion} />
               </div>
               <ul>
                 {versions.map((version) => (

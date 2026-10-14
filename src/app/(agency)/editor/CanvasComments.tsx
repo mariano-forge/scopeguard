@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUp, BadgeEuro, ChevronDown, ClipboardCheck, Tag, Trash2, Undo2, X } from "lucide-react";
+import { ArrowUp, BadgeEuro, ChevronDown, ClipboardCheck, Pencil, Tag, Trash2, Undo2, X } from "lucide-react";
 import { Hint } from "@/components/hint";
+import { Button } from "@/components/ui/button";
 
 /**
  * One request, three states:
@@ -14,7 +15,7 @@ import { Hint } from "@/components/hint";
 export type Qualification = "À qualifier" | "Inclus" | "Hors périmètre";
 export type RequestKind = "comment" | "correction" | "outside";
 
-type ThreadReply = { id: number; author: string; initials: string; message: string; time: string; createdAt?: number };
+type ThreadReply = { id: number; author: string; initials: string; message: string; time: string; createdAt?: number; edited?: boolean };
 
 /** Current time, refreshed every 15 s (for "il y a 5 min"). */
 export function useNow() {
@@ -45,6 +46,8 @@ export function timeLabel(item: { id?: number; time: string; createdAt?: number 
 export type Area = { x: number; y: number; w: number; h: number };
 export type ThreadComment = {
   id: number;
+  /** The author changed the text after posting it. */
+  edited?: boolean;
   author: string;
   initials: string;
   time: string;
@@ -140,6 +143,101 @@ export function CommentPin({
   );
 }
 
+/** One message of a discussion; the reader's own ones can be edited (Enter saves, Escape cancels) or deleted. */
+function ThreadMessage({
+  message,
+  now,
+  editable,
+  onEdit,
+  onDelete,
+}: {
+  message: ThreadReply;
+  now: number;
+  editable: boolean;
+  onEdit?: (message: string) => void;
+  onDelete?: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(message.message);
+  const save = () => {
+    const text = draft.trim();
+    if (text && text !== message.message) onEdit?.(text);
+    setEditing(false);
+  };
+  return (
+    <div className={`thread-message ${message.initials === "AM" ? "is-agency" : "is-client"}`}>
+      <span className="thread-avatar" aria-hidden="true">
+        {message.initials}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="thread-meta">
+          <b>{message.author}</b> {timeLabel(message, now) && <small>{timeLabel(message, now)}</small>}
+          {message.edited && <small>· modifié</small>}
+        </p>
+        {editing ? (
+          <form
+            className="thread-edit"
+            onSubmit={(event) => {
+              event.preventDefault();
+              save();
+            }}
+          >
+            <input
+              autoFocus
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.stopPropagation();
+                  setDraft(message.message);
+                  setEditing(false);
+                }
+              }}
+              aria-label="Modifier le message"
+            />
+            <div className="thread-edit-actions">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>
+                Annuler
+              </Button>
+              <Button type="submit" size="sm" disabled={!draft.trim()}>
+                Enregistrer
+              </Button>
+            </div>
+          </form>
+        ) : (
+          <p className="thread-text">{message.message}</p>
+        )}
+      </div>
+      {editable && !editing && (onEdit || onDelete) && (
+        <span className="thread-message-actions">
+          {onEdit && (
+            <Hint label="Modifier">
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Modifier le message"
+                onClick={() => {
+                  setDraft(message.message);
+                  setEditing(true);
+                }}
+              >
+                <Pencil />
+              </Button>
+            </Hint>
+          )}
+          {onDelete && (
+            <Hint label="Supprimer">
+              <Button variant="ghost" size="icon-xs" aria-label="Supprimer le message" onClick={onDelete}>
+                <Trash2 />
+              </Button>
+            </Hint>
+          )}
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** À traiter / Hors scope switch. */
 function ScopeChoice({ value, onChange }: { value: Qualification; onChange: (value: Qualification) => void }) {
   const options: { value: Qualification; label: string; hint: string }[] = [
@@ -191,6 +289,9 @@ export function ThreadPopover({
   onOpenProposal,
   onDelete,
   onClose,
+  me,
+  onEditMessage,
+  onDeleteMessage,
 }: {
   comment: ThreadComment;
   readOnly: boolean;
@@ -211,6 +312,12 @@ export function ThreadPopover({
   onOpenProposal?: () => void;
   onDelete?: () => void;
   onClose: () => void;
+  /** Initials of the reader: their own messages can be edited or deleted while the discussion is open. */
+  me?: string;
+  /** Edits a message (0 = the comment itself). */
+  onEditMessage?: (messageId: number, message: string) => void;
+  /** Deletes a reply (the comment itself is deleted with onDelete). */
+  onDeleteMessage?: (messageId: number) => void;
 }) {
   const kind = requestKind(comment);
   const [draft, setDraft] = useState("");
@@ -238,7 +345,7 @@ export function ThreadPopover({
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [comment.replies?.length]);
 
-  const messages = [{ id: 0, author: comment.author, initials: comment.initials, message: comment.message, time: comment.time, createdAt: comment.createdAt }, ...(comment.replies ?? [])];
+  const messages = [{ id: 0, author: comment.author, initials: comment.initials, message: comment.message, time: comment.time, createdAt: comment.createdAt, edited: comment.edited }, ...(comment.replies ?? [])];
   return (
     <div
       ref={bubbleRef}
@@ -259,21 +366,23 @@ export function ThreadPopover({
         <span className="thread-header-actions">
           {kind === "comment" && onQualify && canWrite && !qualifying && (
             <Hint label="Créer une demande (à traiter ou hors scope)">
-              <button type="button" className="thread-icon-button thread-create" onClick={() => setQualifying(true)} aria-label="Créer une demande">
+              <Button variant="outline" size="icon-sm" className="thread-create" onClick={() => setQualifying(true)} aria-label="Créer une demande">
                 <Tag />
-              </button>
+              </Button>
             </Hint>
           )}
           {onDelete && (
             <Hint label="Supprimer">
-              <button type="button" className="thread-icon-button" onClick={onDelete} aria-label="Supprimer">
+              <Button variant="ghost" size="icon-sm" onClick={onDelete} aria-label="Supprimer">
                 <Trash2 />
-              </button>
+              </Button>
             </Hint>
           )}
-          <button type="button" className="thread-icon-button" onClick={onClose} aria-label="Fermer">
-            <X />
-          </button>
+          <Hint label="Fermer">
+            <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Fermer">
+              <X />
+            </Button>
+          </Hint>
         </span>
       </header>
 
@@ -295,7 +404,7 @@ export function ThreadPopover({
           <ScopeChoice value={decision} onChange={setDecision} />
           <label>
             Titre de la demande
-            <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ce qu’il faut faire, en une phrase" />
+            <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex. : Ajouter une section témoignages" />
           </label>
           <label>
             Description
@@ -322,10 +431,7 @@ export function ThreadPopover({
                   </label>
                   <label className="quote-check">
                     <input type="checkbox" checked={counter} onChange={(event) => setCounter(event.target.checked)} />
-                    <span>
-                      Le client peut faire une contre-proposition
-                      <small>Sinon, un refus est définitif.</small>
-                    </span>
+                    <span>Le client peut faire une contre-proposition</span>
                   </label>
                 </div>
               )}
@@ -411,17 +517,15 @@ export function ThreadPopover({
           {showDiscussion && (
           <div className="thread-messages" ref={listRef}>
             {messages.map((message) => (
-              <div key={message.id} className={`thread-message ${message.initials === "AM" ? "is-agency" : "is-client"}`}>
-                <span className="thread-avatar" aria-hidden="true">
-                  {message.initials}
-                </span>
-                <div>
-                  <p className="thread-meta">
-                    <b>{message.author}</b> {timeLabel(message, now) && <small>{timeLabel(message, now)}</small>}
-                  </p>
-                  <p className="thread-text">{message.message}</p>
-                </div>
-              </div>
+              <ThreadMessage
+                key={message.id}
+                message={message}
+                now={now}
+                // Own messages, while the discussion is open.
+                editable={Boolean(me) && message.initials === me && kind === "comment" && canWrite}
+                onEdit={onEditMessage ? (text) => onEditMessage(message.id, text) : undefined}
+                onDelete={message.id === 0 ? onDelete : onDeleteMessage ? () => onDeleteMessage(message.id) : undefined}
+              />
             ))}
           </div>
           )}

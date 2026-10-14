@@ -7519,3 +7519,72 @@ body.is-resizing {
   flex-basis: 100%;
   gap: var(--s-2);
 }
+
+/* Request rows: hover / selection cover the whole case (row + proposal actions) */
+.inspector-list li.inspector-row:hover,
+.inspector-list li.inspector-row:hover .thread-row {
+  background: var(--canvas);
+}
+.inspector-list li.inspector-row.is-selected,
+.inspector-list li.inspector-row.is-selected .thread-row {
+  background: var(--status-low-bg);
+}
+.row-actions .row-buttons {
+  align-items: center;
+}
+
+/* Bubble header: shadcn icon buttons */
+.thread-header-actions {
+  align-items: center;
+  gap: var(--s-1);
+}
+
+/* Own messages: edit / delete on hover, inline edit */
+.thread-message {
+  position: relative;
+}
+.thread-message-actions {
+  position: absolute;
+  top: -4px;
+  right: 0;
+  display: flex;
+  gap: 2px;
+  border-radius: var(--r-button);
+  background: var(--paper);
+  opacity: 0;
+  transition: opacity var(--d-fast) var(--ease-out);
+}
+.thread-message:hover .thread-message-actions,
+.thread-message-actions:focus-within {
+  opacity: 1;
+}
+.thread-edit {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: 2px;
+}
+.thread-edit input {
+  height: 32px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--border-input);
+  border-radius: var(--r-field);
+  background: var(--paper);
+  font: inherit;
+}
+.thread-edit input:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 1px;
+}
+.thread-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-1);
+}
+
+/* Side panel: deliverables of the project */
+.panel-item-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--graphite);
+}
