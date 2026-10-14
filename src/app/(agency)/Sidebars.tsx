@@ -13,6 +13,7 @@ import {
   Layers,
   Lock,
   PanelLeftClose,
+  PanelLeftOpen,
   Settings,
   Plus,
   Search,
@@ -325,19 +326,21 @@ export function ProjectSidebar({
   return (
     <aside className={`sidebar project-sidebar ${panel ? "" : "is-collapsed"}`} aria-label="Navigation du livrable">
       <nav className="rail" aria-label="Outils">
-        <MenuButton
-          className="rail-logo"
-          label="Menu principal"
-          trigger={<Settings />}
-          menuClassName="system-menu"
-          tooltip
-          entries={systemMenu}
-        />
+        <Hint label={panel ? "Masquer le panneau" : "Afficher le panneau"} shortcut="Ctrl \" side="right">
+          <button
+            className="rail-button rail-panel-toggle"
+            onClick={() => onPanel(panel ? null : "livrables")}
+            aria-label={panel ? "Masquer le panneau" : "Afficher le panneau"}
+            aria-expanded={Boolean(panel)}
+          >
+            {panel ? <PanelLeftClose /> : <PanelLeftOpen />}
+          </button>
+        </Hint>
         {view.kind === "deliverable" ? (
           <Hint label="Versions" side="right">
             <button
               className={`rail-button ${panel ? "is-active" : ""}`}
-              onClick={() => onPanel(panel ? null : "livrables")}
+              onClick={() => onPanel("livrables")}
               aria-label="Versions"
               aria-pressed={Boolean(panel)}
             >
@@ -356,6 +359,14 @@ export function ProjectSidebar({
             <Layers />
           </button>
         )}
+        <MenuButton
+          className="rail-logo"
+          label="Menu principal"
+          trigger={<Settings />}
+          menuClassName="system-menu"
+          tooltip
+          entries={systemMenu}
+        />
         <span className="rail-spacer" />
         <Notifications notifications={notifications} feedback={feedback} onMarkAllRead={onMarkAllRead} compact />
         <span className="avatar dark-avatar rail-avatar" aria-label="Alex Morgan">
@@ -379,11 +390,6 @@ export function ProjectSidebar({
               menuClassName="livrable-menu"
               entries={livrableMenu}
             />
-            <Hint label="Masquer le panneau" shortcut="Ctrl \">
-              <button className="sidebar-icon-button" onClick={() => onPanel(null)} aria-label="Masquer le panneau">
-                <PanelLeftClose />
-              </button>
-            </Hint>
           </div>
           <div className="panel-context">
             <span className="panel-path">

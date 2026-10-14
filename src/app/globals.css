@@ -7765,3 +7765,30 @@ body.is-resizing {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Tab bar: the Kora mark (symbol of public/brand/kora-logo.png, without the word) leads home */
+.tab-logo {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  align-self: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-button);
+}
+.tab-logo:hover {
+  background: var(--paper);
+}
+.tab-logo:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 2px;
+}
+.tab-logo-mark {
+  width: 20px;
+  height: 20px;
+  background: url("/brand/kora-logo.png") no-repeat;
+  /* the symbol spans x 330-920, y 240-820 of the 1254 px image */
+  background-size: calc(20px * 1254 / 590) calc(20px * 1254 / 590);
+  background-position: calc(-330px * 20 / 590) calc(-240px * 20 / 590);
+  mix-blend-mode: multiply;
+}

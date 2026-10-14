@@ -80,6 +80,9 @@ export function TabBar({
 }) {
   return (
     <div className="tab-bar">
+      <Link className="tab-logo" href={href.home()} aria-label="Kora · Accueil" title="Kora · Accueil">
+        <span className="tab-logo-mark" aria-hidden="true" />
+      </Link>
       <nav className="tab-list" aria-label="Livrables ouverts">
         <Link
           className={`tab tab-home ${homeActive ? "is-active" : ""}`}
