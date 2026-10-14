@@ -38,7 +38,10 @@ export function DeliverableContent({
   objectUrl?: string | null;
   renderPage?: (page: number, content: React.ReactNode) => React.ReactNode;
 }) {
-  const [pageCount, setPageCount] = useState(1);
+  // Page count of the file it was read from: another PDF (tab, version, deliverable) starts again at 1,
+  // so no page of the previous document is requested from the new one ("Invalid page request").
+  const [loadedPages, setLoadedPages] = useState<{ file: string; count: number } | null>(null);
+  const pageCount = loadedPages && loadedPages.file === deliverable.fileData ? loadedPages.count : 1;
   // The PDF is drawn at the width its pages take on the canvas, so the text layer used for targeting
   // lines up with the drawn text. That width follows the visible canvas area (92 %, at most 860 px, like
   // the artboard), never the pages themselves: they shrink-wrap their content, which would lock a small size.
@@ -64,7 +67,7 @@ export function DeliverableContent({
       <PdfDocument
         file={deliverable.fileData}
         onLoadSuccess={({ numPages }) => {
-          setPageCount(numPages);
+          if (deliverable.fileData) setLoadedPages({ file: deliverable.fileData, count: numPages });
           onPdfLoad?.(numPages);
         }}
         loading="Chargement du PDF..."
