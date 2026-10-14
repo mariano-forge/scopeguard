@@ -3,12 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
-import {
-  Check,
-  Eye,
-  Lock,
-  Plus,
-} from "lucide-react";
+import { Check, Clock, Lock, PenLine, Plus } from "lucide-react";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { Composer, ThreadPopover, requestKind, type Area, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
 import { RequestPanel, type InspectorTab } from "@/app/(agency)/editor/EditorInspector";
@@ -18,6 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { AddonInput, Field, Modal } from "@/components/modal";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "@/app/(agency)/editor/ReviewCanvas";
 import { Hint } from "@/components/hint";
+import { ResizeHandle } from "@/app/(agency)/editor/ResizeHandle";
+import { DeliverableIcon } from "@/components/DeliverableIcon";
 
 
 function parseNumericAmount(amount: number | string | undefined): number {
@@ -66,6 +63,7 @@ type Deliverable = {
   fileData?: string;
   reviewStatus?: ReviewStatus;
   approvedAt?: string;
+  projectId?: number;
 };
 type ReviewStatus = "pending" | "changes-requested" | "approved";
 
@@ -142,7 +140,9 @@ export default function ClientReviewPage() {
   const [accessState, setAccessState] = useState<"allowed" | "denied">("denied");
   const [reviewLink, setReviewLink] = useState<ReviewLink | null>(null);
   const [comments, setComments] = useState<ClientComment[]>([]);
-  const [commentSent, setCommentSent] = useState(false);
+  /** "Northstar · Refonte site": where the shared deliverable lives. */
+  const [context, setContext] = useState("");
+  const [panelWidth, setPanelWidth] = useState(340);
   const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
   const [selectedCommentId, setSelectedCommentId] = useState<number | null>(null);
   const [tool, setTool] = useState<CanvasTool>("remark");
@@ -193,6 +193,8 @@ export default function ClientReviewPage() {
         reviewStatus?: "pending" | "changes-requested" | "approved";
         approvedAt?: string | null;
         proposalVersions?: ProposalVersions;
+        projects?: { id: number; name: string; clientId?: number }[];
+        clients?: { id: number; name: string }[];
       };
       const savedLinks = Object.values(parsedState.reviewLinks ?? {});
       const savedLink =
@@ -222,6 +224,9 @@ export default function ClientReviewPage() {
         ) ?? parsedState.deliverables?.[0];
         if (sharedDeliverable) {
           setDeliverable(sharedDeliverable);
+          const project = parsedState.projects?.find((candidate) => candidate.id === (sharedDeliverable.projectId ?? 1));
+          const client = parsedState.clients?.find((candidate) => candidate.id === (project?.clientId ?? 1));
+          setContext([client?.name, project?.name].filter(Boolean).join(" · "));
         }
         const review = reviewStateOf(sharedDeliverable, parsedState);
         setReviewStatus(review.status);
@@ -384,7 +389,6 @@ export default function ClientReviewPage() {
       },
     ]);
     setComposer(null);
-    setCommentSent(true);
     setSelectedCommentId(id);
     setPanelTab("comment");
     setThreadOpen(true);
@@ -647,9 +651,6 @@ export default function ClientReviewPage() {
     ...comment,
     decision: comment.decision === "Inclus" || comment.decision === "Hors périmètre" ? comment.decision : "À qualifier",
   }));
-  const sharedProposalComments = sharedComments.filter(
-    (comment) => comment.decision === "Hors périmètre" && proposalStates[comment.id] === "sent",
-  );
   const previewProposal = proposalPreviewCommentId === null
     ? undefined
     : activeProposalFor(proposalPreviewCommentId);
@@ -677,197 +678,222 @@ export default function ClientReviewPage() {
     );
   }
 
+  const versionLabel = `V${String(deliverable.version).padStart(2, "0")}`;
+  const reviewState =
+    reviewStatus === "approved"
+      ? { tone: "approved", icon: <Check />, label: `Version approuvée${approvedAt ? ` · ${approvedAt}` : ""}` }
+      : reviewStatus === "changes-requested"
+        ? { tone: "changes", icon: <PenLine />, label: "Modifications demandées · en attente d’une nouvelle version" }
+        : deliverable.status === "Remplacée"
+          ? { tone: "replaced", icon: <Lock />, label: "Version remplacée" }
+          : null;
+  /** Where the client's decision on a proposal stands. */
+  const proposalStatus = (commentId: number) => {
+    const adaptation = adaptationRequests[commentId];
+    if (proposalDecisions[commentId] === "accepted") return { label: "Acceptée", tone: "decision-included" };
+    if (proposalDecisions[commentId] === "refused") return { label: "Refusée", tone: "decision-outside" };
+    if (adaptation?.decision === "accepted") return { label: "Adaptation acceptée", tone: "decision-included" };
+    if (adaptation?.decision === "refused") return { label: "Adaptation refusée", tone: "decision-outside" };
+    if (adaptation) return { label: "Adaptation demandée", tone: "decision-sent" };
+    return { label: "À décider", tone: "decision-sent" };
+  };
+  const canDecide = (commentId: number) => !isReadOnlyVersion() && !isCommercialDecisionLocked(commentId) && !adaptationRequests[commentId];
+
   return (
-    <main className="client-review-shell">
-      <header className="client-review-header">
-        <div className="client-brand">
-          <span className="brand-mark">N</span>
-          <span>Northstar Studio</span>
+    <main className="client-app">
+      <header className="client-topbar">
+        <div className="client-topbar-identity">
+          <span className="client-topbar-icon" aria-hidden="true">
+            <DeliverableIcon type={deliverable.type ?? "PDF"} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="client-topbar-title">
+              <span className="truncate">{deliverable.name}</span>
+              <span className="version-chip">{versionLabel}</span>
+            </h1>
+            {context && <p className="client-topbar-context">{context}</p>}
+          </div>
         </div>
-        <span className="client-review-label">REVUE CLIENT</span>
+        <div className="client-topbar-actions">
+          {reviewState ? (
+            <span className={`client-review-state-chip is-${reviewState.tone}`} role="status">
+              {reviewState.icon}
+              {reviewState.label}
+            </span>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => setChangesRequestOpen(true)} disabled={isReadOnlyVersion()}>
+                Demander des modifications
+              </Button>
+              <Button onClick={() => setApprovalOpen(true)} disabled={isReadOnlyVersion()}>
+                <Check /> Approuver cette version
+              </Button>
+            </>
+          )}
+        </div>
       </header>
-      <section className="client-review-content">
-        <div className="client-review-heading">
-          <div>
-            <p className="eyebrow">NORTHSTAR STUDIO · REFONTE SITE</p>
-            <p>
-              Consultez le livrable et partagez vos retours avec l'équipe.
-            </p>
-          </div>
-          <div className="client-version-badge">
-            Version {String(deliverable.version).padStart(2, "0")} · {reviewStatus === "approved" ? "Approuvée" : reviewStatus === "changes-requested" ? "Modifications demandées" : deliverable.status === "Remplacée" ? "Remplacée" : "À valider"}
-          </div>
-        </div>
-        <div className="client-workspace">
-          <ReviewCanvas
-            deliverable={{ ...deliverable, type: deliverable.type ?? "PDF" }}
+      <div className="client-body" style={{ gridTemplateColumns: `minmax(0, 1fr) ${panelWidth}px` }}>
+        <ReviewCanvas
+          deliverable={{ ...deliverable, type: deliverable.type ?? "PDF" }}
+          comments={canvasComments}
+          selectedId={selectedCommentId}
+          threadOpen={threadOpen}
+          readOnly={isReadOnlyVersion()}
+          tool={tool}
+          tools={["move", "remark"]}
+          onToolChange={setTool}
+          composer={composer}
+          onCompose={(next) => {
+            setThreadOpen(false);
+            setComposer(next);
+          }}
+          onPinClick={(comment) => {
+            setComposer(null);
+            setSelectedCommentId(comment.id);
+            setThreadOpen((open) => !(open && comment.id === selectedCommentId));
+            setPanelTab(requestKind(comment));
+          }}
+          onBackgroundClick={() => {
+            setThreadOpen(false);
+            setComposer(null);
+          }}
+          transformRef={transformRef}
+          canMove={(comment) => comment.initials === "CM" && requestKind(comment) === "comment"}
+          onMovePin={moveComment}
+          overlay={
+            isReadOnlyVersion() ? (
+              <div className="canvas-banner" role="status">
+                <Lock aria-hidden="true" />
+                <span>Cette version est en lecture seule.</span>
+              </div>
+            ) : null
+          }
+          renderThread={(comment) => {
+            const locked = isCommercialDecisionLocked(comment.id);
+            return (
+              <ThreadPopover
+                key={`${comment.id}-${comment.decision}`}
+                comment={comment}
+                readOnly={isReadOnlyVersion()}
+                locked={locked}
+                proposal={proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : undefined}
+                onReply={(message) => replyTo(comment.id, message)}
+                onOpenProposal={
+                  comment.decision === "Hors périmètre" && proposalStates[comment.id] === "sent"
+                    ? () => {
+                        setThreadOpen(false);
+                        setProposalPreviewCommentId(comment.id);
+                      }
+                    : undefined
+                }
+                onDelete={
+                  comment.initials === "CM" && requestKind(comment) === "comment" && !isReadOnlyVersion() && !locked
+                    ? () => {
+                        deleteComment(comment.id);
+                        setThreadOpen(false);
+                      }
+                    : undefined
+                }
+                onClose={() => setThreadOpen(false)}
+              />
+            );
+          }}
+          renderComposer={(current) => (
+            <Composer
+              key={`${current.x}-${current.y}`}
+              x={current.x}
+              y={current.y}
+              onSubmit={(result) => addComment(result.message, current)}
+              onCancel={() => setComposer(null)}
+            />
+          )}
+        />
+
+        <aside className="inspector client-side-panel" aria-label="Vos retours">
+          <ResizeHandle edge="left" width={panelWidth} min={300} max={560} defaultWidth={340} label="Largeur du panneau des retours" onResize={setPanelWidth} />
+          <header className="requests-header">
+            <h2>Vos retours</h2>
+            {!isReadOnlyVersion() && (
+              <div className="requests-actions">
+                <Hint label="Un retour général, sans le placer sur le livrable">
+                  <Button className="requests-add" onClick={() => setAddingComment(true)}>
+                    <Plus /> Commentaire
+                  </Button>
+                </Hint>
+              </div>
+            )}
+          </header>
+          <RequestPanel
             comments={canvasComments}
-            selectedId={selectedCommentId}
-            threadOpen={threadOpen}
-            readOnly={isReadOnlyVersion()}
-            tool={tool}
-            tools={["move", "remark"]}
-            onToolChange={setTool}
-            composer={composer}
-            onCompose={(next) => {
-              setThreadOpen(false);
-              setComposer(next);
-            }}
-            onPinClick={(comment) => {
-              setComposer(null);
-              setSelectedCommentId(comment.id);
-              setThreadOpen((open) => !(open && comment.id === selectedCommentId));
-              setPanelTab(requestKind(comment));
-            }}
-            onBackgroundClick={() => {
-              setThreadOpen(false);
-              setComposer(null);
-            }}
-            transformRef={transformRef}
-            canMove={(comment) => comment.initials === "CM" && requestKind(comment) === "comment"}
-            onMovePin={moveComment}
-            overlay={
-              isReadOnlyVersion() ? (
-                <div className="canvas-banner" role="status">
-                  <Lock aria-hidden="true" />
-                  <span>Cette version est en lecture seule.</span>
-                </div>
-              ) : null
-            }
-            renderThread={(comment) => {
-              const locked = isCommercialDecisionLocked(comment.id);
+            selectedId={threadOpen ? selectedCommentId : null}
+            tab={panelTab}
+            onTab={setPanelTab}
+            onFocus={focusThread}
+            proposalStage={(comment) => (proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : null)}
+            onOpenProposal={(commentId) => setProposalPreviewCommentId(commentId)}
+            proposalSummary={(comment) => {
+              const proposal = activeProposalFor(comment.id);
+              const status = proposalStatus(comment.id);
               return (
-                <ThreadPopover
-                  key={`${comment.id}-${comment.decision}`}
-                  comment={comment}
-                  readOnly={isReadOnlyVersion()}
-                  locked={locked}
-                  proposal={proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : undefined}
-                  onReply={(message) => replyTo(comment.id, message)}
-                  onOpenProposal={
-                    comment.decision === "Hors périmètre" && proposalStates[comment.id] === "sent"
-                      ? () => {
-                          setThreadOpen(false);
-                          document.querySelector(".client-proposals-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                        }
-                      : undefined
-                  }
-                  onDelete={
-                    comment.initials === "CM" && requestKind(comment) === "comment" && !isReadOnlyVersion() && !locked
-                      ? () => {
-                          deleteComment(comment.id);
-                          setThreadOpen(false);
-                        }
-                      : undefined
-                  }
-                  onClose={() => setThreadOpen(false)}
-                />
+                <span className="client-proposal-line">
+                  <b>{formatProposalAmount(proposal?.amount)} HT</b>
+                  <span>{formatProposalDeadline(proposal?.deadline)}</span>
+                  <span className={`decision-badge ${status.tone}`}>{status.label}</span>
+                </span>
               );
             }}
-            renderComposer={(current) => (
-              <Composer
-                key={`${current.x}-${current.y}`}
-                x={current.x}
-                y={current.y}
-                onSubmit={(result) => addComment(result.message, current)}
-                onCancel={() => setComposer(null)}
-              />
-            )}
+            adding={addingComment}
+            onAddingChange={setAddingComment}
+            onAddComment={isReadOnlyVersion() ? undefined : (message) => addComment(message, null)}
           />
-
-          <aside className="client-side-panel" aria-label="Vos retours">
-            <header className="requests-header">
-              <h2>Vos retours</h2>
-              {!isReadOnlyVersion() && (
-                <div className="requests-actions">
-                  <Hint label="Un retour général, sans le placer sur le livrable">
-                    <Button className="requests-add" onClick={() => setAddingComment(true)}>
-                      <Plus /> Commentaire
-                    </Button>
-                  </Hint>
-                </div>
-              )}
-            </header>
-            <RequestPanel
-              comments={canvasComments}
-              selectedId={threadOpen ? selectedCommentId : null}
-              tab={panelTab}
-              onTab={setPanelTab}
-              onFocus={focusThread}
-              adding={addingComment}
-              onAddingChange={setAddingComment}
-              onAddComment={isReadOnlyVersion() ? undefined : (message) => addComment(message, null)}
-            />
-          </aside>
-        </div>
-        {sharedProposalComments.length > 0 && (
-          <section className="client-proposals-panel">
-            <div className="client-comments-heading">
-              <div>
-                <p className="eyebrow">DÉCISIONS COMMERCIALES</p>
-                <h2>Propositions complémentaires</h2>
-              </div>
-              <span>À décider</span>
-            </div>
-            <div className="client-proposals-list">
-              {sharedProposalComments.map((comment) => (
-                <article className="client-proposal-card" key={comment.id}>
-                  <div>
-                    <small>Proposition liée à la demande #{comment.id} · Version {activeProposalFor(comment.id)?.version ?? 1}</small>
-                    <p>{comment.message}</p>
-                    <div className="client-proposal-summary">
-                      <span>{activeProposalFor(comment.id)?.description ?? "Section témoignages"}</span>
-                      <b>
-                        {formatProposalAmount(activeProposalFor(comment.id)?.amount ?? 850)} · {formatProposalDeadline(activeProposalFor(comment.id)?.deadline ?? 3)}
-                      </b>
-                    </div>
-                  </div>
-                  {proposalDecisions[comment.id] === "accepted" ? (
-                    <span className="client-proposal-status"><span className="client-proposal-accepted">Acceptée <Check /></span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition acceptée pour la demande #${comment.id}`} title="Voir la proposition"><Eye /></button></span>
-                  ) : proposalDecisions[comment.id] === "refused" ? (
-                    <span className="client-proposal-status"><span className="client-proposal-refused">Refusée</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition refusée pour la demande #${comment.id}`} title="Voir la proposition"><Eye /></button></span>
-                  ) : adaptationRequests[comment.id]?.decision ? (
-                    <span className="client-proposal-status"><span className={`client-proposal-adaptation ${adaptationRequests[comment.id].decision}`}>{adaptationRequests[comment.id].decision === "accepted" ? "Adaptation acceptée" : "Adaptation refusée"}</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition pour la demande #${comment.id}`} title="Voir la proposition"><Eye /></button></span>
-                  ) : adaptationRequests[comment.id] ? (
-                    <span className={`client-proposal-adaptation ${adaptationRequests[comment.id].decision ?? ""}`}>
-                      {adaptationRequests[comment.id].decision === "accepted" ? "Adaptation acceptée par l'agence" : adaptationRequests[comment.id].decision === "refused" ? "Adaptation refusée par l'agence" : "Adaptation demandée"}
-                    </span>
-                  ) : (
-                    <div className="client-proposal-actions"><button className="client-adapt-action" onClick={() => openAdaptationRequest(comment.id)} disabled={isReadOnlyVersion()}>Demander une adaptation</button><button className="client-refuse-action" onClick={() => decideProposal(comment.id, "refused")} disabled={isReadOnlyVersion()}>Refuser</button><button className="client-accept-action" onClick={() => decideProposal(comment.id, "accepted")} disabled={isReadOnlyVersion()}>Accepter</button></div>
-                  )}
-                </article>
-              ))}
-            </div>
-          </section>
-        )}
-        <div className="client-review-actions">
-          <p>{commentSent ? "Votre commentaire a été transmis à l'équipe." : "Cliquez ou dessinez une zone sur le livrable pour laisser un commentaire."}</p>
-          {reviewStatus === "changes-requested" && (
-            <div className="client-status-banner"><span className="status-dot changes-dot" />Modifications demandées · en attente d'une nouvelle version de l'agence</div>
-          )}
-          <div className="client-action-group">
-            <button className="client-secondary-action" onClick={() => setChangesRequestOpen(true)} disabled={isReadOnlyVersion() || reviewStatus === "changes-requested"}>Demander des modifications</button>
-            <button className="client-primary-action" onClick={() => setApprovalOpen(true)} disabled={isReadOnlyVersion() || reviewStatus === "changes-requested"}>{reviewStatus === "approved" ? `Version approuvée${approvedAt ? ` · ${approvedAt}` : ""}` : "Approuver cette version"}</button>
-          </div>
-        </div>
-      </section>
+        </aside>
+      </div>
       <Modal
         open={proposalPreviewCommentId !== null && Boolean(previewProposal)}
         onClose={() => setProposalPreviewCommentId(null)}
-        title="Résumé de la proposition"
-        description={previewProposal ? `Demande #${previewProposalComment?.id} · Version ${previewProposal.version}` : undefined}
+        title={`Proposition · demande n°${previewProposalComment?.id ?? ""}`}
+        description={previewProposalComment ? (previewProposalComment.title ?? previewProposalComment.message) : undefined}
+        footer={
+          previewProposal && proposalPreviewCommentId !== null && canDecide(proposalPreviewCommentId) ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const id = proposalPreviewCommentId;
+                  setProposalPreviewCommentId(null);
+                  openAdaptationRequest(id);
+                }}
+              >
+                Demander une adaptation
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  decideProposal(proposalPreviewCommentId, "refused");
+                  setProposalPreviewCommentId(null);
+                }}
+              >
+                Refuser
+              </Button>
+              <Button
+                onClick={() => {
+                  decideProposal(proposalPreviewCommentId, "accepted");
+                  setProposalPreviewCommentId(null);
+                  toast("Proposition acceptée");
+                }}
+              >
+                <Check /> Accepter
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" onClick={() => setProposalPreviewCommentId(null)}>
+              Fermer
+            </Button>
+          )
+        }
       >
-        {previewProposal && (
+        {previewProposal && proposalPreviewCommentId !== null && (
           <>
-            <div className={`proposal-preview-status ${proposalDecisions[previewProposal.commentId] === "refused" || previewAdaptationRequest?.decision === "refused" ? "refused" : "accepted"}`}>
-              {previewAdaptationRequest?.decision === "accepted"
-                ? `Acceptée par l’agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}`
-                : previewAdaptationRequest?.decision === "refused"
-                  ? `Refusée par l’agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}`
-                  : proposalDecisions[previewProposal.commentId] === "accepted"
-                    ? "Acceptée par le client"
-                    : "Refusée par le client"}
-            </div>
             <div className="proposal-summary">
               <div>
                 <span>Prestation</span>
@@ -875,16 +901,21 @@ export default function ClientReviewPage() {
               </div>
               <div>
                 <span>Montant</span>
-                <b>{formatProposalAmount(previewProposal.amount)}</b>
+                <b>{formatProposalAmount(previewProposal.amount)} HT</b>
               </div>
               <div>
                 <span>Impact planning</span>
                 <b>{formatProposalDeadline(previewProposal.deadline)}</b>
               </div>
             </div>
+            <p className="flex items-center gap-2 text-sm">
+              {proposalStatus(proposalPreviewCommentId).label === "À décider" ? <Clock className="size-4" aria-hidden="true" /> : null}
+              <span className={`decision-badge ${proposalStatus(proposalPreviewCommentId).tone}`}>{proposalStatus(proposalPreviewCommentId).label}</span>
+              <span className="text-muted-foreground">Version {previewProposal.version} de la proposition</span>
+            </p>
             {previewAdaptationRequest && (
               <div className="adaptation-request-summary">
-                <span>Demande d’adaptation · {previewAdaptationRequest.requestedAt}</span>
+                <span>Votre demande d’adaptation · {previewAdaptationRequest.requestedAt}</span>
                 <p>{previewAdaptationRequest.message}</p>
               </div>
             )}
@@ -946,7 +977,7 @@ export default function ClientReviewPage() {
         onClose={() => setApprovalOpen(false)}
         role="alertdialog"
         title="Approuver cette version ?"
-        description="Vous confirmez que cette version peut être considérée comme validée par Northstar Studio."
+        description="Vous confirmez que cette version est validée. L’agence en est informée et la version passe en lecture seule."
         footer={
           <>
             <Button variant="outline" onClick={() => setApprovalOpen(false)}>

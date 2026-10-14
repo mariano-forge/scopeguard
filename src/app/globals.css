@@ -7223,3 +7223,141 @@ body.is-resizing {
     animation: none !important;
   }
 }
+
+/* Client review (magic link): one screen like the agency editor — top bar with the decision, canvas + requests panel */
+.client-app {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  background: var(--canvas);
+  color: var(--ink);
+}
+.client-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  min-height: 64px;
+  padding: var(--s-2) var(--s-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--paper);
+}
+.client-topbar-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+.client-topbar-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--canvas);
+  color: var(--graphite);
+}
+.client-topbar-icon .lucide {
+  width: 18px;
+  height: 18px;
+}
+.client-topbar-title {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  margin: 0;
+  font: 600 16px/1.3 var(--font-display);
+}
+.client-topbar-title .version-chip {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+  color: var(--ink);
+  font: 500 var(--t-caption-size) var(--font-mono);
+}
+.client-topbar-context {
+  margin: 0;
+  overflow: hidden;
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.client-topbar-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--s-2);
+}
+.client-review-state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 36px;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-button);
+  font-size: var(--t-ui-size, 14px);
+  font-weight: 600;
+}
+.client-review-state-chip .lucide {
+  width: 16px;
+  height: 16px;
+}
+.client-review-state-chip.is-approved {
+  background: var(--status-resolved-bg);
+  color: var(--status-resolved-text);
+}
+.client-review-state-chip.is-changes {
+  background: var(--status-medium-bg);
+  color: var(--status-medium-text);
+}
+.client-review-state-chip.is-replaced {
+  background: var(--mist);
+  color: var(--graphite);
+}
+.client-body {
+  display: grid;
+  min-height: 0;
+}
+.client-body .preview-panel.canvas {
+  height: 100%;
+}
+.client-body .client-side-panel {
+  position: relative;
+  overflow-y: auto;
+}
+/* Out-of-scope rows: the proposal at a glance, then "Voir la proposition" */
+.client-proposal-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  width: 100%;
+  font-size: var(--t-caption-size);
+}
+.client-proposal-line b {
+  font-size: var(--t-ui-size, 14px);
+}
+.client-proposal-line > span:not(.decision-badge) {
+  color: var(--graphite);
+}
+.client-proposal-line .decision-badge {
+  margin-left: auto;
+}
+@media (max-width: 760px) {
+  .client-topbar {
+    flex-wrap: wrap;
+  }
+  .client-body {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: minmax(0, 1fr) 45vh;
+  }
+}
+
+.client-side-panel .row-actions {
+  flex-wrap: wrap;
+}

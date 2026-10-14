@@ -48,6 +48,7 @@ export function RequestPanel({
   onQuote,
   onSendProposal,
   onOpenProposal,
+  proposalSummary,
   adding,
   onAddingChange,
   onAddComment,
@@ -63,6 +64,8 @@ export function RequestPanel({
   onQuote?: (commentId: number) => void;
   onSendProposal?: (commentId: number) => void;
   onOpenProposal?: (commentId: number) => void;
+  /** Out-of-scope requests (client page): amount, delay and where the decision stands, above the actions. */
+  proposalSummary?: (comment: ThreadComment) => React.ReactNode;
   /** The manual comment form is open (opened from the panel header's "+"). */
   adding: boolean;
   onAddingChange: (adding: boolean) => void;
@@ -161,6 +164,7 @@ export function RequestPanel({
                       if (!stage) return null;
                       return (
                         <div className="row-actions">
+                          {proposalSummary?.(comment)}
                           {stage.stage === "sent" ? (
                             <button type="button" className="secondary-button small-button" onClick={() => onOpenProposal?.(comment.id)}>
                               {stage.label}
