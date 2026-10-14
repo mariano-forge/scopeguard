@@ -7471,3 +7471,158 @@ body.is-resizing {
 .overview.is-single .chart-legend {
   margin-top: var(--s-2);
 }
+
+/* Bubble: a bit wider, lighter discussion, calmer hierarchy */
+.thread {
+  width: 340px;
+  border-color: var(--border);
+  box-shadow:
+    0 1px 2px rgba(17, 17, 17, 0.06),
+    0 16px 40px rgba(17, 17, 17, 0.14);
+}
+.thread-header {
+  padding: var(--s-3) var(--s-2) var(--s-3) var(--s-4);
+  border-bottom-color: var(--mist);
+}
+.thread-title {
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.request-body {
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4) var(--s-4);
+  border-bottom-color: var(--mist);
+}
+.request-title {
+  font-weight: 600;
+}
+.request-description {
+  color: var(--graphite);
+}
+.thread-messages {
+  gap: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+}
+.thread-message {
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: var(--s-2);
+}
+.thread-message .thread-avatar {
+  width: 22px;
+  height: 22px;
+}
+.thread-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 18px;
+}
+.thread-meta b {
+  color: var(--ink);
+  font: 500 var(--t-caption) var(--font-ui);
+}
+.thread-meta small {
+  color: var(--graphite);
+}
+.thread-text {
+  margin-top: 2px;
+  color: var(--ink);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.thread-actions,
+.thread-reply {
+  padding: var(--s-2) var(--s-4) var(--s-3);
+  border-top-color: var(--mist);
+}
+.thread-locked {
+  padding: var(--s-2) var(--s-4) var(--s-3);
+}
+.discussion-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--mist);
+  padding: var(--s-2) var(--s-4);
+  background: transparent;
+  color: var(--graphite);
+  font: 500 var(--t-caption) var(--font-ui);
+  cursor: pointer;
+}
+.discussion-toggle:hover {
+  color: var(--ink);
+}
+.discussion-toggle:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: -2px;
+}
+.discussion-toggle .lucide {
+  width: 14px;
+  height: 14px;
+  transition: transform var(--d-fast) var(--ease-out);
+}
+.discussion-toggle .lucide.is-open {
+  transform: rotate(180deg);
+}
+
+/* Moving a pin (double-click, then click to drop) */
+.canvas.is-moving-pin .artboard {
+  cursor: grabbing;
+}
+.canvas-pin.is-moving {
+  z-index: 6;
+  opacity: 0.85;
+  outline: 2px dashed var(--action-ui);
+  outline-offset: 2px;
+  pointer-events: none;
+}
+
+/* "Commentaire supprimé · Annuler" */
+.undo-toast {
+  position: fixed;
+  bottom: var(--s-6);
+  left: 50%;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  border-radius: var(--r-button);
+  padding: var(--s-2) var(--s-2) var(--s-2) var(--s-4);
+  background: var(--ink);
+  color: var(--paper);
+  font: 500 var(--t-ui) var(--font-ui);
+  box-shadow: 0 12px 32px rgba(17, 17, 17, 0.24);
+  transform: translateX(-50%);
+}
+.undo-toast-action {
+  border: 0;
+  border-radius: var(--r-field);
+  padding: var(--s-1) var(--s-2);
+  background: transparent;
+  color: var(--action-fill);
+  font: 600 var(--t-ui) var(--font-ui);
+  cursor: pointer;
+}
+.undo-toast-action:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.undo-toast-close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--r-field);
+  background: transparent;
+  color: var(--paper);
+  cursor: pointer;
+}
+.undo-toast-close .lucide {
+  width: 16px;
+  height: 16px;
+}
+.undo-toast-action:focus-visible,
+.undo-toast-close:focus-visible {
+  outline: 2px solid var(--action-fill);
+  outline-offset: 2px;
+}

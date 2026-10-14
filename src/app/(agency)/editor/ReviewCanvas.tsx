@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import { Maximize, MessageCirclePlus, Minus, MousePointer2, Plus } from "lucide-react";
 import { DeliverableContent } from "@/components/DeliverableContent";
@@ -45,6 +45,8 @@ export function ReviewCanvas({
   transformRef,
   overlay,
   toolbarExtra,
+  canMove,
+  onMovePin,
 }: {
   deliverable: ViewedDeliverable;
   comments: CanvasComment[];
@@ -67,6 +69,9 @@ export function ReviewCanvas({
   overlay?: React.ReactNode;
   /** Extra tools at the end of the toolbar (agency: copy / export). */
   toolbarExtra?: React.ReactNode;
+  /** Pins that can be moved (double-click, then click to drop). */
+  canMove?: (comment: CanvasComment) => boolean;
+  onMovePin?: (commentId: number, page: number, x: number, y: number) => void;
 }) {
   const panelRef = useRef<HTMLElement>(null);
   const [zoom, setZoom] = useState(100);
@@ -77,6 +82,16 @@ export function ReviewCanvas({
   const moved = useRef(false);
   const drawStart = useRef<{ page: number; bounds: DOMRect; x: number; y: number } | null>(null);
   const commenting = tool !== "move" && !readOnly;
+  /** Pin being moved: it follows the pointer until a click drops it (Escape cancels). */
+  const [moving, setMoving] = useState<{ id: number; page: number; x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!moving) return;
+    function cancel(event: KeyboardEvent) {
+      if (event.key === "Escape") setMoving(null);
+    }
+    window.addEventListener("keydown", cancel);
+    return () => window.removeEventListener("keydown", cancel);
+  }, [moving]);
   const selected = comments.find((comment) => comment.id === selectedId);
   const pageKind =
     deliverable.type === "PDF" && deliverable.fileData
@@ -148,6 +163,7 @@ export function ReviewCanvas({
   }
 
   function pointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (moving) return;
     pointerStart.current = { x: event.clientX, y: event.clientY };
     moved.current = false;
     setDragging(false);
@@ -164,6 +180,11 @@ export function ReviewCanvas({
   }
 
   function pointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (moving) {
+      const point = pagePoint(event);
+      if (point) setMoving({ ...moving, page: point.page, x: point.x, y: point.y });
+      return;
+    }
     const start = pointerStart.current;
     if (start) {
       moved.current = Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5;
@@ -205,6 +226,13 @@ export function ReviewCanvas({
 
   /** Capture phase, so the deliverable's own buttons don't swallow the click. */
   function click(event: React.MouseEvent<HTMLDivElement>) {
+    if (moving) {
+      event.preventDefault();
+      event.stopPropagation();
+      onMovePin?.(moving.id, moving.page, moving.x, moving.y);
+      setMoving(null);
+      return;
+    }
     if ((event.target as Element).closest(".thread, .canvas-pin")) return;
     if (moved.current) {
       moved.current = false;
@@ -251,7 +279,7 @@ export function ReviewCanvas({
   };
 
   return (
-    <section className={`preview-panel canvas tool-${tool}`} ref={panelRef} aria-label="Canevas">
+    <section className={`preview-panel canvas tool-${tool} ${moving ? "is-moving-pin" : ""}`} ref={panelRef} aria-label="Canevas">
       {overlay}
       <div className="artboard-wrap">
         <TransformWrapper
@@ -294,18 +322,27 @@ export function ReviewCanvas({
                     {composer?.page === page && composer.area && <TargetHighlight box={areaBox(composer.area)} drawing />}
                     {threadOpen && selected?.area && (selected.page ?? 1) === page && <TargetHighlight box={areaBox(selected.area)} drawing />}
                     {comments
+                      .map((comment) =>
+                        moving?.id === comment.id ? { ...comment, page: moving.page, position: { x: moving.x, y: moving.y } } : comment,
+                      )
                       .filter((comment) => (comment.page ?? 1) === page && comment.position)
                       .map((comment) => (
                         <CommentPin
                           key={comment.id}
                           comment={comment}
                           active={threadOpen && comment.id === selectedId}
+                          moving={moving?.id === comment.id}
                           onOpen={() => {
-                            if (!moved.current) onPinClick(comment);
+                            if (!moved.current && !moving) onPinClick(comment);
                           }}
+                          onMove={
+                            canMove?.(comment) && !readOnly
+                              ? () => setMoving({ id: comment.id, page: comment.page ?? 1, x: comment.position?.x ?? 50, y: comment.position?.y ?? 50 })
+                              : undefined
+                          }
                         />
                       ))}
-                    {threadOpen && selected && (selected.page ?? 1) === page && renderThread(selected)}
+                    {threadOpen && !moving && selected && (selected.page ?? 1) === page && renderThread(selected)}
                     {composer?.page === page && renderComposer(composer)}
                   </div>
                 )}
@@ -315,6 +352,11 @@ export function ReviewCanvas({
         </TransformWrapper>
       </div>
 
+      {moving && (
+        <p className="canvas-hint" role="status">
+          Cliquez pour déposer le commentaire · <kbd>Échap</kbd> pour annuler
+        </p>
+      )}
       <div className="canvas-toolbar" role="toolbar" aria-label="Outils du canevas">
         <div className="tool-group">
           {tools.map((option) => (

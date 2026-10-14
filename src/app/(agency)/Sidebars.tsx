@@ -15,7 +15,6 @@ import {
   PanelLeftClose,
   Settings,
   Plus,
-  Receipt,
   Search,
   Share2,
   Trash2,
@@ -187,7 +186,7 @@ export type SidebarVersion = { id: number; label: string; meta: string; href: st
 export type PanelMode = "livrables";
 
 /**
- * Inside a deliverable (canvas, proposals): icon rail + collapsible panel (Figma file view).
+ * Inside a deliverable: icon rail + collapsible panel (Figma file view).
  * The gear opens the main menu; every rail action stays in the deliverable tab.
  */
 export function ProjectSidebar({
@@ -197,13 +196,10 @@ export function ProjectSidebar({
   livrableMenu,
   systemMenu,
   versions,
-  versionChip,
   view,
   panel,
   onPanel,
-  proposalsHref,
   canvasHref,
-  proposalsBadge,
   onNavigate,
   notifications,
   panelWidth,
@@ -217,17 +213,13 @@ export function ProjectSidebar({
   /** Main menu, under the logo. */
   systemMenu: MenuEntry[];
   versions: SidebarVersion[];
-  versionChip?: { label: string; tone: "resolved" | "high" | "medium" | "neutral" };
   view: AgencyView;
   /** Panel content, or null when collapsed. */
   panel: PanelMode | null;
   onPanel: (mode: PanelMode | null) => void;
-  proposalsHref: string;
   /** Canvas of the deliverable (from the proposals page). */
   canvasHref: string;
-  /** Out-of-scope requests still waiting for a client decision. */
-  proposalsBadge: number;
-  /** Switches view inside the deliverable's tab (canvas, proposals). */
+  /** Switches view inside the deliverable's tab. */
   onNavigate: (target: string) => void;
   notifications: Notification[];
   panelWidth: number;
@@ -266,16 +258,6 @@ export function ProjectSidebar({
             <Layers />
           </button>
         )}
-        <button
-          className={`rail-button ${view.kind === "proposals" ? "is-active" : ""}`}
-          onClick={() => onNavigate(proposalsHref)}
-          aria-label={`Propositions financières${proposalsBadge ? ` (${proposalsBadge} à traiter)` : ""}`}
-          aria-pressed={view.kind === "proposals"}
-          title="Propositions financières"
-        >
-          <Receipt />
-          {proposalsBadge > 0 && <span className="rail-badge">{proposalsBadge}</span>}
-        </button>
         <span className="rail-spacer" />
         <Notifications notifications={notifications} compact />
         <span className="avatar dark-avatar rail-avatar" title="Alex Morgan">
@@ -309,7 +291,6 @@ export function ProjectSidebar({
               {client && <span aria-hidden="true">/</span>}
               <Link href={href.project(project.id)}>{project.name}</Link>
             </span>
-            {versionChip && <span className={`chip chip-${versionChip.tone}`}>{versionChip.label}</span>}
           </div>
 
           <div className="panel-scroll">

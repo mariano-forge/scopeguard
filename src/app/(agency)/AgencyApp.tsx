@@ -51,7 +51,6 @@ import {
   FolderClosed,
   Keyboard,
   Lock,
-  Receipt,
   Search,
   Settings,
   Star,
@@ -84,7 +83,7 @@ import {
   } from "./editor/CanvasComments";
 import { EditorInspector, threadsToMarkdown, type InspectorTab } from "./editor/EditorInspector";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "./editor/ReviewCanvas";
-import { ProposalsView, type ProposalRow } from "./editor/ProposalsView";
+import { UndoToast } from "./editor/UndoToast";
 import { MenuButton, type MenuEntry } from "./editor/MenuButton";
 import { RenameDialog } from "./EntitySettings";
 import type { HomeAnalyticsData } from "./HomeAnalytics";
@@ -355,11 +354,9 @@ export function AgencyApp() {
       ? view.clientId
       : (projects.find((project) => project.id === selectedProjectId)?.clientId ?? clients[0]?.id ?? 0);
   const viewVersions =
-    view.kind === "deliverable" || view.kind === "proposals" ? versionsOfLivrable(view.livrableId, deliverables) : [];
+    view.kind === "deliverable" ? versionsOfLivrable(view.livrableId, deliverables) : [];
   const viewRecord =
-    view.kind === "proposals"
-      ? viewVersions[0]
-      : view.kind === "deliverable"
+    view.kind === "deliverable"
       ? view.version
         ? viewVersions.find((record) => record.version === view.version)
         : viewVersions[0]
@@ -370,7 +367,6 @@ export function AgencyApp() {
       .filter((deliverable) => (deliverable.projectId ?? 1) === selectedProjectId)
       .sort((left, right) => right.version - left.version)[0]?.id ??
     0;
-  const activeTab = view.kind === "proposals" ? "proposals" : "review";
   const isBrowserView =
     view.kind === "home" ||
     view.kind === "todo" ||
@@ -434,10 +430,12 @@ export function AgencyApp() {
       return next;
     });
   }
-  /** Request whose bubble opens on the quote form ("Chiffrer" from the panel or the proposals page). */
+  /** Request whose bubble opens on the quote form ("Chiffrer" from the panel). */
   const [quotingId, setQuotingId] = useState<number | null>(null);
   /** Proposal waiting for the "send to the client?" confirmation. */
   const [confirmSendId, setConfirmSendId] = useState<number | null>(null);
+  /** Comment just deleted, kept for "Annuler". */
+  const [deletedComment, setDeletedComment] = useState<Comment | null>(null);
   useEffect(() => {
     try {
       const saved = JSON.parse(window.localStorage.getItem(panelWidthsKey) ?? "null");
@@ -728,9 +726,9 @@ export function AgencyApp() {
 
   // Recently opened deliverables, most recent first (per browser, like Figma's "Recents").
   // Always the deliverable root id (the URL may point at any of its versions), so recents and tabs never list it twice.
-  // Canvas, dashboard and proposals all belong to the deliverable's tab.
+  // The canvas belongs to the deliverable's tab.
   const viewLivrableId =
-    (view.kind === "deliverable" || view.kind === "proposals") && viewRecord
+    view.kind === "deliverable" && viewRecord
       ? livrableIdOf(viewRecord, deliverables)
       : null;
   useEffect(() => {
@@ -848,7 +846,7 @@ export function AgencyApp() {
           saved
             .filter((tab) => typeof tab?.livrableId === "number" && typeof tab?.href === "string")
             // Tabs saved on the removed dashboard reopen the deliverable.
-            .map((tab) => ({ ...tab, href: tab.href.replace(/\/tableau-de-bord$/, "") })),
+            .map((tab) => ({ ...tab, href: tab.href.replace(/\/(tableau-de-bord|propositions)$/, "") })),
         );
     } catch {
       // Tabs are a convenience: ignore unreadable storage.
@@ -1333,8 +1331,37 @@ export function AgencyApp() {
       }
       return updated;
     });
+    setDeletedComment(target);
     recordAudit("comment.deleted", "Commentaire agence supprimé", commentId);
   }
+
+  /** Double-click a pin, then click: the comment moves there (its drawn area follows). */
+  function moveComment(commentId: number, page: number, x: number, y: number) {
+    if (isReadOnlyVersion) return;
+    setComments((current) =>
+      current.map((comment) => {
+        if (comment.id !== commentId || !comment.position) return comment;
+        const dx = x - comment.position.x;
+        const dy = y - comment.position.y;
+        return {
+          ...comment,
+          page,
+          position: { x, y },
+          area: comment.area ? { ...comment.area, x: comment.area.x + dx, y: comment.area.y + dy } : undefined,
+          location: comment.location.replace(/^Page \d+/, `Page ${page}`),
+        };
+      }),
+    );
+  }
+
+  /** Puts back the comment deleted last ("Annuler" in the toast). */
+  function restoreComment() {
+    const removed = deletedComment;
+    if (!removed) return;
+    setComments((current) => (current.some((comment) => comment.id === removed.id) ? current : [...current, removed].sort((a, b) => a.id - b.id)));
+    setDeletedComment(null);
+  }
+
 
   /** What still needs the agency: every comment still to clarify (not yet a correction or hors scope). */
   function needsQualification(comment: Comment) {
@@ -1887,43 +1914,6 @@ export function AgencyApp() {
   const livrableRootId = "livrableId" in view ? view.livrableId : 0;
   const latestVersionRecord = viewVersions[0];
 
-  // Out-of-scope requests of every version, for the proposals page.
-  const proposalRows: ProposalRow[] = viewVersions.flatMap((record) =>
-    comments
-      .filter((comment) => comment.deliverableId === record.id && comment.decision === "Hors périmètre")
-      .map((comment) => {
-        const proposal = activeProposalFor(comment.id);
-        const decision = proposalDecisionFor(comment.id);
-        const adaptation = adaptationRequests[comment.id];
-        const state: ProposalRow["state"] =
-          decision === "accepted" || adaptation?.decision === "accepted"
-            ? "accepted"
-            : decision === "refused" || adaptation?.decision === "refused"
-              ? "refused"
-              : adaptation
-                ? "adaptation"
-                : proposalStateFor(comment.id) === "sent"
-                  ? "sent"
-                  : proposalStateFor(comment.id) === "draft"
-                    ? "draft"
-                    : "to-quote";
-        return {
-          commentId: comment.id,
-          // The original comment; the request title is the proposal description (or the title until quoted).
-          message: comment.message,
-          author: comment.author,
-          location: comment.location,
-          versionLabel: `V${String(record.version).padStart(2, "0")}`,
-          href: `${hrefForRecord(record, deliverables)}?demande=${comment.id}`,
-          state,
-          description: proposal?.description ?? comment.title,
-          amount: parseNumericAmount(proposal?.amount),
-          days: parseNumericDays(proposal?.deadline),
-          editable: record.id === currentDeliverable?.id && !isReadOnlyVersion,
-        };
-      }),
-  );
-
   // Under the deliverable name (panel title): shortcuts for this deliverable only.
   const livrableMenu: MenuEntry[] = [
     { kind: "section", label: "Ce livrable" },
@@ -1934,7 +1924,6 @@ export function AgencyApp() {
     { label: "Rouvrir la validation", icon: <RotateCcw />, onSelect: () => { setChangesMessage(""); setChangesOpen(true); } },
     { label: "Synthèse & export", icon: <FileCheck />, onSelect: () => setProofOpen(true) },
     { label: "Historique & journal", icon: <ScrollText />, onSelect: () => setHistoryOpen(true) },
-    { label: "Propositions financières", icon: <Receipt />, onSelect: () => router.push(href.proposals(selectedProjectId, livrableRootId)) },
     { kind: "section", label: "Organisation" },
     { label: "Renommer…", icon: <Pencil />, onSelect: () => { setRenameError(""); setRenameOpen(true); } },
     {
@@ -1972,7 +1961,7 @@ export function AgencyApp() {
   });
 
   // Project workspace panel: deliverables of the project, versions of the open one.
-  const inProject = (view.kind === "deliverable" || view.kind === "proposals") && Boolean(selectedProject);
+  const inProject = view.kind === "deliverable" && Boolean(selectedProject);
   const sidebarVersions: SidebarVersion[] = viewVersions.map((record) => ({
     id: record.id,
     label: `V${String(record.version).padStart(2, "0")}`,
@@ -1981,16 +1970,6 @@ export function AgencyApp() {
     active: view.kind === "deliverable" && record.id === viewRecord?.id,
     frozen: Boolean(record.locked || record.status === "Approuvée" || record.status === "Remplacée"),
   }));
-  const versionChip =
-    view.kind !== "deliverable" || !viewRecord
-      ? undefined
-      : viewRecord.reviewStatus === "approved"
-        ? { label: "Approuvée", tone: "resolved" as const }
-        : viewRecord.reviewStatus === "changes-requested"
-          ? { label: "Modifications demandées", tone: "high" as const }
-          : viewRecord.status === "Remplacée"
-            ? { label: "Remplacée · lecture seule", tone: "neutral" as const }
-            : { label: "En attente client", tone: "medium" as const };
 
   return (
     <div className="app-frame">
@@ -2020,13 +1999,10 @@ export function AgencyApp() {
           livrableMenu={livrableMenu}
           systemMenu={systemMenu}
           versions={sidebarVersions}
-          versionChip={versionChip}
           view={view}
           panel={sidebarPanel}
           onPanel={showPanel}
-          proposalsHref={href.proposals(selectedProject.id, livrableRootId)}
           canvasHref={href.deliverable(selectedProject.id, livrableRootId)}
-          proposalsBadge={proposalRows.filter((row) => row.state === "to-quote" || row.state === "adaptation").length}
           onNavigate={(target) => router.push(target)}
           notifications={notifications}
         />
@@ -2076,16 +2052,6 @@ export function AgencyApp() {
                 return latest ? statusOf(latest) : { kind: "none" };
               }}
             />
-          ) : activeTab === "proposals" ? (
-            <ProposalsView
-              livrableName={viewVersions[0]?.name ?? "Livrable"}
-              projectName={selectedProject?.name ?? ""}
-              clientName={selectedClient?.name ?? ""}
-              rows={proposalRows}
-              onOpenProposal={openProposal}
-              onSendProposal={setConfirmSendId}
-              onOpenCanvas={(target) => router.push(target)}
-            />
           ) : view.kind === "dashboard" ? (
             null
           ) : (
@@ -2116,6 +2082,8 @@ export function AgencyApp() {
                 setComposer(null);
               }}
               transformRef={transformRef}
+              canMove={() => true}
+              onMovePin={moveComment}
               toolbarExtra={
                 <MenuButton
                   className="tool-button"
@@ -2158,7 +2126,7 @@ export function AgencyApp() {
               }
               renderThread={(comment) => (
                 <ThreadPopover
-                  key={`${comment.id}-${quotingId === comment.id ? "quote" : "view"}`}
+                  key={`${comment.id}-${comment.decision}-${quotingId === comment.id ? "quote" : "view"}`}
                   comment={comment}
                   readOnly={isReadOnlyVersion}
                   locked={isDecisionLocked(comment.id)}
@@ -2882,6 +2850,9 @@ export function AgencyApp() {
                 )}
               </section>
             </div>
+          )}
+          {deletedComment && (
+            <UndoToast key={deletedComment.id} message="Commentaire supprimé" onUndo={restoreComment} onDismiss={() => setDeletedComment(null)} />
           )}
           {confirmSendId !== null &&
             (() => {

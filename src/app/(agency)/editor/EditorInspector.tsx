@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, MessageSquare, Plus, Receipt, Share2 } from "lucide-react";
+import { Eye, MessageSquare, Plus, Share2 } from "lucide-react";
 import type { ProposalStage } from "./CanvasComments";
 import { ResizeHandle } from "./ResizeHandle";
 import { kindLabels, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
@@ -161,7 +161,7 @@ export function RequestPanel({
                         <div className="row-actions">
                           {stage.stage === "sent" ? (
                             <button type="button" className="secondary-button small-button" onClick={() => onOpenProposal?.(comment.id)}>
-                              <Receipt aria-hidden="true" /> {stage.label}
+                              {stage.label}
                             </button>
                           ) : (
                             <>
@@ -175,7 +175,7 @@ export function RequestPanel({
                                 title={stage.stage === "draft" ? undefined : "Chiffrez d’abord la demande"}
                                 onClick={() => onSendProposal?.(comment.id)}
                               >
-                                <Receipt aria-hidden="true" /> Envoyer la proposition
+                                Envoyer la proposition
                               </button>
                             </>
                           )}

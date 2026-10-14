@@ -14,6 +14,7 @@ import {
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { Composer, ThreadPopover, requestKind, type Area, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
 import { RequestPanel, type InspectorTab } from "@/app/(agency)/editor/EditorInspector";
+import { UndoToast } from "@/app/(agency)/editor/UndoToast";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "@/app/(agency)/editor/ReviewCanvas";
 
 
@@ -148,6 +149,8 @@ export default function ClientReviewPage() {
   const [composer, setComposer] = useState<CanvasComposer | null>(null);
   const [panelTab, setPanelTab] = useState<InspectorTab>("comment");
   const [addingComment, setAddingComment] = useState(false);
+  /** Comment just deleted, kept for "Annuler". */
+  const [deletedComment, setDeletedComment] = useState<ClientComment | null>(null);
   const [proposalStates, setProposalStates] = useState<ProposalStates>({});
   const [proposalDecisions, setProposalDecisions] = useState<ProposalDecisions>({});
   const [adaptationRequests, setAdaptationRequests] = useState<AdaptationRequests>({});
@@ -416,7 +419,36 @@ export default function ClientReviewPage() {
       }
       return updated;
     });
+    setDeletedComment(target);
   }
+
+  /** Double-click a pin, then click: the comment moves there (its drawn area follows). */
+  function moveComment(commentId: number, page: number, x: number, y: number) {
+    if (isReadOnlyVersion()) return;
+    setComments((current) =>
+      current.map((comment) => {
+        if (comment.id !== commentId || !comment.position) return comment;
+        const dx = x - comment.position.x;
+        const dy = y - comment.position.y;
+        return {
+          ...comment,
+          page,
+          position: { x, y },
+          area: comment.area ? { ...comment.area, x: comment.area.x + dx, y: comment.area.y + dy } : undefined,
+          location: comment.location.replace(/^Page \d+/, `Page ${page}`),
+        };
+      }),
+    );
+  }
+
+  /** Puts back the comment deleted last ("Annuler" in the toast). */
+  function restoreComment() {
+    const removed = deletedComment;
+    if (!removed) return;
+    setComments((current) => (current.some((comment) => comment.id === removed.id) ? current : [...current, removed].sort((a, b) => a.id - b.id)));
+    setDeletedComment(null);
+  }
+
 
   function decideProposal(commentId: number, decision: ProposalDecision) {
     if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
@@ -694,6 +726,8 @@ export default function ClientReviewPage() {
               setComposer(null);
             }}
             transformRef={transformRef}
+            canMove={(comment) => comment.initials === "CM" && requestKind(comment) === "comment"}
+            onMovePin={moveComment}
             overlay={
               isReadOnlyVersion() ? (
                 <div className="canvas-banner" role="status">
@@ -706,7 +740,7 @@ export default function ClientReviewPage() {
               const locked = isCommercialDecisionLocked(comment.id);
               return (
                 <ThreadPopover
-                  key={comment.id}
+                  key={`${comment.id}-${comment.decision}`}
                   comment={comment}
                   readOnly={isReadOnlyVersion()}
                   locked={locked}
@@ -840,6 +874,7 @@ export default function ClientReviewPage() {
           </section>
         </div>
       )}
+      {deletedComment && <UndoToast key={deletedComment.id} message="Commentaire supprimé" onUndo={restoreComment} onDismiss={() => setDeletedComment(null)} />}
       {adaptationCommentId !== null && (
         <div className="modal-backdrop" role="presentation">
           <form className="project-modal comment-modal" onSubmit={submitAdaptationRequest}>

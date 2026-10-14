@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUp, BadgeEuro, ClipboardCheck, Receipt, Tag, Trash2, Undo2, X } from "lucide-react";
+import { ArrowUp, BadgeEuro, ChevronDown, ClipboardCheck, Tag, Trash2, Undo2, X } from "lucide-react";
 
 /**
  * One request, three states:
@@ -96,18 +96,37 @@ function useFittingSide(x: number, initial?: "is-center") {
   return [ref, placement] as const;
 }
 
-export function CommentPin({ comment, active, onOpen }: { comment: ThreadComment; active: boolean; onOpen: () => void }) {
+export function CommentPin({
+  comment,
+  active,
+  moving,
+  onOpen,
+  onMove,
+}: {
+  comment: ThreadComment;
+  active: boolean;
+  /** Being moved (follows the pointer). */
+  moving?: boolean;
+  onOpen: () => void;
+  /** Double-click starts moving the pin. */
+  onMove?: () => void;
+}) {
   const kind = requestKind(comment);
   return (
     <button
       type="button"
       data-pin={comment.id}
-      className={`canvas-pin is-${kind} ${active ? "is-active" : ""} ${comment.initials === "AM" ? "is-agency" : "is-client"}`}
+      className={`canvas-pin is-${kind} ${active ? "is-active" : ""} ${moving ? "is-moving" : ""} ${comment.initials === "AM" ? "is-agency" : "is-client"}`}
       style={{ left: `${comment.position?.x ?? 50}%`, top: `${comment.position?.y ?? 50}%` }}
       onClick={(event) => {
         event.stopPropagation();
         onOpen();
       }}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        onMove?.();
+      }}
+      title={onMove ? "Double-clic pour déplacer" : undefined}
       aria-label={`${kindLabels[kind]} #${comment.id} : ${requestText(comment)}`}
       aria-expanded={active}
     >
@@ -193,6 +212,8 @@ export function ThreadPopover({
   const [title, setTitle] = useState(comment.title ?? "");
   const [description, setDescription] = useState(comment.description ?? "");
   const now = useNow();
+  // The discussion is open on a comment, folded on a qualified request (it is closed anyway).
+  const [showDiscussion, setShowDiscussion] = useState(kind === "comment");
   const [decision, setDecision] = useState<Qualification>(kind === "outside" ? "Hors périmètre" : "Inclus");
   const [quoteOn, setQuoteOn] = useState(Boolean(quote) || Boolean(startQuoting));
   const [amount, setAmount] = useState(quote ? String(quote.amount) : "");
@@ -309,7 +330,7 @@ export function ThreadPopover({
                 <div className="request-proposal">
                   {proposal.stage === "sent" ? (
                     <button type="button" className="secondary-button small-button" onClick={onOpenProposal}>
-                      <Receipt aria-hidden="true" /> {proposal.label}
+                      {proposal.label}
                     </button>
                   ) : (
                     <>
@@ -331,7 +352,7 @@ export function ThreadPopover({
                         title={proposal.stage === "draft" ? undefined : "Chiffrez d’abord la demande"}
                         onClick={onSendProposal}
                       >
-                        <Receipt aria-hidden="true" /> Envoyer la proposition
+                        Envoyer la proposition
                       </button>
                     </>
                   )}
@@ -357,6 +378,13 @@ export function ThreadPopover({
             </div>
           )}
 
+          {kind !== "comment" && (
+            <button type="button" className="discussion-toggle" aria-expanded={showDiscussion} onClick={() => setShowDiscussion((open) => !open)}>
+              Discussion · {messages.length} message{messages.length > 1 ? "s" : ""}
+              <ChevronDown aria-hidden="true" className={showDiscussion ? "is-open" : ""} />
+            </button>
+          )}
+          {showDiscussion && (
           <div className="thread-messages" ref={listRef}>
             {messages.map((message) => (
               <div key={message.id} className={`thread-message ${message.initials === "AM" ? "is-agency" : "is-client"}`}>
@@ -372,6 +400,7 @@ export function ThreadPopover({
               </div>
             ))}
           </div>
+          )}
 
           {kind === "comment" && onQualify && canWrite && (
             <div className="thread-actions">
