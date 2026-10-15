@@ -427,6 +427,17 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 - La date et l'identité des approbateurs
 - L'empreinte ou l'identifiant du fichier approuvé
 
+**Critères d'acceptation**
+
+- Le récapitulatif est construit par le serveur à partir de la base, jamais à partir de l'état de la page.
+- Chaque décision (acceptation d'un devis, validation, demande de modifications) indique l'identité constatée par le serveur : membre de l'agence (nom et e-mail) ou adresse e-mail vérifiée du client.
+- Chaque décision indique l'heure du serveur et l'adresse IP d'origine ; une IP qui n'a pas pu être vérifiée est signalée comme telle.
+- Les retours et réponses du client figurent aussi dans le journal, horodatés par le serveur.
+- Le fichier validé est identifié par son empreinte SHA-256.
+- Le récapitulatif porte sa propre empreinte SHA-256.
+- Il peut être imprimé ou enregistré en PDF.
+- Tout membre de l'agence peut l'exporter ; une autre agence ne peut pas y accéder.
+
 ### Epic 8 : notifications et relances
 
 #### US-018 : notifier le client
@@ -1024,7 +1035,7 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-014 accepter une proposition | ✅ | Adresse vérifiée, heure du serveur, une seule décision |
 | US-015 refuser une proposition | ✅ | |
 | US-016 approuver une version | ✅ | Verrouillage contrôlé par le serveur |
-| US-017 consulter la preuve de validation | 🟡 | Export HTML imprimable ; à enrichir avec l'adresse vérifiée, l'IP et l'empreinte du fichier |
+| US-017 consulter la preuve de validation | ✅ | Construite par le serveur : identités vérifiées, heures du serveur, IP, empreintes du fichier et du récapitulatif |
 | US-018 notifier le client | 🟡 | Invitations et codes par e-mail ; service d'envoi à configurer (Resend) |
 | US-019 relancer une validation | ✅ | E-mail à chaque invité ; une relance par jour et par revue |
 | US-020 ouvrir une revue client | ✅ | Après vérification par code |

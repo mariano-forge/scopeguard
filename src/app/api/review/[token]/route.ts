@@ -9,7 +9,7 @@ import type { NextRequest } from "next/server";
 import { getDb } from "@/db/client";
 import { readReviewState, sanitizeReviewChanges } from "@/db/reviewAccess";
 import { applyChanges, currentRevision } from "@/db/state";
-import { databaseFailure, readChanges } from "@/lib/api";
+import { databaseFailure, readChanges, requestOrigin } from "@/lib/api";
 import { getReviewViewer, reviewNotFound } from "@/lib/reviewViewer";
 
 const verificationNeeded = () => Response.json({ error: "Vérification de votre adresse requise" }, { status: 401 });
@@ -42,7 +42,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/review
     const db = getDb();
     const allowed = await sanitizeReviewChanges(db, viewer.access, changes, viewer.email);
     const result = allowed
-      ? await applyChanges(db, viewer.access.organizationId, allowed, { recordedBy: `client:${viewer.email}` })
+      ? await applyChanges(db, viewer.access.organizationId, allowed, { recordedBy: `client:${viewer.email}`, ...requestOrigin(request) })
       : { revision: await currentRevision(db, viewer.access.organizationId), filesStored: 0 };
     // previousRevision -1: the page always fetches the state back, so what was refused disappears from it.
     return Response.json({ ...result, previousRevision: -1 });

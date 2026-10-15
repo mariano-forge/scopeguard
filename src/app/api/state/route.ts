@@ -8,7 +8,7 @@ import type { NextRequest } from "next/server";
 import { getDb } from "@/db/client";
 import { canManageAgency, reservedActions } from "@/db/agencyPermissions";
 import { applyChanges, currentRevision, readState } from "@/db/state";
-import { databaseFailure, readChanges } from "@/lib/api";
+import { databaseFailure, readChanges, requestOrigin } from "@/lib/api";
 import { requireAgencyUser } from "@/lib/session";
 
 export async function GET(request: NextRequest) {
@@ -39,7 +39,7 @@ export async function PATCH(request: Request) {
       if (reserved.length)
         return Response.json({ error: `Réservé aux administrateurs de l’agence : ${reserved.join(", ")}.`, code: "ADMIN_ONLY" }, { status: 403 });
     }
-    return Response.json(await applyChanges(db, auth.user.organizationId, changes, { recordedBy: auth.user.id }));
+    return Response.json(await applyChanges(db, auth.user.organizationId, changes, { recordedBy: auth.user.id, ...requestOrigin(request) }));
   } catch (error) {
     return databaseFailure("api/state", error);
   }

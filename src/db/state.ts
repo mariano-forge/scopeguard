@@ -52,7 +52,7 @@ const lists = {
   notifications: { table: notifications, columns: () => ({}) },
   auditEvents: {
     table: auditEvents,
-    columns: (e: Record_) => ({ type: text(e.type) ?? "", actor: text(e.actor) ?? "", commentId: num(e.commentId) }),
+    columns: (e: Record_) => ({ type: text(e.type) ?? "", actor: text(e.actor) ?? "", commentId: num(e.commentId), deliverableId: num(e.deliverableId) }),
   },
   trash: {
     table: trashItems,
@@ -129,8 +129,11 @@ export async function readState(db: Db, org: string): Promise<{ revision: number
 /** Lists whose new records go first when a page sends no order (the client page only sees part of them). */
 const prepended = new Set<ListCollection>(["notifications", "auditEvents", "trash", "deliverables"]);
 
-/** Who sends the changes, kept on audit events: a user id, or "client:<e-mail>" for a verified client. */
-export type Writer = { recordedBy: string };
+/**
+ * Who sends the changes and from where, kept on the audit events they add: a user id or
+ * "client:<e-mail>", and the request's IP address and browser.
+ */
+export type Writer = { recordedBy: string; ipAddress?: string | null; userAgent?: string | null };
 
 export async function applyChanges(db: Db, org: string, changes: StateChanges, writer: Writer) {
   return db.transaction(async (tx) => {
@@ -157,7 +160,10 @@ export async function applyChanges(db: Db, org: string, changes: StateChanges, w
           : prepended.has(collection)
             ? sql`(select coalesce(min(position), 0) - 1 from ${table} where ${table.organizationId} = ${org})`
             : sql`(select coalesce(max(position), 0) + 1 from ${table} where ${table.organizationId} = ${org})`;
-        const recordedBy = collection === "auditEvents" ? { recordedBy: writer.recordedBy } : {};
+        const recordedBy =
+          collection === "auditEvents"
+            ? { recordedBy: writer.recordedBy, ipAddress: writer.ipAddress ?? null, userAgent: writer.userAgent ?? null }
+            : {};
         const insert = tx.insert(table).values({ organizationId: org, id: entity.id, ...row, ...recordedBy, position } as typeof clients.$inferInsert);
         await (appendOnly.has(collection)
           ? insert.onConflictDoNothing()

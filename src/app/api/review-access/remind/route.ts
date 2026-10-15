@@ -3,7 +3,7 @@
 
 import { getDb } from "@/db/client";
 import { remindReview } from "@/db/reviewAuth";
-import { databaseFailure } from "@/lib/api";
+import { databaseFailure, requestOrigin } from "@/lib/api";
 import { readBody } from "@/lib/reviewViewer";
 import { requireAgencyUser } from "@/lib/session";
 
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   if (typeof body.linkKey !== "string") return Response.json({ error: "Requête invalide" }, { status: 400 });
 
   try {
-    const result = await remindReview(getDb(), auth.user.organizationId, body.linkKey, auth.user);
+    const result = await remindReview(getDb(), auth.user.organizationId, body.linkKey, auth.user, requestOrigin(request));
     if ("error" in result) return Response.json({ error: result.error }, { status: result.status });
     return Response.json(result);
   } catch (error) {

@@ -151,7 +151,10 @@ const requestOf = (org: string, linkKey: string) =>
  * Agency: invites addresses on one of its links and mails each one its personal address.
  * Returns the updated link and the addresses whose mail could not be sent.
  */
-export async function inviteToReview(db: Db, org: string, linkKey: string, emails: string[], user: CurrentUser) {
+/** Where an agency or client request came from (src/lib/api.ts requestOrigin), kept on its audit events. */
+type Origin = { ipAddress?: string | null; userAgent?: string | null };
+
+export async function inviteToReview(db: Db, org: string, linkKey: string, emails: string[], user: CurrentUser, origin: Origin = {}) {
   const row = await linkRow(db, org, linkKey);
   if (!row || !row.active) return null;
   const link = row.data as Data;
@@ -177,14 +180,14 @@ export async function inviteToReview(db: Db, org: string, linkKey: string, email
     {
       lists: {
         auditEvents: {
-          upsert: [{ id, type: "review.invited", actor: user.name, description: `Invitation envoyée à ${fresh.join(", ")}`, timestamp: now() }],
+          upsert: [{ id, type: "review.invited", actor: user.name, description: `Invitation envoyée à ${fresh.join(", ")}`, timestamp: now(), deliverableId: row.deliverableId }],
           remove: [],
         },
       },
       maps: { reviewLinks: { upsert: { [linkKey]: updated }, remove: [] } },
       settings: { upsert: {}, remove: [] },
     },
-    { recordedBy: user.id },
+    { recordedBy: user.id, ...origin },
   );
 
   const name = await deliverableName(db, org, row.deliverableId ?? 0);
@@ -201,7 +204,7 @@ export async function inviteToReview(db: Db, org: string, linkKey: string, email
 }
 
 /** Client: asks for access to a link. Its agency is notified once per address. */
-export async function requestReviewAccess(db: Db, access: ReviewAccess, email: string, message: string) {
+export async function requestReviewAccess(db: Db, access: ReviewAccess, email: string, message: string, origin: Origin = {}) {
   const org = access.organizationId;
   const [existing] = await db
     .select()
@@ -230,18 +233,23 @@ export async function requestReviewAccess(db: Db, access: ReviewAccess, email: s
     {
       lists: {
         notifications: { upsert: [{ id, message: `${email} demande l'accès à la revue de « ${name} »`, time: "À l'instant" }], remove: [] },
-        auditEvents: { upsert: [{ id, type: "review.access-requested", actor: email, description: `Demande d'accès de ${email}`, timestamp: now() }], remove: [] },
+        auditEvents: {
+          upsert: [{ id, type: "review.access-requested", actor: email, description: `Demande d'accès de ${email}`, timestamp: now(), deliverableId: access.deliverableId }],
+          remove: [],
+        },
       },
       maps: {},
       settings: { upsert: {}, remove: [] },
     },
-    { recordedBy: `review-request:${access.key}` },
+    { recordedBy: `review-request:${access.key}`, ...origin },
   );
 }
 
 /** Agency: accepts (invites the address) or refuses an access request to one of its links. */
-export async function decideAccessRequest(db: Db, org: string, linkKey: string, email: string, accepted: boolean, user: CurrentUser) {
-  if (accepted) return inviteToReview(db, org, linkKey, [email], user);
+export async function decideAccessRequest(db: Db, org: string, linkKey: string, email: string, accepted: boolean, user: CurrentUser, origin: Origin = {}) {
+  if (accepted) return inviteToReview(db, org, linkKey, [email], user, origin);
+  const row = await linkRow(db, org, linkKey);
+  if (!row) return null;
   await db
     .update(reviewAccessRequests)
     .set({ status: "refused", decidedAt: new Date(), decidedBy: user.id })
@@ -252,17 +260,16 @@ export async function decideAccessRequest(db: Db, org: string, linkKey: string, 
     {
       lists: {
         auditEvents: {
-          upsert: [{ id: Date.now(), type: "review.access-refused", actor: user.name, description: `Accès refusé à ${email}`, timestamp: now() }],
+          upsert: [{ id: Date.now(), type: "review.access-refused", actor: user.name, description: `Accès refusé à ${email}`, timestamp: now(), deliverableId: row.deliverableId }],
           remove: [],
         },
       },
       maps: {},
       settings: { upsert: {}, remove: [] },
     },
-    { recordedBy: user.id },
+    { recordedBy: user.id, ...origin },
   );
-  const row = await linkRow(db, org, linkKey);
-  return row ? { link: row.data as Data, notSent: [] as string[] } : null;
+  return { link: row.data as Data, notSent: [] as string[] };
 }
 
 /** Minimum time between two reminders on the same link. */
@@ -272,7 +279,7 @@ export const reminderCooldownMs = 24 * 60 * 60 * 1000;
  * Agency: reminds every client invited on a link that the version waits for them, with their
  * personal link and what is pending. At most once a day per link, checked here.
  */
-export async function remindReview(db: Db, org: string, linkKey: string, user: CurrentUser) {
+export async function remindReview(db: Db, org: string, linkKey: string, user: CurrentUser, origin: Origin = {}) {
   const row = await linkRow(db, org, linkKey);
   if (!row || !row.active || row.deliverableId === null) return { error: "Lien de revue introuvable ou révoqué.", status: 404 } as const;
   const link = row.data as Data;
@@ -321,13 +328,16 @@ export async function remindReview(db: Db, org: string, linkKey: string, user: C
     org,
     {
       lists: {
-        auditEvents: { upsert: [{ id: sentAt, type: "review.reminded", actor: user.name, description: `Relance envoyée à ${recipients}`, timestamp: now() }], remove: [] },
+        auditEvents: {
+          upsert: [{ id: sentAt, type: "review.reminded", actor: user.name, description: `Relance envoyée à ${recipients}`, timestamp: now(), deliverableId: row.deliverableId }],
+          remove: [],
+        },
         notifications: { upsert: [{ id: sentAt, message: `Relance envoyée à ${recipients}`, time: "À l'instant" }], remove: [] },
       },
       maps: { reviewLinks: { upsert: { [linkKey]: updated }, remove: [] } },
       settings: { upsert: {}, remove: [] },
     },
-    { recordedBy: user.id },
+    { recordedBy: user.id, ...origin },
   );
   return { link: updated, notSent };
 }

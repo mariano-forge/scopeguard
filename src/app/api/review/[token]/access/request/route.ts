@@ -3,7 +3,7 @@
 import { getDb } from "@/db/client";
 import { findReviewAccess } from "@/db/reviewAccess";
 import { isInvited, normalizeEmail, requestReviewAccess, validEmail } from "@/db/reviewAuth";
-import { databaseFailure } from "@/lib/api";
+import { databaseFailure, requestOrigin } from "@/lib/api";
 import { readBody, reviewNotFound } from "@/lib/reviewViewer";
 
 export async function POST(request: Request, context: RouteContext<"/api/review/[token]/access/request">) {
@@ -17,7 +17,7 @@ export async function POST(request: Request, context: RouteContext<"/api/review/
     const access = await findReviewAccess(db, token);
     if (!access) return reviewNotFound();
     // Already invited: nothing to ask, they can receive a code (same answer, to reveal nothing).
-    if (!isInvited(access.link, email)) await requestReviewAccess(db, access, email, message);
+    if (!isInvited(access.link, email)) await requestReviewAccess(db, access, email, message, requestOrigin(request));
     return Response.json({ ok: true });
   } catch (error) {
     return databaseFailure("api/review/access/request", error);

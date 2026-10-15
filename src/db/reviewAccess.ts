@@ -208,8 +208,24 @@ export async function sanitizeReviewChanges(db: Db, access: ReviewAccess, change
     actor: email,
     description: shortText(event.description, 1000) ?? "",
     timestamp: shortText(event.timestamp, 40) ?? "",
+    deliverableId: access.deliverableId,
     ...(typeof event.commentId === "number" && before.has(event.commentId) ? { commentId: event.commentId } : {}),
   }));
+  // What the client wrote also enters the trail (server time, verified address, origin): the proof
+  // shows who asked what. Ids are scaled past Date.now() ones so they never meet the page's.
+  const written = lists.comments?.upsert ?? [];
+  const stamp = Date.now() * 1000;
+  let n = 0;
+  for (const comment of written) {
+    const previous = before.get(comment.id);
+    const quote = (text: unknown) => `« ${String(text ?? "").slice(0, 200)} »`;
+    if (!previous)
+      events.push({ id: stamp + n++, type: "comment.created", actor: email, description: `Retour du client : ${quote(comment.message)}`, timestamp: "", deliverableId: access.deliverableId, commentId: comment.id });
+    const known = new Set((Array.isArray(previous?.replies) ? (previous.replies as Reply[]) : []).map((reply) => reply.id));
+    for (const reply of Array.isArray(comment.replies) ? (comment.replies as Reply[]) : [])
+      if (!known.has(reply.id))
+        events.push({ id: stamp + n++, type: "reply.created", actor: email, description: `Réponse du client : ${quote(reply.message)}`, timestamp: "", deliverableId: access.deliverableId, commentId: comment.id });
+  }
   if (events.length) lists.auditEvents = { upsert: events as ListChange["upsert"], remove: [] };
 
   const notes = (changes.lists?.notifications?.upsert ?? []).filter(isObject);

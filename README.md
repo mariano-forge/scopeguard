@@ -228,3 +228,9 @@ Le client n'a ni compte ni mot de passe. L'agence l'invite par e-mail depuis « 
 
 - E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (offre gratuite Resend). Sans eux, en développement, invitations, codes et liens « Mot de passe oublié » s'affichent dans la console du serveur ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
 - Les fichiers (`/api/files/…`) sont accessibles à qui connaît leur adresse, une empreinte impossible à deviner.
+
+### Preuve de validation
+
+« Synthèse & export » produit, depuis la base et non depuis la page, la preuve d'une version : empreinte SHA-256 du fichier validé, chaque demande avec sa qualification et ses devis, chaque décision avec l'identité constatée par le serveur (membre de l'agence ou adresse e-mail vérifiée du client), l'heure du serveur et l'adresse IP, puis le journal complet de la version et l'empreinte du récapitulatif (`src/db/proof.ts`). Le journal est en ajout seul, IP et navigateur compris.
+
+- L'IP est lue dans `x-forwarded-for` : en ligne, renseignez `TRUSTED_PROXY_HOPS` (1 derrière Azure Front Door ou Vercel) pour ne garder que l'adresse ajoutée par le proxy ; sans proxy déclaré, l'adresse est marquée « non vérifiée », car un visiteur peut envoyer son propre en-tête.

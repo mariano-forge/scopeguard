@@ -1,15 +1,6 @@
 "use client";
 
 
-function escapeHtml(value: string) {
-  return value.replace(/[&<>'"]/g, (character) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "'": "&#39;",
-    '"': "&quot;",
-  })[character] ?? character);
-}
 
 function parseNumericAmount(amount: number | string | undefined): number {
   if (typeof amount === "number") return amount;
@@ -97,6 +88,7 @@ import { Hint } from "@/components/hint";
 import type { HomeAnalyticsData } from "./HomeAnalytics";
 import type { LivrableGroup } from "./LivrableFilter";
 import { useCurrentUser } from "./CurrentUser";
+import { proofHtml } from "./proofDocument";
 import { flushSharedState, loadSharedState, refreshSharedState, subscribeSharedState, writeSharedState } from "@/lib/stateSync";
 
 
@@ -234,6 +226,8 @@ type AuditEvent = {
   description: string;
   timestamp: string;
   commentId?: number;
+  /** Version the event is about, for its proof. */
+  deliverableId?: number;
 };
 
 /** Deleted items stay restorable this long, then are purged on load. */
@@ -947,6 +941,10 @@ export function AgencyApp() {
   }, [focusedCommentId, quoteOnFocus, activeComments, pathname, router]);
 
   function recordAudit(type: string, description: string, commentId?: number) {
+    // The version it is about: the request's one, else the version open in the editor (for its proof).
+    const deliverableId =
+      (commentId !== undefined ? comments.find((comment) => comment.id === commentId)?.deliverableId : undefined) ??
+      (view.kind === "deliverable" ? currentDeliverable?.id : undefined);
     setAuditEvents((current) => [
       {
         id: Date.now(),
@@ -955,6 +953,7 @@ export function AgencyApp() {
         description,
         timestamp: new Date().toLocaleString("fr-FR"),
         commentId,
+        deliverableId,
       },
       ...current,
     ]);
@@ -1713,44 +1712,23 @@ export function AgencyApp() {
     );
   }
 
-  function exportProof() {
+  /** Proof of the open version, built by the server from its database (src/db/proof.ts). */
+  async function exportProof() {
+    if (!currentDeliverable) return;
+    // Opened at once, in the click: browsers block windows opened after an await.
     const exportWindow = window.open("", "_blank");
-    if (!exportWindow || !currentDeliverable) return;
-
-    const status = approved
-      ? `Version approuvée${approvedAt ? ` le ${approvedAt}` : ""}`
-      : reviewStatus === "changes-requested"
-        ? "Modifications demandées"
-        : "En attente client";
-    const commentsHtml = activeComments.length > 0
-      ? activeComments.map((comment) => `
-          <li>
-            <strong>${escapeHtml(comment.decision)}</strong>
-            <p>${escapeHtml(comment.message)}</p>
-            <small>${escapeHtml(comment.author)} · ${escapeHtml(comment.time)}</small>
-          </li>`).join("")
-      : "<li>Aucun commentaire sur cette version.</li>";
-    const proposalHtml = activeComments
-      .filter((comment) => comment.decision === "Hors périmètre" && proposalDecisionFor(comment.id) !== "none")
-      .map((comment) => {
-        const proposal = activeProposalFor(comment.id);
-        const amountDisplay = proposal ? formatProposalAmount(proposal.amount) : "-";
-        const deadlineDisplay = proposal ? formatProposalDeadline(proposal.deadline) : "-";
-        return `<li><strong>Demande #${comment.id} · ${proposalDecisionFor(comment.id) === "accepted" ? "Acceptée" : "Refusée"}</strong><p>${escapeHtml(proposal?.description ?? "Proposition non détaillée")}</p><small>${escapeHtml(amountDisplay)} · ${escapeHtml(deadlineDisplay)}</small></li>`;
-      }).join("");
-    const auditHtml = activeAuditEvents.slice(0, 50).map((event) => `
-      <li><strong>${escapeHtml(event.description)}</strong><small>${escapeHtml(event.actor)} · ${escapeHtml(event.timestamp)}</small></li>`).join("");
-
-    // Opened in a separate window where tokens.css is not loaded: Kora token values are inlined (ink, border, graphite, action-ui, status-resolved-bg).
-    const proofHtml = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Preuve Kora - ${escapeHtml(currentDeliverable.name)}</title><style>
-      body{font-family:Arial,sans-serif;color:#111111;max-width:820px;margin:40px auto;padding:0 24px;line-height:1.5}h1{font-size:26px;margin-bottom:4px}h2{font-size:16px;border-bottom:1px solid #ddd9d1;padding-bottom:8px;margin-top:28px}p{margin:4px 0}small{display:block;color:#4c4c48;margin-top:4px}ul{list-style:none;padding:0}li{border:1px solid #ddd9d1;border-radius:5px;padding:12px;margin:8px 0}strong{font-size:12px}header{border-bottom:2px solid #0079d1;padding-bottom:18px}.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;color:#4c4c48;font-size:12px}.status{background:#ddf4e4;border-radius:5px;padding:10px;font-weight:bold;margin-top:18px}@media print{body{margin:0}.no-print{display:none}}
-    </style></head><body><header><p>PREUVE DE VALIDATION</p><h1>${escapeHtml(selectedProject?.name ?? "Projet")}</h1><div class="meta"><span>Client<br><strong>${escapeHtml(selectedClient?.name ?? "-")}</strong></span><span>Livrable<br><strong>${escapeHtml(currentDeliverable.name)}</strong></span><span>Version<br><strong>V${String(currentDeliverable.version).padStart(2, "0")}</strong></span></div><div class="status">${escapeHtml(status)}</div></header><main><h2>Décisions sur les retours</h2><ul>${commentsHtml}</ul>${proposalHtml ? `<h2>Propositions complémentaires</h2><ul>${proposalHtml}</ul>` : ""}<h2>Journal d'activité</h2><ul>${auditHtml || "<li>Aucun événement enregistré.</li>"}</ul></main><p><small>Identifiant : KR-${currentDeliverable.id}-${currentDeliverable.version}</small></p><button class="no-print" onclick="window.print()">Imprimer ou enregistrer en PDF</button></body></html>`;
-    const parsedDocument = new DOMParser().parseFromString(proofHtml, "text/html");
-    const importedDocument = exportWindow.document.importNode(
-      parsedDocument.documentElement,
-      true,
-    );
-    exportWindow.document.documentElement.replaceWith(importedDocument);
+    if (!exportWindow) return;
+    exportWindow.document.title = "Préparation de la preuve…";
+    exportWindow.document.body.textContent = "Préparation de la preuve…";
+    // What was just changed here must be in it.
+    await flushSharedState();
+    const response = await fetch(`/api/proof/${currentDeliverable.id}`, { cache: "no-store" }).catch(() => null);
+    if (!response?.ok) {
+      exportWindow.document.body.textContent = "La preuve n’a pas pu être générée. Réessayez.";
+      return;
+    }
+    const parsed = new DOMParser().parseFromString(proofHtml(await response.json()), "text/html");
+    exportWindow.document.documentElement.replaceWith(exportWindow.document.importNode(parsed.documentElement, true));
     exportWindow.focus();
   }
 
@@ -2736,7 +2714,7 @@ export function AgencyApp() {
             title="Synthèse du périmètre & décisions"
             description="Le registre des demandes, de leurs qualifications et des propositions de cette version."
             size="xl"
-            footer={<Button onClick={exportProof}>Exporter la preuve</Button>}
+            footer={<Button onClick={() => void exportProof()}>Exporter la preuve</Button>}
           >
             <div className="proof-header">
               <div>

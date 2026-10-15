@@ -154,11 +154,20 @@ export const auditEvents = pgTable(
     commentId: id("comment_id"),
     position: integer("position").notNull().default(0),
     data: jsonb("data").notNull(),
+    /** Version the event is about (directly, or through its request), for the proof of that version. */
+    deliverableId: id("deliverable_id"),
     /** Who the server saw sending it: a user id, or "client:<e-mail>" for a verified client. */
     recordedBy: text("recorded_by"),
+    /** Where the request came from, as the server received it. */
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.organizationId, table.id] }), index("audit_events_comment_idx").on(table.organizationId, table.commentId)],
+  (table) => [
+    primaryKey({ columns: [table.organizationId, table.id] }),
+    index("audit_events_comment_idx").on(table.organizationId, table.commentId),
+    index("audit_events_deliverable_idx").on(table.organizationId, table.deliverableId),
+  ],
 );
 
 /** Deleted spaces, projects and deliverables, restorable for 30 days. */
