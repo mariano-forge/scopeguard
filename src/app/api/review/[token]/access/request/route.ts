@@ -17,7 +17,7 @@ export async function POST(request: Request, context: RouteContext<"/api/review/
     const access = await findReviewAccess(db, token);
     if (!access) return reviewNotFound();
     // Already invited: nothing to ask, they can receive a code (same answer, to reveal nothing).
-    if (!isInvited(access.link, email)) await requestReviewAccess(db, access.key, access.deliverableId, email, message);
+    if (!isInvited(access.link, email)) await requestReviewAccess(db, access, email, message);
     return Response.json({ ok: true });
   } catch (error) {
     return databaseFailure("api/review/access/request", error);

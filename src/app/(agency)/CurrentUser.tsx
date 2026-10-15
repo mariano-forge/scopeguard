@@ -1,10 +1,11 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { Building2, Check, LogOut, Users } from "lucide-react";
 import type { CurrentUser } from "@/lib/session";
 import { authClient } from "@/lib/auth-client";
+import { TeamDialog } from "./TeamDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const CurrentUserContext = createContext<CurrentUser | null>(null);
@@ -25,10 +26,17 @@ export function initialsOf(name: string) {
   return ((words[0]?.[0] ?? "") + (words.length > 1 ? words[words.length - 1][0] : (words[0]?.[1] ?? ""))).toUpperCase() || "?";
 }
 
-/** Avatar (and name, outside the rail) opening the account menu. */
+/** Avatar (and name, outside the rail) opening the account menu: team, agency switch, sign-out. */
 export function AccountMenu({ compact = false }: { compact?: boolean }) {
   const user = useCurrentUser();
   const router = useRouter();
+  const [teamOpen, setTeamOpen] = useState(false);
+
+  async function switchAgency(organizationId: string) {
+    await authClient.organization.setActive({ organizationId });
+    // Full load: the app starts again on the other agency's data.
+    window.location.assign("/");
+  }
 
   async function signOut() {
     await authClient.signOut();
@@ -37,6 +45,7 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
   }
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         {compact ? (
@@ -54,7 +63,25 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
         <DropdownMenuLabel>
           <span className="block">{user.name}</span>
           <span className="block text-xs font-normal opacity-70">{user.email}</span>
+          <span className="block text-xs font-normal opacity-70">{user.organizationName}</span>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => setTeamOpen(true)}>
+          <Users />
+          Équipe
+        </DropdownMenuItem>
+        {user.organizations.length > 1 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-xs font-normal opacity-70">Changer d’agence</DropdownMenuLabel>
+            {user.organizations.map((agency) => (
+              <DropdownMenuItem key={agency.id} disabled={agency.id === user.organizationId} onSelect={() => void switchAgency(agency.id)}>
+                {agency.id === user.organizationId ? <Check /> : <Building2 />}
+                {agency.name}
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => void signOut()}>
           <LogOut />
@@ -62,5 +89,7 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    <TeamDialog open={teamOpen} onClose={() => setTeamOpen(false)} />
+    </>
   );
 }

@@ -7,6 +7,8 @@ import { CurrentUserProvider } from "./CurrentUser";
 export default async function AgencyLayout({ children }: LayoutProps<"/">) {
   const user = await getCurrentUser();
   if (!user) redirect("/connexion");
+  // Signed in but in no agency yet: create one, or join through an invitation.
+  if (!user.organizationId) redirect("/bienvenue");
 
   return (
     <CurrentUserProvider user={user}>

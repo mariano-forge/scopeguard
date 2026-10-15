@@ -5,17 +5,18 @@ import { getDb } from "@/db/client";
 import { inviteToReview } from "@/db/reviewAuth";
 import { databaseFailure } from "@/lib/api";
 import { readBody } from "@/lib/reviewViewer";
-import { getCurrentUser } from "@/lib/session";
+import { requireAgencyUser } from "@/lib/session";
 
 export async function POST(request: Request) {
-  const user = await getCurrentUser();
-  if (!user) return Response.json({ error: "Connexion requise" }, { status: 401 });
+  const auth = await requireAgencyUser();
+  if ("response" in auth) return auth.response;
+  const { user } = auth;
   const body = await readBody(request);
   const emails = Array.isArray(body.emails) ? body.emails.filter((email): email is string => typeof email === "string").slice(0, 50) : [];
   if (typeof body.linkKey !== "string" || !emails.length) return Response.json({ error: "Requête invalide" }, { status: 400 });
 
   try {
-    const result = await inviteToReview(getDb(), body.linkKey, emails, user);
+    const result = await inviteToReview(getDb(), user.organizationId, body.linkKey, emails, user);
     if (!result) return Response.json({ error: "Lien de revue introuvable ou révoqué" }, { status: 404 });
     return Response.json(result);
   } catch (error) {

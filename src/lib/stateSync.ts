@@ -10,8 +10,6 @@
 import { toast } from "sonner";
 import { diffState, type SharedState } from "./sharedState";
 
-/** Former localStorage entry: imported into an empty database, then left as a backup. */
-const legacyKey = "scopeguard-review-state";
 const pushDelay = 300;
 const pollInterval = 2000;
 const retryDelay = 3000;
@@ -29,14 +27,6 @@ let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let pushing = false;
 let failed = false;
 const listeners = new Set<(serialized: string) => void>();
-
-function readLegacy() {
-  try {
-    return window.localStorage.getItem(legacyKey);
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Loads the state from the server once per page; null when there is none yet, or when a review link
@@ -59,16 +49,12 @@ export function loadSharedState(reviewToken?: string): Promise<string | null> {
       if (body.state) {
         synced = body.state;
         cache = syncedSerialized = JSON.stringify(body.state);
-      } else if (!reviewToken) {
-        // Empty database: what this browser saved before becomes the agency's first state.
-        cache = readLegacy();
-        if (cache) schedulePush();
       }
       startPolling();
     } catch (error) {
       console.error("[stateSync] load failed", error);
       toast.error("Base de données injoignable : vos modifications ne seront pas enregistrées.", { duration: Infinity });
-      cache = reviewToken ? null : readLegacy();
+      cache = null;
     }
     return cache;
   })();
@@ -98,6 +84,11 @@ export function subscribeSharedState(listener: (serialized: string) => void) {
 function signedOut() {
   if (endpoint === "/api/state") window.location.assign("/connexion");
   else window.location.reload();
+}
+
+/** Agency page refused (403): removed from the agency. The home page sends them to /bienvenue. */
+function leftAgency() {
+  window.location.assign("/");
 }
 
 /** Sends waiting changes now (e.g. before a server action that needs them saved). */
@@ -153,6 +144,10 @@ async function push() {
       signedOut();
       return;
     }
+    if (response.status === 403 && endpoint === "/api/state") {
+      leftAgency();
+      return;
+    }
     if (response.status === 403) {
       // Read-only preview (agency on the client page): drop the change, the next poll restores the state.
       synced = pending.next;
@@ -186,6 +181,7 @@ async function poll() {
   try {
     const response = await fetch(`${endpoint}?revision=${revision}`, { cache: "no-store" });
     if (response.status === 401) return signedOut();
+    if (response.status === 403 && endpoint === "/api/state") return leftAgency();
     if (response.status !== 200) return;
     const body = (await response.json()) as { revision: number; state: SharedState | null };
     // A local write started meanwhile: it goes first, the next poll brings the merged state.

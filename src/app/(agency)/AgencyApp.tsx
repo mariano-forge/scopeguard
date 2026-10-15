@@ -250,34 +250,10 @@ const panelWidthsKey = "kora-panel-widths";
 const seenKey = "kora-seen-comments";
 const defaultWidths = { panel: 248, inspector: 340 };
 
-const initialProjects: Project[] = [
-  {
-    id: 1,
-    name: "Refonte site Northstar",
-    client: "Northstar Studio",
-    clientId: 1,
-    status: "En cours",
-  },
-];
-
-const initialClients: Client[] = [
-  { id: 1, name: "Northstar Studio", email: "claire@northstar.studio" },
-];
-
-const initialDeliverables: Deliverable[] = [
-  {
-    id: 1,
-    projectId: 1,
-    name: "northstar-landing-v03.pdf",
-    type: "PDF",
-    size: 2_400_000,
-    version: 3,
-    status: "En attente client",
-    importedAt: "Aujourd'hui à 14:32",
-    locked: false,
-  },
-];
-
+// A new agency starts empty: its first space, project and deliverable are created from the home page.
+const initialProjects: Project[] = [];
+const initialClients: Client[] = [];
+const initialDeliverables: Deliverable[] = [];
 const initialComments: Comment[] = [];
 
 const decisionStyles: Record<string, string> = {
@@ -342,6 +318,8 @@ function createReviewLink(deliverableId: number, version: number): ReviewLink {
 
 export function AgencyApp() {
   const currentUser = useCurrentUser();
+  /** Browser-kept lists hold ids of this agency's records: one entry per agency. */
+  const scoped = (key: string) => `${key}:${currentUser.organizationId}`;
   const router = useRouter();
   const pathname = usePathname();
   const view = parseAgencyPath(pathname);
@@ -438,7 +416,7 @@ export function AgencyApp() {
   const [seenIds, setSeenIds] = useState<number[]>([]);
   useEffect(() => {
     try {
-      const saved = JSON.parse(window.localStorage.getItem(seenKey) ?? "[]");
+      const saved = JSON.parse(window.localStorage.getItem(scoped(seenKey)) ?? "[]");
       if (Array.isArray(saved)) setSeenIds(saved.filter((value) => typeof value === "number"));
     } catch {
       // Everything unread when storage is unavailable.
@@ -451,7 +429,7 @@ export function AgencyApp() {
       if (fresh.length === 0) return current;
       const next = [...current, ...fresh];
       try {
-        window.localStorage.setItem(seenKey, JSON.stringify(next));
+        window.localStorage.setItem(scoped(seenKey), JSON.stringify(next));
       } catch {
         // Ignore storage failures (private mode, quota).
       }
@@ -763,7 +741,7 @@ export function AgencyApp() {
       : null;
   useEffect(() => {
     try {
-      const saved = JSON.parse(window.localStorage.getItem(recentsKey) ?? "[]");
+      const saved = JSON.parse(window.localStorage.getItem(scoped(recentsKey)) ?? "[]");
       if (Array.isArray(saved)) setRecentLivrableIds(saved.filter((value) => typeof value === "number"));
     } catch {
       // Recents are a convenience: ignore unreadable storage.
@@ -774,7 +752,7 @@ export function AgencyApp() {
     setRecentLivrableIds((current) => {
       const next = [viewLivrableId, ...current.filter((value) => value !== viewLivrableId)].slice(0, 8);
       try {
-        window.localStorage.setItem(recentsKey, JSON.stringify(next));
+        window.localStorage.setItem(scoped(recentsKey), JSON.stringify(next));
       } catch {
         // Ignore storage failures (private mode, quota).
       }
@@ -849,7 +827,7 @@ export function AgencyApp() {
 
   useEffect(() => {
     try {
-      const saved = JSON.parse(window.localStorage.getItem(favoritesKey) ?? "[]");
+      const saved = JSON.parse(window.localStorage.getItem(scoped(favoritesKey)) ?? "[]");
       if (Array.isArray(saved)) setFavorites(saved.filter((key) => typeof key === "string"));
     } catch {
       // Favorites are a convenience: ignore unreadable storage.
@@ -859,7 +837,7 @@ export function AgencyApp() {
     setFavorites((current) => {
       const next = current.includes(key) ? current.filter((item) => item !== key) : [...current, key];
       try {
-        window.localStorage.setItem(favoritesKey, JSON.stringify(next));
+        window.localStorage.setItem(scoped(favoritesKey), JSON.stringify(next));
       } catch {
         // Ignore storage failures (private mode, quota).
       }
@@ -870,7 +848,7 @@ export function AgencyApp() {
   // Open tabs (per browser). Opening a deliverable adds its tab; a tab remembers the version last viewed.
   useEffect(() => {
     try {
-      const saved = JSON.parse(window.localStorage.getItem(tabsKey) ?? "[]");
+      const saved = JSON.parse(window.localStorage.getItem(scoped(tabsKey)) ?? "[]");
       if (Array.isArray(saved))
         setOpenTabs(
           saved
@@ -884,7 +862,7 @@ export function AgencyApp() {
   }, []);
   function saveTabs(next: { livrableId: number; href: string }[]) {
     try {
-      window.localStorage.setItem(tabsKey, JSON.stringify(next));
+      window.localStorage.setItem(scoped(tabsKey), JSON.stringify(next));
     } catch {
       // Ignore storage failures (private mode, quota).
     }

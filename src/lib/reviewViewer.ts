@@ -1,12 +1,12 @@
 // Who is looking at a review link: an invited client whose address was verified on this device,
-// an agency member previewing it (read-only), or nobody yet.
+// a member of the agency that owns it, previewing it (read-only), or nobody yet.
 
 import "server-only";
 import { cookies } from "next/headers";
 import { getDb } from "@/db/client";
 import { findReviewAccess, type ReviewAccess } from "@/db/reviewAccess";
 import { isInvited, reviewSessionCookie, reviewSessionDays, reviewSessionEmail } from "@/db/reviewAuth";
-import { getCurrentUser } from "./session";
+import { getCurrentUser, isMemberOf } from "./session";
 
 export type ReviewViewer =
   | { mode: "client"; access: ReviewAccess; email: string }
@@ -21,7 +21,9 @@ export async function getReviewViewer(token: string): Promise<ReviewViewer | nul
   if (!access) return null;
   const email = await reviewSessionEmail(db, (await cookies()).get(reviewSessionCookie)?.value);
   if (email && isInvited(access.link, email)) return { mode: "client", access, email };
-  if (await getCurrentUser()) return { mode: "preview", access, email: null };
+  // Preview: a member of the agency that owns the link, not any signed-in member.
+  const user = await getCurrentUser();
+  if (user && (await isMemberOf(user.id, access.organizationId))) return { mode: "preview", access, email: null };
   return { mode: "none", access, email };
 }
 

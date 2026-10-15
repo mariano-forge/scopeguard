@@ -22,7 +22,7 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/revi
     if (viewer.mode === "none") return verificationNeeded();
     const db = getDb();
     const known = request.nextUrl.searchParams.get("revision");
-    if (known !== null && Number(known) === (await currentRevision(db))) return new Response(null, { status: 204 });
+    if (known !== null && Number(known) === (await currentRevision(db, viewer.access.organizationId))) return new Response(null, { status: 204 });
     return Response.json(await readReviewState(db, viewer.access));
   } catch (error) {
     return databaseFailure("api/review", error);
@@ -42,8 +42,8 @@ export async function PATCH(request: Request, context: RouteContext<"/api/review
     const db = getDb();
     const allowed = await sanitizeReviewChanges(db, viewer.access, changes, viewer.email);
     const result = allowed
-      ? await applyChanges(db, allowed, { recordedBy: `client:${viewer.email}` })
-      : { revision: await currentRevision(db), filesStored: 0 };
+      ? await applyChanges(db, viewer.access.organizationId, allowed, { recordedBy: `client:${viewer.email}` })
+      : { revision: await currentRevision(db, viewer.access.organizationId), filesStored: 0 };
     // previousRevision -1: the page always fetches the state back, so what was refused disappears from it.
     return Response.json({ ...result, previousRevision: -1 });
   } catch (error) {

@@ -11,7 +11,7 @@
 // What the client writes is signed with that address, whatever name the page sends.
 // Nothing can be written once the version is approved or replaced.
 
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { sameValue, type ListChange, type MapChange, type SharedState, type StateChanges } from "@/lib/sharedState";
 import type { Db } from "./client";
 import { commentProposals, comments, deliverables, notifications, proposalVersions, reviewLinks } from "./schema";
@@ -25,7 +25,8 @@ const same = (left: unknown, right: unknown) => sameValue(left ?? null, right ??
 const isObject = (value: unknown): value is Data => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const shortText = (value: unknown, max: number) => (typeof value === "string" ? value.slice(0, max) : undefined);
 
-export type ReviewAccess = { key: string; link: Data; deliverableId: number; version: number };
+/** A valid link: its agency, key ("deliverableId:version"), data and the version it opens. */
+export type ReviewAccess = { organizationId: string; key: string; link: Data; deliverableId: number; version: number };
 
 /** "31/12/2026" -> end of that day; an unreadable date counts as expired. */
 function expired(link: Data) {
@@ -42,12 +43,12 @@ export async function findReviewAccess(db: Db, token: string): Promise<ReviewAcc
   if (!row || !row.active || row.deliverableId === null || row.version === null) return null;
   const link = row.data as Data;
   if (link.active !== true || expired(link)) return null;
-  return { key: row.key, link, deliverableId: row.deliverableId, version: row.version };
+  return { organizationId: row.organizationId, key: row.key, link, deliverableId: row.deliverableId, version: row.version };
 }
 
 /** The part of the shared state the client page needs, in the same shape. */
 export async function readReviewState(db: Db, access: ReviewAccess) {
-  const { revision, state } = await readState(db);
+  const { revision, state } = await readState(db, access.organizationId);
   if (!state) return { revision, state: null };
 
   const record = state.deliverables?.find((item) => item.id === access.deliverableId && item.version === access.version);
@@ -107,12 +108,17 @@ function commentAllowed(before: Data | undefined, after: Data, deliverableId: nu
 
 /** Keeps only what the client may write (see the header); everything else is dropped. */
 export async function sanitizeReviewChanges(db: Db, access: ReviewAccess, changes: StateChanges, email: string): Promise<StateChanges | null> {
-  const [record] = await db.select().from(deliverables).where(eq(deliverables.id, access.deliverableId)).limit(1);
+  const org = access.organizationId;
+  const [record] = await db
+    .select()
+    .from(deliverables)
+    .where(and(eq(deliverables.organizationId, org), eq(deliverables.id, access.deliverableId)))
+    .limit(1);
   if (!record || record.version !== access.version) return null;
   const recordData = record.data as Data;
   if (record.reviewStatus === "approved" || record.locked || recordData.status === "Approuvée" || recordData.status === "Remplacée") return null;
 
-  const existing = await db.select().from(comments).where(eq(comments.deliverableId, access.deliverableId));
+  const existing = await db.select().from(comments).where(and(eq(comments.organizationId, org), eq(comments.deliverableId, access.deliverableId)));
   const before = new Map(existing.map((row) => [row.id, row.data as Data]));
   const lists: StateChanges["lists"] = {};
   const maps: StateChanges["maps"] = {};
@@ -123,7 +129,7 @@ export async function sanitizeReviewChanges(db: Db, access: ReviewAccess, change
     const candidates = (incoming.upsert ?? []).filter(isObject) as ListChange["upsert"];
     const taken = candidates.length
       ? new Set(
-          (await db.select({ id: comments.id }).from(comments).where(inArray(comments.id, candidates.map((comment) => comment.id))))
+          (await db.select({ id: comments.id }).from(comments).where(and(eq(comments.organizationId, org), inArray(comments.id, candidates.map((comment) => comment.id)))))
             .map((row) => row.id)
             .filter((id) => !before.has(id)),
         )
@@ -148,7 +154,7 @@ export async function sanitizeReviewChanges(db: Db, access: ReviewAccess, change
 
   // Proposals: only on this version's comments, and only once one was sent.
   const commentIds = [...before.keys()];
-  const proposals = commentIds.length ? await db.select().from(commentProposals).where(inArray(commentProposals.commentId, commentIds)) : [];
+  const proposals = commentIds.length ? await db.select().from(commentProposals).where(and(eq(commentProposals.organizationId, org), inArray(commentProposals.commentId, commentIds))) : [];
   const proposalOf = new Map(proposals.map((row) => [row.commentId, row]));
   const sent = (key: string) => proposalOf.get(Number(key))?.state === "sent";
   const undecided = (key: string) => [undefined, null, "none"].includes(proposalOf.get(Number(key))?.decision as string | undefined);
@@ -163,7 +169,7 @@ export async function sanitizeReviewChanges(db: Db, access: ReviewAccess, change
   const versions = changes.maps?.proposalVersions;
   const decidedIds = Object.keys(decided).map(Number);
   if (versions && decidedIds.length) {
-    const stored = await db.select().from(proposalVersions).where(inArray(proposalVersions.commentId, decidedIds));
+    const stored = await db.select().from(proposalVersions).where(and(eq(proposalVersions.organizationId, org), inArray(proposalVersions.commentId, decidedIds)));
     const upsert: MapChange["upsert"] = {};
     for (const key of Object.keys(decided)) {
       const list = stored
@@ -208,7 +214,7 @@ export async function sanitizeReviewChanges(db: Db, access: ReviewAccess, change
 
   const notes = (changes.lists?.notifications?.upsert ?? []).filter(isObject);
   const known = notes.length
-    ? new Set((await db.select({ id: notifications.id }).from(notifications).where(inArray(notifications.id, notes.map((note) => note.id)))).map((row) => row.id))
+    ? new Set((await db.select({ id: notifications.id }).from(notifications).where(and(eq(notifications.organizationId, org), inArray(notifications.id, notes.map((note) => note.id))))).map((row) => row.id))
     : new Set<number>();
   const fresh = notes
     .filter((note) => !known.has(note.id))

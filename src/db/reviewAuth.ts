@@ -19,6 +19,7 @@ import type { Db } from "./client";
 import { applyChanges, bumpRevision } from "./state";
 import { deliverables, reviewAccessRequests, reviewCodes, reviewLinks, reviewSessions } from "./schema";
 import type { CurrentUser } from "@/lib/session";
+import type { ReviewAccess } from "./reviewAccess";
 import { appUrl, sendMail } from "@/lib/mail";
 
 type Data = Record<string, unknown>;
@@ -119,25 +120,39 @@ export async function reviewSessionEmail(db: Db, token: string | undefined) {
   return session?.email ?? null;
 }
 
-async function deliverableName(db: Db, deliverableId: number) {
-  const [row] = await db.select({ name: deliverables.name }).from(deliverables).where(eq(deliverables.id, deliverableId)).limit(1);
+/** Name of the version a link opens, for mails and the verification screen. */
+export const reviewedDeliverableName = (db: Db, access: ReviewAccess) => deliverableName(db, access.organizationId, access.deliverableId);
+
+async function deliverableName(db: Db, org: string, deliverableId: number) {
+  const [row] = await db
+    .select({ name: deliverables.name })
+    .from(deliverables)
+    .where(and(eq(deliverables.organizationId, org), eq(deliverables.id, deliverableId)))
+    .limit(1);
   return row?.name ?? "livrable";
 }
 
-async function linkRow(db: Db, linkKey: string) {
-  const [row] = await db.select().from(reviewLinks).where(eq(reviewLinks.key, linkKey)).limit(1);
+async function linkRow(db: Db, org: string, linkKey: string) {
+  const [row] = await db
+    .select()
+    .from(reviewLinks)
+    .where(and(eq(reviewLinks.organizationId, org), eq(reviewLinks.key, linkKey)))
+    .limit(1);
   return row ?? null;
 }
 
 const reviewUrl = (link: Data, invitationId?: string) =>
   `${appUrl()}/review/${encodeURIComponent(String(link.token))}${invitationId ? `?invitation=${invitationId}` : ""}`;
 
+const requestOf = (org: string, linkKey: string) =>
+  and(eq(reviewAccessRequests.organizationId, org), eq(reviewAccessRequests.linkKey, linkKey));
+
 /**
- * Agency: invites addresses on a link and mails each one its personal address.
+ * Agency: invites addresses on one of its links and mails each one its personal address.
  * Returns the updated link and the addresses whose mail could not be sent.
  */
-export async function inviteToReview(db: Db, linkKey: string, emails: string[], user: CurrentUser) {
-  const row = await linkRow(db, linkKey);
+export async function inviteToReview(db: Db, org: string, linkKey: string, emails: string[], user: CurrentUser) {
+  const row = await linkRow(db, org, linkKey);
   if (!row || !row.active) return null;
   const link = row.data as Data;
   const typed = [...new Set(emails.map(normalizeEmail))].filter(validEmail);
@@ -149,15 +164,16 @@ export async function inviteToReview(db: Db, linkKey: string, emails: string[], 
     await db
       .update(reviewAccessRequests)
       .set({ status: "accepted", decidedAt: new Date(), decidedBy: user.id })
-      .where(and(eq(reviewAccessRequests.linkKey, linkKey), inArray(reviewAccessRequests.email, typed), eq(reviewAccessRequests.status, "pending")));
+      .where(and(requestOf(org, linkKey), inArray(reviewAccessRequests.email, typed), eq(reviewAccessRequests.status, "pending")));
   if (!added.length) {
-    if (typed.length) await bumpRevision(db);
+    if (typed.length) await bumpRevision(db, org);
     return { link: updated, notSent: [] as string[] };
   }
 
   const id = Date.now();
   await applyChanges(
     db,
+    org,
     {
       lists: {
         auditEvents: {
@@ -171,7 +187,7 @@ export async function inviteToReview(db: Db, linkKey: string, emails: string[], 
     { recordedBy: user.id },
   );
 
-  const name = await deliverableName(db, row.deliverableId ?? 0);
+  const name = await deliverableName(db, org, row.deliverableId ?? 0);
   const notSent: string[] = [];
   for (const invite of added) {
     const sent = await sendMail({
@@ -184,31 +200,33 @@ export async function inviteToReview(db: Db, linkKey: string, emails: string[], 
   return { link: updated, notSent };
 }
 
-/** Client: asks for access to a link. The agency is notified once per address. */
-export async function requestReviewAccess(db: Db, linkKey: string, deliverableId: number, email: string, message: string) {
+/** Client: asks for access to a link. Its agency is notified once per address. */
+export async function requestReviewAccess(db: Db, access: ReviewAccess, email: string, message: string) {
+  const org = access.organizationId;
   const [existing] = await db
     .select()
     .from(reviewAccessRequests)
-    .where(and(eq(reviewAccessRequests.linkKey, linkKey), eq(reviewAccessRequests.email, email)))
+    .where(and(requestOf(org, access.key), eq(reviewAccessRequests.email, email)))
     .limit(1);
   if (existing?.status === "pending") return;
   // A link shared too widely must not flood the agency: past 20 pending requests, new ones are dropped.
   const pending = await db
     .select({ email: reviewAccessRequests.email })
     .from(reviewAccessRequests)
-    .where(and(eq(reviewAccessRequests.linkKey, linkKey), eq(reviewAccessRequests.status, "pending")));
+    .where(and(requestOf(org, access.key), eq(reviewAccessRequests.status, "pending")));
   if (pending.length >= 20) return;
   await db
     .insert(reviewAccessRequests)
-    .values({ linkKey, email, status: "pending", message: message || null })
+    .values({ organizationId: org, linkKey: access.key, email, status: "pending", message: message || null })
     .onConflictDoUpdate({
-      target: [reviewAccessRequests.linkKey, reviewAccessRequests.email],
+      target: [reviewAccessRequests.organizationId, reviewAccessRequests.linkKey, reviewAccessRequests.email],
       set: { status: "pending", message: message || null, requestedAt: new Date(), decidedAt: null, decidedBy: null },
     });
-  const name = await deliverableName(db, deliverableId);
+  const name = await deliverableName(db, org, access.deliverableId);
   const id = Date.now();
   await applyChanges(
     db,
+    org,
     {
       lists: {
         notifications: { upsert: [{ id, message: `${email} demande l'accès à la revue de « ${name} »`, time: "À l'instant" }], remove: [] },
@@ -217,19 +235,20 @@ export async function requestReviewAccess(db: Db, linkKey: string, deliverableId
       maps: {},
       settings: { upsert: {}, remove: [] },
     },
-    { recordedBy: `review-request:${linkKey}` },
+    { recordedBy: `review-request:${access.key}` },
   );
 }
 
-/** Agency: accepts (invites the address) or refuses an access request. */
-export async function decideAccessRequest(db: Db, linkKey: string, email: string, accepted: boolean, user: CurrentUser) {
-  if (accepted) return inviteToReview(db, linkKey, [email], user);
+/** Agency: accepts (invites the address) or refuses an access request to one of its links. */
+export async function decideAccessRequest(db: Db, org: string, linkKey: string, email: string, accepted: boolean, user: CurrentUser) {
+  if (accepted) return inviteToReview(db, org, linkKey, [email], user);
   await db
     .update(reviewAccessRequests)
     .set({ status: "refused", decidedAt: new Date(), decidedBy: user.id })
-    .where(and(eq(reviewAccessRequests.linkKey, linkKey), eq(reviewAccessRequests.email, email)));
+    .where(and(requestOf(org, linkKey), eq(reviewAccessRequests.email, email)));
   await applyChanges(
     db,
+    org,
     {
       lists: {
         auditEvents: {
@@ -242,6 +261,6 @@ export async function decideAccessRequest(db: Db, linkKey: string, email: string
     },
     { recordedBy: user.id },
   );
-  const row = await linkRow(db, linkKey);
+  const row = await linkRow(db, org, linkKey);
   return row ? { link: row.data as Data, notSent: [] as string[] } : null;
 }

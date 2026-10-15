@@ -56,9 +56,20 @@ function Field({ id, label, ...input }: { id: string; label: string } & React.Co
   );
 }
 
-export function SignInForm({ next, googleEnabled, oauthError }: { next: string; googleEnabled: boolean; oauthError?: string }) {
+export function SignInForm({
+  next,
+  googleEnabled,
+  oauthError,
+  invitation,
+}: {
+  next: string;
+  googleEnabled: boolean;
+  oauthError?: string;
+  /** Opened from an agency invitation: its address is pre-filled. */
+  invitation?: { email: string; organizationName: string };
+}) {
   const router = useRouter();
-  const [mode, setMode] = useState<"sign-in" | "sign-up" | "forgot">("sign-in");
+  const [mode, setMode] = useState<"sign-in" | "sign-up" | "forgot">(invitation ? "sign-up" : "sign-in");
   const [error, setError] = useState(errorMessage(oauthError));
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState(false);
@@ -143,6 +154,11 @@ export function SignInForm({ next, googleEnabled, oauthError }: { next: string; 
 
   return (
     <div className="grid gap-4">
+      {invitation && (
+        <p className="rounded-[var(--r-field)] bg-[var(--status-low-bg)] px-3 py-2 text-sm text-[var(--status-low-text)]">
+          Rejoignez <b>{invitation.organizationName}</b> : créez votre compte ou connectez-vous avec <b>{invitation.email}</b>.
+        </p>
+      )}
       <Tabs value={mode} onValueChange={(value) => (setMode(value as "sign-in" | "sign-up"), setError(""), setNotice(""))}>
         <TabsList className="w-full">
           <TabsTrigger value="sign-in">Se connecter</TabsTrigger>
@@ -151,7 +167,7 @@ export function SignInForm({ next, googleEnabled, oauthError }: { next: string; 
         <TabsContent value={mode}>
           <form className="mt-4 grid gap-4" onSubmit={submit}>
             {mode === "sign-up" && <Field id="name" label="Nom complet" autoComplete="name" maxLength={100} />}
-            <Field id="email" label="E-mail" type="email" autoComplete="email" />
+            <Field id="email" label="E-mail" type="email" autoComplete="email" defaultValue={invitation?.email} />
             <div className="grid gap-1.5">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Mot de passe</Label>
