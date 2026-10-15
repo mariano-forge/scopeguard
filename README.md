@@ -201,7 +201,7 @@ Les données sont enregistrées dans PostgreSQL. Le fichier `.env.local` choisit
 ```bash
 cp .env.example .env.local   # puis renseigner DATABASE_URL_REMOTE si besoin
 npm install
-npm run db:up                # Postgres local dans Docker
+npm run db:up                # Postgres et Azurite (émulateur Azure Storage) dans Docker
 npm run db:migrate           # crée les tables sur la base choisie par DATABASE_TARGET
 npm run dev
 ```
@@ -209,6 +209,21 @@ npm run dev
 - `npm run db:generate` : crée une migration après une modification de `src/db/schema.ts`.
 - `npm run db:studio` : explore les données.
 - Le journal d'audit (`audit_events`) est en ajout seul : la base refuse toute modification ou suppression d'un événement.
+
+### Fichiers importés
+
+Les fichiers vont dans Azure Blob Storage (`src/lib/storage.ts`), choisi par `STORAGE_TARGET` comme la base : `local` (Azurite, dans Docker) ou `remote` (compte Azure). Chaque agence a son propre conteneur privé, enregistré dans `agency_storage` avec son compte, pour pouvoir lui donner plus tard un compte à part. Dans le conteneur, les fichiers suivent l'organisation de l'agence :
+
+```
+agence-<agence>/projets/<id>/livrables/<id>/v<version>/<sha256>.<ext>
+agence-<agence>/projets/<id>/livrables/<id>/couverture/<sha256>.<ext>
+```
+
+Le fichier est nommé par son empreinte SHA-256 : une version ne peut pas changer de contenu sans changer de nom. Les chemins utilisent les identifiants, pas les noms, et ne bougent pas si l'on renomme ou déplace un projet (la base fait foi). Les pages n'accèdent jamais au stockage : `/api/files/<id>` vérifie que la personne est membre de l'agence, ou client vérifié invité sur une revue qui montre ce fichier, puis redirige vers une adresse en lecture seule valable 5 minutes. La taille maximale d'un import est `MAX_UPLOAD_MB` (50 par défaut).
+
+- Le compte Azure reçoit une règle CORS de lecture (toutes origines, GET) : le lecteur PDF suit la redirection avec une origine « null ». Sans adresse signée, rien n'est lisible.
+- pdf.js est chargé dans sa version « legacy » (`next.config.ts`) : la version moderne exige des navigateurs très récents.
+- Les fichiers importés avant ce changement restent servis depuis Postgres (table `files`), sans contrôle d'accès, en attendant d'être migrés.
 
 ### Connexion
 

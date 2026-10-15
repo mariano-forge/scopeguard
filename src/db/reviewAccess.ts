@@ -29,7 +29,7 @@ const shortText = (value: unknown, max: number) => (typeof value === "string" ? 
 export type ReviewAccess = { organizationId: string; key: string; link: Data; deliverableId: number; version: number };
 
 /** "31/12/2026" -> end of that day; an unreadable date counts as expired. */
-function expired(link: Data) {
+export function expired(link: Data) {
   if (link.autoExpire === false || typeof link.expiresAt !== "string") return false;
   const [day, month, year] = link.expiresAt.split("/").map(Number);
   if (!day || !month || !year) return true;

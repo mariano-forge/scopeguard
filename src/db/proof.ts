@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { and, asc, eq, inArray, or } from "drizzle-orm";
 import type { Db } from "./client";
 import { organizations, users } from "./auth-schema";
-import { auditEvents, clients, commentProposals, comments, deliverables, files, projects, proposalVersions } from "./schema";
+import { auditEvents, clients, commentProposals, comments, deliverables, files, projects, proposalVersions, storedFiles } from "./schema";
 
 type Data = Record<string, unknown>;
 
@@ -59,9 +59,19 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
       ? await db.select({ name: clients.name }).from(clients).where(and(eq(clients.organizationId, org), eq(clients.id, project.clientId))).limit(1)
       : [];
 
-  // The file: imported files are stored by their SHA-256 (src/db/files.ts), which is their fingerprint.
-  const fileHash = /\/api\/files\/([0-9a-f]{64})$/.exec(text(version.fileData))?.[1] ?? null;
-  const [file] = fileHash ? await db.select({ mimeType: files.mimeType, size: files.size }).from(files).where(eq(files.id, fileHash)).limit(1) : [];
+  // The file's fingerprint: recorded with it in Azure storage, or its name for files kept in Postgres before.
+  const fileId = /^\/api\/files\/([0-9a-f-]{36}|[0-9a-f]{64})$/.exec(text(version.fileData))?.[1] ?? null;
+  const file = !fileId
+    ? null
+    : fileId.length === 64
+      ? ((await db.select({ sha256: files.id, mimeType: files.mimeType, size: files.size }).from(files).where(eq(files.id, fileId)).limit(1))[0] ?? null)
+      : ((
+          await db
+            .select({ sha256: storedFiles.sha256, mimeType: storedFiles.mimeType, size: storedFiles.size, originalName: storedFiles.originalName })
+            .from(storedFiles)
+            .where(and(eq(storedFiles.organizationId, org), eq(storedFiles.id, fileId)))
+            .limit(1)
+        )[0] ?? null);
 
   const requestRows = await db
     .select()
@@ -139,7 +149,7 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
       url: text(version.url) || null,
       importedAt: text(version.importedAt),
       reviewStatus: record.reviewStatus ?? "pending",
-      file: fileHash ? { sha256: fileHash, mimeType: file?.mimeType ?? null, size: file?.size ?? null } : null,
+      file: file ? { sha256: file.sha256, mimeType: file.mimeType, size: file.size, originalName: "originalName" in file ? file.originalName : null } : null,
     },
     approval: record.reviewStatus === "approved" ? last("deliverable.approved") : null,
     changesRequested: record.reviewStatus === "changes-requested" ? last("review.changes-requested") : null,

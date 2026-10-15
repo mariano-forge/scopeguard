@@ -152,7 +152,7 @@ export async function applyChanges(db: Db, org: string, changes: StateChanges, w
       const table = spec.table as typeof clients;
       for (const raw of change.upsert ?? []) {
         if (typeof raw?.id !== "number") continue;
-        const entity = await extractFiles(tx, raw, stored);
+        const entity = await extractFiles(db, org, raw, stored);
         const row = { ...spec.columns(entity), data: entity };
         // Without an order, a new record goes at the start or the end of its list.
         const position = change.order?.length

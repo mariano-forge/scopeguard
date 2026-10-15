@@ -19,6 +19,7 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Not on Next's own files nor on static files (icon, logo, PDF worker).
-  matcher: ["/((?!_next/static|_next/image|.*\\.[a-zA-Z0-9]+$).*)"],
+  // Not on Next's own files nor on static files (icon, logo, PDF worker), nor on /api/files: it checks
+  // access itself, and a proxy would hold uploads in memory and cut them at 10 MB.
+  matcher: ["/((?!_next/static|_next/image|api/files|.*\\.[a-zA-Z0-9]+$).*)"],
 };

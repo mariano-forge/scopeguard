@@ -70,7 +70,7 @@ export function proofHtml(proof: Proof) {
     : "<p>Aucun événement enregistré pour cette version.</p>";
 
   const file = deliverable.file
-    ? `SHA-256 ${escapeHtml(deliverable.file.sha256)}${deliverable.file.size ? ` · ${size(deliverable.file.size)}` : ""}`
+    ? `${deliverable.file.originalName ? `${escapeHtml(deliverable.file.originalName)} · ` : ""}SHA-256 ${escapeHtml(deliverable.file.sha256)}${deliverable.file.size ? ` · ${size(deliverable.file.size)}` : ""}`
     : deliverable.url
       ? `Page web : ${escapeHtml(deliverable.url)}`
       : "Aucun fichier stocké";

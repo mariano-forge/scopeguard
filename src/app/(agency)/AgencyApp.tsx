@@ -1194,15 +1194,40 @@ export function AgencyApp() {
     setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, name } : project)));
   }
 
+  /**
+   * Imports a file into the agency's storage (POST /api/files), under its place in the project;
+   * returns its address, or null once the error is shown.
+   */
+  async function uploadFile(
+    file: File,
+    placement: { kind: "version"; projectId: number; livrableId: number; version: number } | { kind: "cover"; projectId: number; livrableId: number },
+  ) {
+    const form = new FormData();
+    form.set("file", file);
+    for (const [key, value] of Object.entries(placement)) form.set(key, String(value));
+    const progress = toast.loading(`Import de « ${file.name} »…`);
+    const response = await fetch("/api/files", { method: "POST", body: form }).catch(() => null);
+    const body = (await response?.json().catch(() => null)) as { href?: string; error?: string } | null;
+    toast.dismiss(progress);
+    if (!response?.ok || !body?.href) {
+      toast.error(body?.error ?? "L’import n’a pas abouti. Réessayez.");
+      return null;
+    }
+    return body.href;
+  }
+
   /** "Nouveau livrable" dialog: a new deliverable (version 1) in the current project. */
   async function createDeliverable(input: NewDeliverable) {
+    const id = Date.now();
+    const projectId = input.projectId ?? selectedProjectId;
     const [fileData, coverData] = await Promise.all([
-      input.file ? readFileAsDataUrl(input.file) : Promise.resolve(undefined),
-      input.cover ? readFileAsDataUrl(input.cover) : Promise.resolve(undefined),
+      input.file ? uploadFile(input.file, { kind: "version", projectId, livrableId: id, version: 1 }) : Promise.resolve(undefined),
+      input.cover ? uploadFile(input.cover, { kind: "cover", projectId, livrableId: id }) : Promise.resolve(undefined),
     ]);
+    if (fileData === null || coverData === null) return;
     const created: Deliverable = {
-      id: Date.now(),
-      projectId: input.projectId ?? selectedProjectId,
+      id,
+      projectId,
       name: input.name,
       type: input.type,
       size: input.file?.size ?? 0,
@@ -1223,7 +1248,6 @@ export function AgencyApp() {
   async function confirmImport(mode: ImportMode, source = pendingImport) {
     if (!source) return;
     const { file, type } = source;
-    const fileData = await readFileAsDataUrl(file);
     const activeDeliverable = currentDeliverable;
     const sameDeliverableVersions = deliverables.filter(
       (deliverable) => deliverable.projectId === selectedProjectId && deliverable.name === activeDeliverable?.name,
@@ -1231,8 +1255,13 @@ export function AgencyApp() {
     const nextVersion = mode === "version"
       ? Math.max(...sameDeliverableVersions.map((deliverable) => deliverable.version), 0) + 1
       : 1;
+    const id = Date.now();
+    // A new version is stored with its deliverable (the id of its first version); a new deliverable is its own.
+    const livrableId = mode === "version" && activeDeliverable ? livrableIdOf(activeDeliverable, deliverables) : id;
+    const fileData = await uploadFile(file, { kind: "version", projectId: selectedProjectId, livrableId, version: nextVersion });
+    if (!fileData) return;
     const importedDeliverable: Deliverable = {
-      id: Date.now(),
+      id,
       projectId: selectedProjectId,
       name: mode === "version" ? activeDeliverable?.name ?? file.name : file.name,
       type,
@@ -1257,15 +1286,6 @@ export function AgencyApp() {
       ),
     ]);
     setPendingImport(null);
-  }
-
-  function readFileAsDataUrl(file: File) {
-    return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
   }
 
   /** Brings a pin to the middle of the canvas, keeping the zoom. */
@@ -1373,7 +1393,7 @@ export function AgencyApp() {
       return;
     }
     if (file.size > MAX_FILE_BYTES) {
-      setDeliverableError(`Fichier trop lourd pour la démo : ${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).`);
+      setDeliverableError(`Fichier trop lourd : ${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).`);
       return;
     }
     setDeliverableError("");
@@ -1388,7 +1408,7 @@ export function AgencyApp() {
       return;
     }
     if (file.size > MAX_FILE_BYTES) {
-      toast("Fichier trop lourd pour la démo", { description: `${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).` });
+      toast("Fichier trop lourd", { description: `${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).` });
       return;
     }
     void confirmImport("deliverable", { file, type });

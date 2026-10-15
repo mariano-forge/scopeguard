@@ -23,12 +23,9 @@ export const deliverableKinds: Record<
 
 export const deliverableTypes = Object.keys(deliverableKinds) as DeliverableType[];
 
-/**
- * The prototype stores files in the browser (localStorage, ~5 MB for the whole app):
- * keep each upload small so saving never fails.
- */
-export const MAX_FILE_BYTES = 3 * 1024 * 1024;
-export const MAX_COVER_BYTES = 1024 * 1024;
+/** Largest import (MAX_UPLOAD_MB, exposed by next.config.ts); the server checks it again. */
+export const MAX_FILE_BYTES = (Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB) || 50) * 1024 * 1024;
+export const MAX_COVER_BYTES = 5 * 1024 * 1024;
 
 export const formatBytes = (bytes: number) => `${(bytes / (1024 * 1024)).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Mo`;
 

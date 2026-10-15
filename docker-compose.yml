@@ -1,5 +1,5 @@
-# Local Postgres for development: `npm run db:up`, then `npm run db:migrate`.
-# Matches DATABASE_URL_LOCAL in .env.example.
+# Local services for development (`npm run db:up`), matching the *_LOCAL variables of .env.example:
+# Postgres (then `npm run db:migrate`) and Azurite, the Azure Storage emulator, for imported files.
 services:
   postgres:
     image: postgres:17-alpine
@@ -19,5 +19,17 @@ services:
       timeout: 5s
       retries: 10
 
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.35.0
+    container_name: kora-azurite
+    restart: unless-stopped
+    # Blob service only; accepts the API versions recent SDKs send.
+    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --location /data --loose --skipApiVersionCheck
+    ports:
+      - "127.0.0.1:10000:10000"
+    volumes:
+      - kora-azurite:/data
+
 volumes:
   kora-postgres:
+  kora-azurite:

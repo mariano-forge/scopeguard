@@ -196,9 +196,43 @@ export const settings = pgTable(
 );
 
 /**
- * Imported files (PDF, images, covers). The id is the SHA-256 of the content, so the same file
- * is stored once. Kept in Postgres for the pilot; moves to object storage (Supabase Storage,
- * Azure Blob) by changing src/db/files.ts only.
+ * Where each agency keeps its files (src/lib/storage.ts): its own Azure Blob container, in the
+ * default account for now. `accountUrl` lets an agency move to an account of its own later.
+ */
+export const agencyStorage = pgTable("agency_storage", {
+  organizationId: organizationId().primaryKey(),
+  /** null: the account of the environment (STORAGE_*). */
+  accountUrl: text("account_url"),
+  container: text("container").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Imported files (deliverable versions, covers). The content is in the agency's container, under a
+ * path that follows the agency's structure (projets/<id>/livrables/<id>/v<n>/…); this row describes
+ * it. Pages refer to a file as /api/files/<id>, which checks who asks before serving it.
+ */
+export const storedFiles = pgTable(
+  "stored_files",
+  {
+    id: text("id").primaryKey(),
+    organizationId: organizationId(),
+    container: text("container").notNull(),
+    path: text("path").notNull(),
+    /** Fingerprint of the content, shown in proofs. */
+    sha256: text("sha256").notNull(),
+    mimeType: text("mime_type").notNull(),
+    size: bigint("size", { mode: "number" }).notNull(),
+    originalName: text("original_name"),
+    uploadedBy: text("uploaded_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("stored_files_organization_idx").on(table.organizationId, table.sha256)],
+);
+
+/**
+ * Files imported before Azure Blob storage, kept in Postgres and named by their SHA-256. Read only:
+ * new files go to stored_files. To be emptied once migrated.
  */
 export const files = pgTable("files", {
   id: text("id").primaryKey(),
