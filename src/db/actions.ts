@@ -2,7 +2,7 @@
 // reading what a page sends, and the parts every action builds the same way.
 
 import { and, eq, inArray } from "drizzle-orm";
-import type { StateChanges } from "@/lib/sharedState";
+import type { ListChange, StateChanges } from "@/lib/sharedState";
 import type { Db } from "./client";
 import { commentProposals, comments, deliverables } from "./schema";
 
@@ -80,4 +80,18 @@ export async function decisionLocked(db: Db, org: string, commentId: number) {
   const [proposal] = await db.select().from(commentProposals).where(and(eq(commentProposals.organizationId, org), eq(commentProposals.commentId, commentId))).limit(1);
   if (!proposal) return false;
   return (proposal.decision !== null && proposal.decision !== "none") || Boolean((proposal.adaptation as Data | null)?.decision);
+}
+
+/** Audit events of one action: distinct ids (several events may share a millisecond). */
+export function trail(actor: string, deliverableId: number | null) {
+  const stamp = Date.now() * 1000;
+  const events: Data[] = [];
+  return {
+    add(type: string, description: string, commentId?: number) {
+      events.push({ id: stamp + events.length, type, actor, description, timestamp: displayedNow(), ...(commentId ? { commentId } : {}), ...(deliverableId ? { deliverableId } : {}) });
+    },
+    into(changes: StateChanges) {
+      if (events.length) changes.lists.auditEvents = { upsert: events as ListChange["upsert"], remove: [] };
+    },
+  };
 }

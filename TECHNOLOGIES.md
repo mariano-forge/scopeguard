@@ -72,7 +72,7 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 
 | Technologie | Version | Rôle |
 | --- | --- | --- |
-| **Playwright Test** | 1.63 | 56 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier. Couvre la connexion, les agences, les rôles, l'accès client, les fichiers, la preuve et les relances. |
+| **Playwright Test** | 1.63 | 62 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier. Couvre la connexion, les agences, les rôles, l'accès client, les fichiers, la preuve et les relances. |
 | **ESLint** | 9.39 | Analyse du code, avec la configuration de Next.js. |
 | **Prettier** | 3.9 | Mise en forme. |
 
@@ -132,7 +132,7 @@ Les e-mails partent par Resend dès que `RESEND_API_KEY` et `MAIL_FROM` sont ren
 
 ## Points d'attention
 
-- **Synchronisation d'état** : le client écrit désormais par des routes par action (`/api/review/:token/comments`, `…/approval`…, `src/db/reviewActions.ts`) et ne fait plus que lire l'état de sa revue. Côté agence, les fils de commentaires, les devis, la réouverture d'une validation et les liens de revue ont aussi leurs routes (`/api/comments`, `/api/deliverables`, `src/db/agencyActions.ts`). Le reste (espaces, projets, livrables, corbeille) passe encore par `/api/state` : c'est la suite du passage aux routes par action. Les routes du client serviront aussi à l'annotation des sites web.
+- **Synchronisation d'état** : le client écrit désormais par des routes par action (`/api/review/:token/comments`, `…/approval`…, `src/db/reviewActions.ts`) et ne fait plus que lire l'état de sa revue. Côté agence, chaque écriture a aussi sa route (`/api/comments`, `/api/deliverables`, `/api/spaces`, `/api/projects`, `/api/trash`, `src/db/agencyActions.ts`, `src/db/workspaceActions.ts`). Les routes du client serviront aussi à l'annotation des sites web.
 - **Imports abandonnés** : un fichier envoyé au stockage sans validation y reste (aucun enregistrement ne le sert). Un nettoyage périodique est à prévoir.
 - **Fichiers antérieurs au stockage Azure** : la table `files` est conservée, mais ses fichiers ne sont plus servis (Supabase n'en contient aucun).
 - **`npm audit`** signale encore, en production, des paquets qui ne sont pas exploitables dans Kora : `drizzle-kit` et `esbuild` (tirés par Better Auth ; la faille d'esbuild concerne son serveur de développement), `source-map-js` (compilation CSS) et `sharp` (optimisation d'images de Next, désactivée par `images.unoptimized`). À revoir à chaque mise à jour de ces dépendances.

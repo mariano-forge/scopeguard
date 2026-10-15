@@ -27,3 +27,9 @@ export async function agencyActionResponse(request: Request, type: AgencyAction[
     return databaseFailure(`api ${type}`, error);
   }
 }
+
+/** Whether the request body holds `key` (one PATCH route, several actions). */
+export async function sends(request: Request, key: string) {
+  const body = (await request.clone().json().catch(() => null)) as Record<string, unknown> | null;
+  return Boolean(body && typeof body === "object" && key in body);
+}

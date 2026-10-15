@@ -222,8 +222,6 @@ const tabsKey = "kora-open-tabs";
 const maxTabs = 12;
 const sidebarKey = "kora-sidebar";
 /** Import date stored on a version, e.g. "14 oct. 2026, 10:32". */
-const nowLabel = () =>
-  new Date().toLocaleString("fr-FR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const favoritesKey = "kora-favorites";
 /** Widths of the side panels, set by dragging their edge (per browser). */
 const panelWidthsKey = "kora-panel-widths";
@@ -534,8 +532,9 @@ export function AgencyApp() {
         if (parsedState.auditEvents) setAuditEvents(parsedState.auditEvents);
         if (parsedState.trash) {
           const limit = Date.now() - TRASH_DAYS * 24 * 60 * 60 * 1000;
+          setTrash(parsedState.trash);
           // Expired items are purged by an administrator's page (members may not delete for good).
-        setTrash(canManage ? parsedState.trash.filter((item) => item.deletedAt >= limit) : parsedState.trash);
+          if (canManage && parsedState.trash.some((item) => item.deletedAt < limit)) void agencyAction("trash/expired", "DELETE");
         }
         setStateHydrated(true);
       } catch {
@@ -914,25 +913,6 @@ export function AgencyApp() {
     }, 400);
   }, [focusedCommentId, quoteOnFocus, activeComments, pathname, router]);
 
-  function recordAudit(type: string, description: string, commentId?: number) {
-    // The version it is about: the request's one, else the version open in the editor (for its proof).
-    const deliverableId =
-      (commentId !== undefined ? comments.find((comment) => comment.id === commentId)?.deliverableId : undefined) ??
-      (view.kind === "deliverable" ? currentDeliverable?.id : undefined);
-    setAuditEvents((current) => [
-      {
-        id: Date.now(),
-        type,
-        actor: currentUser.name,
-        description,
-        timestamp: new Date().toLocaleString("fr-FR"),
-        commentId,
-        deliverableId,
-      },
-      ...current,
-    ]);
-  }
-
   /**
    * Qualifies a comment as a correction (in scope) or an addition (hors scope), with a clear title;
    * also used to change a qualification or send the request back to clarify.
@@ -960,18 +940,7 @@ export function AgencyApp() {
       return;
     }
 
-    const createdProject = {
-      id: Date.now(),
-      name: projectName,
-      client: projectClient.name,
-      clientId: projectClient.id,
-      status: "Brouillon" as const,
-    };
-    setProjects((current) => [
-      ...current,
-      createdProject,
-    ]);
-    router.push(href.project(createdProject.id));
+    void agencyAction("projects", "POST", { clientId: projectClient.id, name: projectName }).then((result) => result?.id && router.push(href.project(result.id)));
     setNewProjectName("");
     setNewProjectClientId(null);
     setProjectError("");
@@ -993,122 +962,53 @@ export function AgencyApp() {
       return;
     }
 
-    const createdClient = { id: Date.now(), name: clientName, email: clientEmail };
-    setClients((current) => [
-      ...current,
-      createdClient,
-    ]);
-    router.push(href.client(createdClient.id));
+    void agencyAction("spaces", "POST", { name: clientName, ...(clientEmail ? { email: clientEmail } : {}) }).then((result) => result?.id && router.push(href.client(result.id)));
     setNewClientName("");
     setNewClientEmail("");
     setClientError("");
     setNewClientOpen(false);
   }
 
+  /** Renames a space; its projects keep the new name too (src/db/workspaceActions.ts). */
   function renameClient(clientId: number, name: string) {
-    setClients((current) => current.map((client) => (client.id === clientId ? { ...client, name } : client)));
-    // Projects keep a copy of their client name (used by the proof export).
-    setProjects((current) => current.map((project) => ((project.clientId ?? 1) === clientId ? { ...project, client: name } : project)));
+    void agencyAction(`spaces/${clientId}`, "PATCH", { name });
   }
 
-  /** Takes version records out with their requests, proposals, adaptations and review links; returns what was taken. */
-  function takeRecords(recordIds: Set<number>): Omit<TrashSnapshot, "clients" | "projects"> {
-    const takenComments = comments.filter((comment) => recordIds.has(comment.deliverableId ?? -1));
-    const commentIds = new Set(takenComments.map((comment) => comment.id));
-    const pick = <T,>(map: Record<number, T>, keep: boolean) =>
-      Object.fromEntries(Object.entries(map).filter(([key]) => commentIds.has(Number(key)) === keep)) as Record<number, T>;
-    const pickLinks = (map: ReviewLinks, keep: boolean) =>
-      Object.fromEntries(Object.entries(map).filter(([, link]) => recordIds.has(link.deliverableId ?? -1) === keep));
-    const taken = {
-      deliverables: deliverables.filter((record) => recordIds.has(record.id)),
-      comments: takenComments,
-      proposalStates: pick(proposalStates, true),
-      proposalDecisions: pick(proposalDecisions, true),
-      proposalVersions: pick(proposalVersions, true),
-      adaptationRequests: pick(adaptationRequests, true),
-      reviewLinks: pickLinks(reviewLinks, true),
-    };
-    setDeliverables((current) => current.filter((record) => !recordIds.has(record.id)));
-    setComments((current) => current.filter((comment) => !commentIds.has(comment.id)));
-    setProposalStates((current) => pick(current, false));
-    setProposalDecisions((current) => pick(current, false));
-    setProposalVersions((current) => pick(current, false));
-    setAdaptationRequests((current) => pick(current, false));
-    setReviewLinks((current) => pickLinks(current, false));
-    return taken;
-  }
-
-  function putInTrash(kind: TrashItem["kind"], name: string, origin: string | undefined, data: TrashSnapshot) {
-    setTrash((current) => [{ id: Date.now(), kind, name, origin, deletedAt: Date.now(), data }, ...current]);
-  }
-
+  /** A project goes to the trash with its deliverables (the server builds what the trash keeps). */
   function deleteProject(projectId: number) {
     if (!adminOnly()) return;
     const project = projects.find((candidate) => candidate.id === projectId);
     if (!project) return;
-    const taken = takeRecords(new Set(deliverables.filter((record) => (record.projectId ?? 1) === projectId).map((record) => record.id)));
-    setProjects((current) => current.filter((candidate) => candidate.id !== projectId));
-    putInTrash("project", project.name, clients.find((client) => client.id === (project.clientId ?? 1))?.name, { ...taken, clients: [], projects: [project] });
-    recordAudit("project.deleted", `Projet « ${project.name} » placé dans la corbeille`);
+    void agencyAction(`projects/${projectId}`, "DELETE");
     router.push(href.client(project.clientId ?? 1));
   }
 
   function deleteClient(clientId: number) {
     if (!adminOnly()) return;
-    const client = clients.find((candidate) => candidate.id === clientId);
-    if (!client) return;
-    const spaceProjects = projects.filter((project) => (project.clientId ?? 1) === clientId);
-    const projectIds = new Set(spaceProjects.map((project) => project.id));
-    const taken = takeRecords(new Set(deliverables.filter((record) => projectIds.has(record.projectId ?? 1)).map((record) => record.id)));
-    setProjects((current) => current.filter((project) => !projectIds.has(project.id)));
-    setClients((current) => current.filter((candidate) => candidate.id !== clientId));
-    putInTrash("space", client.name, undefined, { ...taken, clients: [client], projects: spaceProjects });
-    recordAudit("space.deleted", `Espace « ${client.name} » placé dans la corbeille`);
+    if (!clients.some((candidate) => candidate.id === clientId)) return;
+    void agencyAction(`spaces/${clientId}`, "DELETE");
     router.push(href.spaces());
   }
 
   function deleteLivrable(livrableId: number) {
-    const versions = versionsOfLivrable(livrableId, deliverables);
-    if (!versions[0]) return;
-    const project = projects.find((candidate) => candidate.id === (versions[0].projectId ?? 1));
-    const client = clients.find((candidate) => candidate.id === (project?.clientId ?? 1));
-    const taken = takeRecords(new Set(versions.map((record) => record.id)));
-    putInTrash("livrable", versions[0].name, project ? [client?.name, project.name].filter(Boolean).join(" / ") : undefined, { ...taken, clients: [], projects: [] });
+    void agencyAction(`deliverables/${livrableId}`, "DELETE");
   }
 
-  /** Puts everything back as it was (merging by id, so a partial restore never duplicates). */
+  /** Puts everything back as it was (merged by id on the server, so a partial restore never duplicates). */
   function restoreFromTrash(itemId: number) {
-    const item = trash.find((candidate) => candidate.id === itemId);
-    if (!item) return;
-    const merge = <T extends { id: number }>(current: T[], back: T[]) => [...current, ...back.filter((entry) => !current.some((other) => other.id === entry.id))];
-    const { data } = item;
-    setClients((current) => merge(current, data.clients));
-    setProjects((current) => merge(current, data.projects));
-    setDeliverables((current) => merge(current, data.deliverables));
-    setComments((current) => merge(current, data.comments));
-    setProposalStates((current) => ({ ...data.proposalStates, ...current }));
-    setProposalDecisions((current) => ({ ...data.proposalDecisions, ...current }));
-    setProposalVersions((current) => ({ ...data.proposalVersions, ...current }));
-    setAdaptationRequests((current) => ({ ...data.adaptationRequests, ...current }));
-    setReviewLinks((current) => ({ ...data.reviewLinks, ...current }));
-    setTrash((current) => current.filter((candidate) => candidate.id !== itemId));
-    recordAudit("trash.restored", `« ${item.name} » restauré depuis la corbeille`);
+    void agencyAction(`trash/${itemId}/restore`, "POST");
   }
 
   function purgeFromTrash(itemId?: number) {
     if (!adminOnly()) return;
-    setTrash((current) => (itemId === undefined ? [] : current.filter((candidate) => candidate.id !== itemId)));
+    void agencyAction(itemId === undefined ? "trash" : `trash/${itemId}`, "DELETE");
   }
 
   function moveProject(projectId: number, clientId: number) {
-    const client = clients.find((candidate) => candidate.id === clientId);
-    if (!client) return;
-    setProjects((current) =>
-      current.map((project) => (project.id === projectId ? { ...project, clientId, client: client.name } : project)),
-    );
+    if (!clients.some((candidate) => candidate.id === clientId)) return;
+    void agencyAction(`projects/${projectId}`, "PATCH", { clientId });
   }
 
-  /** Re-attach a deliverable (every version) to another project; refused if that project has the same name. */
   /** Renames every version of a deliverable; refused when its project already has that name. */
   function renameLivrable(livrableId: number, name: string): string | null {
     const versions = versionsOfLivrable(livrableId, deliverables);
@@ -1117,23 +1017,22 @@ export function AgencyApp() {
     const ids = new Set(versions.map((record) => record.id));
     if (deliverables.some((record) => !ids.has(record.id) && (record.projectId ?? 1) === projectId && record.name.toLowerCase() === name.toLowerCase()))
       return "Un autre livrable porte déjà ce nom dans ce projet.";
-    setDeliverables((current) => current.map((record) => (ids.has(record.id) ? { ...record, name } : record)));
+    void agencyAction(`deliverables/${livrableId}`, "PATCH", { name });
     return null;
   }
 
+  /** Re-attach a deliverable (every version) to another project; refused if that project has the same name. */
   function moveLivrable(livrableId: number, projectId: number) {
     const versions = versionsOfLivrable(livrableId, deliverables);
     const name = versions[0]?.name;
     if (!name) return false;
     if (deliverables.some((record) => (record.projectId ?? 1) === projectId && record.name === name)) return false;
-    const ids = new Set(versions.map((record) => record.id));
-    setDeliverables((current) => current.map((record) => (ids.has(record.id) ? { ...record, projectId } : record)));
+    void agencyAction(`deliverables/${livrableId}`, "PATCH", { projectId });
     return true;
   }
 
-
   function renameProject(projectId: number, name: string) {
-    setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, name } : project)));
+    void agencyAction(`projects/${projectId}`, "PATCH", { name });
   }
 
   /**
@@ -1160,23 +1059,20 @@ export function AgencyApp() {
       input.cover ? uploadFile(input.cover, { kind: "cover", projectId, livrableId: id }) : Promise.resolve(undefined),
     ]);
     if (fileData === null || coverData === null) return;
-    const created: Deliverable = {
+    const result = await agencyAction("deliverables", "POST", {
       id,
       projectId,
       name: input.name,
       type: input.type,
       size: input.file?.size ?? 0,
-      version: 1,
-      status: "En attente client",
-      importedAt: nowLabel(),
-      locked: false,
-      fileData,
-      url: input.url,
-      coverData,
-    };
-    setDeliverables((current) => [created, ...current]);
+      ...(fileData ? { fileData } : {}),
+      ...(input.url ? { url: input.url } : {}),
+      ...(coverData ? { coverData } : {}),
+    });
+    if (!result?.id) return;
     setNewDeliverableOpen(false);
     setDeliverableError("");
+    const created = { id: result.id, projectId, name: input.name, version: 1 };
     router.push(hrefForRecord(created, [created, ...deliverables]));
   }
 
@@ -1195,32 +1091,15 @@ export function AgencyApp() {
     const livrableId = mode === "version" && activeDeliverable ? livrableIdOf(activeDeliverable, deliverables) : id;
     const fileData = await uploadFile(file, { kind: "version", projectId: selectedProjectId, livrableId, version: nextVersion });
     if (!fileData) return;
-    const importedDeliverable: Deliverable = {
-      id,
-      projectId: selectedProjectId,
-      name: mode === "version" ? activeDeliverable?.name ?? file.name : file.name,
-      type,
-      size: file.size,
-      version: nextVersion,
-      status: "En attente client",
-      importedAt: nowLabel(),
-      locked: false,
-      fileData,
-    };
-
-    router.push(hrefForRecord(importedDeliverable, [importedDeliverable, ...deliverables]));
-    setDeliverables((current) => [
-      importedDeliverable,
-      ...current.map((deliverable) =>
-        mode === "version" &&
-        deliverable.projectId === selectedProjectId &&
-        deliverable.name === importedDeliverable.name &&
-        deliverable.id !== importedDeliverable.id
-          ? { ...deliverable, status: "Remplacée" as const, locked: true }
-          : deliverable,
-      ),
-    ]);
+    // A new version freezes the earlier ones (src/db/workspaceActions.ts).
+    const result =
+      mode === "version" && activeDeliverable
+        ? await agencyAction(`deliverables/${activeDeliverable.id}/versions`, "POST", { id, type, size: file.size, fileData })
+        : await agencyAction("deliverables", "POST", { id, projectId: selectedProjectId, name: file.name, type, size: file.size, fileData });
     setPendingImport(null);
+    if (!result?.id) return;
+    const imported = { id: result.id, projectId: selectedProjectId, name: mode === "version" ? activeDeliverable?.name ?? file.name : file.name, version: nextVersion };
+    router.push(hrefForRecord(imported, [imported, ...deliverables]));
   }
 
   /** Brings a pin to the middle of the canvas, keeping the zoom. */
@@ -1366,16 +1245,9 @@ export function AgencyApp() {
     confirmApproval();
   }
 
+  /** Records the client's approval of the open version, which locks it. */
   function confirmApproval() {
-    const approvalTimestamp = new Date().toLocaleString("fr-FR");
-    setDeliverables((current) =>
-      current.map((deliverable) =>
-        deliverable.id === currentDeliverable.id
-          ? { ...deliverable, status: "Approuvée", locked: true, reviewStatus: "approved", approvedAt: approvalTimestamp }
-          : deliverable,
-      ),
-    );
-    recordAudit("review.approved", "Validation client confirmée");
+    void agencyAction(`deliverables/${currentDeliverable.id}/approval`, "POST");
   }
 
   function requestChanges(event: React.FormEvent<HTMLFormElement>) {
@@ -1557,10 +1429,8 @@ export function AgencyApp() {
 
   function updateAutoExpire(autoExpire: boolean) {
     if (!reviewLink) return;
-    const linkKey = `${reviewLink.deliverableId ?? 1}:${reviewLink.version ?? 1}`;
-    const updatedLink = { ...reviewLink, autoExpire };
-    setReviewLink(updatedLink);
-    setReviewLinks((current) => ({ ...current, [linkKey]: updatedLink }));
+    setReviewLink({ ...reviewLink, autoExpire });
+    void agencyAction(`deliverables/${reviewLink.deliverableId ?? currentDeliverable.id}/review-link`, "PATCH", { autoExpire });
   }
 
   function getReviewUrl() {

@@ -10,6 +10,7 @@ import { initialsOf, sideOf } from "@/lib/authors";
 import { formatProposalAmount, formatProposalDeadline } from "@/lib/proposalFormat";
 import type { ListChange, StateChanges } from "@/lib/sharedState";
 import {
+  trail,
   decisionLocked,
   displayedNow,
   freeCommentId,
@@ -30,11 +31,13 @@ import { canManageAgency, reservedActions } from "./agencyPermissions";
 import type { Db } from "./client";
 import { commentProposals, deliverables, proposalVersions, reviewLinks } from "./schema";
 import { applyChanges, type Writer } from "./state";
+import { readWorkspaceAction, workspaceChanges, type WorkspaceAction, type WorkspaceParams } from "./workspaceActions";
 
 type Qualification = "Inclus" | "Hors périmètre" | "À qualifier";
 type Quote = { amount: number; days: number; counter: boolean };
 
 export type AgencyAction =
+  | WorkspaceAction
   | { type: "comment.create"; deliverableId: number; id?: number; message: string; location?: string; page?: number; position?: { x: number; y: number }; area?: Area }
   | { type: "request.create"; deliverableId: number; decision: "Inclus" | "Hors périmètre"; title: string; description?: string; quote?: Quote }
   | { type: "comment.restore"; comment: Data }
@@ -56,7 +59,14 @@ export type AgencyAction =
 
 export type AgencyMember = { id: string; name: string; organizationId: string; role: string | null | undefined };
 export type AgencyActionResult = { ok: true; revision: number; id?: number; data?: Data } | { ok: false; status: number; error: string; code?: string };
-export type ActionParams = { commentId?: string; replyId?: string; deliverableId?: string; email?: string };
+export type ActionParams = { commentId?: string; replyId?: string; email?: string } & WorkspaceParams;
+
+const workspaceTypes = new Set<string>([
+  "space.create", "space.rename", "space.delete", "project.create", "project.rename", "project.move", "project.delete",
+  "livrable.create", "version.import", "livrable.rename", "livrable.move", "livrable.delete", "version.approve",
+  "link.auto-expire", "trash.restore", "trash.purge", "trash.purge-expired",
+]);
+const isWorkspace = (action: AgencyAction): action is WorkspaceAction => workspaceTypes.has(action.type);
 
 const refused = (error = "Cette action n’est pas possible sur cette version.", status = 409): AgencyActionResult => ({ ok: false, status, error });
 
@@ -72,6 +82,7 @@ function readQuote(value: unknown): Quote | undefined {
 
 /** The action described by a request body, or null when it is malformed. */
 export function readAgencyAction(type: AgencyAction["type"], body: Data, params: ActionParams = {}): AgencyAction | null {
+  if (workspaceTypes.has(type)) return readWorkspaceAction(type as WorkspaceAction["type"], body, params);
   const commentId = id(Number(params.commentId));
   const deliverableId = id(Number(params.deliverableId));
   const replyId = id(Number(params.replyId));
@@ -139,24 +150,12 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
       const email = text(params.email, 320)?.toLowerCase();
       return deliverableId && email ? { type, deliverableId, email } : null;
     }
+    default:
+      return null;
   }
 }
 
 // ——— Turning an action into changes ———
-
-/** Audit events of one action: distinct ids (several events may share a millisecond). */
-function trail(member: AgencyMember, deliverableId: number | null) {
-  const stamp = Date.now() * 1000;
-  const events: Data[] = [];
-  return {
-    add(type: string, description: string, commentId?: number) {
-      events.push({ id: stamp + events.length, type, actor: member.name, description, timestamp: displayedNow(), ...(commentId ? { commentId } : {}), ...(deliverableId ? { deliverableId } : {}) });
-    },
-    into(changes: StateChanges) {
-      if (events.length) changes.lists.auditEvents = { upsert: events as ListChange["upsert"], remove: [] };
-    },
-  };
-}
 
 /** A draft quote for an out-of-scope request: replaces an earlier draft, keeps the quotes sent before. */
 async function draftQuote(db: Db, org: string, changes: StateChanges, commentId: number, description: string, quote: Quote) {
@@ -223,7 +222,7 @@ async function versionChanges(db: Db, member: AgencyMember, action: Extract<Agen
   const key = `${record.id}:${record.version}`;
   const [stored] = await db.select().from(reviewLinks).where(and(eq(reviewLinks.organizationId, org), eq(reviewLinks.key, key))).limit(1);
   const link = stored?.data as Data | undefined;
-  const log = trail(member, record.id);
+  const log = trail(member.name, record.id);
   const putLink = (value: Data) => {
     changes.maps.reviewLinks = { upsert: { [key]: value }, remove: [] };
   };
@@ -259,6 +258,7 @@ async function versionChanges(db: Db, member: AgencyMember, action: Extract<Agen
 }
 
 async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): Promise<{ changes: StateChanges; id?: number; data?: Data } | AgencyActionResult> {
+  if (isWorkspace(action)) return workspaceChanges(db, member.organizationId, member.name, action);
   if (action.type === "version.reopen" || action.type === "link.share" || action.type === "link.revoke" || action.type === "invite.remove") return versionChanges(db, member, action);
   const org = member.organizationId;
   const changes = noChanges();
@@ -272,7 +272,7 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
     const [version] = await db.select({ id: deliverables.id }).from(deliverables).where(and(eq(deliverables.organizationId, org), eq(deliverables.id, deliverableId))).limit(1);
     if (!version) return refused("Livrable introuvable.", 404);
     if (await versionClosed(db, org, deliverableId)) return refused();
-    const log = trail(member, deliverableId);
+    const log = trail(member.name, deliverableId);
 
     if (action.type === "comment.restore") {
       // Put back right after its deletion ("Annuler"): as it was, under its own id.
@@ -324,7 +324,7 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
   if (await versionClosed(db, org, stored.deliverableId)) return refused();
   const comment = stored.data;
   const replies = Array.isArray(comment.replies) ? (comment.replies as Data[]) : [];
-  const log = trail(member, stored.deliverableId);
+  const log = trail(member.name, stored.deliverableId);
   const ownComment = sideOf(comment) === "agency";
   const settled = () => decisionLocked(db, org, action.commentId);
 

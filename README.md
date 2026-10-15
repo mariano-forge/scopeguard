@@ -258,7 +258,7 @@ La page du client écrit une action à la fois, chacune sur sa route (`src/db/re
 | `POST changes-request` | Demander des modifications |
 | `POST approval` | Valider la version, ce qui la verrouille |
 
-L'agence suit le même chemin pour les fils de commentaires, les devis, la réouverture d'une validation et les liens de revue (`src/db/agencyActions.ts`) : le serveur signe chaque message avec le membre, refuse toute écriture sur une version validée ou remplacée et sur une demande dont le devis est tranché, et applique aux membres les mêmes réserves que `/api/state`. Ses autres écritures (espaces, projets, livrables, corbeille) passent encore par `/api/state` et rejoindront ces routes une à une.
+L'agence suit le même chemin pour toutes ses écritures (`src/db/agencyActions.ts`, `src/db/workspaceActions.ts`) : le serveur signe chaque message avec le membre, refuse toute écriture sur une version validée ou remplacée et sur une demande dont le devis est tranché, et applique aux membres les mêmes réserves que `/api/state`. `/api/state` ne sert plus qu'à lire l'état et à l'amorçage des tests.
 
 | Route (`/api/comments…`) | Action de l'agence |
 | --- | --- |
@@ -276,6 +276,15 @@ L'agence suit le même chemin pour les fils de commentaires, les devis, la réou
 | `DELETE /api/deliverables/:id/review-link` | Révoquer le lien (administrateurs) |
 | `DELETE /api/deliverables/:id/review-link/invites/:email` | Retirer une invitation, ce qui coupe l'accès de cette adresse |
 | `POST /api/deliverables/:id/reopen` | Rouvrir la validation, avec la raison dans le journal |
+| `PATCH /api/deliverables/:id/review-link` | Expiration du lien après 7 jours, ou jamais (`autoExpire`) |
+| `POST /api/deliverables/:id/approval` | Enregistrer la validation du client, ce qui verrouille la version |
+| `POST /api/spaces`, `PATCH`, `DELETE /api/spaces/:id` | Créer, renommer, supprimer un espace (suppression : administrateurs) |
+| `POST /api/projects`, `PATCH`, `DELETE /api/projects/:id` | Créer, renommer (`name`), déplacer (`clientId`), supprimer un projet (suppression : administrateurs) |
+| `POST /api/deliverables` | Nouveau livrable, ses fichiers importés au préalable |
+| `POST /api/deliverables/:id/versions` | Nouvelle version : les précédentes sont figées |
+| `PATCH`, `DELETE /api/deliverables/:id` | Renommer (`name`), déplacer (`projectId`) ou mettre à la corbeille toutes les versions d'un livrable |
+| `POST /api/trash/:id/restore` | Restaurer un élément de la corbeille |
+| `DELETE /api/trash/:id`, `DELETE /api/trash`, `DELETE /api/trash/expired` | Supprimer définitivement un élément, tout, ou ce qui a plus de 30 jours (administrateurs) |
 
 - E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (domaine vérifié dans Resend, avec SPF, DKIM et DMARC). Chaque e-mail part en HTML avec sa version texte, et avec un « Répondre à » vers le membre de l'agence concerné (ou `MAIL_REPLY_TO`) : l'adresse d'envoi n'a pas de boîte. `MAIL_TRANSPORT=console` n'envoie jamais rien et affiche les e-mails dans la console, même avec une clé Resend (tests, démonstrations). Sans clé, en développement, ils s'affichent dans la console ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
 

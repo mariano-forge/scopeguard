@@ -15,7 +15,7 @@ export type ListCollection = (typeof listCollections)[number];
 export type MapCollection = (typeof mapCollections)[number];
 export type SettingKey = (typeof settingKeys)[number];
 
-type Entity = { id: number } & Record<string, unknown>;
+export type Entity = { id: number } & Record<string, unknown>;
 
 export type SharedState = Partial<Record<ListCollection, Entity[]>> &
   Partial<Record<MapCollection, Record<string, unknown>>> &
