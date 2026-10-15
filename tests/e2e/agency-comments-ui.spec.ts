@@ -2,12 +2,12 @@
 // database, signed by the server with the member, with their audit events.
 
 import { expect, test, type Browser } from "@playwright/test";
-import { createAgency, newPerson, patchState, signInPage, signUp, sql } from "./helpers";
+import { createAgency, newPerson, seedState, signInPage, signUp, sql } from "./helpers";
 
 async function editor(browser: Browser) {
   const alice = await signUp("Alice Martin");
   await createAgency(alice, "Studio Fils");
-  await patchState(alice, {
+  await seedState(alice, {
     lists: {
       clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
       projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },

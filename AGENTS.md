@@ -62,7 +62,8 @@ Pour les tests :
 **Routes API**
 - Un fichier `route.ts` n'exporte que des méthodes HTTP. Les helpers vont dans `src/lib/`.
 - Valide toutes les entrées. Côté client, réponds 404 plutôt que 403 quand la réponse révélerait l'existence d'une ressource.
-- Pour une nouvelle fonctionnalité, préfère une route par action (`POST /api/…/comments`) à la synchronisation d'état générique (`/api/state`), que l'on remplace progressivement.
+- Toute écriture passe par une route par action (`POST /api/…/comments`), qui construit ses changements depuis la base. `/api/state` est en lecture seule : ne rouvre aucune écriture générique de l'état, ni côté agence ni côté client.
+- Dans les tests, prépare les données avec `seedState` (`tests/e2e/helpers.ts`, écriture directe dans la base de test), et teste les règles par les routes.
 
 ## Secrets, environnements et services réels
 

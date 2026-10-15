@@ -2,14 +2,14 @@
 // src/db/reviewActions.ts). The client writes one action at a time; there is no generic write.
 
 import { expect, test } from "@playwright/test";
-import { call, changes, clientAction, createAgency, patchState, seedReview, signUp, sql, unique, verifiedClient } from "./helpers";
+import { call, changes, clientAction, createAgency, seedState, seedReview, signUp, sql, unique, verifiedClient } from "./helpers";
 
 async function reviewWithQuote() {
   const alice = await signUp("Alice Martin");
   await createAgency(alice, "Studio Règles");
   const token = unique("tok-rules");
   const { linkKey } = await seedReview(alice, token, { deliverableId: 1, version: 3 });
-  await patchState(alice, {
+  await seedState(alice, {
     lists: {
       deliverables: { upsert: [{ id: 2, projectId: 1, name: "secret.pdf", version: 1 }], remove: [] },
       comments: {

@@ -132,7 +132,7 @@ Les e-mails partent par Resend dès que `RESEND_API_KEY` et `MAIL_FROM` sont ren
 
 ## Points d'attention
 
-- **Synchronisation d'état** : le client écrit désormais par des routes par action (`/api/review/:token/comments`, `…/approval`…, `src/db/reviewActions.ts`) et ne fait plus que lire l'état de sa revue. Côté agence, chaque écriture a aussi sa route (`/api/comments`, `/api/deliverables`, `/api/spaces`, `/api/projects`, `/api/trash`, `src/db/agencyActions.ts`, `src/db/workspaceActions.ts`). Les routes du client serviront aussi à l'annotation des sites web.
+- **Synchronisation d'état** : les pages lisent l'état par `/api/state` (agence) et `/api/review/:token` (client), et le relisent toutes les 2 secondes. Elles ne l'écrivent jamais : chaque écriture a sa route par action (`src/db/agencyActions.ts`, `workspaceActions.ts`, `reviewActions.ts`). Les routes du client serviront aussi à l'annotation des sites web.
 - **Imports abandonnés** : un fichier envoyé au stockage sans validation y reste (aucun enregistrement ne le sert). Un nettoyage périodique est à prévoir.
 - **Fichiers antérieurs au stockage Azure** : la table `files` est conservée, mais ses fichiers ne sont plus servis (Supabase n'en contient aucun).
 - **`npm audit`** signale encore, en production, des paquets qui ne sont pas exploitables dans Kora : `drizzle-kit` et `esbuild` (tirés par Better Auth ; la faille d'esbuild concerne son serveur de développement), `source-map-js` (compilation CSS) et `sharp` (optimisation d'images de Next, désactivée par `images.unoptimized`). À revoir à chaque mise à jour de ces dépendances.

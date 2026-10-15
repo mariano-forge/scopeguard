@@ -2,12 +2,12 @@
 // names and places checked, files only the agency's own, deletions reserved to administrators.
 
 import { expect, test } from "@playwright/test";
-import { addColleague, call, createAgency, makePdf, patchState, signUp, sql, upload, type Person } from "./helpers";
+import { addColleague, call, createAgency, makePdf, seedState, signUp, sql, upload, type Person } from "./helpers";
 
 async function agency() {
   const alice = await signUp("Alice Martin");
   await createAgency(alice, "Studio Rangement API");
-  await patchState(alice, {
+  await seedState(alice, {
     lists: {
       clients: { upsert: [{ id: 1, name: "Northwind" }, { id: 2, name: "Globex" }], remove: [] },
       projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }, { id: 2, name: "Campagne", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },

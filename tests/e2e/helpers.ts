@@ -3,7 +3,12 @@
 
 import { readFileSync } from "node:fs";
 import type { Browser, Page } from "@playwright/test";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
+import type { Db } from "../../src/db/client";
+import * as schema from "../../src/db/schema";
+import { applyChanges } from "../../src/db/state";
+import type { StateChanges } from "../../src/lib/sharedState";
 import { baseURL, mailOutbox, testDatabaseUrl } from "../../playwright.config";
 
 export const PASSWORD = "mot-de-passe-solide";
@@ -80,8 +85,19 @@ export async function addColleague(owner: Member, name: string, role: "member" |
 
 export const changes = (partial: Record<string, unknown>) => ({ lists: {}, maps: {}, settings: { upsert: {}, remove: [] }, ...partial });
 
-export async function patchState(member: Person, partial: Record<string, unknown>) {
-  return call("/api/state", { method: "PATCH", person: member, body: { changes: changes(partial) } });
+/**
+ * Test setup: writes records of the member's agency straight into the test database, the way the
+ * server's action routes do (applyChanges, src/db/state.ts). Pages and clients then read them back.
+ */
+export async function seedState(member: Member, partial: Record<string, unknown>) {
+  if (!member.organizationId) throw new Error(`seedState: ${member.email} has no agency`);
+  const client = new Client({ connectionString: testDatabaseUrl });
+  await client.connect();
+  try {
+    await applyChanges(drizzle(client, { schema }) as unknown as Db, member.organizationId, changes(partial) as StateChanges, { recordedBy: "test-setup" });
+  } finally {
+    await client.end();
+  }
 }
 
 export async function readState(member: Person) {
@@ -93,7 +109,7 @@ export async function seedReview(member: Member, token: string, extra: { deliver
   const deliverableId = extra.deliverableId ?? 1;
   const version = extra.version ?? 1;
   const linkKey = `${deliverableId}:${version}`;
-  await patchState(member, {
+  await seedState(member, {
     lists: {
       clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
       projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },

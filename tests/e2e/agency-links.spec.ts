@@ -2,12 +2,12 @@
 // src/db/agencyActions.ts): the server makes the token, administrators revoke, invitations go.
 
 import { expect, test } from "@playwright/test";
-import { addColleague, call, createAgency, patchState, signUp, sql, unique, type Person } from "./helpers";
+import { addColleague, call, createAgency, seedState, signUp, sql, unique, type Person } from "./helpers";
 
 async function agency() {
   const alice = await signUp("Alice Martin");
   await createAgency(alice, "Studio Liens API");
-  await patchState(alice, {
+  await seedState(alice, {
     lists: {
       clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
       projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },

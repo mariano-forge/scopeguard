@@ -6,7 +6,6 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import type { ListCollection, SharedState, StateChanges } from "@/lib/sharedState";
 import type { Db } from "./client";
-import { extractFiles } from "./files";
 import {
   auditEvents,
   clients,
@@ -144,15 +143,13 @@ export async function applyChanges(db: Db, org: string, changes: StateChanges, w
       .onConflictDoUpdate({ target: syncState.organizationId, set: { revision: sql`${syncState.revision} + 1`, updatedAt: sql`now()` } })
       .returning({ revision: syncState.revision });
 
-    const stored = { count: 0 };
 
     for (const [collection, change] of Object.entries(changes.lists ?? {}) as [ListCollection, NonNullable<StateChanges["lists"][ListCollection]>][]) {
       const spec = lists[collection];
       if (!spec || !change) continue;
       const table = spec.table as typeof clients;
-      for (const raw of change.upsert ?? []) {
-        if (typeof raw?.id !== "number") continue;
-        const entity = await extractFiles(db, org, raw, stored);
+      for (const entity of change.upsert ?? []) {
+        if (typeof entity?.id !== "number") continue;
         const row = { ...spec.columns(entity), data: entity };
         // Without an order, a new record goes at the start or the end of its list.
         const position = change.order?.length
@@ -246,7 +243,7 @@ export async function applyChanges(db: Db, org: string, changes: StateChanges, w
     if (changes.settings?.remove?.length)
       await tx.delete(settings).where(and(eq(settings.organizationId, org), inArray(settings.key, changes.settings.remove)));
 
-    return { revision: sync.revision, previousRevision: sync.revision - 1, filesStored: stored.count };
+    return { revision: sync.revision };
   });
 }
 

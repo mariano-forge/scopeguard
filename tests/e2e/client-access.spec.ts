@@ -1,7 +1,7 @@
 // A client reaches a review with a personal link, a code by mail and their name; nobody else does.
 
 import { expect, test } from "@playwright/test";
-import { call, clientAction, codeFor, createAgency, waitForCode, lastMailTo, linkIn, mailsTo, newIp, newPerson, patchState, readState, seedReview, signUp, unique, verifiedClient } from "./helpers";
+import { call, clientAction, codeFor, createAgency, waitForCode, lastMailTo, linkIn, mailsTo, newIp, newPerson, seedState, readState, seedReview, signUp, unique, verifiedClient } from "./helpers";
 
 async function sharedReview() {
   const alice = await signUp("Alice Martin");
@@ -92,11 +92,11 @@ test("the agency previews read-only; removing an invitation or revoking the link
 
   const links = (await readState(alice)).reviewLinks as Record<string, { invites: { email: string }[] }>;
   const link = links[linkKey];
-  await patchState(alice, { maps: { reviewLinks: { upsert: { [linkKey]: { ...link, invites: [] } }, remove: [] } } });
+  await seedState(alice, { maps: { reviewLinks: { upsert: { [linkKey]: { ...link, invites: [] } }, remove: [] } } });
   expect((await call(`/api/review/${token}`, { person: client })).status).toBe(401);
   expect((await clientAction(client, token, "comments", "POST", { message: "Encore là ?" })).status).toBe(401);
 
-  await patchState(alice, { maps: { reviewLinks: { upsert: { [linkKey]: { ...link, active: false } }, remove: [] } } });
+  await seedState(alice, { maps: { reviewLinks: { upsert: { [linkKey]: { ...link, active: false } }, remove: [] } } });
   expect((await call(`/api/review/${token}`, { person: client })).status).toBe(404);
   expect((await clientAction(client, token, "approval")).status).toBe(404);
 });

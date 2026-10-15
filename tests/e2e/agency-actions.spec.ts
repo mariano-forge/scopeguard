@@ -3,12 +3,12 @@
 
 import { expect, test } from "@playwright/test";
 import { baseURL } from "../../playwright.config";
-import { addColleague, call, createAgency, patchState, signUp, sql, type Person } from "./helpers";
+import { addColleague, call, createAgency, seedState, signUp, sql, type Person } from "./helpers";
 
 async function agency() {
   const alice = await signUp("Alice Martin");
   await createAgency(alice, "Studio Actions Agence");
-  await patchState(alice, {
+  await seedState(alice, {
     lists: {
       clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
       projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },

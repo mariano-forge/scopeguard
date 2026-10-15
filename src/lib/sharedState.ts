@@ -1,8 +1,6 @@
-// Shape of the state shared by the agency and client pages, and the changes sent to the server.
-// Used on both sides: the browser computes the changes, the server applies them (src/db/state.ts).
-//
-// Pages only send what changed since the last sync, record by record, so two pages editing different
-// records never overwrite each other; on the same record the last write wins.
+// Shape of the state shared by the agency and client pages, and of the changes the server applies to
+// it (src/db/state.ts). Pages read the state; the changes are built on the server by the action
+// routes (src/db/agencyActions.ts, workspaceActions.ts, reviewActions.ts), record by record.
 
 /** Lists of records with a numeric id; their order is kept. */
 export const listCollections = ["clients", "projects", "deliverables", "comments", "notifications", "auditEvents", "trash"] as const;
@@ -44,57 +42,3 @@ function stable(value: unknown): string {
 
 /** Same JSON value, whatever the order of object keys. */
 export const sameValue = (left: unknown, right: unknown) => stable(left) === stable(right);
-const same = sameValue;
-
-function listOf(state: SharedState | null, collection: ListCollection): Entity[] {
-  const value = state?.[collection];
-  return Array.isArray(value) ? value.filter((entity) => typeof entity?.id === "number") : [];
-}
-
-function mapOf(state: SharedState | null, collection: MapCollection): Record<string, unknown> {
-  const value = state?.[collection];
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
-}
-
-/** What changed from `previous` (last synced state, null = nothing synced yet) to `next`; null if nothing. */
-export function diffState(previous: SharedState | null, next: SharedState): StateChanges | null {
-  const changes: StateChanges = { lists: {}, maps: {}, settings: { upsert: {}, remove: [] } };
-  let changed = false;
-
-  for (const collection of listCollections) {
-    if (!(collection in next)) continue;
-    const before = new Map(listOf(previous, collection).map((entity) => [entity.id, entity]));
-    const after = listOf(next, collection);
-    const upsert = after.filter((entity) => !before.has(entity.id) || !same(before.get(entity.id), entity));
-    const kept = new Set(after.map((entity) => entity.id));
-    const remove = [...before.keys()].filter((id) => !kept.has(id));
-    const order = after.map((entity) => entity.id);
-    const reordered = !same([...before.keys()], order);
-    if (!upsert.length && !remove.length && !reordered) continue;
-    changes.lists[collection] = { upsert, remove, order };
-    changed = true;
-  }
-
-  for (const collection of mapCollections) {
-    if (!(collection in next)) continue;
-    const before = mapOf(previous, collection);
-    const after = mapOf(next, collection);
-    const upsert = Object.fromEntries(Object.entries(after).filter(([key, value]) => !same(before[key], value)));
-    const remove = Object.keys(before).filter((key) => !(key in after));
-    if (!Object.keys(upsert).length && !remove.length) continue;
-    changes.maps[collection] = { upsert, remove };
-    changed = true;
-  }
-
-  for (const key of settingKeys) {
-    if (!(key in next)) continue;
-    const before = previous?.[key] ?? null;
-    const after = next[key] ?? null;
-    if (same(before, after)) continue;
-    if (after === null) changes.settings.remove.push(key);
-    else changes.settings.upsert[key] = after;
-    changed = true;
-  }
-
-  return changed ? changes : null;
-}

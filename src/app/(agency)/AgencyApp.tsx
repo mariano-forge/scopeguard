@@ -71,7 +71,7 @@ import { sideOf, type Side } from "@/lib/authors";
 import { proofHtml } from "./proofDocument";
 import { uploadFile as sendFile, type UploadPlacement } from "@/lib/upload";
 import { agencyAction } from "@/lib/agencyActions";
-import { flushSharedState, loadSharedState, refreshSharedState, subscribeSharedState, writeSharedState } from "@/lib/stateSync";
+import { loadSharedState, refreshSharedState, subscribeSharedState } from "@/lib/stateSync";
 
 
 type Decision = "À qualifier" | "Inclus" | "Hors périmètre";
@@ -602,43 +602,6 @@ export function AgencyApp() {
 
     return subscribeSharedState(syncFromStorage);
   }, []);
-
-  useEffect(() => {
-    if (!stateHydrated) return;
-
-    const newSerialized = JSON.stringify({
-      projects,
-      clients,
-      deliverables,
-      // Not the link open in the share dialog: a view state, kept out of the saved state.
-      reviewLinks,
-      comments,
-      proposalStates,
-      proposalDecisions,
-      adaptationRequests,
-      proposalVersions,
-      notifications,
-      auditEvents,
-      trash,
-    });
-
-    writeSharedState(newSerialized);
-  }, [
-    projects,
-    clients,
-    deliverables,
-    reviewLinks,
-    comments,
-    proposalStates,
-    proposalDecisions,
-    adaptationRequests,
-    proposalVersions,
-    notifications,
-    auditEvents,
-    trash,
-    stateHydrated,
-  ]);
-
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0];
   const selectedClient = clients.find((client) => client.id === selectedClientId) ?? clients[0];
@@ -1389,8 +1352,6 @@ export function AgencyApp() {
     if (!exportWindow) return;
     exportWindow.document.title = "Préparation de la preuve…";
     exportWindow.document.body.textContent = "Préparation de la preuve…";
-    // What was just changed here must be in it.
-    await flushSharedState();
     const response = await fetch(`/api/proof/${currentDeliverable.id}`, { cache: "no-store" }).catch(() => null);
     if (!response?.ok) {
       exportWindow.document.body.textContent = "La preuve n’a pas pu être générée. Réessayez.";
@@ -2934,9 +2895,8 @@ export function AgencyApp() {
     toast(decision === "accepted" ? `Accès accordé à ${request.email}` : `Demande de ${request.email} refusée`);
   }
 
-  /** Invitation endpoints: the link is saved first, the answer updates it here. */
+  /** Invitation endpoints (the link exists: sharing created it); the answer updates it here. */
   async function callReviewAccess(action: "invite" | "requests" | "remind", body: Record<string, unknown>) {
-    await flushSharedState();
     const response = await fetch(`/api/review-access/${action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2949,8 +2909,6 @@ export function AgencyApp() {
     }
     const link = result.link;
     setReviewLink((current) => (current && linkKeyOf(current) === linkKeyOf(link) ? link : current));
-    // The server saved the link: fetched back rather than written again from here.
-    await flushSharedState();
     await refreshSharedState();
     if (result.notSent?.length)
       toast.warning(`E-mail non envoyé à ${result.notSent.join(", ")} : copiez son lien personnel et transmettez-le.`);

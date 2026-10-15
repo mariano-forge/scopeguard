@@ -2,12 +2,12 @@
 // invitations are removed, the link is revoked, the client page is previewed, a validation reopened.
 
 import { expect, test, type Browser } from "@playwright/test";
-import { createAgency, newPerson, patchState, signInPage, signUp, sql, unique } from "./helpers";
+import { createAgency, newPerson, seedState, signInPage, signUp, sql, unique } from "./helpers";
 
 async function editor(browser: Browser) {
   const alice = await signUp("Alice Martin");
   await createAgency(alice, "Studio Liens");
-  await patchState(alice, {
+  await seedState(alice, {
     lists: {
       clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
       projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },

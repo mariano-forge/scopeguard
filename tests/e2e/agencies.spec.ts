@@ -1,7 +1,7 @@
 // Agencies are sealed from each other; colleagues join by invitation and lose access when removed.
 
 import { expect, test } from "@playwright/test";
-import { PASSWORD, call, createAgency, lastMailTo, linkIn, newPerson, patchState, readState, seedReview, signInPage, signUp, unique, waitForMail } from "./helpers";
+import { PASSWORD, call, createAgency, lastMailTo, linkIn, newPerson, readState, seedState, seedReview, signInPage, signUp, unique, waitForMail } from "./helpers";
 
 test("another agency can neither read, overwrite, preview nor invite on an agency's data", async () => {
   const alice = await signUp("Alice Martin");
@@ -13,13 +13,10 @@ test("another agency can neither read, overwrite, preview nor invite on an agenc
   await createAgency(bob, "Studio Beta");
   expect(JSON.stringify(await readState(bob))).not.toContain("Northwind");
 
-  // Same ids as Alice's records: they stay Alice's.
-  await patchState(bob, {
-    lists: {
-      deliverables: { upsert: [{ id: 1, projectId: 1, name: "écrasé par Beta", version: 1 }], remove: [] },
-      clients: { upsert: [], remove: [1] },
-    },
-  });
+  // Same ids as Alice's records: they stay Alice's, whatever route Beta tries.
+  expect((await call("/api/deliverables/1", { method: "PATCH", person: bob, body: { name: "écrasé par Beta" } })).status).toBe(404);
+  expect((await call("/api/spaces/1", { method: "DELETE", person: bob })).status).toBe(404);
+  expect((await call("/api/state", { method: "PATCH", person: bob, body: { changes: { lists: { clients: { upsert: [], remove: [1] } }, maps: {}, settings: { upsert: {}, remove: [] } } } })).status).toBe(405);
   const alpha = await readState(alice);
   expect((alpha.deliverables as { name: string }[])[0].name).toBe("maquette-1.png");
   expect((alpha.clients as unknown[]).length).toBe(1);
@@ -32,7 +29,7 @@ test("another agency can neither read, overwrite, preview nor invite on an agenc
 test("a colleague joins from the invitation mail; the wrong account cannot; removal cuts access", async ({ browser }) => {
   const alice = await signUp("Alice Martin");
   await createAgency(alice, "Studio Gamma");
-  await patchState(alice, { lists: { clients: { upsert: [{ id: 1, name: "Espace Gamma" }], remove: [] } } });
+  await seedState(alice, { lists: { clients: { upsert: [{ id: 1, name: "Espace Gamma" }], remove: [] } } });
 
   const { page: owner } = await newPerson(browser);
   await signInPage(owner, alice.email);

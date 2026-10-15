@@ -10,7 +10,7 @@ import {
   makePdf,
   mailsTo,
   newPerson,
-  patchState,
+  seedState,
   readState,
   seedReview,
   signInPage,
@@ -25,7 +25,7 @@ import {
 test("a PDF imported from the agency page is stored by version, shown, and served only to who may see it", async ({ browser }) => {
   const alice = await signUp("Alice Martin");
   await createAgency(alice, "Studio Fichiers");
-  await patchState(alice, {
+  await seedState(alice, {
     lists: {
       clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
       projects: { upsert: [{ id: 7, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },
@@ -102,7 +102,7 @@ test("a verified client gets only the files of the version shared with them", as
   const hidden = await upload(alice, makePdf("caché"), "cache.pdf", { kind: "version", projectId: 1, livrableId: 1, version: 1 });
   const token = unique("tok-files");
   const { linkKey } = await seedReview(alice, token, { deliverableId: 2 });
-  await patchState(alice, {
+  await seedState(alice, {
     lists: {
       deliverables: {
         upsert: [
@@ -126,7 +126,7 @@ test("the proof shows who decided, when and from where, from the server's record
   const file = await upload(alice, makePdf("maquette"), "maquette.pdf", { kind: "version", projectId: 1, livrableId: 1, version: 2 });
   const token = unique("tok-proof");
   const { linkKey } = await seedReview(alice, token, { deliverableId: 1, version: 2 });
-  await patchState(alice, {
+  await seedState(alice, {
     lists: {
       deliverables: { upsert: [{ id: 1, projectId: 1, name: "maquette.pdf", type: "PDF", version: 2, status: "En attente client", fileData: file.json.href }], remove: [] },
       comments: { upsert: [{ id: 10, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Section témoignages", decision: "Hors périmètre", kind: "request", title: "Témoignages", location: "Page 1", time: "t" }], remove: [] },
@@ -191,7 +191,7 @@ test("reminders: to every invited client with their link, once a day, never on a
   // A third review, never reminded, whose version is approved: refused for that reason.
   const done = await seedReview(alice, unique("tok-remind3"), { deliverableId: 3 });
   await call("/api/review-access/invite", { person: alice, body: { linkKey: done.linkKey, emails: [claire] } });
-  await patchState(alice, { lists: { deliverables: { upsert: [{ id: 3, projectId: 1, name: "maquette-3.png", type: "Image", version: 1, status: "Approuvée", reviewStatus: "approved", locked: true }], remove: [] } } });
+  await seedState(alice, { lists: { deliverables: { upsert: [{ id: 3, projectId: 1, name: "maquette-3.png", type: "Image", version: 1, status: "Approuvée", reviewStatus: "approved", locked: true }], remove: [] } } });
   const approved = await call("/api/review-access/remind", { person: alice, body: { linkKey: done.linkKey } });
   expect(approved.status).toBe(400);
   expect(approved.json.error).toContain("n’attend plus de validation");

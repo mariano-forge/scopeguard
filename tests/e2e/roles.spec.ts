@@ -1,7 +1,7 @@
 // Members produce; administrators make the commercial and irreversible decisions (src/db/agencyPermissions.ts).
 
 import { expect, test } from "@playwright/test";
-import { addColleague, call, createAgency, newPerson, patchState, signInPage, signUp, unique } from "./helpers";
+import { addColleague, call, createAgency, newPerson, seedState, signInPage, signUp, unique, type Member } from "./helpers";
 
 const quote = (id: number, commentId: number, status: string) => ({ id, version: 1, commentId, description: "Témoignages", amount: 900, deadline: 3, status, createdAt: "x" });
 
@@ -11,7 +11,7 @@ async function agencyWithWork() {
   const member = await addColleague(owner, "Mia Laurent", "member");
   const link = { token: unique("tok-roles"), active: true, expiresAt: "01/01/2099", deliverableId: 1, version: 1 };
   const now = Date.now();
-  await patchState(owner, {
+  await seedState(owner, {
     lists: {
       clients: { upsert: [{ id: 1, name: "Northwind" }, { id: 7, name: "Contoso" }], remove: [] },
       projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1 }, { id: 2, name: "Ancien", clientId: 1 }], remove: [] },
@@ -42,39 +42,43 @@ async function agencyWithWork() {
   return { owner, member, link };
 }
 
+/** One action of the agency, through its route (src/db/agencyActions.ts, workspaceActions.ts). */
+const act = (person: Member, path: string, method: "POST" | "PUT" | "PATCH" | "DELETE", body?: Record<string, unknown>) =>
+  call(`/api/${path}`, { method, person, body: body ?? (method === "DELETE" ? undefined : {}) });
+
 test("a member is refused every reserved action, with a message naming it", async () => {
-  const { member, link } = await agencyWithWork();
-  const refused = async (partial: Record<string, unknown>) => {
-    const answer = await patchState(member, partial);
-    expect(answer.status).toBe(403);
+  const { member } = await agencyWithWork();
+  const refused = async (path: string, method: "POST" | "DELETE", body?: Record<string, unknown>) => {
+    const answer = await act(member, path, method, body);
+    expect(answer.status, path).toBe(403);
+    expect(answer.json.code).toBe("ADMIN_ONLY");
     return answer.json.error;
   };
-  expect(await refused({ maps: { proposalStates: { upsert: { "10": "sent" }, remove: [] }, proposalVersions: { upsert: { "10": [quote(100, 10, "sent")] }, remove: [] } } })).toContain("envoyer un devis");
-  expect(await refused({ maps: { adaptationRequests: { upsert: { "11": { message: "Moins cher ?", budget: 600, requestedAt: "x", decision: "accepted" } }, remove: [] } } })).toContain("contre-proposition");
-  expect(await refused({ maps: { adaptationRequests: { upsert: {}, remove: ["11"] } } })).toContain("contre-proposition");
-  expect(await refused({ maps: { reviewLinks: { upsert: { "1:1": { ...link, active: false } }, remove: [] } } })).toContain("révoquer un lien client");
-  expect(await refused({ lists: { clients: { upsert: [], remove: [1] } } })).toContain("supprimer un espace");
-  expect(await refused({ lists: { projects: { upsert: [], remove: [2] } } })).toContain("supprimer un projet");
-  expect(await refused({ lists: { trash: { upsert: [], remove: [500] } } })).toContain("supprimer définitivement");
+  expect(await refused("comments/10/proposal/send", "POST")).toContain("envoyer un devis");
+  expect(await refused("comments/11/adaptation/decision", "POST", { decision: "accepted" })).toContain("contre-proposition");
+  expect(await refused("comments/11/proposal/versions", "POST", { description: "Autre", amount: 500, deadline: 2, send: true })).toContain("contre-proposition");
+  expect(await refused("deliverables/1/review-link", "DELETE")).toContain("révoquer un lien client");
+  expect(await refused("spaces/1", "DELETE")).toContain("supprimer un espace");
+  expect(await refused("projects/2", "DELETE")).toContain("supprimer un projet");
+  expect(await refused("trash/500", "DELETE")).toContain("supprimer définitivement");
+  expect(await refused("trash", "DELETE")).toContain("supprimer définitivement");
 });
 
 test("a member still produces: qualify, draft a quote, restore, delete a deliverable", async () => {
   const { member } = await agencyWithWork();
-  expect((await patchState(member, { lists: { comments: { upsert: [{ id: 12, deliverableId: 1, decision: "Inclus", kind: "request", title: "Logo" }], remove: [] } } })).status).toBe(200);
-  expect((await patchState(member, { maps: { proposalStates: { upsert: { "12": "draft" }, remove: [] }, proposalVersions: { upsert: { "12": [quote(120, 12, "draft")] }, remove: [] } } })).status).toBe(200);
-  expect((await patchState(member, { lists: { trash: { upsert: [], remove: [500] }, deliverables: { upsert: [{ id: 3, projectId: 1, name: "vieux.pdf", version: 1 }], remove: [] } } })).status).toBe(200);
-  expect(
-    (await patchState(member, { lists: { deliverables: { upsert: [], remove: [2] }, trash: { upsert: [{ id: 502, kind: "livrable", name: "b.pdf", deletedAt: Date.now(), data: { clients: [], projects: [], deliverables: [{ id: 2 }], comments: [] } }], remove: [] } } })).status,
-  ).toBe(200);
+  expect((await act(member, "comments/12/qualification", "PUT", { decision: "Inclus", title: "Logo" })).status).toBe(200);
+  expect((await act(member, "comments/12/qualification", "PUT", { decision: "Hors périmètre", title: "Logo", quote: { amount: 900, days: 3 } })).status).toBe(200);
+  expect((await act(member, "trash/500/restore", "POST")).status).toBe(200);
+  expect((await act(member, "deliverables/2", "DELETE")).status).toBe(200);
 });
 
 test("owners and administrators make those decisions", async () => {
-  const { owner, link } = await agencyWithWork();
-  expect((await patchState(owner, { maps: { proposalStates: { upsert: { "10": "sent" }, remove: [] }, proposalVersions: { upsert: { "10": [quote(100, 10, "sent")] }, remove: [] } } })).status).toBe(200);
-  expect((await patchState(owner, { maps: { reviewLinks: { upsert: { "1:1": { ...link, active: false } }, remove: [] } } })).status).toBe(200);
-  expect((await patchState(owner, { lists: { trash: { upsert: [], remove: [500, 501] } } })).status).toBe(200);
+  const { owner } = await agencyWithWork();
+  expect((await act(owner, "comments/10/proposal/send", "POST")).status).toBe(200);
+  expect((await act(owner, "deliverables/1/review-link", "DELETE")).status).toBe(200);
+  expect((await act(owner, "trash", "DELETE")).status).toBe(200);
   const admin = await addColleague(owner, "Adam Admin", "admin");
-  expect((await patchState(admin, { lists: { clients: { upsert: [], remove: [7] } } })).status).toBe(200);
+  expect((await act(admin, "spaces/7", "DELETE")).status).toBe(200);
 });
 
 test("a member sees reserved actions greyed out, with the reason", async ({ browser }) => {

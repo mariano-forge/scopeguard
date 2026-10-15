@@ -1,12 +1,12 @@
 // Spaces, projects, deliverables and the trash, used as an administrator does in the agency's pages.
 
 import { expect, test, type Browser } from "@playwright/test";
-import { createAgency, newPerson, patchState, signInPage, signUp, sql } from "./helpers";
+import { createAgency, newPerson, seedState, signInPage, signUp, sql } from "./helpers";
 
 async function workspace(browser: Browser) {
   const alice = await signUp("Alice Martin");
   await createAgency(alice, "Studio Rangement");
-  await patchState(alice, {
+  await seedState(alice, {
     lists: {
       clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
       projects: {

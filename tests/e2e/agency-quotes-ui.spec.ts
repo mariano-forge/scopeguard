@@ -3,7 +3,7 @@
 // database with its audit event.
 
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { createAgency, newPerson, patchState, signInPage, signUp, sql } from "./helpers";
+import { createAgency, newPerson, seedState, signInPage, signUp, sql } from "./helpers";
 
 const quote = (commentId: number, status: string, extra: Record<string, unknown> = {}) => ({ id: commentId * 10, version: 1, commentId, description: `Devis ${commentId}`, amount: 900, deadline: 3, status, createdAt: "x", ...extra });
 const request = (id: number, title: string) => ({
@@ -25,7 +25,7 @@ const request = (id: number, title: string) => ({
 async function editor(browser: Browser) {
   const alice = await signUp("Alice Martin");
   await createAgency(alice, "Studio Devis");
-  await patchState(alice, {
+  await seedState(alice, {
     lists: {
       clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
       projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },

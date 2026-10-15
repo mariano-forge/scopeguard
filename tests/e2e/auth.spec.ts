@@ -15,7 +15,9 @@ test("pages and data of the agency need a session; a forged cookie gets nothing"
   const forged = { cookie: "better-auth.session_token=forged.value" };
   expect((await call("/", { person: forged })).response.headers.get("location")).toContain("/connexion");
   expect((await call("/api/state", { person: forged })).status).toBe(401);
-  expect((await call("/api/state", { method: "PATCH", person: forged, body: { changes: {} } })).status).toBe(401);
+  expect((await call("/api/spaces", { method: "POST", person: forged, body: { name: "Forgé" } })).status).toBe(401);
+  // The state is read only: no generic write, whoever asks.
+  expect((await call("/api/state", { method: "PATCH", person: forged, body: { changes: {} } })).status).toBe(405);
 });
 
 test("sign-up leads to creating one's agency, then to its empty home", async ({ browser }) => {

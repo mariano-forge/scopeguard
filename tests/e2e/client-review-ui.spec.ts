@@ -3,7 +3,7 @@
 
 import { expect, test, type Browser } from "@playwright/test";
 import { baseURL } from "../../playwright.config";
-import { call, createAgency, newPerson, patchState, seedReview, signUp, sql, unique, verifiedClient } from "./helpers";
+import { call, createAgency, newPerson, seedState, seedReview, signUp, sql, unique, verifiedClient } from "./helpers";
 
 async function clientPage(browser: Browser) {
   const alice = await signUp("Alice Martin");
@@ -11,7 +11,7 @@ async function clientPage(browser: Browser) {
   const token = unique("tok-ui");
   const { linkKey } = await seedReview(alice, token);
   const quote = (id: number, commentId: number, description: string) => [{ id, version: 1, commentId, description, amount: 900, deadline: 3, status: "sent", createdAt: "x" }];
-  await patchState(alice, {
+  await seedState(alice, {
     lists: {
       comments: {
         upsert: [

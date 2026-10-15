@@ -2,7 +2,7 @@
 // right order, administrators only for what reaches the client, members for what stays a draft.
 
 import { expect, test } from "@playwright/test";
-import { addColleague, call, createAgency, patchState, signUp, sql, type Person } from "./helpers";
+import { addColleague, call, createAgency, seedState, signUp, sql, type Person } from "./helpers";
 
 const quote = (commentId: number, status: string) => ({ id: commentId * 10, version: 1, commentId, description: `Devis ${commentId}`, amount: 900, deadline: 3, status, createdAt: "x" });
 const request = (id: number, decision = "Hors périmètre") => ({ id, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: `Demande ${id}`, title: `Demande ${id}`, decision, kind: "request", location: "", time: "t" });
@@ -10,7 +10,7 @@ const request = (id: number, decision = "Hors périmètre") => ({ id, deliverabl
 async function agency() {
   const alice = await signUp("Alice Martin");
   await createAgency(alice, "Studio Devis API");
-  await patchState(alice, {
+  await seedState(alice, {
     lists: {
       clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
       projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },

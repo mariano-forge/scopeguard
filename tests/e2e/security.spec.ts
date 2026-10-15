@@ -2,7 +2,7 @@
 
 import { expect, test } from "@playwright/test";
 import { baseURL } from "../../playwright.config";
-import { call, createAgency, makePdf, newIp, patchState, signUp, upload } from "./helpers";
+import { call, createAgency, makePdf, newIp, seedState, signUp, upload } from "./helpers";
 
 test("every page and API answer carries the security headers, and does not name the framework", async () => {
   for (const path of ["/connexion", "/api/state", "/review/inconnu"]) {
@@ -24,8 +24,7 @@ test("writes coming from another site's page are refused", async () => {
   const alice = await signUp("Alice Martin");
   await createAgency(alice, "Studio Origine");
   const evil = { "content-type": "application/json", origin: "https://evil.example", cookie: alice.cookie, "x-forwarded-for": newIp() };
-  const body = JSON.stringify({ changes: { lists: { clients: { upsert: [{ id: 1, name: "Piégé" }], remove: [] } }, maps: {}, settings: { upsert: {}, remove: [] } } });
-  expect((await fetch(`${baseURL}/api/state`, { method: "PATCH", headers: evil, body })).status).toBe(403);
+  expect((await fetch(`${baseURL}/api/spaces`, { method: "POST", headers: evil, body: JSON.stringify({ name: "Piégé" }) })).status).toBe(403);
   expect((await fetch(`${baseURL}/api/review/inconnu/access/code`, { method: "POST", headers: evil, body: "{}" })).status).toBe(403);
 
   const form = new FormData();
@@ -34,7 +33,7 @@ test("writes coming from another site's page are refused", async () => {
   expect((await fetch(`${baseURL}/api/files`, { method: "POST", headers: { origin: "https://evil.example", cookie: alice.cookie }, body: form })).status).toBe(403);
 
   // Same requests from the app itself go through.
-  expect((await patchState(alice, { lists: { clients: { upsert: [{ id: 1, name: "Légitime" }], remove: [] } } })).status).toBe(200);
+  expect((await call("/api/spaces", { person: alice, body: { name: "Légitime" } })).status).toBe(200);
 });
 
 test("request limits: uploads per hour and saves per minute (lowered for tests)", async () => {
@@ -45,8 +44,9 @@ test("request limits: uploads per hour and saves per minute (lowered for tests)"
   for (let index = 0; index < 6; index++) uploads.push((await upload(alice, makePdf(`fichier ${index}`), `f${index}.pdf`, place)).status);
   expect(uploads).toEqual([200, 200, 200, 200, 200, 429]);
 
+  await seedState(alice, { lists: { clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] } } });
   const saves: number[] = [];
-  for (let index = 0; index < 121; index++) saves.push((await patchState(alice, { settings: { upsert: {}, remove: [] } })).status);
+  for (let index = 0; index < 121; index++) saves.push((await call("/api/spaces/1", { method: "PATCH", person: alice, body: { name: `Northwind ${index}` } })).status);
   expect(saves.slice(0, 120).every((status) => status === 200)).toBe(true);
   expect(saves[120]).toBe(429);
 });
