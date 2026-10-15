@@ -1,7 +1,7 @@
 // A client reaches a review with a personal link, a code by mail and their name; nobody else does.
 
 import { expect, test } from "@playwright/test";
-import { call, codeFor, createAgency, waitForCode, lastMailTo, linkIn, mailsTo, newIp, newPerson, patchState, readState, seedReview, signUp, unique, verifiedClient } from "./helpers";
+import { call, clientAction, codeFor, createAgency, waitForCode, lastMailTo, linkIn, mailsTo, newIp, newPerson, patchState, readState, seedReview, signUp, unique, verifiedClient } from "./helpers";
 
 async function sharedReview() {
   const alice = await signUp("Alice Martin");
@@ -83,7 +83,7 @@ test("an uninvited person asks for access; the agency accepts and they get their
 test("the agency previews read-only; removing an invitation or revoking the link closes the review", async () => {
   const { alice, token, linkKey } = await sharedReview();
   expect((await call(`/api/review/${token}`, { person: alice })).status).toBe(200);
-  expect((await call(`/api/review/${token}`, { method: "PATCH", person: alice, body: { changes: { lists: {}, maps: {}, settings: { upsert: {}, remove: [] } } } })).status).toBe(403);
+  expect((await clientAction(alice, token, "comments", "POST", { message: "Depuis l’aperçu" })).status).toBe(403);
 
   const email = `${unique("claire")}@client.test`;
   await call("/api/review-access/invite", { person: alice, body: { linkKey, emails: [email] } });
@@ -94,7 +94,9 @@ test("the agency previews read-only; removing an invitation or revoking the link
   const link = links[linkKey];
   await patchState(alice, { maps: { reviewLinks: { upsert: { [linkKey]: { ...link, invites: [] } }, remove: [] } } });
   expect((await call(`/api/review/${token}`, { person: client })).status).toBe(401);
+  expect((await clientAction(client, token, "comments", "POST", { message: "Encore là ?" })).status).toBe(401);
 
   await patchState(alice, { maps: { reviewLinks: { upsert: { [linkKey]: { ...link, active: false } }, remove: [] } } });
   expect((await call(`/api/review/${token}`, { person: client })).status).toBe(404);
+  expect((await clientAction(client, token, "approval")).status).toBe(404);
 });

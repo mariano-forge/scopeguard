@@ -168,8 +168,9 @@ export async function verifiedClient(token: string, email: string, name = "Clair
   return person;
 }
 
-export async function patchReview(person: Person, token: string, partial: Record<string, unknown>) {
-  return call(`/api/review/${token}`, { method: "PATCH", person, body: { changes: changes(partial) } });
+/** One client action on a review (routes under /api/review/:token/, src/db/reviewActions.ts). */
+export async function clientAction(person: Partial<Person>, token: string, path: string, method: "POST" | "PATCH" | "DELETE" = "POST", body?: Record<string, unknown>) {
+  return call(`/api/review/${token}/${path}`, { method, person, body: body ?? (method === "DELETE" ? undefined : {}) });
 }
 
 // ——— Database ———

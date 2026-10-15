@@ -5,7 +5,7 @@
 // Writing: what the client page can do, checked here rather than trusted:
 //   - comments: add its own remarks, edit/move/delete them, reply in any thread of this version;
 //     never change the agency's messages or a qualification (decision, title, quote…);
-//   - proposals: accept or refuse a sent proposal once, or ask for an adaptation;
+//   - proposals: accept or refuse a sent proposal once, or ask for an adaptation when the agency allows it;
 //   - the version: request changes or approve it, never undo an approval;
 //   - audit events and notifications: add new ones, signed with the verified address.
 // What the client writes is signed by the server with their name and verified address, whatever the page sends.
@@ -193,8 +193,17 @@ export async function sanitizeReviewChanges(
 
   const adaptations = changes.maps?.adaptationRequests;
   const asked: Record<string, unknown> = {};
+  // The agency may send a quote without the option to counter it.
+  const askedIds = Object.keys(adaptations?.upsert ?? {}).map(Number).filter((key) => commentIds.includes(key));
+  const noCounter = new Set(
+    askedIds.length
+      ? (await db.select().from(proposalVersions).where(and(eq(proposalVersions.organizationId, org), inArray(proposalVersions.commentId, askedIds))))
+          .filter((row) => (row.data as Data).status === "sent" && (row.data as Data).allowCounter === false)
+          .map((row) => String(row.commentId))
+      : [],
+  );
   for (const [key, value] of Object.entries(adaptations?.upsert ?? {})) {
-    if (!sent(key) || !undecided(key) || !isObject(value)) continue;
+    if (!sent(key) || !undecided(key) || noCounter.has(key) || !isObject(value)) continue;
     const message = shortText(value.message, 5000)?.trim();
     if (!message) continue;
     const amount = (field: unknown) => (typeof field === "number" && Number.isFinite(field) && field >= 0 ? field : undefined);

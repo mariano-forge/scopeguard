@@ -72,7 +72,7 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 
 | Technologie | Version | Rôle |
 | --- | --- | --- |
-| **Playwright Test** | 1.63 | 31 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier. Couvre la connexion, les agences, les rôles, l'accès client, les fichiers, la preuve et les relances. |
+| **Playwright Test** | 1.63 | 37 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier. Couvre la connexion, les agences, les rôles, l'accès client, les fichiers, la preuve et les relances. |
 | **ESLint** | 9.39 | Analyse du code, avec la configuration de Next.js. |
 | **Prettier** | 3.9 | Mise en forme. |
 
@@ -121,7 +121,7 @@ Les e-mails partent par Resend dès que `RESEND_API_KEY` et `MAIL_FROM` sont ren
 
 - **Isolation des agences** : chaque enregistrement porte l'identifiant de son agence dans sa clé primaire, et le serveur filtre chaque requête dessus.
 - **Rôles** : les décisions commerciales et irréversibles sont réservées aux administrateurs, et le serveur les refuse aux membres (`src/db/agencyPermissions.ts`).
-- **Clients** : ils n'accèdent qu'à la version partagée avec eux. Le serveur n'accepte d'eux que leurs propres commentaires, leurs décisions et la validation, et signe ce qu'ils écrivent avec leur nom et leur adresse vérifiée (`src/db/reviewAccess.ts`).
+- **Clients** : ils n'accèdent qu'à la version partagée avec eux. Ils écrivent une action à la fois, que le serveur construit depuis la base : leurs propres commentaires, leurs décisions et la validation. Le serveur signe ce qu'ils écrivent avec leur nom et leur adresse vérifiée (`src/db/reviewActions.ts`, `src/db/reviewAccess.ts`).
 - **Journal d'audit** : il est en ajout seul, et un trigger PostgreSQL refuse toute modification ou suppression. Chaque événement garde l'heure du serveur, l'identité constatée, l'IP et le navigateur. Il alimente la preuve de validation (`src/db/proof.ts`).
 - **Base** : la sécurité par ligne est activée sur toutes les tables, ce qui ferme l'API publique de Supabase.
 - **Fichiers** : les conteneurs sont privés, l'accès est vérifié avant chaque lecture, et l'adresse signée n'est valable que 5 minutes. Une adresse d'import ne permet que de créer un fichier, jamais de le lire ou d'en remplacer un ; le serveur recalcule l'empreinte de ce qu'il reçoit et supprime tout fichier non conforme.
@@ -132,7 +132,7 @@ Les e-mails partent par Resend dès que `RESEND_API_KEY` et `MAIL_FROM` sont ren
 
 ## Points d'attention
 
-- **Synchronisation d'état** : l'essentiel des données circule encore par deux routes génériques (`/api/state` pour l'agence, `/api/review/:token` pour le client) qui échangent des différences d'état. Le passage à des routes par action est prévu, en commençant par le côté client, qui servira aussi à l'annotation des sites web.
+- **Synchronisation d'état** : le client écrit désormais par des routes par action (`/api/review/:token/comments`, `…/approval`…, `src/db/reviewActions.ts`) et ne fait plus que lire l'état de sa revue. L'agence échange encore des différences d'état par `/api/state` : c'est la suite du passage aux routes par action. Les routes du client serviront aussi à l'annotation des sites web.
 - **Imports abandonnés** : un fichier envoyé au stockage sans validation y reste (aucun enregistrement ne le sert). Un nettoyage périodique est à prévoir.
 - **Fichiers antérieurs au stockage Azure** : la table `files` est conservée, mais ses fichiers ne sont plus servis (Supabase n'en contient aucun).
 - **`npm audit`** signale encore, en production, des paquets qui ne sont pas exploitables dans Kora : `drizzle-kit` et `esbuild` (tirés par Better Auth ; la faille d'esbuild concerne son serveur de développement), `source-map-js` (compilation CSS) et `sharp` (optimisation d'images de Next, désactivée par `images.unoptimized`). À revoir à chaque mise à jour de ces dépendances.

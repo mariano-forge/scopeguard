@@ -1,7 +1,8 @@
-// What a verified client may write through their link, checked by the server (src/db/reviewAccess.ts).
+// What a verified client may write through their link, checked by the server (src/db/reviewAccess.ts,
+// src/db/reviewActions.ts). The client writes one action at a time; there is no generic write.
 
 import { expect, test } from "@playwright/test";
-import { call, createAgency, patchReview, patchState, seedReview, signUp, sql, unique, verifiedClient } from "./helpers";
+import { call, changes, clientAction, createAgency, patchState, seedReview, signUp, sql, unique, verifiedClient } from "./helpers";
 
 async function reviewWithQuote() {
   const alice = await signUp("Alice Martin");
@@ -44,15 +45,18 @@ test("the client only sees the shared version", async () => {
 
 test("the client cannot requalify, rewrite the agency, reach another version, create links or change quotes", async () => {
   const { org, token, client } = await reviewWithQuote();
-  const original = await comment(org, 10);
-  await patchReview(client, token, { lists: { comments: { upsert: [{ ...original, decision: "Inclus" }], remove: [] } } });
-  await patchReview(client, token, { lists: { comments: { upsert: [{ ...original, message: "Rien à payer" }], remove: [] } } });
-  await patchReview(client, token, { lists: { comments: { upsert: [{ ...original, from: "client" }], remove: [] } } });
-  await patchReview(client, token, { lists: { comments: { upsert: [], remove: [10] } } });
-  await patchReview(client, token, { lists: { comments: { upsert: [{ id: 20, deliverableId: 1, from: "client", initials: "CD", decision: "À qualifier", kind: "remark", message: "pwned" }], remove: [] } } });
-  await patchReview(client, token, { lists: { clients: { upsert: [{ id: 9, name: "Pirate" }], remove: [] } }, maps: { reviewLinks: { upsert: { "2:1": { token: "steal", active: true, deliverableId: 2, version: 1 } }, remove: [] } } });
-  await patchReview(client, token, { maps: { proposalVersions: { upsert: { "10": [{ id: 100, amount: 1, status: "accepted" }] }, remove: [] } } });
-  await patchReview(client, token, { maps: { proposalDecisions: { upsert: { "20": "accepted" }, remove: [] } } });
+  // The former generic write is closed: whatever state the page sends, nothing is written.
+  const generic = await call(`/api/review/${token}`, {
+    method: "PATCH",
+    person: client,
+    body: { changes: changes({ lists: { clients: { upsert: [{ id: 9, name: "Pirate" }], remove: [] } }, maps: { reviewLinks: { upsert: { "2:1": { token: "steal", active: true, deliverableId: 2, version: 1 } }, remove: [] } } }) },
+  });
+  expect(generic.status).toBe(405);
+  expect((await clientAction(client, token, "comments/10", "PATCH", { message: "Rien à payer" })).status).toBe(409);
+  expect((await clientAction(client, token, "comments/10", "DELETE")).status).toBe(409);
+  expect((await clientAction(client, token, "comments/20", "PATCH", { message: "pwned" })).status).toBe(404);
+  expect((await clientAction(client, token, "comments/20/replies", "POST", { message: "pwned" })).status).toBe(404);
+  expect((await clientAction(client, token, "proposals/20/decision", "POST", { decision: "accepted" })).status).toBe(409);
 
   expect(await comment(org, 10)).toMatchObject({ decision: "Hors périmètre", message: "Section témoignages", from: "agency" });
   expect((await comment(org, 20)).message).toBe("Note interne");
@@ -66,26 +70,25 @@ test("the client cannot requalify, rewrite the agency, reach another version, cr
 
 test("the client's remarks are signed by the server; they decide a quote once and approve, which locks the version", async () => {
   const { org, token, client, email } = await reviewWithQuote();
-  await patchReview(client, token, {
-    lists: { comments: { upsert: [{ id: 555, deliverableId: 1, author: "Faux nom", initials: "ZZ", from: "client", message: "Le logo est trop petit", location: "Page 1", decision: "À qualifier", kind: "remark", time: "t" }], remove: [] } },
-  });
+  const created = await clientAction(client, token, "comments", "POST", { id: 555, author: "Faux nom", initials: "ZZ", message: "Le logo est trop petit", location: "Page 1", name: "renommé" });
+  expect(created.json.id).toBe(555);
   expect(await comment(org, 555)).toMatchObject({ author: "Claire Dubois", initials: "CD", from: "client", authorEmail: email });
 
-  await patchReview(client, token, { maps: { proposalDecisions: { upsert: { "10": "accepted" }, remove: [] }, proposalVersions: { upsert: { "10": [{ id: 100, status: "accepted" }] }, remove: [] } } });
-  await patchReview(client, token, { maps: { proposalDecisions: { upsert: { "10": "refused" }, remove: [] } } });
+  expect((await clientAction(client, token, "proposals/10/decision", "POST", { decision: "accepted" })).status).toBe(200);
+  expect((await clientAction(client, token, "proposals/10/decision", "POST", { decision: "refused" })).status).toBe(409);
   expect((await sql<{ decision: string }>("select decision from comment_proposals where organization_id = $1 and comment_id = 10", [org]))[0].decision).toBe("accepted");
 
-  await patchReview(client, token, { lists: { deliverables: { upsert: [{ id: 1, version: 3, reviewStatus: "approved", approvedAt: "x", name: "renommé" }], remove: [] } } });
+  expect((await clientAction(client, token, "approval", "POST", { name: "renommé", approvedAt: "x" })).status).toBe(200);
   const [version] = await sql<{ review_status: string; locked: boolean; name: string }>("select review_status, locked, name from deliverables where organization_id = $1 and id = 1", [org]);
   expect(version).toMatchObject({ review_status: "approved", locked: true, name: "maquette-1.png" });
 
-  await patchReview(client, token, { lists: { comments: { upsert: [{ id: 556, deliverableId: 1, from: "client", initials: "CD", message: "après coup", decision: "À qualifier", kind: "remark" }], remove: [] } } });
+  expect((await clientAction(client, token, "comments", "POST", { id: 556, message: "après coup" })).status).toBe(409);
   expect(await comment(org, 556)).toBeUndefined();
 });
 
 test("the audit trail cannot be changed, even directly in the database", async () => {
   const { org, token, client } = await reviewWithQuote();
-  await patchReview(client, token, { lists: { comments: { upsert: [{ id: 557, deliverableId: 1, from: "client", initials: "CD", message: "Une remarque", decision: "À qualifier", kind: "remark", time: "t" }], remove: [] } } });
+  await clientAction(client, token, "comments", "POST", { id: 557, message: "Une remarque" });
   const [event] = await sql<{ id: string }>("select id from audit_events where organization_id = $1 and comment_id = 557", [org]);
   expect(event).toBeDefined();
   await expect(sql("delete from audit_events where organization_id = $1 and id = $2", [org, event.id])).rejects.toThrow(/append-only/);

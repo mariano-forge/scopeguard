@@ -244,6 +244,20 @@ Le serveur refuse ces actions à un membre (`src/db/agencyPermissions.ts`), l'in
 
 Le client n'a ni compte ni mot de passe. L'agence l'invite par e-mail depuis « Partager la revue » ; il reçoit un lien personnel qui pré-remplit son adresse, puis confirme avec un code à 6 chiffres envoyé à cette adresse. L'appareil est ensuite reconnu 30 jours. Avec le lien copié-collé, seule une adresse invitée reçoit un code ; les autres peuvent demander l'accès, que l'agence accepte ou refuse. Retirer une invitation coupe l'accès immédiatement. Le lien ne donne accès qu'à la version partagée, et le serveur n'accepte du client que ses propres commentaires, ses décisions sur les propositions envoyées et la validation, signés de son adresse vérifiée (voir `src/db/reviewAuth.ts` et `src/db/reviewAccess.ts`).
 
+La page du client écrit une action à la fois, chacune sur sa route (`src/db/reviewActions.ts`). Le serveur construit la modification à partir de ce qu'il a en base, la passe par les règles du client, puis l'applique en une transaction, avec son événement d'audit et, pour une décision, la notification de l'agence. Une action que les règles refusent est refusée en entier (409).
+
+| Route (`/api/review/:token/…`) | Action |
+| --- | --- |
+| `POST comments` | Commentaire sur la version |
+| `PATCH comments/:id` | Modifier son commentaire (`message`) ou déplacer son repère (`page`, `x`, `y`) |
+| `DELETE comments/:id` | Supprimer son commentaire, tant que l'agence ne l'a pas qualifié |
+| `POST comments/:id/replies` | Répondre dans un fil de la version |
+| `PATCH`, `DELETE comments/:id/replies/:replyId` | Modifier ou supprimer sa réponse |
+| `POST proposals/:id/decision` | Accepter ou refuser un devis envoyé, une seule fois |
+| `POST proposals/:id/adaptation` | Demander une adaptation, si l'agence l'a permise |
+| `POST changes-request` | Demander des modifications |
+| `POST approval` | Valider la version, ce qui la verrouille |
+
 - E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (domaine vérifié dans Resend, avec SPF, DKIM et DMARC). Chaque e-mail part en HTML avec sa version texte, et avec un « Répondre à » vers le membre de l'agence concerné (ou `MAIL_REPLY_TO`) : l'adresse d'envoi n'a pas de boîte. `MAIL_TRANSPORT=console` n'envoie jamais rien et affiche les e-mails dans la console, même avec une clé Resend (tests, démonstrations). Sans clé, en développement, ils s'affichent dans la console ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
 
 ### Preuve de validation

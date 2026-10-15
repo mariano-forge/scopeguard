@@ -10,7 +10,6 @@ import {
   makePdf,
   mailsTo,
   newPerson,
-  patchReview,
   patchState,
   readState,
   seedReview,
@@ -20,6 +19,7 @@ import {
   unique,
   upload,
   verifiedClient,
+  clientAction,
 } from "./helpers";
 
 test("a PDF imported from the agency page is stored by version, shown, and served only to who may see it", async ({ browser }) => {
@@ -141,16 +141,8 @@ test("the proof shows who decided, when and from where, from the server's record
   const verified = await verifiedClient(token, email, "Claire Dubois");
   // Behind one trusted proxy: the visitor's own header (6.6.6.6) is ignored, the proxy's address kept.
   const client = { cookie: verified.cookie, ip: "6.6.6.6, 203.0.113.7" };
-  await patchReview(client, token, {
-    maps: { proposalDecisions: { upsert: { "10": "accepted" }, remove: [] }, proposalVersions: { upsert: { "10": [{ id: 100, status: "accepted" }] }, remove: [] } },
-    lists: { auditEvents: { upsert: [{ id: Date.now(), type: "proposal.decision", actor: "x", description: "Proposition acceptée par le client", timestamp: "", commentId: 10 }], remove: [] } },
-  });
-  await patchReview(client, token, {
-    lists: {
-      deliverables: { upsert: [{ id: 1, version: 2, reviewStatus: "approved", approvedAt: "x" }], remove: [] },
-      auditEvents: { upsert: [{ id: Date.now() + 1, type: "deliverable.approved", actor: "x", description: "Version 2 approuvée par le client", timestamp: "" }], remove: [] },
-    },
-  });
+  expect((await clientAction(client, token, "proposals/10/decision", "POST", { decision: "accepted" })).status).toBe(200);
+  expect((await clientAction(client, token, "approval")).status).toBe(200);
 
   const proof = (await call("/api/proof/1", { person: alice })).json as Record<string, unknown>;
   expect(proof.deliverable).toMatchObject({ file: { sha256: createHash("sha256").update(makePdf("maquette")).digest("hex"), originalName: "maquette.pdf" } });

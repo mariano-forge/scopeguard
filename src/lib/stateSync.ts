@@ -3,7 +3,8 @@
 // the shared version.
 //
 // Pages keep reading and writing the state as one JSON string, synchronously, from an in-memory copy.
-// Writes are sent to the server as record-level changes (src/lib/sharedState.ts); the server is
+// The agency's writes are sent to the server as record-level changes (src/lib/sharedState.ts); the
+// client page sends each action to its own route instead (sendAction). The server is
 // polled for the writes of other pages (the client review, another tab or device), which are passed
 // to subscribers like the "storage" event used to be.
 
@@ -26,6 +27,8 @@ let endpoint = "/api/state";
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let pushing = false;
 let failed = false;
+/** Actions sent to their own route (the client page) and not answered yet. */
+let acting = 0;
 const listeners = new Set<(serialized: string) => void>();
 
 /**
@@ -107,6 +110,20 @@ export function refreshSharedState() {
   void poll();
 }
 
+/**
+ * Sends one action to its own route (src/lib/reviewActions.ts). Polls wait for its answer, so they
+ * cannot bring back the state from before it; the state is then fetched with its result.
+ */
+export async function sendAction<T>(run: () => Promise<T>): Promise<T> {
+  acting++;
+  try {
+    return await run();
+  } finally {
+    acting--;
+    refreshSharedState();
+  }
+}
+
 function schedulePush() {
   if (pushTimer) clearTimeout(pushTimer);
   pushTimer = setTimeout(() => {
@@ -186,7 +203,7 @@ async function push() {
 }
 
 async function poll() {
-  if (pushing || pushTimer || document.visibilityState !== "visible") return;
+  if (acting || pushing || pushTimer || document.visibilityState !== "visible") return;
   try {
     const response = await fetch(`${endpoint}?revision=${revision}`, { cache: "no-store" });
     if (response.status === 401) return signedOut();
@@ -194,7 +211,7 @@ async function poll() {
     if (response.status !== 200) return;
     const body = (await response.json()) as { revision: number; state: SharedState | null };
     // A local write started meanwhile: it goes first, the next poll brings the merged state.
-    if (!body.state || pushing || pushTimer || cache !== syncedSerialized) return;
+    if (!body.state || acting || pushing || pushTimer || cache !== syncedSerialized) return;
     revision = body.revision;
     synced = body.state;
     cache = syncedSerialized = JSON.stringify(body.state);
