@@ -44,7 +44,7 @@ Pour les tests :
 
 **Le serveur décide, jamais le navigateur**
 - Les droits se vérifient côté serveur : rôles dans `src/db/agencyPermissions.ts`, écritures du client dans `src/db/reviewAccess.ts`. Masquer un bouton ne protège rien.
-- Le client écrit par une route par action (`src/db/reviewActions.ts`), construite à partir de la base et passée par `sanitizeReviewChanges`. Ne rouvre pas d'écriture générique de l'état côté client. Côté agence, les fils de commentaires passent par `src/db/agencyActions.ts` : migre les autres écritures de `/api/state` vers des routes de ce type, avec un test d'interface écrit avant.
+- Le client écrit par une route par action (`src/db/reviewActions.ts`), construite à partir de la base et passée par `sanitizeReviewChanges`. Ne rouvre pas d'écriture générique de l'état côté client. Côté agence, les fils de commentaires et les devis passent par `src/db/agencyActions.ts` : migre les autres écritures de `/api/state` vers des routes de ce type, avec un test d'interface écrit avant.
 - Ce que le client écrit est signé par le serveur (nom, initiales, adresse vérifiée).
 - L'auteur d'un message se lit avec `sideOf()` (`src/lib/authors.ts`), jamais avec les initiales.
 

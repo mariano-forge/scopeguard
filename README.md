@@ -258,7 +258,7 @@ La page du client écrit une action à la fois, chacune sur sa route (`src/db/re
 | `POST changes-request` | Demander des modifications |
 | `POST approval` | Valider la version, ce qui la verrouille |
 
-L'agence suit le même chemin pour les fils de commentaires (`src/db/agencyActions.ts`) : le serveur signe chaque message avec le membre, refuse toute écriture sur une version validée ou remplacée et sur une demande dont le devis est tranché, et applique aux membres les mêmes réserves que `/api/state`. Ses autres écritures (projets, devis, validation, liens, corbeille) passent encore par `/api/state` et rejoindront ces routes une à une.
+L'agence suit le même chemin pour les fils de commentaires et les devis (`src/db/agencyActions.ts`) : le serveur signe chaque message avec le membre, refuse toute écriture sur une version validée ou remplacée et sur une demande dont le devis est tranché, et applique aux membres les mêmes réserves que `/api/state`. Ses autres écritures (projets, validation, liens, corbeille) passent encore par `/api/state` et rejoindront ces routes une à une.
 
 | Route (`/api/comments…`) | Action de l'agence |
 | --- | --- |
@@ -268,6 +268,10 @@ L'agence suit le même chemin pour les fils de commentaires (`src/db/agencyActio
 | `PUT /api/comments/:id/qualification` | « À traiter », « Hors scope » avec un chiffrage en brouillon, ou retour « À clarifier » |
 | `POST /api/comments/:id/replies` | Répondre |
 | `PATCH`, `DELETE /api/comments/:id/replies/:replyId` | Modifier ou supprimer une réponse de l'agence |
+| `POST /api/comments/:id/proposal` | Envoyer un premier devis écrit dans la fenêtre de proposition (administrateurs) |
+| `POST /api/comments/:id/proposal/send` | Envoyer le devis en brouillon (administrateurs) |
+| `POST /api/comments/:id/proposal/versions` | Nouvelle version : envoyée à la place du devis en attente (`send: true`, administrateurs), ou rechiffrage après un refus, en brouillon (`send: false`) |
+| `POST /api/comments/:id/adaptation/decision` | Accepter ou refuser la contre-proposition du client (administrateurs) |
 
 - E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (domaine vérifié dans Resend, avec SPF, DKIM et DMARC). Chaque e-mail part en HTML avec sa version texte, et avec un « Répondre à » vers le membre de l'agence concerné (ou `MAIL_REPLY_TO`) : l'adresse d'envoi n'a pas de boîte. `MAIL_TRANSPORT=console` n'envoie jamais rien et affiche les e-mails dans la console, même avec une clé Resend (tests, démonstrations). Sans clé, en développement, ils s'affichent dans la console ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
 

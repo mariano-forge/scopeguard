@@ -1,29 +1,8 @@
 "use client";
+import { formatProposalAmount, formatProposalDeadline, parseNumericAmount, parseNumericDays } from "@/lib/proposalFormat";
 
 
 
-function parseNumericAmount(amount: number | string | undefined): number {
-  if (typeof amount === "number") return amount;
-  if (!amount) return 0;
-  return Number(String(amount).replace(/[^0-9]/g, "")) || 0;
-}
-
-function parseNumericDays(deadline: number | string | undefined): number {
-  if (typeof deadline === "number") return deadline;
-  if (!deadline) return 0;
-  return Number(String(deadline).replace(/[^0-9]/g, "")) || 0;
-}
-
-function formatProposalAmount(amount: number | string | undefined): string {
-  const num = parseNumericAmount(amount);
-  return `${num.toLocaleString("fr-FR")} €`;
-}
-
-function formatProposalDeadline(deadline: number | string | undefined): string {
-  const num = parseNumericDays(deadline);
-  if (num === 0) return "Aucun impact";
-  return `+ ${num} jour${num > 1 ? "s" : ""}`;
-}
 import { ViewTransition, useEffect, useRef, useState } from "react";
 import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import Link from "next/link";
@@ -1449,29 +1428,11 @@ export function AgencyApp() {
       !newProposalDeadline.trim()
     )
       return;
-    const numericAmount = parseNumericAmount(newProposalAmount);
-    const numericDays = parseNumericDays(newProposalDeadline);
-
-    setProposalStates((current) => ({
-      ...current,
-      [proposalCommentId]: "sent",
-    }));
-    recordAudit("proposal.sent", "Proposition envoyée au client", proposalCommentId);
-    setProposalVersions((current) => ({
-      ...current,
-      [proposalCommentId]: current[proposalCommentId]?.some((proposal) => proposal.status !== "draft")
-        ? current[proposalCommentId]
-        : [{
-            id: Date.now(),
-            version: 1,
-            commentId: proposalCommentId,
-            description: newProposalDescription.trim(),
-            amount: numericAmount,
-            deadline: numericDays,
-            status: "sent",
-            createdAt: new Date().toLocaleString("fr-FR"),
-          }],
-    }));
+    void agencyAction(`comments/${proposalCommentId}/proposal`, "POST", {
+      description: newProposalDescription.trim(),
+      amount: parseNumericAmount(newProposalAmount),
+      deadline: parseNumericDays(newProposalDeadline),
+    });
     setProposalOpen(false);
   }
 
@@ -1479,15 +1440,7 @@ export function AgencyApp() {
   function sendQuotedProposal(commentId: number) {
     const draft = proposalVersions[commentId]?.find((proposal) => proposal.status === "draft");
     if (!draft || isReadOnlyVersion || !adminOnly()) return;
-    setProposalVersions((current) => ({
-      ...current,
-      [commentId]: (current[commentId] ?? []).map((proposal) =>
-        proposal.id === draft.id ? { ...proposal, status: "sent" as const, createdAt: new Date().toLocaleString("fr-FR") } : proposal,
-      ),
-    }));
-    setProposalStates((current) => ({ ...current, [commentId]: "sent" }));
-    setProposalDecisions((current) => ({ ...current, [commentId]: "none" }));
-    recordAudit("proposal.sent", `Proposition envoyée au client : ${formatProposalAmount(draft.amount)} · ${formatProposalDeadline(draft.deadline)}`, commentId);
+    void agencyAction(`comments/${commentId}/proposal/send`, "POST");
     setConfirmSendId(null);
   }
 
@@ -1510,45 +1463,25 @@ export function AgencyApp() {
     setNewProposalVersionOpen(true);
   }
 
+  /** The quote typed in the "Nouvelle proposition" window. */
+  function typedQuote() {
+    return {
+      description: newProposalDescription.trim(),
+      amount: parseNumericAmount(newProposalAmount),
+      deadline: parseNumericDays(newProposalDeadline),
+      allowCounter: newProposalCounter,
+    };
+  }
+
   /** New quote after a refusal: the refused version stays in the history, the new one waits to be sent. */
-  function saveRequote(commentId: number) {
+  async function saveRequote(commentId: number) {
     // Re-quoting drops the client's pending counter-proposal: that answers it.
     if (adaptationRequests[commentId] && !adaptationRequests[commentId].decision && !adminOnly()) return;
-    const history = proposalVersions[commentId] ?? [];
-    const adaptation = adaptationRequests[commentId];
-    const nextVersion = Math.max(...history.map((proposal) => proposal.version), 0) + 1;
-    setProposalVersions((current) => ({
-      ...current,
-      [commentId]: [
-        ...(current[commentId] ?? [])
-          .filter((proposal) => proposal.status !== "draft")
-          .map((proposal) =>
-            proposal.status === "sent" ? { ...proposal, status: "refused" as const, adaptation: adaptation?.message } : proposal,
-          ),
-        {
-          id: Date.now(),
-          version: nextVersion,
-          commentId,
-          description: newProposalDescription.trim(),
-          amount: parseNumericAmount(newProposalAmount),
-          deadline: parseNumericDays(newProposalDeadline),
-          allowCounter: newProposalCounter,
-          status: "draft",
-          createdAt: new Date().toLocaleString("fr-FR"),
-        },
-      ],
-    }));
-    setProposalStates((current) => ({ ...current, [commentId]: "draft" }));
-    setProposalDecisions((current) => ({ ...current, [commentId]: "none" }));
-    setAdaptationRequests((current) => {
-      const next = { ...current };
-      delete next[commentId];
-      return next;
-    });
-    recordAudit("proposal.drafted", `Nouveau chiffrage v${nextVersion} après refus`, commentId);
+    const nextVersion = Math.max(...(proposalVersions[commentId] ?? []).map((proposal) => proposal.version), 0) + 1;
     setNewProposalVersionOpen(false);
     setRequoting(false);
-    toast(`Version ${nextVersion} chiffrée · à envoyer au client`);
+    if (await agencyAction(`comments/${commentId}/proposal/versions`, "POST", { ...typedQuote(), send: false }))
+      toast(`Version ${nextVersion} chiffrée · à envoyer au client`);
   }
 
   function sendNewProposalVersion(event: React.FormEvent<HTMLFormElement>) {
@@ -1556,7 +1489,7 @@ export function AgencyApp() {
     if (isReadOnlyVersion) return;
     if (requoting && proposalCommentId !== null) {
       if (!newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()) return;
-      saveRequote(proposalCommentId);
+      void saveRequote(proposalCommentId);
       return;
     }
     if (
@@ -1567,48 +1500,12 @@ export function AgencyApp() {
       !adminOnly()
     ) return;
 
-    const numericAmount = parseNumericAmount(newProposalAmount);
-    const numericDays = parseNumericDays(newProposalDeadline);
-    const currentHistory = proposalVersions[proposalCommentId] ?? [];
-    const nextVersion = Math.max(...currentHistory.map((proposal) => proposal.version), 0) + 1;
-
-    setProposalVersions((current) => {
-      const history = current[proposalCommentId] ?? [];
-      const supersededHistory = history.map((proposal) =>
-        proposal.status === "sent" ? { ...proposal, status: "superseded" as const } : proposal,
-      );
-
-      return {
-        ...current,
-        [proposalCommentId]: [
-          ...supersededHistory,
-          {
-            id: Date.now(),
-            version: nextVersion,
-            commentId: proposalCommentId,
-            description: newProposalDescription.trim(),
-            amount: numericAmount,
-            deadline: numericDays,
-            allowCounter: newProposalCounter,
-            status: "sent",
-            createdAt: new Date().toLocaleString("fr-FR"),
-          },
-        ],
-      };
-    });
-    setProposalStates((current) => ({ ...current, [proposalCommentId]: "sent" }));
-    setAdaptationRequests((current) => {
-      const next = { ...current };
-      delete next[proposalCommentId];
-      return next;
-    });
-    setProposalDecisions((current) => ({ ...current, [proposalCommentId]: "none" }));
+    void agencyAction(`comments/${proposalCommentId}/proposal/versions`, "POST", { ...typedQuote(), send: true });
     setNewProposalVersionOpen(false);
     setNewProposalDescription("");
     setNewProposalAmount("");
     setNewProposalDeadline("");
     setProposalOpen(false);
-    recordAudit("proposal.sent", `Nouvelle proposition v${nextVersion} envoyée`, proposalCommentId);
   }
 
   function proposalStateFor(commentId: number) {
@@ -1625,16 +1522,7 @@ export function AgencyApp() {
 
   function decideAdaptation(commentId: number, decision: "accepted" | "refused") {
     if (isReadOnlyVersion || !adaptationRequests[commentId] || !adminOnly()) return;
-    const decisionAt = new Date().toLocaleString("fr-FR");
-    setAdaptationRequests((current) => ({
-      ...current,
-      [commentId]: { ...current[commentId], decision, decisionBy: currentUser.name, decisionAt },
-    }));
-    recordAudit(
-      "proposal.adaptation-decision",
-      `Demande d'adaptation ${decision === "accepted" ? "acceptée" : "refusée"}`,
-      commentId,
-    );
+    void agencyAction(`comments/${commentId}/adaptation/decision`, "POST", { decision });
   }
 
   /** Proof of the open version, built by the server from its database (src/db/proof.ts). */
