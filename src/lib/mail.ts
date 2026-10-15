@@ -10,6 +10,7 @@
 // mailbox; a client's answer reaches a person.
 
 import "server-only";
+import { appendFileSync } from "node:fs";
 
 export type Mail = {
   to: string;
@@ -53,5 +54,7 @@ export async function sendMail(mail: Mail): Promise<boolean> {
 
 function printMail(mail: Mail, replyTo: string | undefined) {
   console.info(`\n[mail] À : ${mail.to}${replyTo ? `\n[mail] Répondre à : ${replyTo}` : ""}\n[mail] Objet : ${mail.subject}\n${mail.text}\n`);
+  // Automated tests read the mails (codes, links) from this file, one JSON object per line.
+  if (process.env.MAIL_OUTBOX) appendFileSync(process.env.MAIL_OUTBOX, `${JSON.stringify({ to: mail.to, replyTo: replyTo ?? null, subject: mail.subject, text: mail.text })}\n`);
   return true;
 }
