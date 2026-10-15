@@ -281,6 +281,16 @@ export const reviewSessions = pgTable(
   (table) => [index("review_sessions_email_idx").on(table.email)],
 );
 
+/**
+ * Request counters per person and action (src/db/requestLimits.ts): uploads, writes, invitations.
+ * In the database so that every server instance shares them.
+ */
+export const requestLimits = pgTable("request_limits", {
+  key: text("key").primaryKey(),
+  windowStart: timestamp("window_start", { withTimezone: true }).notNull().defaultNow(),
+  count: integer("count").notNull().default(0),
+});
+
 /** How a verified client is named: asked once, at their first verification; shown on what they write. */
 export const reviewProfiles = pgTable("review_profiles", {
   email: text("email").primaryKey(),

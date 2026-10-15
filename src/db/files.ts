@@ -2,10 +2,8 @@
 // uploaded beforehand through POST /api/files. A data URL that still reaches the server (an older
 // page) is stored in the agency's container and replaced by its address.
 
-import { eq } from "drizzle-orm";
 import { storeFile } from "@/lib/storage";
 import type { Db } from "./client";
-import { files } from "./schema";
 
 /** Fields that may hold an imported file. */
 const fileFields = new Set(["fileData", "coverData"]);
@@ -31,10 +29,4 @@ export async function extractFiles<T>(db: Db, org: string, value: T, stored = { 
     }),
   );
   return Object.fromEntries(entries) as T;
-}
-
-/** A file imported before Azure storage (kept in Postgres, named by its SHA-256). */
-export async function readLegacyFile(db: Db, id: string) {
-  const [file] = await db.select().from(files).where(eq(files.id, id)).limit(1);
-  return file ?? null;
 }

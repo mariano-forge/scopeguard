@@ -7,6 +7,7 @@
 import type { NextRequest } from "next/server";
 import { getDb } from "@/db/client";
 import { canManageAgency, reservedActions } from "@/db/agencyPermissions";
+import { requestLimit, tooManyRequests, withinLimit } from "@/db/requestLimits";
 import { applyChanges, currentRevision, readState } from "@/db/state";
 import { databaseFailure, readChanges, requestOrigin } from "@/lib/api";
 import { requireAgencyUser } from "@/lib/session";
@@ -33,6 +34,7 @@ export async function PATCH(request: Request) {
 
   try {
     const db = getDb();
+    if (!(await withinLimit(db, `write:${auth.user.id}`, requestLimit.writes()))) return tooManyRequests();
     // Members: the whole change is refused when it holds an action reserved to administrators.
     if (!canManageAgency(auth.user.role)) {
       const reserved = await reservedActions(db, auth.user.organizationId, changes);

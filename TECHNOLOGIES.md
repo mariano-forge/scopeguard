@@ -125,12 +125,16 @@ Les e-mails partent par Resend dès que `RESEND_API_KEY` et `MAIL_FROM` sont ren
 - **Base** : la sécurité par ligne est activée sur toutes les tables, ce qui ferme l'API publique de Supabase.
 - **Fichiers** : les conteneurs sont privés, l'accès est vérifié avant chaque lecture, et l'adresse signée n'est valable que 5 minutes.
 - **Adresses IP** : seule l'adresse ajoutée par un proxy de confiance est retenue (`TRUSTED_PROXY_HOPS`). Sinon, elle est marquée « non vérifiée ».
+- **En-têtes HTTP** (`next.config.ts`) : politique de sécurité du contenu en production (scripts et connexions limités au site et au stockage, pas de plugin, `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS en HTTPS. Next.js ne s'annonce plus. Les scripts gardent `'unsafe-inline'` : une politique à nonces rendrait toutes les pages dynamiques.
+- **Requêtes d'un autre site** : toute écriture dont l'origine n'est pas le site est refusée (`src/proxy.ts`, `crossSiteWrite`), en plus des cookies `SameSite=Lax`.
+- **Limites de débit** (`src/db/requestLimits.ts`), comptées en base : imports par heure, enregistrements par minute, invitations par heure, réglables par variable d'environnement. Elles s'ajoutent aux limites de connexion (Better Auth) et des codes client.
 
 ## Points d'attention
 
 - **Synchronisation d'état** : l'essentiel des données circule encore par deux routes génériques (`/api/state` pour l'agence, `/api/review/:token` pour le client) qui échangent des différences d'état. Le passage à des routes par action est prévu, en commençant par le côté client, qui servira aussi à l'annotation des sites web.
 - **Taille des imports sur Vercel** : la plateforme limite une requête à 4,5 Mo, alors que l'import passe aujourd'hui par le serveur. L'envoi direct du navigateur vers Azure est à faire avant d'accepter de gros fichiers en ligne.
-- **Fichiers antérieurs au stockage Azure** : ils restent servis depuis PostgreSQL (table `files`) en attendant leur migration.
+- **Fichiers antérieurs au stockage Azure** : la table `files` est conservée, mais ses fichiers ne sont plus servis (Supabase n'en contient aucun).
+- **`npm audit`** signale encore, en production, des paquets qui ne sont pas exploitables dans Kora : `drizzle-kit` et `esbuild` (tirés par Better Auth ; la faille d'esbuild concerne son serveur de développement), `source-map-js` (compilation CSS) et `sharp` (optimisation d'images de Next, désactivée par `images.unoptimized`). À revoir à chaque mise à jour de ces dépendances.
 - **Dette** : `src/app/(agency)/AgencyApp.tsx` dépasse 3 300 lignes, et 24 erreurs ESLint antérieures restent à traiter.
 
 ## Commandes utiles

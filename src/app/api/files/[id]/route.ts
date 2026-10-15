@@ -5,7 +5,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { getDb } from "@/db/client";
-import { readLegacyFile } from "@/db/files";
 import { expired } from "@/db/reviewAccess";
 import { isInvited, reviewSessionCookie, reviewSessionEmail } from "@/db/reviewAuth";
 import { deliverables, reviewLinks, storedFiles } from "@/db/schema";
@@ -35,15 +34,6 @@ export async function GET(_request: Request, context: RouteContext<"/api/files/[
   const { id } = await context.params;
   try {
     const db = getDb();
-
-    // Imported before Azure storage: content in Postgres, named by its SHA-256 (read only, to migrate).
-    if (/^[0-9a-f]{64}$/.test(id)) {
-      const legacy = await readLegacyFile(db, id);
-      if (!legacy) return notFound();
-      return new Response(new Uint8Array(legacy.content), {
-        headers: { "Content-Type": legacy.mimeType, "Content-Length": String(legacy.size), "Cache-Control": "private, max-age=31536000, immutable" },
-      });
-    }
 
     if (!/^[0-9a-f-]{36}$/.test(id)) return notFound();
     const [file] = await db.select().from(storedFiles).where(eq(storedFiles.id, id)).limit(1);

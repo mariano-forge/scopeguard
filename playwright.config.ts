@@ -41,6 +41,9 @@ export default defineConfig({
       BETTER_AUTH_URL: baseURL,
       TRUSTED_PROXY_HOPS: "1",
       MAX_UPLOAD_MB: "1",
+      // Low enough for the limit tests, high enough for every other test's person.
+      UPLOADS_PER_HOUR: "5",
+      WRITES_PER_MINUTE: "120",
     },
   },
 });

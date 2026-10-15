@@ -175,6 +175,10 @@ export async function newPerson(browser: Browser) {
   const page = await context.newPage();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  // Anything the Content Security Policy blocks fails the test: the policy must never break a page.
+  page.on("console", (message) => {
+    if (/Content Security Policy|Refused to (load|connect|execute|frame)/i.test(message.text())) errors.push(message.text());
+  });
   return { page, errors };
 }
 

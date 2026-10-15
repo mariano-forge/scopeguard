@@ -224,7 +224,7 @@ Le fichier est nommé par son empreinte SHA-256 : une version ne peut pas change
 
 - Le compte Azure reçoit une règle CORS de lecture (toutes origines, GET) : le lecteur PDF suit la redirection avec une origine « null ». Sans adresse signée, rien n'est lisible.
 - pdf.js est chargé dans sa version « legacy » (`next.config.ts`) : la version moderne exige des navigateurs très récents.
-- Les fichiers importés avant ce changement restent servis depuis Postgres (table `files`), sans contrôle d'accès, en attendant d'être migrés.
+- Les fichiers importés avant ce changement (table `files` de Postgres) ne sont plus servis : réimportez-les si besoin.
 
 ### Connexion
 

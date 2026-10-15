@@ -9,6 +9,7 @@ import type { NextRequest } from "next/server";
 import { getDb } from "@/db/client";
 import { readReviewState, sanitizeReviewChanges } from "@/db/reviewAccess";
 import { reviewProfileName } from "@/db/reviewAuth";
+import { requestLimit, tooManyRequests, withinLimit } from "@/db/requestLimits";
 import { applyChanges, currentRevision } from "@/db/state";
 import { databaseFailure, readChanges, requestOrigin } from "@/lib/api";
 import { getReviewViewer, reviewNotFound } from "@/lib/reviewViewer";
@@ -41,6 +42,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/review
     if (viewer.mode === "preview") return Response.json({ error: "Aperçu agence : lecture seule" }, { status: 403 });
     if (viewer.mode === "none") return verificationNeeded();
     const db = getDb();
+    if (!(await withinLimit(db, `client-write:${viewer.email}`, requestLimit.writes()))) return tooManyRequests();
     const allowed = await sanitizeReviewChanges(db, viewer.access, changes, viewer.email, await reviewProfileName(db, viewer.email));
     const result = allowed
       ? await applyChanges(db, viewer.access.organizationId, allowed, { recordedBy: `client:${viewer.email}`, ...requestOrigin(request) })
