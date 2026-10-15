@@ -56,7 +56,7 @@ Pour les tests :
 - Toute nouvelle table active la sécurité par ligne dans sa migration (`ALTER TABLE … ENABLE ROW LEVEL SECURITY`) : sans elle, l'API publique de Supabase l'exposerait.
 
 **Fichiers**
-- Les fichiers passent par `storeFile()` et `/api/files` (`src/lib/storage.ts`) : conteneurs privés, accès vérifié, adresse signée courte. Jamais de conteneur public, jamais de fichier en base64 dans l'état.
+- Les fichiers passent par `src/lib/upload.ts` (envoi direct au stockage, vérifié par le serveur), `storeFile()` et `/api/files` (`src/lib/storage.ts`) : conteneurs privés, accès vérifié, adresse signée courte. Jamais de conteneur public, jamais de fichier en base64 dans l'état.
 
 **Routes API**
 - Un fichier `route.ts` n'exporte que des méthodes HTTP. Les helpers vont dans `src/lib/`.

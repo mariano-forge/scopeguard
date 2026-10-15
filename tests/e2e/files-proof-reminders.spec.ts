@@ -33,6 +33,11 @@ test("a PDF imported from the agency page is stored by version, shown, and serve
   });
 
   const { page, errors } = await newPerson(browser);
+  // Imports go straight to the storage (src/lib/upload.ts), not through POST /api/files.
+  const imports: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "PUT" || request.url().includes("/api/files")) imports.push(`${request.method()} ${new URL(request.url()).pathname.split("/projets/")[0]}`);
+  });
   await signInPage(page, alice.email);
   await page.goto("/projets/7");
   await page.getByRole("button", { name: /Livrable|Nouveau livrable/ }).first().click();
@@ -46,6 +51,15 @@ test("a PDF imported from the agency page is stored by version, shown, and serve
   const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.getByRole("menuitem", { name: /Nouvelle version/ }).click()]);
   await chooser.setFiles({ name: "maquette-v2.pdf", mimeType: "application/pdf", buffer: makePdf("Version 2") });
   await expect.poll(async () => (await sql("select 1 from stored_files where organization_id = $1", [alice.organizationId])).length).toBe(2);
+
+  expect(imports.filter((entry) => !entry.startsWith("GET"))).toEqual([
+    "POST /api/files/upload",
+    expect.stringMatching(/^PUT \//),
+    "POST /api/files/complete",
+    "POST /api/files/upload",
+    expect.stringMatching(/^PUT \//),
+    "POST /api/files/complete",
+  ]);
 
   const files = await sql<{ id: string; path: string; sha256: string }>("select id, path, sha256 from stored_files where organization_id = $1 order by created_at", [alice.organizationId]);
   expect(files[0].path).toMatch(/^projets\/7\/livrables\/\d+\/v1\/[0-9a-f]{64}\.pdf$/);

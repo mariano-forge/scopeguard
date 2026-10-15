@@ -90,6 +90,7 @@ import type { LivrableGroup } from "./LivrableFilter";
 import { useCurrentUser } from "./CurrentUser";
 import { initialsOf, sideOf, type Side } from "@/lib/authors";
 import { proofHtml } from "./proofDocument";
+import { uploadFile as sendFile, type UploadPlacement } from "@/lib/upload";
 import { flushSharedState, loadSharedState, refreshSharedState, subscribeSharedState, writeSharedState } from "@/lib/stateSync";
 
 
@@ -1199,25 +1200,18 @@ export function AgencyApp() {
   }
 
   /**
-   * Imports a file into the agency's storage (POST /api/files), under its place in the project;
+   * Imports a file into the agency's storage (src/lib/upload.ts), under its place in the project;
    * returns its address, or null once the error is shown.
    */
-  async function uploadFile(
-    file: File,
-    placement: { kind: "version"; projectId: number; livrableId: number; version: number } | { kind: "cover"; projectId: number; livrableId: number },
-  ) {
-    const form = new FormData();
-    form.set("file", file);
-    for (const [key, value] of Object.entries(placement)) form.set(key, String(value));
+  async function uploadFile(file: File, placement: UploadPlacement) {
     const progress = toast.loading(`Import de « ${file.name} »…`);
-    const response = await fetch("/api/files", { method: "POST", body: form }).catch(() => null);
-    const body = (await response?.json().catch(() => null)) as { href?: string; error?: string } | null;
+    const result = await sendFile(file, placement).catch(() => ({ error: "L’import n’a pas abouti. Réessayez." }));
     toast.dismiss(progress);
-    if (!response?.ok || !body?.href) {
-      toast.error(body?.error ?? "L’import n’a pas abouti. Réessayez.");
+    if ("error" in result) {
+      toast.error(result.error);
       return null;
     }
-    return body.href;
+    return result.href;
   }
 
   /** "Nouveau livrable" dialog: a new deliverable (version 1) in the current project. */

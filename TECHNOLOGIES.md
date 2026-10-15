@@ -2,7 +2,7 @@
 
 Ce document récapitule les technologies utilisées par Kora (nom de code ScopeGuard), leur rôle et la raison de leur choix. Il complète [README.md](README.md), qui explique comment lancer le projet, et [AZURE_PRODUCTION_TRAJECTORY.md](AZURE_PRODUCTION_TRAJECTORY.md), qui décrit la cible de production.
 
-État au 15 octobre 2026.
+État au 16 octobre 2026.
 
 ## Vue d'ensemble
 
@@ -18,9 +18,10 @@ flowchart LR
     API --> Blob[(Azure Blob Storage<br/>Azurite en local)]
     API --> Mail[Resend<br/>e-mails]
     Client -. lecture signée 5 min .-> Blob
+    Agence -. envoi direct signé 15 min .-> Blob
 ```
 
-Une seule application Next.js porte l'interface et le serveur. Le navigateur ne parle jamais directement à la base ni au stockage : tout passe par les routes API, qui vérifient l'identité et les droits.
+Une seule application Next.js porte l'interface et le serveur. Le navigateur ne parle jamais directement à la base. Il ne touche au stockage qu'avec une adresse signée par le serveur, courte et limitée à un fichier : lecture après vérification des droits, ou création d'un fichier que le serveur relit ensuite. Tout le reste passe par les routes API, qui vérifient l'identité et les droits.
 
 ## Les technologies, couche par couche
 
@@ -58,7 +59,7 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 
 | Technologie | Version | Rôle |
 | --- | --- | --- |
-| **Azure Blob Storage** | SDK 12.34 | Fichiers importés : un conteneur privé par agence, rangé par projet, livrable et version, fichiers nommés par leur empreinte SHA-256 (`src/lib/storage.ts`). Lecture par adresse signée valable 5 minutes. |
+| **Azure Blob Storage** | SDK 12.34 | Fichiers importés : un conteneur privé par agence, rangé par projet, livrable et version, fichiers nommés par leur empreinte SHA-256 (`src/lib/storage.ts`). Lecture par adresse signée valable 5 minutes. Import envoyé directement par le navigateur avec une adresse de création seule (15 minutes), puis relu et vérifié par le serveur (`src/lib/upload.ts`). |
 | **Azurite** | 3.35 | Émulateur officiel d'Azure Storage, dans Docker, pour le développement et les tests. |
 
 ### E-mails
@@ -71,7 +72,7 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 
 | Technologie | Version | Rôle |
 | --- | --- | --- |
-| **Playwright Test** | 1.63 | 23 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier. Couvre la connexion, les agences, les rôles, l'accès client, les fichiers, la preuve et les relances. |
+| **Playwright Test** | 1.63 | 31 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier. Couvre la connexion, les agences, les rôles, l'accès client, les fichiers, la preuve et les relances. |
 | **ESLint** | 9.39 | Analyse du code, avec la configuration de Next.js. |
 | **Prettier** | 3.9 | Mise en forme. |
 
@@ -123,7 +124,7 @@ Les e-mails partent par Resend dès que `RESEND_API_KEY` et `MAIL_FROM` sont ren
 - **Clients** : ils n'accèdent qu'à la version partagée avec eux. Le serveur n'accepte d'eux que leurs propres commentaires, leurs décisions et la validation, et signe ce qu'ils écrivent avec leur nom et leur adresse vérifiée (`src/db/reviewAccess.ts`).
 - **Journal d'audit** : il est en ajout seul, et un trigger PostgreSQL refuse toute modification ou suppression. Chaque événement garde l'heure du serveur, l'identité constatée, l'IP et le navigateur. Il alimente la preuve de validation (`src/db/proof.ts`).
 - **Base** : la sécurité par ligne est activée sur toutes les tables, ce qui ferme l'API publique de Supabase.
-- **Fichiers** : les conteneurs sont privés, l'accès est vérifié avant chaque lecture, et l'adresse signée n'est valable que 5 minutes.
+- **Fichiers** : les conteneurs sont privés, l'accès est vérifié avant chaque lecture, et l'adresse signée n'est valable que 5 minutes. Une adresse d'import ne permet que de créer un fichier, jamais de le lire ou d'en remplacer un ; le serveur recalcule l'empreinte de ce qu'il reçoit et supprime tout fichier non conforme.
 - **Adresses IP** : seule l'adresse ajoutée par un proxy de confiance est retenue (`TRUSTED_PROXY_HOPS`). Sinon, elle est marquée « non vérifiée ».
 - **En-têtes HTTP** (`next.config.ts`) : politique de sécurité du contenu en production (scripts et connexions limités au site et au stockage, pas de plugin, `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS en HTTPS. Next.js ne s'annonce plus. Les scripts gardent `'unsafe-inline'` : une politique à nonces rendrait toutes les pages dynamiques.
 - **Requêtes d'un autre site** : toute écriture dont l'origine n'est pas le site est refusée (`src/proxy.ts`, `crossSiteWrite`), en plus des cookies `SameSite=Lax`.
@@ -132,7 +133,7 @@ Les e-mails partent par Resend dès que `RESEND_API_KEY` et `MAIL_FROM` sont ren
 ## Points d'attention
 
 - **Synchronisation d'état** : l'essentiel des données circule encore par deux routes génériques (`/api/state` pour l'agence, `/api/review/:token` pour le client) qui échangent des différences d'état. Le passage à des routes par action est prévu, en commençant par le côté client, qui servira aussi à l'annotation des sites web.
-- **Taille des imports sur Vercel** : la plateforme limite une requête à 4,5 Mo, alors que l'import passe aujourd'hui par le serveur. L'envoi direct du navigateur vers Azure est à faire avant d'accepter de gros fichiers en ligne.
+- **Imports abandonnés** : un fichier envoyé au stockage sans validation y reste (aucun enregistrement ne le sert). Un nettoyage périodique est à prévoir.
 - **Fichiers antérieurs au stockage Azure** : la table `files` est conservée, mais ses fichiers ne sont plus servis (Supabase n'en contient aucun).
 - **`npm audit`** signale encore, en production, des paquets qui ne sont pas exploitables dans Kora : `drizzle-kit` et `esbuild` (tirés par Better Auth ; la faille d'esbuild concerne son serveur de développement), `source-map-js` (compilation CSS) et `sharp` (optimisation d'images de Next, désactivée par `images.unoptimized`). À revoir à chaque mise à jour de ces dépendances.
 - **Dette** : `src/app/(agency)/AgencyApp.tsx` dépasse 3 300 lignes, et 24 erreurs ESLint antérieures restent à traiter.

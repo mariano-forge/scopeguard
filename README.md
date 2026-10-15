@@ -222,7 +222,9 @@ agence-<agence>/projets/<id>/livrables/<id>/couverture/<sha256>.<ext>
 
 Le fichier est nommé par son empreinte SHA-256 : une version ne peut pas changer de contenu sans changer de nom. Les chemins utilisent les identifiants, pas les noms, et ne bougent pas si l'on renomme ou déplace un projet (la base fait foi). Les pages n'accèdent jamais au stockage : `/api/files/<id>` vérifie que la personne est membre de l'agence, ou client vérifié invité sur une revue qui montre ce fichier, puis redirige vers une adresse en lecture seule valable 5 minutes. La taille maximale d'un import est `MAX_UPLOAD_MB` (50 par défaut).
 
-- Le compte Azure reçoit une règle CORS de lecture (toutes origines, GET) : le lecteur PDF suit la redirection avec une origine « null ». Sans adresse signée, rien n'est lisible.
+L'import ne passe pas par l'application (dont l'hébergeur limite la taille des requêtes, 4,5 Mo sur Vercel) : la page calcule l'empreinte du fichier et demande une autorisation (`POST /api/files/upload`), qui vérifie session, place, taille et limite de débit. Elle reçoit une adresse d'écriture valable 15 minutes, qui ne permet que de créer ce fichier-là (ni le lire, ni en remplacer un autre), et un jeton signé par le serveur. Elle envoie le fichier à Azure, puis demande sa validation (`POST /api/files/complete`) : le serveur relit le fichier dans le stockage et recalcule lui-même l'empreinte ; s'il ne correspond pas à celui annoncé, il est supprimé et refusé (`src/lib/upload.ts`, `prepareUpload` et `completeUpload` dans `src/lib/storage.ts`). Sur une page sans Web Crypto (ni HTTPS, ni localhost), l'import repasse par `POST /api/files`.
+
+- Le compte Azure reçoit une règle CORS (toutes origines, GET, HEAD et PUT) : le lecteur PDF suit la redirection avec une origine « null », et la page envoie les fichiers directement. Sans adresse signée, rien n'est lisible ni modifiable.
 - pdf.js est chargé dans sa version « legacy » (`next.config.ts`) : la version moderne exige des navigateurs très récents.
 - Les fichiers importés avant ce changement (table `files` de Postgres) ne sont plus servis : réimportez-les si besoin.
 
@@ -243,7 +245,6 @@ Le serveur refuse ces actions à un membre (`src/db/agencyPermissions.ts`), l'in
 Le client n'a ni compte ni mot de passe. L'agence l'invite par e-mail depuis « Partager la revue » ; il reçoit un lien personnel qui pré-remplit son adresse, puis confirme avec un code à 6 chiffres envoyé à cette adresse. L'appareil est ensuite reconnu 30 jours. Avec le lien copié-collé, seule une adresse invitée reçoit un code ; les autres peuvent demander l'accès, que l'agence accepte ou refuse. Retirer une invitation coupe l'accès immédiatement. Le lien ne donne accès qu'à la version partagée, et le serveur n'accepte du client que ses propres commentaires, ses décisions sur les propositions envoyées et la validation, signés de son adresse vérifiée (voir `src/db/reviewAuth.ts` et `src/db/reviewAccess.ts`).
 
 - E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (domaine vérifié dans Resend, avec SPF, DKIM et DMARC). Chaque e-mail part en HTML avec sa version texte, et avec un « Répondre à » vers le membre de l'agence concerné (ou `MAIL_REPLY_TO`) : l'adresse d'envoi n'a pas de boîte. `MAIL_TRANSPORT=console` n'envoie jamais rien et affiche les e-mails dans la console, même avec une clé Resend (tests, démonstrations). Sans clé, en développement, ils s'affichent dans la console ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
-- Les fichiers (`/api/files/…`) sont accessibles à qui connaît leur adresse, une empreinte impossible à deviner.
 
 ### Preuve de validation
 
