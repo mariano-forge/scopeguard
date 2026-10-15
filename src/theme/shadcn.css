@@ -1,0 +1,115 @@
+/*
+ * Tailwind + shadcn on top of the Kora design foundation.
+ * Kora tokens (tokens.css) stay the single source of truth: this file only maps them
+ * to the names Tailwind utilities and shadcn components expect. No other palette, no dark mode.
+ */
+
+/* No dark mode: "dark:" utilities only apply under a .dark class, which Kora never sets. */
+@custom-variant dark (&:is(.dark *));
+
+/* shadcn semantic colors → Kora tokens (--border is already a Kora token, shared as is) */
+:root {
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--paper);
+  --card-foreground: var(--ink);
+  --popover: var(--paper);
+  --popover-foreground: var(--ink);
+  /* Kora CTA: white on the UI blue (--cta-*) */
+  --primary: var(--cta-fill);
+  --primary-foreground: var(--cta-text);
+  --secondary: var(--mist);
+  --secondary-foreground: var(--ink);
+  --muted: var(--mist);
+  --muted-foreground: var(--graphite);
+  --accent: var(--mist);
+  --accent-foreground: var(--ink);
+  --destructive: var(--danger);
+  --input: var(--border-input);
+  --ring: var(--action-ui);
+  --radius: var(--r-button);
+}
+
+@theme inline {
+  /* Typography: Inter for the UI, Manrope for headings, IBM Plex Mono for technical bits */
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-heading: var(--font-manrope), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  /* Kora type scale under Tailwind's standard names (so cn / tailwind-merge recognizes them) */
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 14px;
+  --text-sm--line-height: 20px;
+  --text-base: 16px;
+  --text-base--line-height: 24px;
+  --text-xl: 20px;
+  --text-xl--line-height: 26px;
+  --text-2xl: 28px;
+  --text-2xl--line-height: 34px;
+
+  /* shadcn semantic colors */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Kora palette, usable as utilities (bg-ink, text-graphite, bg-status-scope-bg…) */
+  --color-ink: var(--ink);
+  --color-canvas: var(--canvas);
+  --color-paper: var(--paper);
+  --color-mist: var(--mist);
+  --color-graphite: var(--graphite);
+  --color-border-input: var(--border-input);
+  --color-action-fill: var(--action-fill);
+  --color-action-ui: var(--action-ui);
+  --color-action-text: var(--action-text);
+  --color-attention-fill: var(--attention-fill);
+  --color-attention-text: var(--attention-text);
+  --color-danger: var(--danger);
+  --color-favorite: var(--favorite-fill);
+  --color-status-high-bg: var(--status-high-bg);
+  --color-status-high-text: var(--status-high-text);
+  --color-status-medium-bg: var(--status-medium-bg);
+  --color-status-medium-text: var(--status-medium-text);
+  --color-status-low-bg: var(--status-low-bg);
+  --color-status-low-text: var(--status-low-text);
+  --color-status-resolved-bg: var(--status-resolved-bg);
+  --color-status-resolved-text: var(--status-resolved-text);
+  --color-status-scope-bg: var(--status-scope-bg);
+  --color-status-scope-text: var(--status-scope-text);
+  --color-status-clarify-bg: var(--status-clarify-bg);
+  --color-status-clarify-text: var(--status-clarify-text);
+
+  /* Radii — shadcn draws buttons and fields with rounded-lg, menus with rounded-md, dialogs with rounded-xl:
+     Kora button 8px, field 6px, panel 12px. */
+  --radius-sm: 4px;
+  --radius-md: var(--r-field);
+  --radius-lg: var(--r-button);
+  --radius-xl: var(--r-panel);
+  --radius-2xl: var(--r-panel);
+
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}

@@ -1,25 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
-import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
+import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
+import { Check, Clock, Lock, PenLine } from "lucide-react";
+import type { DeliverableType } from "@/components/deliverableKinds";
+import { Composer, ThreadPopover, requestKind, type Area, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
+import { RequestPanel, type InspectorTab } from "@/app/(agency)/editor/EditorInspector";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { AddonInput, Field, Modal } from "@/components/modal";
+import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "@/app/(agency)/editor/ReviewCanvas";
+import { Hint } from "@/components/hint";
+import { ResizeHandle } from "@/app/(agency)/editor/ResizeHandle";
+import { DeliverableIcon } from "@/components/DeliverableIcon";
 
-const PdfDocument = dynamic(
-  async () => {
-    const module = await import("react-pdf");
-    module.pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-      "pdfjs-dist/build/pdf.worker.min.mjs",
-      import.meta.url,
-    ).toString();
-    return module.Document;
-  },
-  { ssr: false },
-);
-const PdfPage = dynamic(() => import("react-pdf").then((module) => module.Page), {
-  ssr: false,
-});
 
 function parseNumericAmount(amount: number | string | undefined): number {
   if (typeof amount === "number") return amount;
@@ -61,9 +57,24 @@ type Deliverable = {
   status: string;
   locked?: boolean;
   importedAt?: string;
-  type?: "PDF" | "Image";
+  type?: DeliverableType;
+  url?: string;
+  coverData?: string;
   fileData?: string;
+  reviewStatus?: ReviewStatus;
+  approvedAt?: string;
+  projectId?: number;
 };
+type ReviewStatus = "pending" | "changes-requested" | "approved";
+
+/** The review status lives on the shared version; older saves kept a single global one. */
+function reviewStateOf(
+  record: Deliverable | undefined,
+  legacy: { reviewStatus?: ReviewStatus; approvedAt?: string | null },
+): { status: ReviewStatus; approvedAt: string | null } {
+  const status = record?.reviewStatus ?? (record?.status === "Approuvée" ? "approved" : legacy.reviewStatus ?? "pending");
+  return { status, approvedAt: status === "approved" ? record?.approvedAt ?? legacy.approvedAt ?? null : null };
+}
 
 type Reply = {
   id: number;
@@ -71,6 +82,9 @@ type Reply = {
   initials: string;
   message: string;
   time: string;
+  /** When it was written (ms); older data only has `time`. */
+  createdAt?: number;
+  edited?: boolean;
 };
 
 type ClientComment = {
@@ -79,12 +93,19 @@ type ClientComment = {
   author: string;
   initials: string;
   time: string;
+  createdAt?: number;
   message: string;
+  edited?: boolean;
   location: string;
   decision?: "À qualifier" | "À traiter" | "Inclus" | "Hors périmètre";
   position?: { x: number; y: number };
   page?: number;
   replies?: Reply[];
+  /** Set by the agency: "request" = correction. */
+  kind?: "remark" | "request";
+  title?: string;
+  sourceId?: number;
+  area?: Area;
 };
 
 type ProposalState = "none" | "draft" | "sent";
@@ -110,6 +131,8 @@ type ProposalVersion = {
   deadline: number | string;
   status: "draft" | "sent" | "superseded" | "accepted" | "refused";
   createdAt: string;
+  /** The client may counter-propose; absent on older data = allowed. */
+  allowCounter?: boolean;
 };
 type ProposalVersions = Record<number, ProposalVersion[]>;
 
@@ -121,26 +144,26 @@ export default function ClientReviewPage() {
   const [accessState, setAccessState] = useState<"allowed" | "denied">("denied");
   const [reviewLink, setReviewLink] = useState<ReviewLink | null>(null);
   const [comments, setComments] = useState<ClientComment[]>([]);
-  const [commentDraft, setCommentDraft] = useState<{ x: number; y: number } | null>(null);
-  const [generalComment, setGeneralComment] = useState(false);
-  const [commentText, setCommentText] = useState("");
-  const [commentSent, setCommentSent] = useState(false);
-  const [previewZoom, setPreviewZoom] = useState(100);
-  const [pdfPage, setPdfPage] = useState(1);
-  const [pdfPageCount, setPdfPageCount] = useState(1);
-  const [previewDragging, setPreviewDragging] = useState(false);
-  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
-  const pointerMovedRef = useRef(false);
+  /** "Northstar · Refonte site": where the shared deliverable lives. */
+  const [context, setContext] = useState("");
+  const [panelWidth, setPanelWidth] = useState(340);
+  /** Agency replies and proposals the client has opened ("c12", "r1739…", "p1739…"); read once, in the browser. */
+  const [seen, setSeen] = useState<string[] | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(`kora-client-seen-${window.location.pathname.split("/").pop()}`) ?? "[]");
+      return Array.isArray(saved) ? saved.filter((key) => typeof key === "string") : [];
+    } catch {
+      return [];
+    }
+  });
   const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
-  const clientPanelRef = useRef<HTMLElement | null>(null);
   const [selectedCommentId, setSelectedCommentId] = useState<number | null>(null);
-  const [replyingTo, setReplyingTo] = useState<number | null>(null);
-  const [replyText, setReplyText] = useState("");
-  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
-  const [editingCommentText, setEditingCommentText] = useState("");
-  const [editingReply, setEditingReply] = useState<{ commentId: number; replyId: number } | null>(null);
-  const [editingReplyText, setEditingReplyText] = useState("");
-  const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
+  const [tool, setTool] = useState<CanvasTool>("remark");
+  /** The selected thread is open on the canvas. */
+  const [threadOpen, setThreadOpen] = useState(false);
+  const [composer, setComposer] = useState<CanvasComposer | null>(null);
+  const [panelTab, setPanelTab] = useState<InspectorTab>("comment");
   const [proposalStates, setProposalStates] = useState<ProposalStates>({});
   const [proposalDecisions, setProposalDecisions] = useState<ProposalDecisions>({});
   const [adaptationRequests, setAdaptationRequests] = useState<AdaptationRequests>({});
@@ -150,7 +173,7 @@ export default function ClientReviewPage() {
   const [adaptationMessage, setAdaptationMessage] = useState("");
   const [adaptationBudget, setAdaptationBudget] = useState("");
   const [adaptationDeadline, setAdaptationDeadline] = useState("");
-  const [reviewStatus, setReviewStatus] = useState<"pending" | "changes-requested" | "approved">("pending");
+  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("pending");
   const [approvedAt, setApprovedAt] = useState<string | null>(null);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [changesRequestOpen, setChangesRequestOpen] = useState(false);
@@ -183,6 +206,8 @@ export default function ClientReviewPage() {
         reviewStatus?: "pending" | "changes-requested" | "approved";
         approvedAt?: string | null;
         proposalVersions?: ProposalVersions;
+        projects?: { id: number; name: string; clientId?: number }[];
+        clients?: { id: number; name: string }[];
       };
       const savedLinks = Object.values(parsedState.reviewLinks ?? {});
       const savedLink =
@@ -212,15 +237,19 @@ export default function ClientReviewPage() {
         ) ?? parsedState.deliverables?.[0];
         if (sharedDeliverable) {
           setDeliverable(sharedDeliverable);
+          const project = parsedState.projects?.find((candidate) => candidate.id === (sharedDeliverable.projectId ?? 1));
+          const client = parsedState.clients?.find((candidate) => candidate.id === (project?.clientId ?? 1));
+          setContext([client?.name, project?.name].filter(Boolean).join(" · "));
         }
+        const review = reviewStateOf(sharedDeliverable, parsedState);
+        setReviewStatus(review.status);
+        setApprovedAt(review.approvedAt);
         if (parsedState.comments) {
           setComments(parsedState.comments);
         }
         if (parsedState.proposalStates) setProposalStates(parsedState.proposalStates);
         if (parsedState.proposalDecisions) setProposalDecisions(parsedState.proposalDecisions);
         if (parsedState.adaptationRequests) setAdaptationRequests(parsedState.adaptationRequests);
-        if (parsedState.reviewStatus) setReviewStatus(parsedState.reviewStatus);
-        if (parsedState.approvedAt) setApprovedAt(parsedState.approvedAt);
         if (parsedState.proposalVersions) setProposalVersions(parsedState.proposalVersions);
       }
     } catch {
@@ -251,21 +280,25 @@ export default function ClientReviewPage() {
                   ...(item as Record<string, unknown>),
                   status: reviewStatus === "approved" ? "Approuvée" : (item as Record<string, unknown>).status,
                   locked: reviewStatus === "approved",
+                  reviewStatus,
+                  approvedAt: approvedAt ?? undefined,
                 }
               : item,
           )
         : parsedState.deliverables;
 
+      // Drop the legacy app-wide review status: it now lives on each version.
+      const rest = { ...parsedState };
+      delete rest.reviewStatus;
+      delete rest.approved;
+      delete rest.approvedAt;
       const newSerialized = JSON.stringify({
-        ...parsedState,
+        ...rest,
         comments,
         proposalStates,
         proposalDecisions,
         adaptationRequests,
         proposalVersions,
-        reviewStatus,
-        approved: reviewStatus === "approved",
-        approvedAt,
         deliverables: sharedDeliverables,
       });
 
@@ -294,9 +327,6 @@ export default function ClientReviewPage() {
           proposalVersions?: ProposalVersions;
         };
 
-        if (parsedState.reviewStatus) setReviewStatus(parsedState.reviewStatus);
-        if (parsedState.reviewStatus !== "approved") setApprovedAt(null);
-        else if (parsedState.approvedAt) setApprovedAt(parsedState.approvedAt);
 
         const savedLinks = Object.values(parsedState.reviewLinks ?? {});
         const currentLink =
@@ -310,6 +340,9 @@ export default function ClientReviewPage() {
               candidate.version === currentLink.version,
           );
           if (sharedDeliverable) setDeliverable(sharedDeliverable);
+          const review = reviewStateOf(sharedDeliverable, parsedState);
+          setReviewStatus(review.status);
+          setApprovedAt(review.approvedAt);
         }
 
         if (parsedState.comments) setComments(parsedState.comments);
@@ -327,132 +360,98 @@ export default function ClientReviewPage() {
     return () => window.removeEventListener("storage", syncFromStorage);
   }, [params.token]);
 
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target instanceof Element ? event.target : null;
+      if (event.ctrlKey || event.metaKey || event.altKey || target?.closest("input, textarea, select")) return;
+      if (event.key === "Escape") {
+        setComposer(null);
+        setThreadOpen(false);
+        setTool("remark");
+      } else if (event.key.toLowerCase() === "v") setTool("move");
+      else if (event.key.toLowerCase() === "c") setTool("remark");
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // Read state of the agency's answers, per review link.
+  const seenKey = `kora-client-seen-${params.token}`;
+  function markSeen(keys: string[]) {
+    setSeen((current) => {
+      const base = current ?? [];
+      const fresh = keys.filter((key) => !base.includes(key));
+      if (fresh.length === 0) return current;
+      const next = [...base, ...fresh];
+      try {
+        window.localStorage.setItem(seenKey, JSON.stringify(next));
+      } catch {
+        // Unread dots come back on reload when storage is unavailable.
+      }
+      return next;
+    });
+  }
+  /** Keys of the agency's answers on a request: its replies (or the request itself if the agency wrote it), and the proposal sent. */
+  function agencyKeysOf(comment: ClientComment) {
+    const keys = [
+      ...(comment.initials === "AM" ? [`c${comment.id}`] : []),
+      ...(comment.replies ?? []).filter((reply) => reply.initials === "AM").map((reply) => `r${reply.id}`),
+    ];
+    const proposal = proposalStates[comment.id] === "sent" ? activeProposalFor(comment.id) : undefined;
+    if (proposal) keys.push(`p${proposal.id}`);
+    return keys;
+  }
+  const isUnread = (comment: ClientComment) => seen !== null && agencyKeysOf(comment).some((key) => !seen.includes(key));
+
   function isReadOnlyVersion() {
     return reviewStatus === "approved" || deliverable.locked || deliverable.status === "Approuvée" || deliverable.status === "Remplacée";
   }
 
-  function startComment(event: React.MouseEvent<HTMLDivElement>) {
+  /** Publishes a comment written on the canvas, or by hand (no position) from the panel. */
+  function addComment(message: string, spot: CanvasComposer | null) {
     if (isReadOnlyVersion()) return;
-    if (pointerMovedRef.current) {
-      pointerMovedRef.current = false;
-      return;
-    }
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const scale = previewZoom / 100;
-    const offsetX = (bounds.width - bounds.width * scale) / 2;
-    const offsetY = (bounds.height - bounds.height * scale) / 2;
-    setCommentDraft({
-      x: Math.round(((event.clientX - bounds.left - offsetX) / (bounds.width * scale)) * 100),
-      y: Math.round(((event.clientY - bounds.top - offsetY) / (bounds.height * scale)) * 100),
-    });
-    setGeneralComment(false);
-    setCommentText("");
-  }
-
-  function trackPreviewPointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    pointerStartRef.current = { x: event.clientX, y: event.clientY };
-    pointerMovedRef.current = false;
-    setPreviewDragging(false);
-  }
-
-  function trackPreviewPointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    const start = pointerStartRef.current;
-    if (!start) return;
-    pointerMovedRef.current = Math.hypot(event.clientX - start.x, event.clientY - start.y) > 5;
-    if (pointerMovedRef.current) setPreviewDragging(true);
-  }
-
-  function trackPreviewPointerUp() {
-    pointerStartRef.current = null;
-    setPreviewDragging(false);
-  }
-
-  function togglePreviewFullscreen() {
-    if (!clientPanelRef.current) return;
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void clientPanelRef.current.requestFullscreen();
-  }
-
-  function startGeneralComment() {
-    if (isReadOnlyVersion()) return;
-    setCommentDraft({ x: 0, y: 0 });
-    setGeneralComment(true);
-    setCommentText("");
-  }
-
-  function addComment(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (isReadOnlyVersion()) return;
-    const message = commentText.trim();
-    if (!commentDraft || !message) return;
-
+    const id = Math.max(...comments.map((comment) => comment.id), 0) + 1;
     setComments((current) => [
       ...current,
       {
-        id: Math.max(...current.map((comment) => comment.id), 0) + 1,
+        id,
         deliverableId: reviewLink?.deliverableId ?? deliverable.id,
         author: "Claire Martin",
         initials: "CM",
         time: "À l'instant",
+        createdAt: Date.now(),
         message,
-        location: generalComment
-          ? "Commentaire général sur le livrable"
-          : `Page ${pdfPage} · position ${commentDraft.x}% / ${commentDraft.y}%`,
-        page: pdfPage,
-        ...(generalComment ? {} : { position: commentDraft }),
+        location: spot?.target ?? "Livrable (général)",
+        decision: "À qualifier",
+        kind: "remark",
+        page: spot?.page ?? 1,
+        position: spot ? { x: spot.x, y: spot.y } : undefined,
+        area: spot?.area,
       },
     ]);
-    setCommentDraft(null);
-    setGeneralComment(false);
-    setCommentText("");
-    setCommentSent(true);
-    setSelectedCommentId(Math.max(...comments.map((comment) => comment.id), 0) + 1);
+    setComposer(null);
+    setSelectedCommentId(id);
+    setPanelTab("comment");
+    setThreadOpen(true);
   }
 
-  function addReply(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (isReadOnlyVersion()) return;
-    const message = replyText.trim();
-    if (replyingTo === null || isCommercialDecisionLocked(replyingTo) || !message) return;
-
-    const reply: Reply = {
-      id: Date.now(),
-      author: "Claire Martin",
-      initials: "CM",
-      message,
-      time: "À l'instant",
-    };
-
-    setComments((current) => current.map((comment) => (
-      comment.id === replyingTo
-        ? { ...comment, replies: [...(comment.replies ?? []), reply] }
-        : comment
-    )));
-    setSelectedCommentId(replyingTo);
-    setReplyingTo(null);
-    setReplyText("");
-  }
-
-  function startEditComment(comment: ClientComment) {
-    if (isReadOnlyVersion() || isCommercialDecisionLocked(comment.id) || comment.initials !== "CM") return;
-    setEditingCommentId(comment.id);
-    setEditingCommentText(comment.message);
-  }
-
-  function saveEditComment(commentId: number) {
+  function replyTo(commentId: number, message: string) {
     if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
-    const target = comments.find((c) => c.id === commentId);
-    if (target?.initials !== "CM") return;
-    const message = editingCommentText.trim();
-    if (!message) return;
+    const reply: Reply = { id: Date.now(), author: "Claire Martin", initials: "CM", message, time: "À l'instant", createdAt: Date.now() };
+    setComments((current) => current.map((comment) => (comment.id === commentId ? { ...comment, replies: [...(comment.replies ?? []), reply] } : comment)));
+  }
 
-    setComments((current) =>
-      current.map((comment) =>
-        comment.id === commentId ? { ...comment, message } : comment,
-      ),
-    );
-    setEditingCommentId(null);
-    setEditingCommentText("");
+  /** Opens a thread from the side list and brings its pin into view. */
+  function focusThread(commentId: number) {
+    readThread(commentId);
+    setSelectedCommentId(commentId);
+    setComposer(null);
+    setThreadOpen(true);
+    requestAnimationFrame(() => {
+      const pin = document.querySelector<HTMLElement>(`[data-pin="${commentId}"]`);
+      const zoom = transformRef.current;
+      if (pin && zoom) void zoom.zoomToElement(pin, zoom.state.scale, 300);
+    });
   }
 
   function deleteComment(commentId: number) {
@@ -466,54 +465,34 @@ export default function ClientReviewPage() {
       }
       return updated;
     });
+    toast("Commentaire supprimé", { action: { label: "Annuler", onClick: () => restoreComment(target) } });
   }
 
-  function startEditReply(commentId: number, reply: Reply) {
-    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId) || reply.initials !== "CM") return;
-    setEditingReply({ commentId, replyId: reply.id });
-    setEditingReplyText(reply.message);
-  }
-
-  function saveEditReply(commentId: number, replyId: number) {
-    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
-    const parent = comments.find((c) => c.id === commentId);
-    const target = parent?.replies?.find((r) => r.id === replyId);
-    if (target?.initials !== "CM") return;
-    const message = editingReplyText.trim();
-    if (!message) return;
-
+  /** Double-click a pin, then click: the comment moves there (its drawn area follows). */
+  function moveComment(commentId: number, page: number, x: number, y: number) {
+    if (isReadOnlyVersion()) return;
     setComments((current) =>
-      current.map((comment) =>
-        comment.id === commentId
-          ? {
-              ...comment,
-              replies: comment.replies?.map((reply) =>
-                reply.id === replyId ? { ...reply, message } : reply,
-              ),
-            }
-          : comment,
-      ),
-    );
-    setEditingReply(null);
-    setEditingReplyText("");
-  }
-
-  function deleteReply(commentId: number, replyId: number) {
-    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
-    const parent = comments.find((c) => c.id === commentId);
-    const target = parent?.replies?.find((r) => r.id === replyId);
-    if (target?.initials !== "CM") return;
-    setComments((current) =>
-      current.map((comment) =>
-        comment.id === commentId
-          ? {
-              ...comment,
-              replies: comment.replies?.filter((reply) => reply.id !== replyId),
-            }
-          : comment,
-      ),
+      current.map((comment) => {
+        if (comment.id !== commentId || !comment.position) return comment;
+        const dx = x - comment.position.x;
+        const dy = y - comment.position.y;
+        return {
+          ...comment,
+          page,
+          position: { x, y },
+          area: comment.area ? { ...comment.area, x: comment.area.x + dx, y: comment.area.y + dy } : undefined,
+          location: comment.location.replace(/^Page \d+/, `Page ${page}`),
+        };
+      }),
     );
   }
+
+  /** Puts back a deleted comment ("Annuler" in the toast). */
+  function restoreComment(removed: ClientComment) {
+    setComments((current) => (current.some((comment) => comment.id === removed.id) ? current : [...current, removed].sort((a, b) => a.id - b.id)));
+  }
+
+
 
   function decideProposal(commentId: number, decision: ProposalDecision) {
     if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
@@ -586,11 +565,14 @@ export default function ClientReviewPage() {
         JSON.stringify({
           ...parsed,
           ...(overrides ?? {}),
-          ...(nextReviewStatus
+          ...(nextReviewStatus && Array.isArray(parsed.deliverables)
             ? {
-                reviewStatus: nextReviewStatus,
-                approved: nextReviewStatus === "approved",
-                approvedAt: nextApprovedAt ?? null,
+                deliverables: (parsed.deliverables as Deliverable[]).map((item) =>
+                  item.id === (reviewLink?.deliverableId ?? deliverable.id) &&
+                  item.version === (reviewLink?.version ?? deliverable.version)
+                    ? { ...item, reviewStatus: nextReviewStatus, approvedAt: nextApprovedAt }
+                    : item,
+                ),
               }
             : {}),
           auditEvents: [
@@ -662,8 +644,13 @@ export default function ClientReviewPage() {
       || Boolean(adaptationRequests[commentId]?.decision);
   }
 
+  /** The agency let the client answer with a counter-proposal (adaptation). */
+  function canCounter(commentId: number) {
+    return activeProposalFor(commentId)?.allowCounter !== false;
+  }
+
   function openAdaptationRequest(commentId: number) {
-    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
+    if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId) || !canCounter(commentId)) return;
     setAdaptationCommentId(commentId);
     setAdaptationMessage("");
     setAdaptationBudget("");
@@ -703,18 +690,32 @@ export default function ClientReviewPage() {
   }
 
   const sharedDeliverableId = reviewLink?.deliverableId ?? deliverable.id;
+  const unreadCount = seen === null ? 0 : comments.filter((comment) => (comment.deliverableId ?? sharedDeliverableId) === sharedDeliverableId).flatMap(agencyKeysOf).filter((key) => !seen.includes(key)).length;
+  const previousUnread = useRef<number | null>(null);
+  useEffect(() => {
+    if (seen === null) return;
+    if (previousUnread.current !== null && unreadCount > previousUnread.current) toast("Nouvelle réponse de l’agence", { description: "Un point marqué d’un rond orange vous attend dans « Vos retours »." });
+    previousUnread.current = unreadCount;
+  }, [unreadCount, seen]);
+  /** Opening a thread marks the agency's replies as read. */
+  function readThread(commentId: number) {
+    const comment = comments.find((candidate) => candidate.id === commentId);
+    if (comment) markSeen(agencyKeysOf(comment).filter((key) => !key.startsWith("p")));
+  }
+  /** Opening a proposal marks it as read. */
+  function openProposalModal(commentId: number) {
+    const proposal = activeProposalFor(commentId);
+    if (proposal) markSeen([`p${proposal.id}`]);
+    setProposalPreviewCommentId(commentId);
+  }
   const sharedComments = comments.filter(
     (comment) => (comment.deliverableId ?? comments[0]?.deliverableId ?? sharedDeliverableId) === sharedDeliverableId,
   );
-  const displayedComments = (() => {
-    const selectedIndex = sharedComments.findIndex((comment) => comment.id === selectedCommentId);
-    if (selectedIndex <= 0) return sharedComments;
-    return [sharedComments[selectedIndex], ...sharedComments.slice(0, selectedIndex), ...sharedComments.slice(selectedIndex + 1)];
-  })();
-  const selectedComment = sharedComments.find((comment) => comment.id === selectedCommentId);
-  const sharedProposalComments = sharedComments.filter(
-    (comment) => comment.decision === "Hors périmètre" && proposalStates[comment.id] === "sent",
-  );
+  // Canvas threads: corrections and remarks (older "À traiter" counts as to clarify).
+  const canvasComments: (ThreadComment & { page?: number; sourceId?: number })[] = sharedComments.map((comment) => ({
+    ...comment,
+    decision: comment.decision === "Inclus" || comment.decision === "Hors périmètre" ? comment.decision : "À qualifier",
+  }));
   const previewProposal = proposalPreviewCommentId === null
     ? undefined
     : activeProposalFor(proposalPreviewCommentId);
@@ -742,450 +743,338 @@ export default function ClientReviewPage() {
     );
   }
 
+  const versionLabel = `V${String(deliverable.version).padStart(2, "0")}`;
+  const reviewState =
+    reviewStatus === "approved"
+      ? { tone: "approved", icon: <Check />, label: "Validée", hint: approvedAt ? `Validée le ${approvedAt}` : "Version validée" }
+      : reviewStatus === "changes-requested"
+        ? { tone: "changes", icon: <PenLine />, label: "Modifications demandées", hint: "En attente d’une nouvelle version de l’agence" }
+        : deliverable.status === "Remplacée"
+          ? { tone: "replaced", icon: <Lock />, label: "Remplacée", hint: "Une version plus récente existe" }
+          : { tone: "pending", icon: <Clock />, label: "À valider", hint: "En attente de votre validation" };
+  const canValidate = !isReadOnlyVersion() && reviewStatus === "pending";
+  /** Where the client's decision on a proposal stands. */
+  const proposalStatus = (commentId: number) => {
+    const adaptation = adaptationRequests[commentId];
+    if (proposalDecisions[commentId] === "accepted") return { label: "Acceptée", tone: "decision-included" };
+    if (proposalDecisions[commentId] === "refused") return { label: "Refusée", tone: "decision-refused" };
+    if (adaptation?.decision === "accepted") return { label: "Adaptation acceptée", tone: "decision-included" };
+    if (adaptation?.decision === "refused") return { label: "Adaptation refusée", tone: "decision-refused" };
+    if (adaptation) return { label: "Adaptation demandée", tone: "decision-sent" };
+    return { label: "À décider", tone: "decision-sent" };
+  };
+  const canDecide = (commentId: number) => !isReadOnlyVersion() && !isCommercialDecisionLocked(commentId) && !adaptationRequests[commentId];
+
   return (
-    <main className="client-review-shell">
-      <header className="client-review-header">
-        <div className="client-brand">
-          <span className="brand-mark">N</span>
-          <span>Northstar Studio</span>
+    <main className="client-app">
+      <header className="client-topbar">
+        <div className="client-topbar-identity">
+          <span className="client-topbar-icon" aria-hidden="true">
+            <DeliverableIcon type={deliverable.type ?? "PDF"} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="client-topbar-title">
+              <span className="truncate">{deliverable.name}</span>
+            </h1>
+            {context && <p className="client-topbar-context">{context}</p>}
+          </div>
         </div>
-        <span className="client-review-label">REVUE CLIENT</span>
+        <div className="client-topbar-actions">
+          <div className="client-version-state">
+            <Hint label="Version actuelle du livrable">
+              <span className="version-chip">{versionLabel}</span>
+            </Hint>
+            <Hint label={reviewState.hint}>
+              <span className={`client-review-state-chip is-${reviewState.tone}`} role="status">
+                {reviewState.icon}
+                {reviewState.label}
+              </span>
+            </Hint>
+          </div>
+          {/* One call to action on this page: validating. Feedback goes through comments. */}
+          {canValidate && (
+            <Button onClick={() => setApprovalOpen(true)}>
+              <Check /> Valider cette version
+            </Button>
+          )}
+        </div>
       </header>
-      <section className="client-review-content">
-        <div className="client-review-heading">
-          <div>
-            <p className="eyebrow">NORTHSTAR STUDIO · REFONTE SITE</p>
-            <p>
-              Consultez le livrable et partagez vos retours avec l'équipe.
-            </p>
-          </div>
-          <div className="client-version-badge">
-            Version {String(deliverable.version).padStart(2, "0")} · {reviewStatus === "approved" ? "Approuvée" : reviewStatus === "changes-requested" ? "Modifications demandées" : deliverable.status === "Remplacée" ? "Remplacée" : "À valider"}
-          </div>
-        </div>
-        <section className="client-artboard-panel" ref={clientPanelRef}>
-          <div className="client-artboard-toolbar">
-            <span>{deliverable.name}</span>
-            <button className="client-add-comment-tool" onClick={startGeneralComment} disabled={isReadOnlyVersion()}>+ Soumettre une demande</button>
-            <div className="client-viewer-controls">
-              {deliverable.type === "PDF" && (
-                <div className="client-page-controls">
-                  <button className="client-viewer-button" onClick={() => setPdfPage((page) => Math.max(1, page - 1))} disabled={pdfPage <= 1} aria-label="Page précédente">‹</button>
-                  <span>{pdfPage} / {pdfPageCount}</span>
-                  <button className="client-viewer-button" onClick={() => setPdfPage((page) => Math.min(pdfPageCount, page + 1))} disabled={pdfPage >= pdfPageCount} aria-label="Page suivante">›</button>
-                </div>
-              )}
-              <button className="client-viewer-button" onClick={() => transformRef.current?.zoomOut(0.1)} disabled={previewZoom <= 50} aria-label="Réduire le zoom">−</button>
-              <button className="client-viewer-zoom" onClick={() => transformRef.current?.resetTransform()} aria-label="Réinitialiser le zoom">{previewZoom}%</button>
-              <button className="client-viewer-button" onClick={() => transformRef.current?.zoomIn(0.1)} disabled={previewZoom >= 300} aria-label="Augmenter le zoom">+</button>
-              <button className="client-viewer-button" onClick={togglePreviewFullscreen} aria-label="Plein écran">⛶</button>
-            </div>
-            <span>Expire le {reviewLink?.expiresAt}</span>
-          </div>
-          <div className="client-artboard-wrap">
-            <TransformWrapper
-              ref={transformRef}
-              initialScale={1}
-              minScale={0.5}
-              maxScale={3}
-              centerOnInit
-              smooth={false}
-              wheel={{ step: 0.1 }}
-              onTransform={(_, state) => setPreviewZoom(Math.round(state.scale * 100))}
-            >
-              <TransformComponent wrapperClass={`client-artboard-transform-wrapper ${previewDragging ? "dragging" : ""}`} contentClass="client-artboard-transform-content">
-            <div className="client-artboard" onClick={startComment} onPointerDown={trackPreviewPointerDown} onPointerMove={trackPreviewPointerMove} onPointerUp={trackPreviewPointerUp} onPointerCancel={trackPreviewPointerUp}>
-              {deliverable.fileData && deliverable.type === "Image" ? (
-                <img className="real-deliverable-image" src={deliverable.fileData} alt={deliverable.name} />
-              ) : deliverable.fileData && deliverable.type === "PDF" ? (
-                <PdfDocument file={deliverable.fileData} onLoadSuccess={({ numPages }) => setPdfPageCount(numPages)} loading="Chargement du PDF...">
-                  <PdfPage pageNumber={pdfPage} width={760} renderTextLayer={false} renderAnnotationLayer={false} />
-                </PdfDocument>
-              ) : <><div className="mock-nav">
-                <b>northstar<span>.</span></b>
-                <span>Solutions</span>
-                <span>À propos</span>
-                <span>Ressources</span>
-                <button onClick={(event) => event.stopPropagation()}>Nous contacter →</button>
+      <div className="client-body" style={{ gridTemplateColumns: `minmax(0, 1fr) ${panelWidth}px` }}>
+        <ReviewCanvas
+          deliverable={{ ...deliverable, type: deliverable.type ?? "PDF" }}
+          comments={canvasComments}
+          selectedId={selectedCommentId}
+          threadOpen={threadOpen}
+          readOnly={isReadOnlyVersion()}
+          tool={tool}
+          tools={["move", "remark"]}
+          onToolChange={setTool}
+          composer={composer}
+          onCompose={(next) => {
+            setThreadOpen(false);
+            setComposer(next);
+          }}
+          onPinClick={(comment) => {
+            readThread(comment.id);
+            setComposer(null);
+            setSelectedCommentId(comment.id);
+            setThreadOpen((open) => !(open && comment.id === selectedCommentId));
+            setPanelTab(requestKind(comment));
+          }}
+          onBackgroundClick={() => {
+            setThreadOpen(false);
+            setComposer(null);
+          }}
+          transformRef={transformRef}
+          canMove={(comment) => comment.initials === "CM" && requestKind(comment) === "comment"}
+          onMovePin={moveComment}
+          overlay={
+            isReadOnlyVersion() ? (
+              <div className="canvas-banner" role="status">
+                <span className="canvas-banner-icon" aria-hidden="true">
+                  <Lock />
+                </span>
+                <span className="canvas-banner-text">
+                  <b>Lecture seule</b>
+                  <small>{reviewStatus === "approved" ? "Vous avez validé cette version" : "Une version plus récente existe"}</small>
+                </span>
               </div>
-              <div className="mock-hero">
-                <div className="hero-copy">
-                  <small>CONSTRUIRE MIEUX, ENSEMBLE</small>
-                  <h2>
-                    Des idées qui<br /><em>avancent.</em>
-                  </h2>
-                  <p>
-                    Nous aidons les équipes ambitieuses à transformer leurs défis complexes en opportunités durables.
-                  </p>
-                  <button onClick={(event) => event.stopPropagation()}>Découvrir notre approche <span>→</span></button>
-                </div>
-                <div className="hero-shape">
-                  <div className="shape-line line-one" />
-                  <div className="shape-line line-two" />
-                  <div className="shape-core">N</div>
-                </div>
-              </div>
-              <div className="mock-footer">
-                <span>Northstar Studio · 2026</span>
-                <span>01 — Introduction</span>
-              </div>
-              </>}
-              {sharedComments.filter((comment) => (!comment.page || comment.page === pdfPage) && comment.position).map((comment) => (
-                <button
-                  key={comment.id}
-                  className={`pin pin-new client-comment-pin ${comment.initials === "AM" ? "agency-pin" : "client-pin"}`}
-                  style={{ left: `${comment.position?.x}%`, top: `${comment.position?.y}%` }}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setSelectedCommentId(comment.id);
+            ) : null
+          }
+          renderThread={(comment) => {
+            const locked = isCommercialDecisionLocked(comment.id);
+            return (
+              <ThreadPopover
+                key={`${comment.id}-${comment.decision}`}
+                comment={comment}
+                readOnly={isReadOnlyVersion()}
+                locked={locked}
+                proposal={proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : undefined}
+                onReply={(message) => replyTo(comment.id, message)}
+                me="CM"
+                onEditMessage={(messageId, message) =>
+                  setComments((current) =>
+                    current.map((candidate) =>
+                      candidate.id !== comment.id
+                        ? candidate
+                        : messageId === 0
+                          ? { ...candidate, message, edited: true }
+                          : { ...candidate, replies: candidate.replies?.map((reply) => (reply.id === messageId ? { ...reply, message, edited: true } : reply)) },
+                    ),
+                  )
+                }
+                onDeleteMessage={(messageId) => {
+                  setComments((current) =>
+                    current.map((candidate) => (candidate.id === comment.id ? { ...candidate, replies: candidate.replies?.filter((reply) => reply.id !== messageId) } : candidate)),
+                  );
+                  toast("Message supprimé");
+                }}
+                onOpenProposal={
+                  comment.decision === "Hors périmètre" && proposalStates[comment.id] === "sent"
+                    ? () => {
+                        setThreadOpen(false);
+                        openProposalModal(comment.id);
+                      }
+                    : undefined
+                }
+                onDelete={
+                  comment.initials === "CM" && requestKind(comment) === "comment" && !isReadOnlyVersion() && !locked
+                    ? () => {
+                        deleteComment(comment.id);
+                        setThreadOpen(false);
+                      }
+                    : undefined
+                }
+                onClose={() => setThreadOpen(false)}
+              />
+            );
+          }}
+          renderComposer={(current) => (
+            <Composer
+              key={`${current.x}-${current.y}`}
+              x={current.x}
+              y={current.y}
+              onSubmit={(result) => addComment(result.message, current)}
+              onCancel={() => setComposer(null)}
+            />
+          )}
+        />
+
+        <aside className="inspector client-side-panel" aria-label="Vos retours">
+          <ResizeHandle edge="left" width={panelWidth} min={300} max={560} defaultWidth={340} label="Largeur du panneau des retours" onResize={setPanelWidth} />
+          <header className="requests-header">
+            <h2>Vos retours</h2>
+          </header>
+          <RequestPanel
+            comments={canvasComments}
+            selectedId={threadOpen ? selectedCommentId : null}
+            tab={panelTab}
+            onTab={setPanelTab}
+            onFocus={focusThread}
+            proposalStage={(comment) => (proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : null)}
+            onOpenProposal={openProposalModal}
+            unread={(comment) => isUnread(comment as ClientComment)}
+            proposalSummary={(comment) => {
+              const proposal = activeProposalFor(comment.id);
+              const status = proposalStatus(comment.id);
+              return (
+                <span className="client-proposal-line">
+                  <b>{formatProposalAmount(proposal?.amount)} HT</b>
+                  <span>{formatProposalDeadline(proposal?.deadline)}</span>
+                  <span className={`decision-badge ${status.tone}`}>{status.label}</span>
+                </span>
+              );
+            }}
+            // Comments are written on the deliverable (canvas); no general comment from the panel.
+            adding={false}
+            onAddingChange={() => undefined}
+          />
+        </aside>
+      </div>
+      <Modal
+        open={proposalPreviewCommentId !== null && Boolean(previewProposal)}
+        onClose={() => setProposalPreviewCommentId(null)}
+        title={`Proposition · demande n°${previewProposalComment?.id ?? ""}`}
+        description={previewProposalComment ? (previewProposalComment.title ?? previewProposalComment.message) : undefined}
+        footer={
+          previewProposal && proposalPreviewCommentId !== null && canDecide(proposalPreviewCommentId) ? (
+            <>
+              {canCounter(proposalPreviewCommentId) && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const id = proposalPreviewCommentId;
+                    setProposalPreviewCommentId(null);
+                    openAdaptationRequest(id);
                   }}
-                  aria-label={`Commentaire ${comment.id}`}
                 >
-                  {comment.id}
-                </button>
-              ))}
-            </div>
-              </TransformComponent>
-            </TransformWrapper>
-          </div>
-        </section>
-        <section className="client-comments-panel">
-          <div className="client-comments-heading">
-            <div>
-              <p className="eyebrow">ARBITRAGES & DEMANDES</p>
-              <h2>Demandes sur cette version</h2>
-            </div>
-            <span>{comments.length} demande{comments.length > 1 ? "s" : ""}</span>
-          </div>
-          {comments.length === 0 ? (
-            <p className="client-empty-comments">Aucune demande pour le moment.</p>
+                  Faire une contre-proposition
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => {
+                  decideProposal(proposalPreviewCommentId, "refused");
+                  setProposalPreviewCommentId(null);
+                }}
+              >
+                Refuser
+              </Button>
+              <Button
+                onClick={() => {
+                  decideProposal(proposalPreviewCommentId, "accepted");
+                  setProposalPreviewCommentId(null);
+                  toast("Proposition acceptée");
+                }}
+              >
+                <Check /> Accepter
+              </Button>
+            </>
           ) : (
-            <div className="client-comments-list">
-              {displayedComments.map((comment) => (
-                <article
-                  className={`client-comment-card ${comment.id === selectedCommentId ? "selected-client-comment" : ""}`}
-                  key={comment.id}
-                  onClick={() => setSelectedCommentId(comment.id)}
-                >
-                  <div className="client-comment-top">
-                    <span className="avatar light-avatar">{comment.initials}</span>
-                    <div><b>{comment.author}</b><small>{comment.time}</small></div>
-                    <span className="client-comment-number">#{comment.id}</span>
-                  </div>
-                  {editingCommentId === comment.id && !isCommercialDecisionLocked(comment.id) ? (
-                    <form
-                      className="edit-form"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        saveEditComment(comment.id);
-                      }}
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <textarea
-                        autoFocus
-                        value={editingCommentText}
-                        onChange={(event) =>
-                          setEditingCommentText(event.target.value)
-                        }
-                      />
-                      <div className="edit-actions">
-                        <button
-                          type="button"
-                          className="action-link"
-                          onClick={() => setEditingCommentId(null)}
-                        >
-                          Annuler
-                        </button>
-                        <button
-                          type="submit"
-                          className="save-button"
-                          disabled={!editingCommentText.trim()}
-                        >
-                          Enregistrer
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <p>{comment.message}</p>
-                  )}
-                  <small className="client-comment-location">⌖ {comment.location}</small>
-                  {(expandedReplies[comment.id] ? (comment.replies ?? []) : (comment.replies ?? []).slice(0, 2)).map((reply) => (
-                    <div className="client-reply" key={reply.id}>
-                      <span className="avatar reply-avatar">{reply.initials}</span>
-                      <div className="reply-content">
-                        <b>{reply.author}</b><small>{reply.time}</small>
-                        {editingReply?.commentId === comment.id &&
-                        editingReply?.replyId === reply.id ? (
-                          <form
-                            className="edit-reply-form"
-                            onSubmit={(event) => {
-                              event.preventDefault();
-                              saveEditReply(comment.id, reply.id);
-                            }}
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <input
-                              autoFocus
-                              value={editingReplyText}
-                              onChange={(event) =>
-                                setEditingReplyText(event.target.value)
-                              }
-                            />
-                            <div className="edit-actions">
-                              <button
-                                type="button"
-                                className="action-link"
-                                onClick={() => setEditingReply(null)}
-                              >
-                                Annuler
-                              </button>
-                              <button
-                                type="submit"
-                                className="save-button"
-                                disabled={!editingReplyText.trim()}
-                              >
-                                Enregistrer
-                              </button>
-                            </div>
-                          </form>
-                        ) : (
-                          <>
-                            <p>{reply.message}</p>
-                            {!isReadOnlyVersion() && !isCommercialDecisionLocked(comment.id) && reply.initials === "CM" && (
-                              <div className="item-inline-actions">
-                                <button
-                                  className="action-link"
-                                  title="Modifier"
-                                  aria-label="Modifier la réponse"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    startEditReply(comment.id, reply);
-                                  }}
-                                >
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                                  </svg>
-                                </button>
-                                <button
-                                  className="action-link delete-link"
-                                  title="Supprimer"
-                                  aria-label="Supprimer la réponse"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    deleteReply(comment.id, reply.id);
-                                  }}
-                                >
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="3 6 5 6 21 6" />
-                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                  </svg>
-                                </button>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {(comment.replies?.length ?? 0) > 2 && (
-                    <button
-                      type="button"
-                      className="replies-toggle"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setExpandedReplies((current) => ({ ...current, [comment.id]: !current[comment.id] }));
-                      }}
-                    >
-                      {expandedReplies[comment.id] ? "↑ Réduire les réponses" : `↓ Afficher les ${(comment.replies?.length ?? 0) - 2} autres réponses`}
-                    </button>
-                  )}
-                  <div className="comment-actions">
-                    {!isReadOnlyVersion() && !isCommercialDecisionLocked(comment.id) && editingCommentId !== comment.id && comment.initials === "CM" && (
-                      <>
-                        <button
-                          className="action-link"
-                          title="Modifier"
-                          aria-label="Modifier le commentaire"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            startEditComment(comment);
-                          }}
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                          </svg>
-                        </button>
-                        <button
-                          className="action-link delete-link"
-                          title="Supprimer"
-                          aria-label="Supprimer le commentaire"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            deleteComment(comment.id);
-                          }}
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          </svg>
-                        </button>
-                      </>
-                    )}
-                    <button
-                      className="client-reply-link"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setSelectedCommentId(comment.id);
-                        setReplyingTo(comment.id);
-                        setReplyText("");
-                      }}
-                      disabled={isReadOnlyVersion() || isCommercialDecisionLocked(comment.id)}
-                    >
-                      Répondre
-                    </button>
-                  </div>
-                  {replyingTo === comment.id && !isCommercialDecisionLocked(comment.id) && (
-                    <form className="client-reply-form" onSubmit={addReply} onClick={(event) => event.stopPropagation()}>
-                      <input autoFocus value={replyText} onChange={(event) => setReplyText(event.target.value)} placeholder="Écrire une réponse..." />
-                      <button type="submit" disabled={!replyText.trim()}>Envoyer</button>
-                    </form>
-                  )}
-                </article>
-              ))}
-            </div>
-          )}
-          {selectedComment && (
-            <p className="selected-comment-note">Demande sélectionnée : {selectedComment.message}</p>
-          )}
-        </section>
-        {sharedProposalComments.length > 0 && (
-          <section className="client-proposals-panel">
-            <div className="client-comments-heading">
-              <div>
-                <p className="eyebrow">DÉCISIONS COMMERCIALES</p>
-                <h2>Propositions complémentaires</h2>
-              </div>
-              <span>À décider</span>
-            </div>
-            <div className="client-proposals-list">
-              {sharedProposalComments.map((comment) => (
-                <article className="client-proposal-card" key={comment.id}>
-                  <div>
-                    <small>Proposition liée à la demande #{comment.id} · Version {activeProposalFor(comment.id)?.version ?? 1}</small>
-                    <p>{comment.message}</p>
-                    <div className="client-proposal-summary">
-                      <span>{activeProposalFor(comment.id)?.description ?? "Section témoignages"}</span>
-                      <b>
-                        {formatProposalAmount(activeProposalFor(comment.id)?.amount ?? 850)} · {formatProposalDeadline(activeProposalFor(comment.id)?.deadline ?? 3)}
-                      </b>
-                    </div>
-                  </div>
-                  {proposalDecisions[comment.id] === "accepted" ? (
-                    <span className="client-proposal-status"><span className="client-proposal-accepted">Acceptée ✓</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition acceptée pour la demande #${comment.id}`} title="Voir la proposition"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
-                  ) : proposalDecisions[comment.id] === "refused" ? (
-                    <span className="client-proposal-status"><span className="client-proposal-refused">Refusée</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition refusée pour la demande #${comment.id}`} title="Voir la proposition"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
-                  ) : adaptationRequests[comment.id]?.decision ? (
-                    <span className="client-proposal-status"><span className={`client-proposal-adaptation ${adaptationRequests[comment.id].decision}`}>{adaptationRequests[comment.id].decision === "accepted" ? "Adaptation acceptée" : "Adaptation refusée"}</span><button type="button" className="proposal-preview-button" onClick={() => setProposalPreviewCommentId(comment.id)} aria-label={`Voir la proposition pour la demande #${comment.id}`} title="Voir la proposition"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></svg></button></span>
-                  ) : adaptationRequests[comment.id] ? (
-                    <span className={`client-proposal-adaptation ${adaptationRequests[comment.id].decision ?? ""}`}>
-                      {adaptationRequests[comment.id].decision === "accepted" ? "Adaptation acceptée par l'agence" : adaptationRequests[comment.id].decision === "refused" ? "Adaptation refusée par l'agence" : "Adaptation demandée"}
-                    </span>
-                  ) : (
-                    <div className="client-proposal-actions"><button className="client-adapt-action" onClick={() => openAdaptationRequest(comment.id)} disabled={isReadOnlyVersion()}>Demander une adaptation</button><button className="client-refuse-action" onClick={() => decideProposal(comment.id, "refused")} disabled={isReadOnlyVersion()}>Refuser</button><button className="client-accept-action" onClick={() => decideProposal(comment.id, "accepted")} disabled={isReadOnlyVersion()}>Accepter</button></div>
-                  )}
-                </article>
-              ))}
-            </div>
-          </section>
-        )}
-        <div className="client-review-actions">
-          <p>{commentSent ? "Votre demande a été transmise à l'équipe." : "Cliquez sur le livrable pour soumettre une demande."}</p>
-          {reviewStatus === "changes-requested" && (
-            <div className="client-status-banner"><span className="status-dot changes-dot" />Modifications demandées · en attente d'une nouvelle version de l'agence</div>
-          )}
-          <div className="client-action-group">
-            <button className="client-secondary-action" onClick={() => setChangesRequestOpen(true)} disabled={isReadOnlyVersion() || reviewStatus === "changes-requested"}>Demander des modifications</button>
-            <button className="client-primary-action" onClick={() => setApprovalOpen(true)} disabled={isReadOnlyVersion() || reviewStatus === "changes-requested"}>{reviewStatus === "approved" ? `Version approuvée${approvedAt ? ` · ${approvedAt}` : ""}` : "Approuver cette version"}</button>
-          </div>
-        </div>
-      </section>
-      {proposalPreviewCommentId !== null && previewProposal && (
-        <div className="modal-backdrop" role="presentation">
-          <section className="project-modal proposal-preview-modal">
-            <div className="drawer-header">
-              <div>
-                <div className="eyebrow">PROPOSITION COMPLÉMENTAIRE</div>
-                <h2>Résumé de la proposition</h2>
-              </div>
-              <button type="button" className="close-button" onClick={() => setProposalPreviewCommentId(null)} aria-label="Fermer">×</button>
-            </div>
-            <p className="drawer-intro">Demande #{previewProposalComment?.id} · Version {previewProposal.version}</p>
-            <div className={`proposal-preview-status ${proposalDecisions[previewProposal.commentId] === "refused" || previewAdaptationRequest?.decision === "refused" ? "refused" : "accepted"}`}>
-              {previewAdaptationRequest?.decision === "accepted" ? `Acceptée par l'agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}` : previewAdaptationRequest?.decision === "refused" ? `Refusée par l'agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}` : proposalDecisions[previewProposal.commentId] === "accepted" ? "Acceptée par le client" : "Refusée par le client"}
-            </div>
+            <Button variant="outline" onClick={() => setProposalPreviewCommentId(null)}>
+              Fermer
+            </Button>
+          )
+        }
+      >
+        {previewProposal && proposalPreviewCommentId !== null && (
+          <>
             <div className="proposal-summary">
-              <div><span>Prestation</span><b>{previewProposal.description}</b></div>
-              <div><span>Montant</span><b>{formatProposalAmount(previewProposal.amount)}</b></div>
-              <div><span>Impact planning</span><b>{formatProposalDeadline(previewProposal.deadline)}</b></div>
-            </div>
-            {previewAdaptationRequest && <div className="adaptation-request-summary"><span>Demande d'adaptation · {previewAdaptationRequest.requestedAt}</span><p>{previewAdaptationRequest.message}</p></div>}
-          </section>
-        </div>
-      )}
-      {commentDraft && clientPanelRef.current && createPortal(
-        <div className="modal-backdrop" role="presentation">
-          <form className="project-modal comment-modal" onSubmit={addComment}>
-            <div className="drawer-header">
               <div>
-                <div className="eyebrow">NOUVELLE DEMANDE</div>
-                <h2>Soumettre une demande</h2>
+                <span>Prestation</span>
+                <b>{previewProposal.description}</b>
               </div>
-              <button type="button" className="close-button" onClick={() => setCommentDraft(null)} aria-label="Fermer">×</button>
+              <div>
+                <span>Montant</span>
+                <b>{formatProposalAmount(previewProposal.amount)} HT</b>
+              </div>
+              <div>
+                <span>Impact planning</span>
+                <b>{formatProposalDeadline(previewProposal.deadline)}</b>
+              </div>
             </div>
-            <p className="drawer-intro">{generalComment ? "Votre demande sera liée au livrable dans son ensemble." : `Votre demande sera attachée à la position ${commentDraft.x}% / ${commentDraft.y}% de la page.`}</p>
-            <label>Description de la demande<textarea autoFocus value={commentText} onChange={(event) => setCommentText(event.target.value)} placeholder="Décrivez précisément la modification souhaitée..." /></label>
-            <button className="send-proposal" type="submit" disabled={!commentText.trim()}>Soumettre la demande →</button>
-          </form>
-        </div>,
-        clientPanelRef.current,
-      )}
-      {adaptationCommentId !== null && (
-        <div className="modal-backdrop" role="presentation">
-          <form className="project-modal comment-modal" onSubmit={submitAdaptationRequest}>
-            <div className="drawer-header">
-              <div><div className="eyebrow">PROPOSITION COMPLÉMENTAIRE</div><h2>Demander une adaptation</h2></div>
-              <button type="button" className="close-button" onClick={() => setAdaptationCommentId(null)} aria-label="Fermer">×</button>
-            </div>
-            <p className="drawer-intro">L'agence reste responsable du chiffrage. Décrivez votre besoin ou vos contraintes, sans modifier directement le prix.</p>
-            <p className="drawer-intro">L'agence reste responsable du chiffrage. Décrivez votre besoin et, si vous le souhaitez, indiquez un budget ou un délai cible.</p>
-            <label>Votre demande<textarea autoFocus value={adaptationMessage} onChange={(event) => setAdaptationMessage(event.target.value)} placeholder="Ex. Pouvez-vous proposer une version limitée au formulaire ?" /></label>
-            <div className="field-grid"><label>Budget indicatif<div className="input-with-addon"><input type="number" min="0" step="10" value={adaptationBudget} onChange={(event) => setAdaptationBudget(event.target.value)} placeholder="Facultatif" /><span className="input-addon">€</span></div></label><label>Délai souhaité<div className="input-with-addon"><input type="number" min="0" step="1" value={adaptationDeadline} onChange={(event) => setAdaptationDeadline(event.target.value)} placeholder="Facultatif" /><span className="input-addon">jours</span></div></label></div>
-            <button className="send-proposal" type="submit" disabled={!adaptationMessage.trim()}>Envoyer la demande →</button>
-          </form>
+            <p className="flex items-center gap-2 text-sm">
+              {proposalStatus(proposalPreviewCommentId).label === "À décider" ? <Clock className="size-4" aria-hidden="true" /> : null}
+              <span className={`decision-badge ${proposalStatus(proposalPreviewCommentId).tone}`}>{proposalStatus(proposalPreviewCommentId).label}</span>
+              <span className="text-muted-foreground">Version {previewProposal.version} de la proposition</span>
+            </p>
+            {!canCounter(proposalPreviewCommentId) && canDecide(proposalPreviewCommentId) && (
+              <p className="text-sm text-muted-foreground">L’agence ne propose pas de contre-proposition sur ce devis : un refus est définitif.</p>
+            )}
+            {previewAdaptationRequest && (
+              <div className="adaptation-request-summary">
+                <span>Votre demande d’adaptation · {previewAdaptationRequest.requestedAt}</span>
+                <p>{previewAdaptationRequest.message}</p>
+              </div>
+            )}
+          </>
+        )}
+      </Modal>
+      <Modal
+        open={adaptationCommentId !== null}
+        onClose={() => setAdaptationCommentId(null)}
+        title="Faire une contre-proposition"
+        description="L’agence reste responsable du chiffrage. Décrivez votre besoin et, si vous le souhaitez, indiquez un budget ou un délai cible."
+        onSubmit={submitAdaptationRequest}
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setAdaptationCommentId(null)}>
+              Annuler
+            </Button>
+            <Button type="submit" disabled={!adaptationMessage.trim()}>
+              Envoyer la demande
+            </Button>
+          </>
+        }
+      >
+        <Field id="adaptation-message" label="Votre demande">
+          <Textarea id="adaptation-message" autoFocus value={adaptationMessage} onChange={(event) => setAdaptationMessage(event.target.value)} placeholder="Ex. Pouvez-vous proposer une version limitée au formulaire ?" />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field id="adaptation-budget" label="Budget indicatif" optional>
+            <AddonInput id="adaptation-budget" addon="€" type="number" min="0" step="10" value={adaptationBudget} onChange={(event) => setAdaptationBudget(event.target.value)} />
+          </Field>
+          <Field id="adaptation-deadline" label="Délai souhaité" optional>
+            <AddonInput id="adaptation-deadline" addon="jours" type="number" min="0" step="1" value={adaptationDeadline} onChange={(event) => setAdaptationDeadline(event.target.value)} />
+          </Field>
         </div>
-      )}
-      {changesRequestOpen && (
-        <div className="modal-backdrop" role="presentation">
-          <form className="project-modal comment-modal" onSubmit={submitChangesRequest}>
-            <div className="drawer-header">
-              <div><div className="eyebrow">RETOUR GLOBAL</div><h2>Demander des modifications</h2></div>
-              <button type="button" className="close-button" onClick={() => setChangesRequestOpen(false)} aria-label="Fermer">×</button>
-            </div>
-            <p className="drawer-intro">Cette version ne sera pas approuvable tant que l'agence n'aura pas soumis une nouvelle version.</p>
-            <label>Votre demande<textarea autoFocus value={changesRequestMessage} onChange={(event) => setChangesRequestMessage(event.target.value)} placeholder="Décrivez ce qui doit être revu avant validation..." /></label>
-            <button className="send-proposal" type="submit" disabled={!changesRequestMessage.trim()}>Envoyer la demande →</button>
-          </form>
-        </div>
-      )}
-      {approvalOpen && (
-        <div className="modal-backdrop" role="presentation">
-          <section className="project-modal approval-modal">
-            <div className="drawer-header"><div><div className="eyebrow">CONFIRMATION CLIENT</div><h2>Approuver cette version ?</h2></div><button type="button" className="close-button" onClick={() => setApprovalOpen(false)} aria-label="Fermer">×</button></div>
-            <p className="drawer-intro">Vous confirmez que cette version peut être considérée comme validée par Northstar Studio.</p>
-            <div className="approval-actions"><button className="changes-button" onClick={() => setApprovalOpen(false)}>Annuler</button><button className="approve-button" onClick={confirmApproval}>Confirmer l'approbation</button></div>
-          </section>
-        </div>
-      )}
+      </Modal>
+      <Modal
+        open={changesRequestOpen}
+        onClose={() => setChangesRequestOpen(false)}
+        title="Demander des modifications"
+        description="Cette version ne sera pas approuvable tant que l’agence n’aura pas soumis une nouvelle version."
+        onSubmit={submitChangesRequest}
+        footer={
+          <>
+            <Button type="button" variant="outline" onClick={() => setChangesRequestOpen(false)}>
+              Annuler
+            </Button>
+            <Button type="submit" disabled={!changesRequestMessage.trim()}>
+              Envoyer la demande
+            </Button>
+          </>
+        }
+      >
+        <Field id="changes-request" label="Votre demande">
+          <Textarea id="changes-request" autoFocus value={changesRequestMessage} onChange={(event) => setChangesRequestMessage(event.target.value)} placeholder="Décrivez ce qui doit être revu avant validation…" />
+        </Field>
+      </Modal>
+      <Modal
+        open={approvalOpen}
+        onClose={() => setApprovalOpen(false)}
+        role="alertdialog"
+        title="Valider cette version ?"
+        description="L’agence en est informée et la version passe en lecture seule."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setApprovalOpen(false)}>
+              Annuler
+            </Button>
+            <Button onClick={confirmApproval}>Confirmer la validation</Button>
+          </>
+        }
+      />
     </main>
   );
 }
