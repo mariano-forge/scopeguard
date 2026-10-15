@@ -145,7 +145,16 @@ async function push() {
       return;
     }
     if (response.status === 403 && endpoint === "/api/state") {
-      leftAgency();
+      const refusal = (await response.json().catch(() => null)) as { code?: string; error?: string } | null;
+      if (refusal?.code !== "ADMIN_ONLY") {
+        leftAgency();
+        return;
+      }
+      // A member tried an action reserved to administrators: drop it, the next poll restores the state.
+      synced = pending.next;
+      syncedSerialized = pending.snapshot;
+      revision = -1;
+      toast.error(refusal.error ?? "Action réservée aux administrateurs de l’agence.");
       return;
     }
     if (response.status === 403) {

@@ -75,6 +75,8 @@ type BrowserViewProps = {
   onToggleFavorite: (key: string) => void;
   onDeleteClient: (clientId: number) => void;
   onDeleteProject: (projectId: number) => void;
+  /** Owner or administrator: may delete spaces and projects and empty the trash. */
+  canManage: boolean;
   onMoveProject: (projectId: number, clientId: number) => void;
   /** Returns false when the target project already has a deliverable with that name. */
   onMoveLivrable: (livrableId: number, projectId: number) => boolean;
@@ -246,6 +248,7 @@ export function BrowserView({
   livrableUnread,
   onDeleteClient,
   onDeleteProject,
+  canManage,
   onMoveProject,
   onMoveLivrable,
   onDeleteLivrable,
@@ -540,6 +543,7 @@ export function BrowserView({
               deleteImpact={impactOf(list.map((project) => project.id))}
               onRename={(name) => onRenameClient(client.id, name)}
               onDelete={() => onDeleteClient(client.id)}
+              deleteLocked={!canManage}
             />
             <button className="primary-button" onClick={onNewProject}>
               <Plus /> Projet
@@ -581,6 +585,7 @@ export function BrowserView({
               deleteImpact={impactOf([project.id])}
               onRename={(name) => onRenameProject(project.id, name)}
               onDelete={() => onDeleteProject(project.id)}
+              deleteLocked={!canManage}
               moveTargets={clients.map((candidate) => ({ id: candidate.id, label: candidate.name }))}
               currentTargetId={project.clientId ?? 1}
               onMove={(clientId) => onMoveProject(project.id, clientId)}
@@ -662,12 +667,13 @@ export function BrowserView({
           onDeleteProject={(projectId) => onDeleteProject(projectId)}
           onMoveLivrable={onMoveLivrable}
           onDeleteLivrable={onDeleteLivrable}
+          canManage={canManage}
         />
       </div>
     );
   }
 
-  if (view.kind === "trash") return <TrashPage items={trash} onRestore={onRestore} onPurge={onPurge} />;
+  if (view.kind === "trash") return <TrashPage items={trash} onRestore={onRestore} onPurge={onPurge} canPurge={canManage} />;
 
   if (view.kind === "shared")
     return (
@@ -924,7 +930,18 @@ function HomePage({
 const trashKinds = { space: "Espace", project: "Projet", livrable: "Livrable" } as const;
 
 /** Deleted spaces, projects and deliverables: restore them, or erase them for good. */
-function TrashPage({ items, onRestore, onPurge }: { items: TrashItem[]; onRestore: (id: number) => void; onPurge: (id?: number) => void }) {
+function TrashPage({
+  items,
+  onRestore,
+  onPurge,
+  canPurge,
+}: {
+  items: TrashItem[];
+  onRestore: (id: number) => void;
+  onPurge: (id?: number) => void;
+  /** Deleting for good is reserved to administrators; anyone can restore. */
+  canPurge: boolean;
+}) {
   const [confirm, setConfirm] = useState<{ title: string; run: () => void } | null>(null);
   // Time is read once when the page opens (render must stay pure).
   const [now] = useState(() => Date.now());
@@ -950,6 +967,8 @@ function TrashPage({ items, onRestore, onPurge }: { items: TrashItem[]; onRestor
           <button
             type="button"
             className="ghost-button"
+            disabled={!canPurge}
+            title={canPurge ? undefined : "Réservé aux administrateurs de l’agence"}
             onClick={() => setConfirm({ title: "Vider la corbeille ?", run: () => onPurge() })}
           >
             <Trash2 /> Vider la corbeille
@@ -986,7 +1005,8 @@ function TrashPage({ items, onRestore, onPurge }: { items: TrashItem[]; onRestor
                 type="button"
                 className="ghost-button icon-only"
                 aria-label={`Supprimer définitivement ${item.name}`}
-                title="Supprimer définitivement"
+                title={canPurge ? "Supprimer définitivement" : "Supprimer définitivement : réservé aux administrateurs de l’agence"}
+                disabled={!canPurge}
                 onClick={() => setConfirm({ title: `Supprimer définitivement « ${item.name} » ?`, run: () => onPurge(item.id) })}
               >
                 <Trash2 />
@@ -1023,12 +1043,14 @@ function OrphansSection({
   onDeleteProject,
   onMoveLivrable,
   onDeleteLivrable,
+  canManage,
 }: {
   clients: Client[];
   projects: Project[];
   deliverables: Deliverable[];
   onMoveProject: (projectId: number, clientId: number) => void;
   onDeleteProject: (projectId: number) => void;
+  canManage: boolean;
   onMoveLivrable: (livrableId: number, projectId: number) => boolean;
   onDeleteLivrable: (livrableId: number) => void;
 }) {
@@ -1065,7 +1087,7 @@ function OrphansSection({
             <b>{project.name}</b>
             <small>Projet sans espace</small>
             <Select label={`Rattacher ${project.name}`} value="" options={spaceOptions} onChange={(value) => value && onMoveProject(project.id, Number(value))} />
-            <button type="button" className="ghost-button icon-only" aria-label={`Supprimer ${project.name}`} title="Supprimer" onClick={() => setConfirm({ title: `Supprimer le projet « ${project.name} » ?`, run: () => onDeleteProject(project.id) })}>
+            <button type="button" className="ghost-button icon-only" aria-label={`Supprimer ${project.name}`} title={canManage ? "Supprimer" : "Supprimer : réservé aux administrateurs de l’agence"} disabled={!canManage} onClick={() => setConfirm({ title: `Supprimer le projet « ${project.name} » ?`, run: () => onDeleteProject(project.id) })}>
               <Trash2 />
             </button>
           </li>

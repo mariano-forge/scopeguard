@@ -320,6 +320,16 @@ export function AgencyApp() {
   const currentUser = useCurrentUser();
   /** Browser-kept lists hold ids of this agency's records: one entry per agency. */
   const scoped = (key: string) => `${key}:${currentUser.organizationId}`;
+  /**
+   * Owners and administrators make the commercial decisions and what cannot be undone (sending a quote,
+   * answering a counter-proposal, revoking a link, deleting a space or a project, emptying the trash).
+   * The server refuses them from members too (src/db/agencyPermissions.ts).
+   */
+  const canManage = currentUser.role === "owner" || currentUser.role === "admin";
+  function adminOnly() {
+    if (!canManage) toast.error("Réservé aux administrateurs de l’agence.");
+    return canManage;
+  }
   const router = useRouter();
   const pathname = usePathname();
   const view = parseAgencyPath(pathname);
@@ -557,7 +567,8 @@ export function AgencyApp() {
         if (parsedState.auditEvents) setAuditEvents(parsedState.auditEvents);
         if (parsedState.trash) {
           const limit = Date.now() - TRASH_DAYS * 24 * 60 * 60 * 1000;
-          setTrash(parsedState.trash.filter((item) => item.deletedAt >= limit));
+          // Expired items are purged by an administrator's page (members may not delete for good).
+        setTrash(canManage ? parsedState.trash.filter((item) => item.deletedAt >= limit) : parsedState.trash);
         }
         setStateHydrated(true);
       } catch {
@@ -1093,6 +1104,7 @@ export function AgencyApp() {
   }
 
   function deleteProject(projectId: number) {
+    if (!adminOnly()) return;
     const project = projects.find((candidate) => candidate.id === projectId);
     if (!project) return;
     const taken = takeRecords(new Set(deliverables.filter((record) => (record.projectId ?? 1) === projectId).map((record) => record.id)));
@@ -1103,6 +1115,7 @@ export function AgencyApp() {
   }
 
   function deleteClient(clientId: number) {
+    if (!adminOnly()) return;
     const client = clients.find((candidate) => candidate.id === clientId);
     if (!client) return;
     const spaceProjects = projects.filter((project) => (project.clientId ?? 1) === clientId);
@@ -1144,6 +1157,7 @@ export function AgencyApp() {
   }
 
   function purgeFromTrash(itemId?: number) {
+    if (!adminOnly()) return;
     setTrash((current) => (itemId === undefined ? [] : current.filter((candidate) => candidate.id !== itemId)));
   }
 
@@ -1506,7 +1520,7 @@ export function AgencyApp() {
   }
 
   function sendProposal() {
-    if (proposalCommentId === null) return;
+    if (proposalCommentId === null || !adminOnly()) return;
     if (
       !newProposalDescription.trim() ||
       !newProposalAmount.trim() ||
@@ -1542,7 +1556,7 @@ export function AgencyApp() {
   /** Sends the quoted proposal after confirmation: the draft becomes version 1, sent to the client. */
   function sendQuotedProposal(commentId: number) {
     const draft = proposalVersions[commentId]?.find((proposal) => proposal.status === "draft");
-    if (!draft || isReadOnlyVersion) return;
+    if (!draft || isReadOnlyVersion || !adminOnly()) return;
     setProposalVersions((current) => ({
       ...current,
       [commentId]: (current[commentId] ?? []).map((proposal) =>
@@ -1576,6 +1590,8 @@ export function AgencyApp() {
 
   /** New quote after a refusal: the refused version stays in the history, the new one waits to be sent. */
   function saveRequote(commentId: number) {
+    // Re-quoting drops the client's pending counter-proposal: that answers it.
+    if (adaptationRequests[commentId] && !adaptationRequests[commentId].decision && !adminOnly()) return;
     const history = proposalVersions[commentId] ?? [];
     const adaptation = adaptationRequests[commentId];
     const nextVersion = Math.max(...history.map((proposal) => proposal.version), 0) + 1;
@@ -1625,7 +1641,8 @@ export function AgencyApp() {
       proposalCommentId === null ||
       !newProposalDescription.trim() ||
       !newProposalAmount.trim() ||
-      !newProposalDeadline.trim()
+      !newProposalDeadline.trim() ||
+      !adminOnly()
     ) return;
 
     const numericAmount = parseNumericAmount(newProposalAmount);
@@ -1685,7 +1702,7 @@ export function AgencyApp() {
   }
 
   function decideAdaptation(commentId: number, decision: "accepted" | "refused") {
-    if (isReadOnlyVersion || !adaptationRequests[commentId]) return;
+    if (isReadOnlyVersion || !adaptationRequests[commentId] || !adminOnly()) return;
     const decisionAt = new Date().toLocaleString("fr-FR");
     setAdaptationRequests((current) => ({
       ...current,
@@ -2279,6 +2296,7 @@ export function AgencyApp() {
               onRenameProject={renameProject}
               onDeleteClient={deleteClient}
               onDeleteProject={deleteProject}
+              canManage={canManage}
               onMoveProject={moveProject}
               onMoveLivrable={moveLivrable}
               onDeleteLivrable={deleteLivrable}
@@ -2500,9 +2518,12 @@ export function AgencyApp() {
                 description={sent ? (source?.title ?? source?.message) : "Transformez ce retour en accord clair avant de commencer le travail."}
                 footer={
                   !sent ? (
-                    <Button onClick={sendProposal} disabled={!newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>
-                      Envoyer au client
-                    </Button>
+                    <>
+                      {!canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Envoi réservé aux administrateurs de l’agence</span>}
+                      <Button onClick={sendProposal} disabled={!canManage || !newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>
+                        Envoyer au client
+                      </Button>
+                    </>
                   ) : isReadOnlyVersion ? (
                     <Button variant="outline" onClick={() => setProposalOpen(false)}>
                       Fermer
@@ -2516,15 +2537,16 @@ export function AgencyApp() {
                     </>
                   ) : adaptationPending ? (
                     <>
-                      <Button variant="outline" onClick={() => decideAdaptation(id, "refused")}>
+                      {!canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Réponse réservée aux administrateurs de l’agence</span>}
+                      <Button variant="outline" disabled={!canManage} onClick={() => decideAdaptation(id, "refused")}>
                         Refuser l’adaptation
                       </Button>
                       {selectedAdaptationRequest?.budget !== undefined && (
-                        <Button variant="outline" onClick={() => decideAdaptation(id, "accepted")}>
+                        <Button variant="outline" disabled={!canManage} onClick={() => decideAdaptation(id, "accepted")}>
                           Accepter l’adaptation
                         </Button>
                       )}
-                      <Button onClick={openNewVersion}>Répondre par une nouvelle version</Button>
+                      <Button disabled={!canManage} onClick={openNewVersion}>Répondre par une nouvelle version</Button>
                     </>
                   ) : status.label === "En attente du client" ? (
                     <>
@@ -2948,7 +2970,10 @@ export function AgencyApp() {
                   <Button
                     variant="destructive"
                     className="sm:mr-auto"
+                    disabled={!canManage}
+                    title={canManage ? undefined : "Réservé aux administrateurs de l’agence"}
                     onClick={() => {
+                      if (!adminOnly()) return;
                       const revokedLink = { ...reviewLink, active: false };
                       const linkKey = `${reviewLink.deliverableId ?? 1}:${reviewLink.version ?? 1}`;
                       setReviewLink(revokedLink);
@@ -3089,10 +3114,13 @@ export function AgencyApp() {
                 className="confirm-send-modal"
                 footer={
                   <>
+                    {!canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Envoi réservé aux administrateurs de l’agence</span>}
                     <Button variant="outline" onClick={() => setConfirmSendId(null)}>
                       Annuler
                     </Button>
-                    <Button onClick={() => confirmSendId !== null && sendQuotedProposal(confirmSendId)}>Envoyer la proposition</Button>
+                    <Button disabled={!canManage} onClick={() => confirmSendId !== null && sendQuotedProposal(confirmSendId)}>
+                      Envoyer la proposition
+                    </Button>
                   </>
                 }
               >
@@ -3189,10 +3217,11 @@ export function AgencyApp() {
             size="lg"
             footer={
               <>
+                {!requoting && !canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Envoi réservé aux administrateurs de l’agence</span>}
                 <Button type="button" variant="outline" onClick={() => setNewProposalVersionOpen(false)}>
                   Annuler
                 </Button>
-                <Button type="submit" disabled={!newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>
+                <Button type="submit" disabled={(!requoting && !canManage) || !newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>
                   {requoting ? "Enregistrer le chiffrage" : "Envoyer la nouvelle proposition"}
                 </Button>
               </>

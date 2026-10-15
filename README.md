@@ -216,6 +216,14 @@ L'espace agence demande un compte (`/connexion`) : e-mail et mot de passe, ou Go
 
 Chaque compte travaille dans une agence. Après l'inscription, la personne crée la sienne (`/bienvenue`) et en devient propriétaire, ou rejoint celle qui l'a invitée. Le propriétaire et les administrateurs invitent leurs collègues depuis le menu du compte, « Équipe » : l'invité reçoit un lien `/invitation/:id` qu'il ne peut accepter qu'avec l'adresse invitée. Toutes les données sont rangées par agence (`organization_id` dans chaque clé primaire) et le serveur filtre chaque requête sur l'agence du membre ; retirer quelqu'un de l'équipe lui coupe l'accès immédiatement.
 
+| Rôle | Peut faire |
+| --- | --- |
+| Membre | Tout le travail de production : voir, commenter, importer des versions, qualifier une demande, préparer un devis en brouillon, partager une revue, restaurer depuis la corbeille |
+| Administrateur | En plus : envoyer un devis, répondre à une contre-proposition, révoquer un lien client, supprimer un espace ou un projet, vider la corbeille, gérer l'équipe |
+| Propriétaire | En plus : supprimer l'agence, nommer un autre propriétaire |
+
+Le serveur refuse ces actions à un membre (`src/db/agencyPermissions.ts`), l'interface les affiche grisées avec la raison.
+
 Le client n'a ni compte ni mot de passe. L'agence l'invite par e-mail depuis « Partager la revue » ; il reçoit un lien personnel qui pré-remplit son adresse, puis confirme avec un code à 6 chiffres envoyé à cette adresse. L'appareil est ensuite reconnu 30 jours. Avec le lien copié-collé, seule une adresse invitée reçoit un code ; les autres peuvent demander l'accès, que l'agence accepte ou refuse. Retirer une invitation coupe l'accès immédiatement. Le lien ne donne accès qu'à la version partagée, et le serveur n'accepte du client que ses propres commentaires, ses décisions sur les propositions envoyées et la validation, signés de son adresse vérifiée (voir `src/db/reviewAuth.ts` et `src/db/reviewAccess.ts`).
 
 - E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (offre gratuite Resend). Sans eux, en développement, invitations, codes et liens « Mot de passe oublié » s'affichent dans la console du serveur ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
