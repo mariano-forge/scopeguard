@@ -87,7 +87,7 @@ function RequestForm({ initial, onClose, onCreate }: { initial: Qualification; o
             <>
               <div className="grid grid-cols-2 gap-3">
                 <Field id="request-amount" label="Montant HT">
-                  <AddonInput id="request-amount" addon="€" type="number" min="0" step="10" placeholder="850" value={amount} onChange={(event) => setAmount(event.target.value)} />
+                  <AddonInput id="request-amount" addon="€" type="number" min="0" step="0.01" placeholder="850" value={amount} onChange={(event) => setAmount(event.target.value)} />
                 </Field>
                 <Field id="request-days" label="Délai">
                   <AddonInput id="request-days" addon="jours" type="number" min="0" step="1" placeholder="3" value={days} onChange={(event) => setDays(event.target.value)} />

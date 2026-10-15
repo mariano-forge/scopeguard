@@ -389,6 +389,8 @@ export function ThreadPopover({
       {qualifying ? (
         <form
           className="qualify-form"
+          // Our own checks (title, amount > 0), never the browser's "valid value" bubbles.
+          noValidate
           onSubmit={(event) => {
             event.preventDefault();
             if (!title.trim() || !quoteReady) return;
@@ -428,7 +430,7 @@ export function ThreadPopover({
                 <div className="quote-fields">
                   <label>
                     Montant HT (€)
-                    <input type="number" min="0" step="10" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="850" />
+                    <input type="number" min="0" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="850" />
                   </label>
                   <label>
                     Délai (jours)

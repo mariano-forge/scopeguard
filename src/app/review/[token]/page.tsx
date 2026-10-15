@@ -17,10 +17,11 @@ import { ResizeHandle } from "@/app/(agency)/editor/ResizeHandle";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
 
 
+/** "850", "850 €", "2 087,50 €" or 2087.5 → 2087.5 (comma or dot as decimal separator). */
 function parseNumericAmount(amount: number | string | undefined): number {
   if (typeof amount === "number") return amount;
   if (!amount) return 0;
-  return Number(String(amount).replace(/[^0-9]/g, "")) || 0;
+  return Number(String(amount).replace(/s/g, "").replace(",", ".").replace(/[^0-9.]/g, "")) || 0;
 }
 
 function parseNumericDays(deadline: number | string | undefined): number {
@@ -31,7 +32,9 @@ function parseNumericDays(deadline: number | string | undefined): number {
 
 function formatProposalAmount(amount: number | string | undefined): string {
   const num = parseNumericAmount(amount);
-  return `${num.toLocaleString("fr-FR")} €`;
+  // Cents only when there are some: 2 087 €, 2 087,50 €.
+  const cents = Number.isInteger(num) ? 0 : 2;
+  return `${num.toLocaleString("fr-FR", { minimumFractionDigits: cents, maximumFractionDigits: 2 })} €`;
 }
 
 function formatProposalDeadline(deadline: number | string | undefined): string {
@@ -1032,7 +1035,7 @@ export default function ClientReviewPage() {
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field id="adaptation-budget" label="Budget indicatif" optional>
-            <AddonInput id="adaptation-budget" addon="€" type="number" min="0" step="10" value={adaptationBudget} onChange={(event) => setAdaptationBudget(event.target.value)} />
+            <AddonInput id="adaptation-budget" addon="€" type="number" min="0" step="0.01" value={adaptationBudget} onChange={(event) => setAdaptationBudget(event.target.value)} />
           </Field>
           <Field id="adaptation-deadline" label="Délai souhaité" optional>
             <AddonInput id="adaptation-deadline" addon="jours" type="number" min="0" step="1" value={adaptationDeadline} onChange={(event) => setAdaptationDeadline(event.target.value)} />

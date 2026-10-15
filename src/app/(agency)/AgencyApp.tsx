@@ -11,10 +11,11 @@ function escapeHtml(value: string) {
   })[character] ?? character);
 }
 
+/** "850", "850 €", "2 087,50 €" or 2087.5 → 2087.5 (comma or dot as decimal separator). */
 function parseNumericAmount(amount: number | string | undefined): number {
   if (typeof amount === "number") return amount;
   if (!amount) return 0;
-  return Number(String(amount).replace(/[^0-9]/g, "")) || 0;
+  return Number(String(amount).replace(/s/g, "").replace(",", ".").replace(/[^0-9.]/g, "")) || 0;
 }
 
 function parseNumericDays(deadline: number | string | undefined): number {
@@ -25,7 +26,9 @@ function parseNumericDays(deadline: number | string | undefined): number {
 
 function formatProposalAmount(amount: number | string | undefined): string {
   const num = parseNumericAmount(amount);
-  return `${num.toLocaleString("fr-FR")} €`;
+  // Cents only when there are some: 2 087 €, 2 087,50 €.
+  const cents = Number.isInteger(num) ? 0 : 2;
+  return `${num.toLocaleString("fr-FR", { minimumFractionDigits: cents, maximumFractionDigits: 2 })} €`;
 }
 
 function formatProposalDeadline(deadline: number | string | undefined): string {
@@ -2628,7 +2631,7 @@ export function AgencyApp() {
                     </Field>
                     <div className="grid grid-cols-2 gap-3">
                       <Field id="proposal-amount" label="Montant HT">
-                        <AddonInput id="proposal-amount" addon="€" type="number" min="0" step="10" placeholder="850" value={newProposalAmount} onChange={(event) => setNewProposalAmount(event.target.value)} />
+                        <AddonInput id="proposal-amount" addon="€" type="number" min="0" step="0.01" placeholder="850" value={newProposalAmount} onChange={(event) => setNewProposalAmount(event.target.value)} />
                       </Field>
                       <Field id="proposal-deadline" label="Impact planning">
                         <AddonInput id="proposal-deadline" addon="jours" type="number" min="0" step="1" placeholder="3" value={newProposalDeadline} onChange={(event) => setNewProposalDeadline(event.target.value)} />
@@ -3194,7 +3197,7 @@ export function AgencyApp() {
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field id="version-amount" label="Montant HT">
-                <AddonInput id="version-amount" addon="€" type="number" min="0" step="10" placeholder="850" value={newProposalAmount} onChange={(event) => setNewProposalAmount(event.target.value)} />
+                <AddonInput id="version-amount" addon="€" type="number" min="0" step="0.01" placeholder="850" value={newProposalAmount} onChange={(event) => setNewProposalAmount(event.target.value)} />
               </Field>
               <Field id="version-deadline" label="Impact planning">
                 <AddonInput id="version-deadline" addon="jours" type="number" min="0" step="1" placeholder="3" value={newProposalDeadline} onChange={(event) => setNewProposalDeadline(event.target.value)} />
