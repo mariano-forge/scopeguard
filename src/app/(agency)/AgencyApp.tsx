@@ -287,16 +287,6 @@ function migrateReviewStatus(saved: {
   });
 }
 
-/** New client review link for a version, valid 7 days. */
-function createReviewLink(deliverableId: number, version: number): ReviewLink {
-  const token =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString("fr-FR");
-  return { token, active: true, expiresAt, autoExpire: true, deliverableId, version };
-}
-
 export function AgencyApp() {
   const currentUser = useCurrentUser();
   /** Browser-kept lists hold ids of this agency's records: one entry per agency. */
@@ -621,7 +611,7 @@ export function AgencyApp() {
       projects,
       clients,
       deliverables,
-      reviewLink,
+      // Not the link open in the share dialog: a view state, kept out of the saved state.
       reviewLinks,
       comments,
       proposalStates,
@@ -638,7 +628,6 @@ export function AgencyApp() {
     projects,
     clients,
     deliverables,
-    reviewLink,
     reviewLinks,
     comments,
     proposalStates,
@@ -1392,12 +1381,7 @@ export function AgencyApp() {
   function requestChanges(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!changesMessage.trim()) return;
-    setDeliverables((current) =>
-      current.map((deliverable) =>
-        deliverable.id === currentDeliverable.id ? { ...deliverable, reviewStatus: "changes-requested" } : deliverable,
-      ),
-    );
-    recordAudit("review.reopened", "Validation rouverte par l’agence");
+    void agencyAction(`deliverables/${currentDeliverable.id}/reopen`, "POST", { message: changesMessage.trim() });
     setChangesOpen(false);
   }
 
@@ -1546,30 +1530,29 @@ export function AgencyApp() {
   }
 
   /** Review link of the open version, created when missing (share dialog, client preview). */
-  function ensureReviewLink(): ReviewLink {
-    const linkKey = `${currentDeliverable.id}:${currentDeliverable.version}`;
-    const existingLink = reviewLinks[linkKey];
-
-    if (!existingLink || !existingLink.active) {
-      const newLink = createReviewLink(currentDeliverable.id, currentDeliverable.version);
-      setReviewLinks((current) => ({ ...current, [linkKey]: newLink }));
-      setReviewLink(newLink);
-      return newLink;
+  /** The version's active client link, created by the server (random token) when there is none. */
+  async function ensureReviewLink(): Promise<ReviewLink | null> {
+    const existingLink = reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`];
+    if (existingLink?.active) {
+      setReviewLink(existingLink);
+      return existingLink;
     }
-    setReviewLink(existingLink);
-    return existingLink;
+    const result = await agencyAction(`deliverables/${currentDeliverable.id}/review-link`, "POST");
+    const link = (result?.link as ReviewLink | undefined) ?? null;
+    if (link) setReviewLink(link);
+    return link;
   }
 
   function openShareDialog() {
-    ensureReviewLink();
+    void ensureReviewLink();
     setLinkCopied(false);
     setShareOpen(true);
   }
 
-  /** The page the client sees, in a new tab (the link is saved before the tab reads it). */
-  function openClientPreview() {
-    const link = ensureReviewLink();
-    window.setTimeout(() => window.open(`/review/${link.token}`, "_blank", "noopener"), 50);
+  /** The page the client sees, in a new tab, once its link is saved. */
+  async function openClientPreview() {
+    const link = await ensureReviewLink();
+    if (link) window.open(`/review/${link.token}`, "_blank", "noopener");
   }
 
   function updateAutoExpire(autoExpire: boolean) {
@@ -1946,7 +1929,7 @@ export function AgencyApp() {
     { kind: "section", label: "Ce livrable" },
     { label: "Importer une nouvelle version", icon: <Upload />, onFile: importVersionFile, accept: "application/pdf,image/*,video/*" },
     { label: "Partager la revue", icon: <Share2 />, onSelect: openShareDialog },
-    { label: "Aperçu client", icon: <Eye />, onSelect: openClientPreview },
+    { label: "Aperçu client", icon: <Eye />, onSelect: () => void openClientPreview() },
     { kind: "section", label: "Suivi" },
     { label: "Rouvrir la validation", icon: <RotateCcw />, onSelect: () => { setChangesMessage(""); setChangesOpen(true); } },
     { label: "Synthèse & export", icon: <FileCheck />, onSelect: () => setProofOpen(true) },
@@ -2276,7 +2259,7 @@ export function AgencyApp() {
               }}
               onAddRequest={isReadOnlyVersion ? undefined : setNewRequestKind}
               onShare={openShareDialog}
-              onPreview={openClientPreview}
+              onPreview={() => void openClientPreview()}
               width={panelWidths.inspector}
               onResize={(width) => resizePanel("inspector", width)}
             />
@@ -2765,12 +2748,8 @@ export function AgencyApp() {
                     title={canManage ? undefined : "Réservé aux administrateurs de l’agence"}
                     onClick={() => {
                       if (!adminOnly()) return;
-                      const revokedLink = { ...reviewLink, active: false };
-                      const linkKey = `${reviewLink.deliverableId ?? 1}:${reviewLink.version ?? 1}`;
-                      setReviewLink(revokedLink);
-                      setReviewLinks((current) => ({ ...current, [linkKey]: revokedLink }));
                       setShareOpen(false);
-                      toast("Lien de revue révoqué");
+                      void agencyAction(`deliverables/${reviewLink.deliverableId ?? currentDeliverable.id}/review-link`, "DELETE").then((result) => result && toast("Lien de revue révoqué"));
                     }}
                   >
                     Révoquer ce lien
@@ -3100,8 +3079,9 @@ export function AgencyApp() {
     }
     const link = result.link;
     setReviewLink((current) => (current && linkKeyOf(current) === linkKeyOf(link) ? link : current));
-    setReviewLinks((current) => ({ ...current, [linkKeyOf(link)]: link }));
-    void refreshSharedState();
+    // The server saved the link: fetched back rather than written again from here.
+    await flushSharedState();
+    await refreshSharedState();
     if (result.notSent?.length)
       toast.warning(`E-mail non envoyé à ${result.notSent.join(", ")} : copiez son lien personnel et transmettez-le.`);
     return result;
@@ -3116,10 +3096,7 @@ export function AgencyApp() {
 
   function removeInvite(email: string) {
     if (!reviewLink) return;
-    const linkKey = `${reviewLink.deliverableId ?? 1}:${reviewLink.version ?? 1}`;
-    const updatedLink = { ...reviewLink, invites: (reviewLink.invites ?? []).filter((invite) => invite.email !== email) };
-    setReviewLink(updatedLink);
-    setReviewLinks((current) => ({ ...current, [linkKey]: updatedLink }));
+    void agencyAction(`deliverables/${reviewLink.deliverableId ?? currentDeliverable.id}/review-link/invites/${encodeURIComponent(email)}`, "DELETE");
   }
 
   /** Mails every invited client a reminder with their personal link (once a day per link, checked by the server). */

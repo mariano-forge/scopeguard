@@ -1,9 +1,10 @@
 // What a member of the agency does in the editor, one action at a time (routes under /api/comments):
-// comment threads, qualification and quotes.
+// comment threads, qualification, quotes, a version's validation and its client link.
 // Each action is built from what the database holds, signed with the member, checked against the
 // member's role (reservedActions) and applied in one transaction with its audit events.
 // The agency's other writes still go through /api/state; they move here one subject at a time.
 
+import { randomUUID } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
 import { initialsOf, sideOf } from "@/lib/authors";
 import { formatProposalAmount, formatProposalDeadline } from "@/lib/proposalFormat";
@@ -27,7 +28,7 @@ import {
 } from "./actions";
 import { canManageAgency, reservedActions } from "./agencyPermissions";
 import type { Db } from "./client";
-import { commentProposals, deliverables, proposalVersions } from "./schema";
+import { commentProposals, deliverables, proposalVersions, reviewLinks } from "./schema";
 import { applyChanges, type Writer } from "./state";
 
 type Qualification = "Inclus" | "Hors périmètre" | "À qualifier";
@@ -47,10 +48,15 @@ export type AgencyAction =
   | { type: "proposal.send"; commentId: number; description: string; amount: number; deadline: number }
   | { type: "proposal.send-draft"; commentId: number }
   | { type: "proposal.version"; commentId: number; send: boolean; description: string; amount: number; deadline: number; allowCounter: boolean }
-  | { type: "adaptation.decide"; commentId: number; decision: "accepted" | "refused" };
+  | { type: "adaptation.decide"; commentId: number; decision: "accepted" | "refused" }
+  | { type: "version.reopen"; deliverableId: number; message: string }
+  | { type: "link.share"; deliverableId: number }
+  | { type: "link.revoke"; deliverableId: number }
+  | { type: "invite.remove"; deliverableId: number; email: string };
 
 export type AgencyMember = { id: string; name: string; organizationId: string; role: string | null | undefined };
-export type AgencyActionResult = { ok: true; revision: number; id?: number } | { ok: false; status: number; error: string; code?: string };
+export type AgencyActionResult = { ok: true; revision: number; id?: number; data?: Data } | { ok: false; status: number; error: string; code?: string };
+export type ActionParams = { commentId?: string; replyId?: string; deliverableId?: string; email?: string };
 
 const refused = (error = "Cette action n’est pas possible sur cette version.", status = 409): AgencyActionResult => ({ ok: false, status, error });
 
@@ -65,8 +71,9 @@ function readQuote(value: unknown): Quote | undefined {
 }
 
 /** The action described by a request body, or null when it is malformed. */
-export function readAgencyAction(type: AgencyAction["type"], body: Data, params: { commentId?: string; replyId?: string } = {}): AgencyAction | null {
+export function readAgencyAction(type: AgencyAction["type"], body: Data, params: ActionParams = {}): AgencyAction | null {
   const commentId = id(Number(params.commentId));
+  const deliverableId = id(Number(params.deliverableId));
   const replyId = id(Number(params.replyId));
   const message = text(body.message);
   switch (type) {
@@ -123,6 +130,15 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
       return commentId ? { type, commentId } : null;
     case "adaptation.decide":
       return commentId && (body.decision === "accepted" || body.decision === "refused") ? { type, commentId, decision: body.decision } : null;
+    case "version.reopen":
+      return deliverableId && message ? { type, deliverableId, message } : null;
+    case "link.share":
+    case "link.revoke":
+      return deliverableId ? { type, deliverableId } : null;
+    case "invite.remove": {
+      const email = text(params.email, 320)?.toLowerCase();
+      return deliverableId && email ? { type, deliverableId, email } : null;
+    }
   }
 }
 
@@ -192,7 +208,58 @@ function quoteChanges(changes: StateChanges, commentId: number, update: { state?
 
 const scopeLabel = (decision: "Inclus" | "Hors périmètre") => (decision === "Inclus" ? "À traiter" : "Hors scope");
 
-async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): Promise<{ changes: StateChanges; id?: number } | AgencyActionResult> {
+/** A new client link for a version: a random token, valid 7 days unless the agency says otherwise. */
+function newReviewLink(deliverableId: number, version: number) {
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" });
+  return { token: randomUUID(), active: true, expiresAt, autoExpire: true, deliverableId, version };
+}
+
+/** Actions on a version: its validation and its client link (one per version, keyed "id:version"). */
+async function versionChanges(db: Db, member: AgencyMember, action: Extract<AgencyAction, { deliverableId: number; type: "version.reopen" | "link.share" | "link.revoke" | "invite.remove" }>) {
+  const org = member.organizationId;
+  const changes = noChanges();
+  const [record] = await db.select().from(deliverables).where(and(eq(deliverables.organizationId, org), eq(deliverables.id, action.deliverableId))).limit(1);
+  if (!record || record.version === null) return refused("Livrable introuvable.", 404);
+  const key = `${record.id}:${record.version}`;
+  const [stored] = await db.select().from(reviewLinks).where(and(eq(reviewLinks.organizationId, org), eq(reviewLinks.key, key))).limit(1);
+  const link = stored?.data as Data | undefined;
+  const log = trail(member, record.id);
+  const putLink = (value: Data) => {
+    changes.maps.reviewLinks = { upsert: { [key]: value }, remove: [] };
+  };
+
+  switch (action.type) {
+    case "version.reopen":
+      changes.lists.deliverables = { upsert: [{ ...(record.data as Data), id: record.id, reviewStatus: "changes-requested" }], remove: [] };
+      log.add("review.reopened", `Validation rouverte par l’agence : « ${action.message} »`);
+      break;
+    case "link.share": {
+      // The active link is kept; a revoked one is replaced by a new one (new token, no invitation).
+      if (stored?.active) return { changes, data: { link } };
+      const created = newReviewLink(record.id, record.version);
+      putLink(created);
+      log.into(changes);
+      return { changes, data: { link: created } };
+    }
+    case "link.revoke":
+      if (!stored?.active) return refused("Ce lien n’est pas actif.");
+      putLink({ ...link, active: false });
+      log.add("review-link.revoked", "Lien de revue révoqué");
+      break;
+    case "invite.remove": {
+      const invites = Array.isArray(link?.invites) ? (link.invites as Data[]) : [];
+      if (!link || !invites.some((invite) => invite.email === action.email)) return refused("Invitation introuvable.", 404);
+      putLink({ ...link, invites: invites.filter((invite) => invite.email !== action.email) });
+      log.add("review-link.invite-removed", `Invitation retirée : ${action.email}`);
+      break;
+    }
+  }
+  log.into(changes);
+  return { changes };
+}
+
+async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): Promise<{ changes: StateChanges; id?: number; data?: Data } | AgencyActionResult> {
+  if (action.type === "version.reopen" || action.type === "link.share" || action.type === "link.revoke" || action.type === "invite.remove") return versionChanges(db, member, action);
   const org = member.organizationId;
   const changes = noChanges();
   const signer = { author: member.name, initials: initialsOf(member.name), from: "agency" };
@@ -380,5 +447,5 @@ export async function runAgencyAction(db: Db, member: AgencyMember, writer: Omit
     if (reserved.length) return { ok: false, status: 403, error: `Réservé aux administrateurs de l’agence : ${reserved.join(", ")}.`, code: "ADMIN_ONLY" };
   }
   const { revision } = await applyChanges(db, member.organizationId, built.changes, { recordedBy: member.id, ...writer });
-  return { ok: true, revision, ...(built.id ? { id: built.id } : {}) };
+  return { ok: true, revision, ...(built.id ? { id: built.id } : {}), ...(built.data ? { data: built.data } : {}) };
 }

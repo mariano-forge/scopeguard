@@ -115,6 +115,8 @@ export function refreshSharedState() {
  * cannot bring back the state from before it; the state with its result is fetched before returning.
  */
 export async function sendAction<T>(run: () => Promise<T>): Promise<T> {
+  // Page writes made before the action go first: sent after it, they would undo it.
+  await flushSharedState();
   acting++;
   let result: T;
   try {
@@ -122,8 +124,6 @@ export async function sendAction<T>(run: () => Promise<T>): Promise<T> {
   } finally {
     acting--;
   }
-  // A page write waiting to be sent would make the poll wait: send it first.
-  await flushSharedState();
   await refreshSharedState();
   return result;
 }

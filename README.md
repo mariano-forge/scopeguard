@@ -258,7 +258,7 @@ La page du client écrit une action à la fois, chacune sur sa route (`src/db/re
 | `POST changes-request` | Demander des modifications |
 | `POST approval` | Valider la version, ce qui la verrouille |
 
-L'agence suit le même chemin pour les fils de commentaires et les devis (`src/db/agencyActions.ts`) : le serveur signe chaque message avec le membre, refuse toute écriture sur une version validée ou remplacée et sur une demande dont le devis est tranché, et applique aux membres les mêmes réserves que `/api/state`. Ses autres écritures (projets, validation, liens, corbeille) passent encore par `/api/state` et rejoindront ces routes une à une.
+L'agence suit le même chemin pour les fils de commentaires, les devis, la réouverture d'une validation et les liens de revue (`src/db/agencyActions.ts`) : le serveur signe chaque message avec le membre, refuse toute écriture sur une version validée ou remplacée et sur une demande dont le devis est tranché, et applique aux membres les mêmes réserves que `/api/state`. Ses autres écritures (espaces, projets, livrables, corbeille) passent encore par `/api/state` et rejoindront ces routes une à une.
 
 | Route (`/api/comments…`) | Action de l'agence |
 | --- | --- |
@@ -272,6 +272,10 @@ L'agence suit le même chemin pour les fils de commentaires et les devis (`src/d
 | `POST /api/comments/:id/proposal/send` | Envoyer le devis en brouillon (administrateurs) |
 | `POST /api/comments/:id/proposal/versions` | Nouvelle version : envoyée à la place du devis en attente (`send: true`, administrateurs), ou rechiffrage après un refus, en brouillon (`send: false`) |
 | `POST /api/comments/:id/adaptation/decision` | Accepter ou refuser la contre-proposition du client (administrateurs) |
+| `POST /api/deliverables/:id/review-link` | Lien client de la version : l'actif, ou un nouveau au jeton tiré par le serveur |
+| `DELETE /api/deliverables/:id/review-link` | Révoquer le lien (administrateurs) |
+| `DELETE /api/deliverables/:id/review-link/invites/:email` | Retirer une invitation, ce qui coupe l'accès de cette adresse |
+| `POST /api/deliverables/:id/reopen` | Rouvrir la validation, avec la raison dans le journal |
 
 - E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (domaine vérifié dans Resend, avec SPF, DKIM et DMARC). Chaque e-mail part en HTML avec sa version texte, et avec un « Répondre à » vers le membre de l'agence concerné (ou `MAIL_REPLY_TO`) : l'adresse d'envoi n'a pas de boîte. `MAIL_TRANSPORT=console` n'envoie jamais rien et affiche les e-mails dans la console, même avec une clé Resend (tests, démonstrations). Sans clé, en développement, ils s'affichent dans la console ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
 

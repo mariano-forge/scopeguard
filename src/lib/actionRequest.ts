@@ -9,17 +9,19 @@ export type Method = "POST" | "PUT" | "PATCH" | "DELETE";
 type Refusal = { status: number; error?: string; code?: string };
 
 /**
- * Sends the action; returns the id it created or touched, or null once the refusal is handled.
+ * Sends the action; returns its answer (the id it created or touched…), or null once the refusal is handled.
  * `refused` handles the answers proper to the page (session ended, read-only…); return true when done.
  */
-export function actionRequest(url: string, method: Method, body: Record<string, unknown> | undefined, refused: (refusal: Refusal) => boolean): Promise<{ id?: number } | null> {
+export type ActionAnswer = { id?: number } & Record<string, unknown>;
+
+export function actionRequest(url: string, method: Method, body: Record<string, unknown> | undefined, refused: (refusal: Refusal) => boolean): Promise<ActionAnswer | null> {
   return sendAction(async () => {
     const response = await fetch(url, {
       method,
       headers: body ? { "Content-Type": "application/json" } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     }).catch(() => null);
-    const answer = (await response?.json().catch(() => null)) as { id?: number; error?: string; code?: string } | null;
+    const answer = (await response?.json().catch(() => null)) as (ActionAnswer & { error?: string; code?: string }) | null;
     if (response?.ok) return answer ?? {};
     if (!response || !refused({ status: response.status, error: answer?.error, code: answer?.code }))
       toast.error(answer?.error ?? "Enregistrement impossible pour l’instant. Réessayez.");
