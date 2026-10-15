@@ -206,6 +206,7 @@ npm run db:migrate           # crée les tables sur la base choisie par DATABASE
 npm run dev
 ```
 
+- Base en ligne (Supabase) : `DATABASE_URL_REMOTE` = chaîne « Session pooler » (Connect › Session pooler), puis `DATABASE_TARGET=remote npm run db:migrate`. Toutes les tables ont la sécurité par ligne activée sans règle : l'API REST publique de Supabase n'y voit rien, l'application (propriétaire des tables) n'est pas concernée. Désactivez aussi l'API de données (Project Settings › Data API). Les variables `NEXT_PUBLIC_SUPABASE_*` ne servent pas.
 - `npm run db:generate` : crée une migration après une modification de `src/db/schema.ts`.
 - `npm run db:studio` : explore les données.
 - Le journal d'audit (`audit_events`) est en ajout seul : la base refuse toute modification ou suppression d'un événement.

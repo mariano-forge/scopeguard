@@ -7,6 +7,10 @@
 // Every agency record belongs to an organization (src/db/auth-schema.ts) and its primary key starts
 // with organization_id: the interface makes ids with Date.now(), and two agencies sharing an id must
 // never reach each other's rows. All queries filter on it (src/db/state.ts).
+//
+// Row level security is on for every table (drizzle/0005_row_level_security.sql), with no policy:
+// Supabase's public REST API sees nothing; the app connects as the owner. A new table needs
+// `ALTER TABLE … ENABLE ROW LEVEL SECURITY` in its migration.
 
 import { bigint, boolean, customType, index, integer, jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 import { organizations } from "./auth-schema";
