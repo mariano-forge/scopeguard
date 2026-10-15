@@ -3,16 +3,14 @@
 // then goes through the same rules as every client write (sanitizeReviewChanges in reviewAccess.ts)
 // and is applied in one transaction, with its audit event and, for decisions, the agency's notification.
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { ListChange, StateChanges } from "@/lib/sharedState";
+import { displayedNow, freeCommentId, id, movedComment, noChanges, percent, readArea, readPoint, text, number, type Area, type Data } from "./actions";
 import type { Db } from "./client";
 import { sanitizeReviewChanges, type ReviewAccess } from "./reviewAccess";
 import { reviewProfileName } from "./reviewAuth";
 import { comments } from "./schema";
 import { applyChanges, type Writer } from "./state";
-
-type Data = Record<string, unknown>;
-type Area = { x: number; y: number; w: number; h: number };
 
 export type ReviewAction =
   | { type: "comment.create"; id?: number; message: string; location?: string; page?: number; position?: { x: number; y: number }; area?: Area; replies?: { id?: number; message: string }[] }
@@ -33,22 +31,6 @@ const refused = (error = "Cette action n’est pas possible sur cette version.",
 
 // ——— Reading what the page sends ———
 
-const number = (value: unknown, min: number, max: number) => (typeof value === "number" && Number.isFinite(value) && value >= min && value <= max ? value : undefined);
-const id = (value: unknown) => (typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined);
-const text = (value: unknown, max = 5000) => {
-  const trimmed = typeof value === "string" ? value.trim().slice(0, max) : "";
-  return trimmed || undefined;
-};
-const percent = (value: unknown) => number(value, 0, 100);
-
-/** A comment's area or point on its page, in % of the page. */
-function readArea(value: unknown): Area | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  const { x, y, w, h } = value as Data;
-  const area = { x: percent(x), y: percent(y), w: percent(w), h: percent(h) };
-  return Object.values(area).every((field) => field !== undefined) ? (area as Area) : undefined;
-}
-
 /** The action described by a request body, or null when it is malformed. */
 export function readReviewAction(type: ReviewAction["type"], body: Data, params: { commentId?: string; replyId?: string } = {}): ReviewAction | null {
   const commentId = id(Number(params.commentId));
@@ -57,8 +39,7 @@ export function readReviewAction(type: ReviewAction["type"], body: Data, params:
   switch (type) {
     case "comment.create": {
       if (!message) return null;
-      const position = body.position && typeof body.position === "object" ? (body.position as Data) : null;
-      const point = position && percent(position.x) !== undefined && percent(position.y) !== undefined ? { x: position.x as number, y: position.y as number } : undefined;
+      const point = readPoint(body.position);
       const replies = Array.isArray(body.replies)
         ? body.replies.slice(0, 100).flatMap((reply) => {
             const replyText = text((reply as Data)?.message);
@@ -94,20 +75,6 @@ export function readReviewAction(type: ReviewAction["type"], body: Data, params:
 }
 
 // ——— Turning an action into changes ———
-
-/** The French date and time shown to people, as the pages write it. */
-const displayedNow = () => new Date().toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
-
-const noChanges = (): StateChanges => ({ lists: {}, maps: {}, settings: { upsert: {}, remove: [] } });
-
-/** A free comment id: the one the page chose if no record of the agency uses it, else a new one. */
-async function freeCommentId(db: Db, org: string, wanted: number | undefined) {
-  const candidates = [...(wanted ? [wanted] : []), ...Array.from({ length: 10 }, (_, index) => Date.now() + index)];
-  const used = new Set(
-    (await db.select({ id: comments.id }).from(comments).where(and(eq(comments.organizationId, org), inArray(comments.id, candidates)))).map((row) => row.id),
-  );
-  return candidates.find((candidate) => !used.has(candidate))!;
-}
 
 /** Events and notifications the agency sees for a decision; ids past Date.now() ones, as in reviewAccess.ts. */
 function decisionTrail(changes: StateChanges, type: string, description: string, notification: string, commentId?: number) {
@@ -200,17 +167,9 @@ async function changesFor(db: Db, access: ReviewAccess, action: ReviewAction): P
       upsertComment({ ...comment, message: action.message, edited: true });
       break;
     case "comment.move": {
-      const position = comment.position as { x: number; y: number } | undefined;
-      if (!position) return refused();
-      const area = comment.area as Area | undefined;
-      const [dx, dy] = [action.x - position.x, action.y - position.y];
-      upsertComment({
-        ...comment,
-        page: action.page,
-        position: { x: action.x, y: action.y },
-        ...(area ? { area: { ...area, x: area.x + dx, y: area.y + dy } } : {}),
-        location: typeof comment.location === "string" ? comment.location.replace(/^Page \d+/, `Page ${action.page}`) : comment.location,
-      });
+      const moved = movedComment(comment, action.page, action.x, action.y);
+      if (!moved) return refused();
+      upsertComment(moved);
       break;
     }
     case "reply.create": {

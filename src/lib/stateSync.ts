@@ -107,21 +107,25 @@ export async function flushSharedState() {
 /** Fetches the state now (e.g. after a server action changed it). */
 export function refreshSharedState() {
   revision = -1;
-  void poll();
+  return poll();
 }
 
 /**
- * Sends one action to its own route (src/lib/reviewActions.ts). Polls wait for its answer, so they
- * cannot bring back the state from before it; the state is then fetched with its result.
+ * Sends one action to its own route (src/lib/actionRequest.ts). Polls wait for its answer, so they
+ * cannot bring back the state from before it; the state with its result is fetched before returning.
  */
 export async function sendAction<T>(run: () => Promise<T>): Promise<T> {
   acting++;
+  let result: T;
   try {
-    return await run();
+    result = await run();
   } finally {
     acting--;
-    refreshSharedState();
   }
+  // A page write waiting to be sent would make the poll wait: send it first.
+  await flushSharedState();
+  await refreshSharedState();
+  return result;
 }
 
 function schedulePush() {

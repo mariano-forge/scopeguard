@@ -73,6 +73,8 @@ test("the client comments, replies, edits and deletes on the page; the server si
   await expect.poll(async () => (await commentsOf(org))[0].data).toMatchObject({ message: "Le logo est beaucoup trop petit", edited: true });
 
   // Its reply, deleted; then the comment.
+  // The reply is shown before its own delete button is used.
+  await expect(page.locator(".thread-text", { hasText: "Surtout sur mobile" })).toBeVisible();
   await page.getByRole("button", { name: "Supprimer le message" }).last().click();
   await expect.poll(async () => ((await commentsOf(org))[0].data.replies as unknown[] | undefined)?.length ?? 0).toBe(0);
   await page.getByRole("button", { name: "Supprimer", exact: true }).click();

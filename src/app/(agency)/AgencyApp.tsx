@@ -88,9 +88,10 @@ import { Hint } from "@/components/hint";
 import type { HomeAnalyticsData } from "./HomeAnalytics";
 import type { LivrableGroup } from "./LivrableFilter";
 import { useCurrentUser } from "./CurrentUser";
-import { initialsOf, sideOf, type Side } from "@/lib/authors";
+import { sideOf, type Side } from "@/lib/authors";
 import { proofHtml } from "./proofDocument";
 import { uploadFile as sendFile, type UploadPlacement } from "@/lib/upload";
+import { agencyAction } from "@/lib/agencyActions";
 import { flushSharedState, loadSharedState, refreshSharedState, subscribeSharedState, writeSharedState } from "@/lib/stateSync";
 
 
@@ -971,46 +972,14 @@ export function AgencyApp() {
   function qualifyComment(commentId: number, qualified: Qualified) {
     if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
     const back = qualified.decision === "À qualifier";
-    setComments((current) =>
-      current.map((comment) =>
-        comment.id !== commentId
-          ? comment
-          : back
-            ? { ...comment, decision: "À qualifier", kind: "remark" }
-            : { ...comment, decision: qualified.decision, kind: "request", title: qualified.title, description: qualified.description || undefined },
-      ),
-    );
-    recordAudit(
-      "scope.classified",
-      back ? "Demande remise à clarifier" : `Demande qualifiée « ${qualified.decision === "Inclus" ? "À traiter" : "Hors scope"} » : ${qualified.title}`,
-      commentId,
-    );
     setInspectorTab(back ? "comment" : qualified.decision === "Inclus" ? "correction" : "outside");
-    if (qualified.quote && qualified.decision === "Hors périmètre" && proposalStateFor(commentId) !== "sent") {
-      const quote = qualified.quote;
-      setProposalStates((current) => ({ ...current, [commentId]: "draft" }));
-      setProposalVersions((current) => {
-        const history = (current[commentId] ?? []).filter((proposal) => proposal.status !== "draft");
-        return {
-          ...current,
-          [commentId]: [
-            ...history,
-            {
-              id: Date.now(),
-              version: Math.max(...history.map((proposal) => proposal.version), 0) + 1,
-              commentId,
-              description: qualified.title,
-              amount: quote.amount,
-              deadline: quote.days,
-              allowCounter: quote.counter,
-              status: "draft",
-              createdAt: new Date().toLocaleString("fr-FR"),
-            },
-          ],
-        };
-      });
-      recordAudit("proposal.drafted", `Chiffrage préparé : ${quote.amount} € · ${quote.days} j`, commentId);
-    }
+    // The server builds the qualification, its draft quote and their audit events (src/db/agencyActions.ts).
+    void agencyAction(`comments/${commentId}/qualification`, "PUT", {
+      decision: qualified.decision,
+      title: qualified.title,
+      description: qualified.description,
+      quote: qualified.quote,
+    });
   }
 
   function createProject(event: React.FormEvent<HTMLFormElement>) {
@@ -1303,65 +1272,33 @@ export function AgencyApp() {
   }
 
   /** A request created directly, already qualified (from the panel's ▾), with its optional quote. */
-  function addRequest(request: Qualified) {
+  async function addRequest(request: Qualified) {
     if (isReadOnlyVersion || !currentDeliverable) return;
-    const id = Math.max(...comments.map((comment) => comment.id), 0) + 1;
-    const created: Comment = {
-      id,
-      deliverableId: currentDeliverable.id,
-      author: currentUser.name,
-      initials: initialsOf(currentUser.name),
-      from: "agency",
-      time: "À l'instant",
-      createdAt: Date.now(),
-      message: request.description || request.title,
-      location: "Livrable (général)",
-      decision: request.decision,
-      kind: "request",
-      title: request.title,
-      description: request.description || undefined,
-      page: 1,
-    };
-    setComments((current) => [...current, created]);
-    recordAudit("scope.classified", `Demande créée « ${request.decision === "Inclus" ? "À traiter" : "Hors scope"} » : ${request.title}`, id);
-    if (request.quote && request.decision === "Hors périmètre") {
-      const quote = request.quote;
-      setProposalStates((current) => ({ ...current, [id]: "draft" }));
-      setProposalVersions((current) => ({
-        ...current,
-        [id]: [{ id: Date.now(), version: 1, commentId: id, description: request.title, amount: quote.amount, deadline: quote.days, allowCounter: quote.counter, status: "draft", createdAt: new Date().toLocaleString("fr-FR") }],
-      }));
-    }
     setNewRequestKind(null);
     setInspectorTab(request.decision === "Inclus" ? "correction" : "outside");
-    setSelectedId(id);
+    const result = await agencyAction("comments", "POST", {
+      request: { deliverableId: currentDeliverable.id, decision: request.decision, title: request.title, description: request.description, quote: request.quote },
+    });
+    if (!result?.id) return;
+    setSelectedId(result.id);
     toast(`Demande « ${request.title} » créée`);
   }
 
   /** Publishes a comment written on the canvas, or by hand (no position) from the panel. */
-  function addComment(message: string, spot: CanvasComposer | null) {
-    if (isReadOnlyVersion) return;
-    const created: Comment = {
-      id: Math.max(...comments.map((comment) => comment.id), 0) + 1,
+  async function addComment(message: string, spot: CanvasComposer | null) {
+    if (isReadOnlyVersion || !currentDeliverable) return;
+    setComposer(null);
+    const result = await agencyAction("comments", "POST", {
       deliverableId: currentDeliverable.id,
-      author: currentUser.name,
-      initials: initialsOf(currentUser.name),
-      from: "agency",
-      time: "À l'instant",
-      createdAt: Date.now(),
       message,
       location: spot?.target ?? "Livrable (général)",
-      decision: "À qualifier",
-      kind: "remark",
       page: spot?.page ?? 1,
       position: spot ? { x: spot.x, y: spot.y } : undefined,
       area: spot?.area,
-    };
-    setComments((current) => [...current, created]);
-    recordAudit("comment.created", "Commentaire agence ajouté", created.id);
-    setSelectedId(created.id);
+    });
+    if (!result?.id) return;
+    setSelectedId(result.id);
     setInspectorTab("comment");
-    setComposer(null);
     setThreadOpen(true);
   }
 
@@ -1378,11 +1315,7 @@ export function AgencyApp() {
 
   function replyTo(commentId: number, message: string) {
     if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
-    const reply: Reply = { id: Date.now(), author: currentUser.name, initials: initialsOf(currentUser.name), from: "agency", message, time: "À l'instant", createdAt: Date.now() };
-    setComments((current) =>
-      current.map((comment) => (comment.id === commentId ? { ...comment, replies: [...(comment.replies ?? []), reply] } : comment)),
-    );
-    recordAudit("reply.created", "Réponse agence ajoutée", commentId);
+    void agencyAction(`comments/${commentId}/replies`, "POST", { message });
   }
 
   /** "Nouvelle version" from the menus: the previous version is frozen. */
@@ -1416,22 +1349,12 @@ export function AgencyApp() {
 
   /** Edits one of the agency's messages (0 = the comment itself). */
   function editMessage(commentId: number, messageId: number, message: string) {
-    setComments((current) =>
-      current.map((comment) =>
-        comment.id !== commentId
-          ? comment
-          : messageId === 0
-            ? { ...comment, message, edited: true }
-            : { ...comment, replies: comment.replies?.map((reply) => (reply.id === messageId ? { ...reply, message, edited: true } : reply)) },
-      ),
-    );
+    void agencyAction(messageId === 0 ? `comments/${commentId}` : `comments/${commentId}/replies/${messageId}`, "PATCH", { message });
   }
 
   /** Deletes one of the agency's replies. */
   function deleteMessage(commentId: number, replyId: number) {
-    setComments((current) =>
-      current.map((comment) => (comment.id === commentId ? { ...comment, replies: comment.replies?.filter((reply) => reply.id !== replyId) } : comment)),
-    );
+    void agencyAction(`comments/${commentId}/replies/${replyId}`, "DELETE");
     toast("Message supprimé");
   }
 
@@ -1439,39 +1362,21 @@ export function AgencyApp() {
     if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
     const target = comments.find((c) => c.id === commentId);
     if (!target || sideOf(target) !== "agency") return;
-    setComments((current) => {
-      const updated = current.filter((comment) => comment.id !== commentId);
-      if (selectedId === commentId && updated.length > 0) {
-        setSelectedId(updated[0].id);
-      }
-      return updated;
-    });
+    const next = comments.find((comment) => comment.id !== commentId);
+    if (selectedId === commentId && next) setSelectedId(next.id);
+    void agencyAction(`comments/${commentId}`, "DELETE");
     toast("Commentaire supprimé", { action: { label: "Annuler", onClick: () => restoreComment(target) } });
-    recordAudit("comment.deleted", "Commentaire agence supprimé", commentId);
   }
 
   /** Double-click a pin, then click: the comment moves there (its drawn area follows). */
   function moveComment(commentId: number, page: number, x: number, y: number) {
     if (isReadOnlyVersion) return;
-    setComments((current) =>
-      current.map((comment) => {
-        if (comment.id !== commentId || !comment.position) return comment;
-        const dx = x - comment.position.x;
-        const dy = y - comment.position.y;
-        return {
-          ...comment,
-          page,
-          position: { x, y },
-          area: comment.area ? { ...comment.area, x: comment.area.x + dx, y: comment.area.y + dy } : undefined,
-          location: comment.location.replace(/^Page \d+/, `Page ${page}`),
-        };
-      }),
-    );
+    void agencyAction(`comments/${commentId}`, "PATCH", { page, x, y });
   }
 
   /** Puts back a deleted comment ("Annuler" in the toast). */
   function restoreComment(removed: Comment) {
-    setComments((current) => (current.some((comment) => comment.id === removed.id) ? current : [...current, removed].sort((a, b) => a.id - b.id)));
+    void agencyAction("comments", "POST", { restore: removed });
   }
 
 
@@ -3308,7 +3213,7 @@ export function AgencyApp() {
     const link = result.link;
     setReviewLink((current) => (current && linkKeyOf(current) === linkKeyOf(link) ? link : current));
     setReviewLinks((current) => ({ ...current, [linkKeyOf(link)]: link }));
-    refreshSharedState();
+    void refreshSharedState();
     if (result.notSent?.length)
       toast.warning(`E-mail non envoyé à ${result.notSent.join(", ")} : copiez son lien personnel et transmettez-le.`);
     return result;
