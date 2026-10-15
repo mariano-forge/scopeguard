@@ -193,3 +193,60 @@ Le produit doit demontrer un effet concret sur le flux commercial des agences.
 A terme, ScopeGuard doit devenir la source de verite des decisions client sur les projets au forfait : le lieu ou une demande est contextualisee, arbitree, chiffree, acceptee et rattachee a une livraison.
 
 Le produit ne remplace pas un outil de gestion de projet, un CRM ou une solution comptable. Il les relie au moment le plus fragile de la relation agence-client : celui ou une remarque apparemment simple peut se transformer en travail gratuit.
+
+## Lancer le prototype en local
+
+Les données sont enregistrées dans PostgreSQL. Le fichier `.env.local` choisit la base avec `DATABASE_TARGET` : `local` (Postgres dans Docker) ou `remote` (Supabase, puis Azure).
+
+```bash
+cp .env.example .env.local   # puis renseigner DATABASE_URL_REMOTE si besoin
+npm install
+npm run db:up                # Postgres et Azurite (émulateur Azure Storage) dans Docker
+npm run db:migrate           # crée les tables sur la base choisie par DATABASE_TARGET
+npm run dev
+```
+
+- Base en ligne (Supabase) : `DATABASE_URL_REMOTE` = chaîne « Session pooler » (Connect › Session pooler), puis `DATABASE_TARGET=remote npm run db:migrate`. Toutes les tables ont la sécurité par ligne activée sans règle : l'API REST publique de Supabase n'y voit rien, l'application (propriétaire des tables) n'est pas concernée. Désactivez aussi l'API de données (Project Settings › Data API). Les variables `NEXT_PUBLIC_SUPABASE_*` ne servent pas.
+- `npm run db:generate` : crée une migration après une modification de `src/db/schema.ts`.
+- `npm run db:studio` : explore les données.
+- Le journal d'audit (`audit_events`) est en ajout seul : la base refuse toute modification ou suppression d'un événement.
+
+### Fichiers importés
+
+Les fichiers vont dans Azure Blob Storage (`src/lib/storage.ts`), choisi par `STORAGE_TARGET` comme la base : `local` (Azurite, dans Docker) ou `remote` (compte Azure). Chaque agence a son propre conteneur privé, enregistré dans `agency_storage` avec son compte, pour pouvoir lui donner plus tard un compte à part. Dans le conteneur, les fichiers suivent l'organisation de l'agence :
+
+```
+agence-<agence>/projets/<id>/livrables/<id>/v<version>/<sha256>.<ext>
+agence-<agence>/projets/<id>/livrables/<id>/couverture/<sha256>.<ext>
+```
+
+Le fichier est nommé par son empreinte SHA-256 : une version ne peut pas changer de contenu sans changer de nom. Les chemins utilisent les identifiants, pas les noms, et ne bougent pas si l'on renomme ou déplace un projet (la base fait foi). Les pages n'accèdent jamais au stockage : `/api/files/<id>` vérifie que la personne est membre de l'agence, ou client vérifié invité sur une revue qui montre ce fichier, puis redirige vers une adresse en lecture seule valable 5 minutes. La taille maximale d'un import est `MAX_UPLOAD_MB` (50 par défaut).
+
+- Le compte Azure reçoit une règle CORS de lecture (toutes origines, GET) : le lecteur PDF suit la redirection avec une origine « null ». Sans adresse signée, rien n'est lisible.
+- pdf.js est chargé dans sa version « legacy » (`next.config.ts`) : la version moderne exige des navigateurs très récents.
+- Les fichiers importés avant ce changement restent servis depuis Postgres (table `files`), sans contrôle d'accès, en attendant d'être migrés.
+
+### Connexion
+
+L'espace agence demande un compte (`/connexion`) : e-mail et mot de passe, ou Google si `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` sont renseignés.
+
+Chaque compte travaille dans une agence. Après l'inscription, la personne crée la sienne (`/bienvenue`) et en devient propriétaire, ou rejoint celle qui l'a invitée. Le propriétaire et les administrateurs invitent leurs collègues depuis le menu du compte, « Équipe » : l'invité reçoit un lien `/invitation/:id` qu'il ne peut accepter qu'avec l'adresse invitée. Toutes les données sont rangées par agence (`organization_id` dans chaque clé primaire) et le serveur filtre chaque requête sur l'agence du membre ; retirer quelqu'un de l'équipe lui coupe l'accès immédiatement.
+
+| Rôle | Peut faire |
+| --- | --- |
+| Membre | Tout le travail de production : voir, commenter, importer des versions, qualifier une demande, préparer un devis en brouillon, partager une revue, restaurer depuis la corbeille |
+| Administrateur | En plus : envoyer un devis, répondre à une contre-proposition, révoquer un lien client, supprimer un espace ou un projet, vider la corbeille, gérer l'équipe |
+| Propriétaire | En plus : supprimer l'agence, nommer un autre propriétaire |
+
+Le serveur refuse ces actions à un membre (`src/db/agencyPermissions.ts`), l'interface les affiche grisées avec la raison.
+
+Le client n'a ni compte ni mot de passe. L'agence l'invite par e-mail depuis « Partager la revue » ; il reçoit un lien personnel qui pré-remplit son adresse, puis confirme avec un code à 6 chiffres envoyé à cette adresse. L'appareil est ensuite reconnu 30 jours. Avec le lien copié-collé, seule une adresse invitée reçoit un code ; les autres peuvent demander l'accès, que l'agence accepte ou refuse. Retirer une invitation coupe l'accès immédiatement. Le lien ne donne accès qu'à la version partagée, et le serveur n'accepte du client que ses propres commentaires, ses décisions sur les propositions envoyées et la validation, signés de son adresse vérifiée (voir `src/db/reviewAuth.ts` et `src/db/reviewAccess.ts`).
+
+- E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (offre gratuite Resend). Sans eux, en développement, invitations, codes et liens « Mot de passe oublié » s'affichent dans la console du serveur ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
+- Les fichiers (`/api/files/…`) sont accessibles à qui connaît leur adresse, une empreinte impossible à deviner.
+
+### Preuve de validation
+
+« Synthèse & export » produit, depuis la base et non depuis la page, la preuve d'une version : empreinte SHA-256 du fichier validé, chaque demande avec sa qualification et ses devis, chaque décision avec l'identité constatée par le serveur (membre de l'agence ou adresse e-mail vérifiée du client), l'heure du serveur et l'adresse IP, puis le journal complet de la version et l'empreinte du récapitulatif (`src/db/proof.ts`). Le journal est en ajout seul, IP et navigateur compris.
+
+- L'IP est lue dans `x-forwarded-for` : en ligne, renseignez `TRUSTED_PROXY_HOPS` (1 derrière Azure Front Door ou Vercel) pour ne garder que l'adresse ajoutée par le proxy ; sans proxy déclaré, l'adresse est marquée « non vérifiée », car un visiteur peut envoyer son propre en-tête.

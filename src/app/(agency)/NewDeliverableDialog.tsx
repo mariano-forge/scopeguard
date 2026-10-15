@@ -87,7 +87,7 @@ export function NewDeliverableDialog({
       if (!file) return setError(`Importez le fichier (${kind.hint}).`);
       if (kindFromFile(file) !== type) return setError(`Ce fichier ne correspond pas au type « ${kind.label} ».`);
       if (file.size > MAX_FILE_BYTES)
-        return setError(`Fichier trop lourd pour la démo : ${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).`);
+        return setError(`Fichier trop lourd : ${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).`);
     }
     if (cover && cover.size > MAX_COVER_BYTES)
       return setError(`Couverture trop lourde : ${formatBytes(cover.size)} (maximum ${formatBytes(MAX_COVER_BYTES)}).`);

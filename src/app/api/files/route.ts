@@ -1,0 +1,57 @@
+// Agency: POST /api/files (multipart) imports a file into the agency's container.
+//   file        the file
+//   kind        "version" | "cover"
+//   projectId, livrableId, version   where it belongs, for its path (projets/<id>/livrables/<id>/v<n>/…)
+// Returns { id, href, sha256, size }; the page then stores `href` in the deliverable.
+
+import { databaseFailure } from "@/lib/api";
+import { requireAgencyUser } from "@/lib/session";
+import { maxUploadBytes, storeFile, type FilePlacement } from "@/lib/storage";
+import { getDb } from "@/db/client";
+
+const integer = (value: FormDataEntryValue | null) => (typeof value === "string" && /^\d{1,16}$/.test(value) ? Number(value) : null);
+const tooLarge = () =>
+  Response.json({ error: `Fichier trop lourd : ${Math.round(maxUploadBytes() / 1024 / 1024)} Mo au maximum.` }, { status: 413 });
+
+export async function POST(request: Request) {
+  const auth = await requireAgencyUser();
+  if ("response" in auth) return auth.response;
+  // Refused before reading the body when it announces more than the limit (plus the form's envelope).
+  if (Number(request.headers.get("content-length") ?? 0) > maxUploadBytes() + 64 * 1024) return tooLarge();
+
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return Response.json({ error: "Envoi invalide" }, { status: 400 });
+  }
+  const file = form.get("file");
+  if (!(file instanceof File) || file.size === 0) return Response.json({ error: "Aucun fichier" }, { status: 400 });
+  if (file.size > maxUploadBytes()) return tooLarge();
+
+  const projectId = integer(form.get("projectId"));
+  const livrableId = integer(form.get("livrableId"));
+  const version = integer(form.get("version"));
+  const kind = form.get("kind");
+  const placement: FilePlacement | null =
+    projectId === null || livrableId === null
+      ? null
+      : kind === "cover"
+        ? { kind: "cover", projectId, livrableId }
+        : kind === "version" && version !== null
+          ? { kind: "version", projectId, livrableId, version }
+          : null;
+  if (!placement) return Response.json({ error: "Emplacement du fichier invalide" }, { status: 400 });
+
+  try {
+    const stored = await storeFile(
+      getDb(),
+      auth.user.organizationId,
+      { content: Buffer.from(await file.arrayBuffer()), mimeType: file.type || "application/octet-stream", name: file.name || null, uploadedBy: auth.user.id },
+      placement,
+    );
+    return Response.json(stored);
+  } catch (error) {
+    return databaseFailure("api/files", error);
+  }
+}

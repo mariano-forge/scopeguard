@@ -4,6 +4,8 @@ Ce document définit les utilisateurs prioritaires et les besoins fonctionnels d
 
 ScopeGuard ne doit pas être conçu comme un simple outil d'annotation. Le produit doit aider les agences à transformer chaque retour client en décision claire : travail inclus, demande à clarifier ou prestation supplémentaire acceptée.
 
+> **Mise à jour du 15 octobre 2026.** Le prototype s'appelle désormais **Kora** dans l'interface. Il dispose d'une base de données PostgreSQL, de comptes agence (e-mail et mot de passe, Google en option), d'agences isolées avec équipe et rôles, et d'un accès client vérifié par code e-mail. Les stories existantes ont été mises à jour en conséquence, les nouvelles stories sont regroupées dans les Epics 14 à 16, et la section [Suivi de réalisation](#suivi-de-réalisation) donne l'état de chaque story.
+
 ## Personas prioritaires
 
 Le produit concerne une relation à trois niveaux : l'agence qui vend et produit, le membre de l'agence qui gère le projet et le client qui valide et paie.
@@ -104,6 +106,7 @@ Pour obtenir des demandes exploitables, contextualisées et validées.
 - Responsable marketing, fondateur, directeur de communication ou représentant métier.
 - N'utilise pas ScopeGuard tous les jours.
 - Reçoit un lien envoyé par l'agence.
+- N'a ni compte ni mot de passe : il confirme son adresse e-mail avec un code à usage unique.
 - Peut valider une maquette, demander une modification ou accepter un supplément.
 
 **Problèmes**
@@ -147,9 +150,9 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 
 | Rôle | Fonction dans l'achat |
 | --- | --- |
-| Dirigeant | Paie et évalue le retour financier |
-| Chef de projet | Utilise ScopeGuard chaque jour |
-| Designer ou développeur | Produit le livrable et traite les demandes |
+| Dirigeant | Paie et évalue le retour financier ; propriétaire de l'agence dans Kora |
+| Chef de projet | Utilise ScopeGuard chaque jour ; administrateur dans Kora |
+| Designer ou développeur | Produit le livrable et traite les demandes ; membre dans Kora |
 | Client final | Commente, accepte ou refuse |
 | Finance | Exploite les preuves et les factures plus tard |
 
@@ -165,10 +168,12 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 
 **Critères d'acceptation**
 
-- Un espace agence peut être créé avec un nom.
-- Le créateur devient administrateur.
-- Les données de l'agence sont isolées des autres organisations.
-- Le nom et les paramètres de l'agence peuvent être modifiés.
+- Un espace agence peut être créé avec un nom, juste après l'inscription (page « Bienvenue »).
+- Le créateur devient **propriétaire** de l'agence.
+- Un compte ne peut créer qu'une agence ; il peut en rejoindre d'autres sur invitation.
+- Les données de l'agence sont isolées des autres organisations : chaque enregistrement porte l'identifiant de l'agence et le serveur filtre chaque requête dessus.
+- Une nouvelle agence démarre vide, sans données de démonstration.
+- Le nom et les paramètres de l'agence peuvent être modifiés *(possible par l'API, écran à faire)*.
 
 #### US-002 : inviter un collaborateur
 
@@ -178,10 +183,12 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 
 **Critères d'acceptation**
 
-- L'administrateur saisit une adresse e-mail.
-- L'invité reçoit un lien d'activation.
-- Le rôle est défini lors de l'invitation.
-- Un membre peut être désactivé sans supprimer l'historique.
+- Le propriétaire ou un administrateur saisit une adresse e-mail depuis « Équipe », dans le menu du compte.
+- Le rôle (`Membre` ou `Administrateur`) est défini lors de l'invitation.
+- L'invité reçoit un lien `/invitation/:id`, valable 7 jours ; le lien peut aussi être copié et transmis à la main.
+- L'invitation ne peut être acceptée que par un compte utilisant l'adresse invitée.
+- Une invitation en attente peut être annulée.
+- Un membre peut être retiré de l'agence : il perd l'accès immédiatement, l'historique (journal, messages signés de son nom) est conservé.
 
 ### Epic 2 : créer un projet client
 
@@ -193,7 +200,7 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 
 **Critères d'acceptation**
 
-- Le client possède au minimum un nom et une adresse e-mail.
+- Dans Kora, un client est un **espace** ; il possède au minimum un nom (l'adresse e-mail est facultative).
 - Plusieurs projets peuvent être associés au même client.
 - Les informations internes du client ne sont pas visibles dans le lien public.
 
@@ -246,10 +253,11 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 
 **Critères d'acceptation**
 
-- Un lien client sécurisé est généré.
-- Le lien peut être révoqué.
-- Une date d'expiration peut être définie.
-- Le client ne voit que le livrable et les informations prévues pour lui.
+- Un lien client sécurisé est généré, un par version du livrable.
+- Le lien peut être révoqué *(réservé aux administrateurs)*.
+- Le lien expire automatiquement après 7 jours, sauf si l'agence désactive l'expiration.
+- Ouvrir le lien ne suffit pas : seules les adresses invitées y accèdent, après vérification par code (voir Epic 15).
+- Le client ne voit que le livrable et les informations prévues pour lui : le serveur ne lui transmet que la version partagée, ses commentaires et ses propositions.
 
 ### Epic 4 : recueillir les retours client
 
@@ -262,7 +270,7 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 **Critères d'acceptation**
 
 - Le commentaire conserve ses coordonnées et sa page.
-- Le commentaire indique son auteur et sa date.
+- Le commentaire indique son auteur et sa date ; pour un client, l'auteur est son adresse e-mail vérifiée, fixée par le serveur.
 - Le commentaire est lié à la version consultée.
 - Le client peut modifier ou supprimer son commentaire tant qu'il n'est pas traité.
 
@@ -307,8 +315,11 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 - `Hors périmètre`
 - `À clarifier`
 
+*Implémentation actuelle : trois états, `À qualifier`, `Inclus` (« À traiter ») et `Hors périmètre` (« Hors scope »). `Modification mineure` n'existe pas encore ; `À clarifier` correspond à l'état non qualifié.*
+
 **Critères d'acceptation**
 
+- Tout membre de l'agence, quel que soit son rôle, peut qualifier une demande.
 - Une demande possède une seule qualification active.
 - La qualification est visible par l'équipe autorisée.
 - Le client ne voit pas les notes internes.
@@ -348,8 +359,8 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 **Critères d'acceptation**
 
 - La proposition conserve le lien vers le commentaire d'origine.
-- Une proposition peut être enregistrée comme brouillon.
-- Elle peut être envoyée au client.
+- Une proposition peut être enregistrée comme brouillon, par tout membre de l'agence.
+- Elle peut être envoyée au client, après confirmation, **par un administrateur ou le propriétaire uniquement** ; le serveur refuse l'envoi à un membre.
 - Le travail ne doit pas être marqué comme accepté avant la décision client.
 
 #### US-014 : accepter une proposition
@@ -362,7 +373,8 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 
 - Le client voit la description, le prix et l'impact planning.
 - L'acceptation nécessite une action explicite.
-- L'identité et la date de l'acceptation sont enregistrées.
+- L'identité et la date de l'acceptation sont enregistrées : adresse e-mail vérifiée du client, heure du serveur.
+- Le client ne peut accepter qu'une proposition réellement envoyée, et une seule fois ; il ne peut pas modifier le montant.
 - Le statut devient `acceptée`.
 - L'agence reçoit une notification.
 - L'acceptation ne doit pas être modifiable silencieusement.
@@ -394,8 +406,8 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 - Le client voit clairement le numéro ou l'identifiant de version.
 - Les demandes bloquantes doivent être résolues ou explicitement traitées.
 - Une confirmation explicite est demandée avant l'approbation.
-- L'identité, la date et la version sont enregistrées.
-- La version approuvée devient verrouillée.
+- L'identité, la date et la version sont enregistrées (adresse e-mail vérifiée, heure du serveur).
+- La version approuvée devient verrouillée : le serveur refuse ensuite toute écriture du client sur cette version, et une approbation ne peut pas être annulée par le client.
 - L'agence reçoit une notification.
 
 #### US-017 : consulter la preuve de validation
@@ -415,6 +427,17 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 - La date et l'identité des approbateurs
 - L'empreinte ou l'identifiant du fichier approuvé
 
+**Critères d'acceptation**
+
+- Le récapitulatif est construit par le serveur à partir de la base, jamais à partir de l'état de la page.
+- Chaque décision (acceptation d'un devis, validation, demande de modifications) indique l'identité constatée par le serveur : membre de l'agence (nom et e-mail) ou adresse e-mail vérifiée du client.
+- Chaque décision indique l'heure du serveur et l'adresse IP d'origine ; une IP qui n'a pas pu être vérifiée est signalée comme telle.
+- Les retours et réponses du client figurent aussi dans le journal, horodatés par le serveur.
+- Le fichier validé est identifié par son empreinte SHA-256.
+- Le récapitulatif porte sa propre empreinte SHA-256.
+- Il peut être imprimé ou enregistré en PDF.
+- Tout membre de l'agence peut l'exporter ; une autre agence ne peut pas y accéder.
+
 ### Epic 8 : notifications et relances
 
 #### US-018 : notifier le client
@@ -422,6 +445,12 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 **En tant que** chef de projet,  
 **je veux** envoyer automatiquement un e-mail au client,  
 **afin de** lui signaler qu'un livrable attend sa revue.
+
+**Critères d'acceptation**
+
+- L'invitation par e-mail envoie à chaque client son lien personnel de revue.
+- L'e-mail part par le service d'envoi configuré (Resend) ; sans service configuré, en développement, il s'affiche dans la console du serveur.
+- Si l'e-mail ne peut pas partir, l'agence en est avertie et peut copier le lien personnel pour le transmettre.
 
 #### US-019 : relancer une validation
 
@@ -431,10 +460,13 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 
 **Critères d'acceptation**
 
-- La relance est déclenchée manuellement dans le MVP.
+- La relance est déclenchée manuellement, depuis « Partager la revue », par tout membre de l'agence.
+- Un e-mail part vers chaque client invité sur la revue, avec son lien personnel.
+- L'e-mail rappelle ce qui attend le client : la version à valider et le nombre de propositions en attente de décision.
 - L'agence voit la date du dernier envoi.
-- Le système évite les relances trop fréquentes.
-- Le client peut accéder directement au livrable concerné.
+- Une seule relance par revue toutes les 24 heures, contrôlée par le serveur.
+- La relance est impossible tant que personne n'est invité, ou quand la version est déjà validée.
+- La relance est enregistrée dans le journal et dans les notifications de l'agence.
 
 ## Epic 9 : expérience client dédiée
 
@@ -446,7 +478,7 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 
 **Critères d'acceptation**
 
-- Une route `/review/[token]` affiche la revue associée au lien.
+- Une route `/review/[token]` affiche la revue associée au lien, après vérification de l'adresse du client (voir US-042).
 - Le client ne voit pas la navigation ni les informations internes de l'agence.
 - Le client voit le projet, le livrable et la version partagée.
 - Un lien inconnu, révoqué ou expiré affiche un état d'accès refusé.
@@ -473,7 +505,7 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 
 **Critères d'acceptation**
 
-- Le client ne voit que les propositions qui lui sont destinées.
+- Le client ne voit que les propositions qui lui sont destinées : celles des demandes de la version partagée.
 - Chaque proposition est liée à son commentaire d'origine.
 - L'acceptation et le refus sont explicites et horodatés.
 - Une proposition déjà décidée ne peut pas être modifiée silencieusement.
@@ -490,10 +522,13 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 
 - Les commentaires, réponses, qualifications, propositions et décisions sont enregistrés.
 - Chaque événement possède un acteur et une date.
+- Le serveur ajoute l'heure d'enregistrement et l'identité qu'il a constatée (membre de l'agence ou adresse vérifiée du client).
 - Le journal est consultable depuis le projet.
-- Les événements importants ne sont pas supprimés lorsqu'une décision change.
+- Le journal est en ajout seul : la base de données refuse toute modification ou suppression d'un événement, même par une requête directe.
 
 #### US-024 : réinitialiser une démonstration
+
+> **Abandonnée.** Les données ne vivent plus dans le navigateur mais dans la base de l'agence, et une nouvelle agence démarre vide. Pour rejouer une démonstration, on crée une agence de démonstration.
 
 **En tant que** fondateur,  
 **je veux** remettre les données de démonstration à zéro,  
@@ -516,10 +551,12 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 
 **Critères d'acceptation**
 
-- Les projets, livrables, commentaires et décisions sont stockés côté serveur.
+- Les projets, livrables, commentaires et décisions sont stockés côté serveur (PostgreSQL : Docker en local, Supabase puis Azure en ligne).
+- Les fichiers importés sont stockés une seule fois sur le serveur.
 - Les données sont isolées par organisation.
 - Un rechargement ou un changement de navigateur ne perd aucune décision.
-- Les erreurs de synchronisation sont visibles et récupérables.
+- Les changements d'un membre ou du client apparaissent chez les autres en quelques secondes.
+- Les erreurs de synchronisation sont visibles et récupérables : nouvel essai automatique, message si la base est injoignable.
 
 #### US-026 : sécuriser les accès et les rôles
 
@@ -529,9 +566,9 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 
 **Critères d'acceptation**
 
-- Les membres disposent d'un rôle.
+- Les membres disposent d'un rôle : propriétaire, administrateur ou membre (détail en US-039).
 - Les liens clients sont révocables et expirables côté serveur.
-- Une organisation ne peut jamais lire les données d'une autre.
+- Une organisation ne peut jamais lire ni modifier les données d'une autre, même avec des identifiants identiques.
 - Les actions sensibles sont enregistrées dans le journal d'audit.
 
 ## Epic 12 : adaptation des propositions commerciales
@@ -562,6 +599,7 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 **Critères d'acceptation**
 
 - L'agence voit le message du client.
+- La réponse (accepter, refuser l'adaptation, ou envoyer une nouvelle version) est réservée aux administrateurs.
 - Elle peut modifier le périmètre, le montant et le délai.
 - Elle peut envoyer une nouvelle version de la proposition.
 - L'ancienne version reste conservée.
@@ -656,23 +694,25 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 - Les contrôles respectent l'état verrouillé d'une version sans empêcher sa consultation.
 - Le viewer reste utilisable sur mobile.
 
-#### US-035 : naviguer dans un livrable PDF multi-pages
+#### US-035 : consulter un livrable PDF multi-pages
 
 **En tant que** client ou membre de l'agence,  
-**je veux** naviguer entre les pages d'un livrable PDF,  
-**afin de** consulter et commenter précisément l'ensemble du document.
+**je veux** consulter toutes les pages d'un livrable PDF,  
+**afin de** lire et commenter précisément l'ensemble du document.
+
+> **Choix retenu :** toutes les pages sont chargées à la suite sur le plan de travail et l'on fait défiler le document. La navigation page à page (indicateur, boutons précédent / suivant) est abandonnée.
 
 **Critères d'acceptation**
 
-- Le viewer indique la page courante et le nombre total de pages.
-- Les boutons précédent et suivant changent réellement de page.
-- Les boutons sont désactivés sur la première et la dernière page lorsque nécessaire.
-- Un commentaire conserve le numéro de page auquel il est attaché.
-- Les commentaires d'une autre page ne sont pas affichés sur la page courante.
-- Le client et l'agence consultent le même document, la même page et les mêmes commentaires.
-- Le zoom et le déplacement sont conservés lors d'un changement de page ou réinitialisés de manière explicite.
+- Toutes les pages du PDF s'affichent l'une sous l'autre sur le plan de travail.
+- Le zoom et le déplacement s'appliquent à l'ensemble du document.
+- Un commentaire conserve le numéro de page auquel il est attaché et s'affiche sur cette page.
+- Le client et l'agence consultent le même document et les mêmes commentaires.
+- Passer à un PDF plus court ne demande jamais une page qui n'existe pas.
 
 #### US-036 : capturer une page web depuis une URL
+
+> *État : un livrable de type « Lien » enregistre l'URL, mais aucune capture n'est encore réalisée. L'annotation d'un site en ligne fait l'objet de l'US-048.*
 
 **En tant que** développeur ou chef de projet,  
 **je veux** importer une page web depuis une URL,  
@@ -723,12 +763,187 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - Gérer les comptes utilisateurs du site client.
 - Capturer automatiquement toutes les pages d'un domaine.
 
+## Epic 14 : comptes, agences et équipe
+
+#### US-037 : se connecter à l'espace agence
+
+**En tant que** membre d'une agence,  
+**je veux** me connecter avec mon e-mail et un mot de passe, ou avec Google,  
+**afin de** retrouver mon agence et mes projets en toute sécurité.
+
+**Critères d'acceptation**
+
+- La page `/connexion` propose « Se connecter » et « Créer un compte ».
+- Le mot de passe compte au moins 10 caractères ; il est stocké haché, jamais en clair.
+- Un e-mail inconnu et un mauvais mot de passe donnent le même message.
+- Les tentatives répétées sont bloquées pendant une minute.
+- « Mot de passe oublié » envoie un lien valable une heure et à usage unique ; il ferme les autres sessions.
+- « Continuer avec Google » apparaît lorsque l'agence a configuré Google.
+- Un compte Google n'est jamais rattaché automatiquement à un compte à mot de passe de même adresse.
+- Toutes les pages de l'agence et leurs données exigent une session ; sans session, on revient à `/connexion` puis à la page demandée.
+
+#### US-038 : rejoindre une agence sur invitation
+
+**En tant que** collaborateur invité,  
+**je veux** rejoindre l'agence depuis le lien reçu,  
+**afin de** travailler sur ses projets sans autre démarche.
+
+**Critères d'acceptation**
+
+- Sans compte, le lien mène à la page de connexion avec l'adresse invitée pré-remplie et l'onglet « Créer un compte » ouvert.
+- Après connexion, la page d'invitation propose « Rejoindre l'agence » ou « Refuser ».
+- Un compte connecté avec une autre adresse voit « Ce n'est pas le bon compte » et peut changer de compte.
+- Une invitation expirée, annulée ou déjà utilisée affiche un message clair.
+- Les invitations en attente sont aussi proposées sur la page « Bienvenue ».
+
+#### US-039 : appliquer les droits selon le rôle
+
+**En tant que** propriétaire d'agence,  
+**je veux** que les décisions commerciales et irréversibles soient réservées aux administrateurs,  
+**afin de** garder la maîtrise de ce qui est promis et facturé au client.
+
+**Droits**
+
+| Action | Propriétaire | Administrateur | Membre |
+| --- | :-: | :-: | :-: |
+| Voir, commenter, importer des versions, qualifier une demande, préparer un devis en brouillon, partager une revue, supprimer un livrable, restaurer depuis la corbeille | ✅ | ✅ | ✅ |
+| Envoyer un devis, répondre à une contre-proposition, révoquer un lien client, supprimer un espace ou un projet, vider la corbeille | ✅ | ✅ | ❌ |
+| Inviter, changer les rôles, retirer des membres | ✅ | ✅ (sauf le propriétaire) | ❌ |
+| Supprimer l'agence, nommer un autre propriétaire | ✅ | ❌ | ❌ |
+
+**Critères d'acceptation**
+
+- Le serveur refuse à un membre toute action réservée, avec un message qui la nomme.
+- L'interface d'un membre montre ces actions grisées, avec la raison.
+- Un changement de rôle s'applique dès la requête suivante.
+
+#### US-040 : changer d'agence
+
+**En tant que** personne membre de plusieurs agences,  
+**je veux** passer de l'une à l'autre depuis le menu du compte,  
+**afin de** ne jamais mélanger leurs données.
+
+**Critères d'acceptation**
+
+- Le menu du compte affiche l'agence active et, s'il y en a plusieurs, la liste des agences.
+- Changer d'agence recharge entièrement l'application sur les données de l'autre agence.
+- Les préférences du navigateur (onglets ouverts, favoris, récents) sont propres à chaque agence.
+
+## Epic 15 : accès client vérifié
+
+#### US-041 : inviter un client sur une revue
+
+**En tant que** chef de projet,  
+**je veux** inviter les bonnes personnes chez le client,  
+**afin que** seules elles puissent consulter et valider le livrable.
+
+**Critères d'acceptation**
+
+- Depuis « Partager la revue », l'agence saisit une ou plusieurs adresses.
+- Chaque invité reçoit par e-mail un lien personnel (`/review/<lien>?invitation=<id>`) qui pré-remplit son adresse.
+- Chaque invité a un bouton pour copier son lien personnel.
+- Retirer une invitation coupe l'accès de cette personne immédiatement, même sur un appareil déjà reconnu.
+
+#### US-042 : confirmer son identité par un code
+
+**En tant que** client,  
+**je veux** recevoir un code par e-mail plutôt que créer un compte,  
+**afin d'**accéder à la revue sans mot de passe tout en prouvant que c'est bien moi.
+
+**Critères d'acceptation**
+
+- Avec son lien personnel, l'adresse est pré-remplie ; « Ce n'est pas moi » permet d'en changer.
+- Un code à 6 chiffres est envoyé, valable 10 minutes, avec 5 essais au maximum.
+- Les envois sont limités (1 par minute, 5 par heure et par adresse).
+- Le code n'est envoyé qu'aux adresses invitées, mais l'écran est identique dans tous les cas : on ne peut pas deviner qui est invité.
+- Une fois vérifié, l'appareil est reconnu 30 jours.
+- Les commentaires, réponses, acceptations et validations du client sont signés par le serveur avec son adresse vérifiée.
+
+#### US-043 : demander l'accès à une revue
+
+**En tant que** personne qui a reçu le lien d'un collègue,  
+**je veux** demander l'accès à l'agence,  
+**afin de** participer à la revue sans attendre un nouvel e-mail.
+
+**Critères d'acceptation**
+
+- Depuis l'écran de vérification, la personne saisit son adresse et un message facultatif.
+- L'agence reçoit une notification et voit la demande dans « Partager la revue », avec « Accepter » et « Refuser ».
+- Accepter invite l'adresse : elle reçoit son lien personnel.
+- Une adresse n'a qu'une demande en attente par lien, et un lien n'en accumule pas plus de 20.
+
+#### US-044 : prévisualiser la page client
+
+**En tant que** membre de l'agence,  
+**je veux** voir la revue telle que le client la voit,  
+**afin de** vérifier ce que je lui partage.
+
+**Critères d'acceptation**
+
+- Un membre de l'agence qui possède le lien ouvre la page client sans code.
+- L'aperçu est en lecture seule et l'indique ; aucune action n'y est enregistrée.
+- Un membre d'une autre agence n'a pas d'aperçu.
+
+## Epic 16 : prochaines évolutions
+
+#### US-045 : définir le périmètre de référence
+
+**En tant que** chef de projet,  
+**je veux** saisir le périmètre vendu (lignes du devis, nombre de rounds de révision inclus),  
+**afin de** qualifier chaque demande par rapport au devis plutôt qu'à l'intuition.
+
+**Critères d'acceptation**
+
+- Un projet porte une liste de lignes de devis et un nombre de rounds de révision inclus.
+- Kora compte les rounds consommés à chaque nouvelle version.
+- Une qualification `Inclus` ou `Hors périmètre` peut citer la ligne de devis concernée.
+- Le dépassement du nombre de rounds est signalé.
+
+#### US-046 : offrir une demande hors périmètre
+
+**En tant que** dirigeant d'agence,  
+**je veux** marquer une demande hors périmètre comme « offerte »,  
+**afin de** faire un geste commercial tout en mesurant ce qu'il me coûte.
+
+**Critères d'acceptation**
+
+- `Offert` est un résultat possible d'une demande hors périmètre, à côté de l'envoi d'un devis.
+- Le tableau de bord affiche les montants facturés, acceptés et offerts.
+- Le client n'est pas sollicité pour une demande offerte.
+
+#### US-047 : envoyer les demandes acceptées vers Jira ou Notion
+
+**En tant que** chef de projet,  
+**je veux** qu'une demande hors périmètre acceptée par le client crée un ticket dans l'outil de l'équipe,  
+**afin que** le travail n'entre dans le backlog qu'une fois payé.
+
+**Critères d'acceptation**
+
+- L'agence configure un projet Jira ou une base Notion par projet Kora.
+- À l'acceptation, un ticket est créé avec le titre, la description, le montant, le délai, la date d'acceptation et un lien vers la demande.
+- La clé du ticket est conservée sur la demande ; aucun doublon n'est créé.
+- En cas d'échec, la demande n'est pas perdue et l'envoi peut être relancé.
+
+#### US-048 : annoter un site web en ligne
+
+**En tant que** client,  
+**je veux** commenter directement le site de recette en naviguant de page en page,  
+**afin de** donner mes retours sur le vrai rendu.
+
+**Critères d'acceptation**
+
+- L'agence ajoute un script Kora sur son site de recette ; il ne fonctionne que sur les domaines déclarés.
+- Le client se vérifie avec le même code par e-mail que pour les autres livrables.
+- Un commentaire est rattaché à la page, à l'élément visé et à la largeur d'écran ; une capture est conservée.
+- Si l'élément a disparu, le commentaire est signalé « élément introuvable » au lieu d'être perdu.
+- Les commentaires rejoignent le panneau « Demandes » et le même parcours de qualification.
+
 ## User stories à reporter
 
 Ces stories sont pertinentes mais ne doivent pas entrer dans le premier parcours :
 
 - En tant qu'agence, je veux connecter ScopeGuard à Stripe.
-- En tant qu'agence, je veux synchroniser les demandes avec ClickUp.
+- En tant qu'agence, je veux synchroniser les demandes avec ClickUp *(remplacé par l'envoi vers Jira ou Notion, US-047)*.
 - En tant qu'agence, je veux générer automatiquement une facture.
 - En tant qu'agence, je veux que l'IA détecte le hors périmètre.
 - En tant que client, je veux commenter une vidéo image par image.
@@ -760,14 +975,19 @@ Elles répondent à des besoins réels, mais elles ne servent pas à vérifier l
 - Relances manuelles
 - Export PDF ou HTML du récapitulatif
 - US-034 : viewer de revue interactif
-- Gestion des rôles
-- Expiration et révocation des liens
+- Gestion des rôles *(réalisé : US-039)*
+- Expiration et révocation des liens *(réalisé)*
+- Accès client vérifié par code *(réalisé : US-041 à US-043)*
+- US-045 : périmètre de référence
+- US-046 : demande offerte
 - Page mobile optimisée pour le client
 
 ### Could have
 
 - US-036 : capture de page web depuis une URL
-- US-035 : navigation dans les PDF multi-pages
+- US-048 : annotation d'un site web en ligne
+- US-047 : envoi des demandes acceptées vers Jira ou Notion
+- US-035 : PDF multi-pages *(réalisé : pages à la suite, navigation page à page abandonnée)*
 - Stripe
 - Capture automatique d'une URL
 - Branding agence
@@ -792,3 +1012,57 @@ Le prototype doit se concentrer sur cette séquence :
 > Un client commente une maquette. Le chef de projet identifie que la demande est hors périmètre. Il transforme le commentaire en proposition complémentaire. Le client accepte le prix et le délai. L'agence dispose ensuite d'une preuve claire de l'accord.
 
 Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une base produit crédible. Si les utilisateurs contournent encore le flux par e-mail ou n'osent pas qualifier les demandes, il faudra revoir le positionnement avant de développer davantage.
+
+## Suivi de réalisation
+
+État au 15 octobre 2026. ✅ réalisé · 🟡 partiel · ⬜ à faire · ⛔ abandonné.
+
+| Story | État | Remarque |
+| --- | :-: | --- |
+| US-001 créer un espace agence | 🟡 | Création, propriétaire et isolation faits ; pas encore d'écran pour renommer l'agence |
+| US-002 inviter un collaborateur | ✅ | Invitation par e-mail, rôle, annulation, retrait |
+| US-003 créer un client | ✅ | Le client est un « espace » |
+| US-004 créer un projet | 🟡 | Statuts limités à `Brouillon` et `En cours` |
+| US-005 importer un livrable | 🟡 | PDF, image, vidéo, document, lien ; taille limitée ; pas encore l'auteur de l'import |
+| US-006 créer une nouvelle version | ✅ | Les versions remplacées sont verrouillées |
+| US-007 envoyer le livrable en revue | ✅ | Lien par version, expiration 7 jours, révocation |
+| US-008 commenter un emplacement précis | ✅ | Épingle, zone, page ; auteur client signé par le serveur |
+| US-009 répondre à un commentaire | 🟡 | Fil de réponses fait ; pas de statut « résolu » |
+| US-010 demander des modifications | ✅ | |
+| US-011 qualifier une demande | 🟡 | Trois états au lieu de quatre ; pas de justification interne |
+| US-012 demander une clarification | 🟡 | État « À qualifier » ; pas de blocage ni de notification dédiés |
+| US-013 créer une proposition complémentaire | 🟡 | Brouillon, envoi, montant, délai ; pas de date d'expiration de l'offre |
+| US-014 accepter une proposition | ✅ | Adresse vérifiée, heure du serveur, une seule décision |
+| US-015 refuser une proposition | ✅ | |
+| US-016 approuver une version | ✅ | Verrouillage contrôlé par le serveur |
+| US-017 consulter la preuve de validation | ✅ | Construite par le serveur : identités vérifiées, heures du serveur, IP, empreintes du fichier et du récapitulatif |
+| US-018 notifier le client | 🟡 | Invitations et codes par e-mail ; service d'envoi à configurer (Resend) |
+| US-019 relancer une validation | ✅ | E-mail à chaque invité ; une relance par jour et par revue |
+| US-020 ouvrir une revue client | ✅ | Après vérification par code |
+| US-021 commenter depuis la revue client | ✅ | |
+| US-022 décision commerciale depuis la revue | ✅ | |
+| US-023 consulter le journal d'activité | ✅ | Journal en ajout seul, garanti par la base |
+| US-024 réinitialiser une démonstration | ⛔ | Remplacé par la création d'une agence de démonstration |
+| US-025 persister les données de l'agence | ✅ | PostgreSQL, synchronisation entre pages |
+| US-026 sécuriser les accès et les rôles | ✅ | |
+| US-027 demander une adaptation | ✅ | |
+| US-028 répondre à une demande d'adaptation | ✅ | Réservé aux administrateurs |
+| US-029 accepter la nouvelle proposition | ✅ | |
+| US-030 à US-033 contexte et isolation | ✅ | |
+| US-034 viewer de revue interactif | ✅ | |
+| US-035 PDF multi-pages | ✅ | Pages à la suite sur le plan de travail ; navigation page à page abandonnée |
+| US-036 capturer une page web | ⬜ | L'URL est enregistrée, pas de capture |
+| US-037 se connecter à l'espace agence | ✅ | Google à configurer |
+| US-038 rejoindre une agence sur invitation | ✅ | |
+| US-039 droits selon le rôle | ✅ | |
+| US-040 changer d'agence | ✅ | |
+| US-041 inviter un client sur une revue | ✅ | |
+| US-042 confirmer son identité par un code | ✅ | |
+| US-043 demander l'accès à une revue | ✅ | |
+| US-044 prévisualiser la page client | ✅ | |
+| US-045 périmètre de référence | ⬜ | Prochaine priorité produit |
+| US-046 demande offerte | ⬜ | |
+| US-047 envoi vers Jira ou Notion | ⬜ | |
+| US-048 annoter un site web en ligne | ⬜ | |
+
+**Avant les premiers pilotes**, il reste à brancher l'envoi d'e-mails (US-018, US-042) et à mettre l'application en ligne : sans e-mails, un client ne reçoit pas son code.

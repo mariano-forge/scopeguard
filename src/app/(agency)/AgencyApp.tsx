@@ -1,15 +1,6 @@
 "use client";
 
 
-function escapeHtml(value: string) {
-  return value.replace(/[&<>'"]/g, (character) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "'": "&#39;",
-    '"': "&quot;",
-  })[character] ?? character);
-}
 
 function parseNumericAmount(amount: number | string | undefined): number {
   if (typeof amount === "number") return amount;
@@ -96,6 +87,9 @@ import { RenameDialog } from "./EntitySettings";
 import { Hint } from "@/components/hint";
 import type { HomeAnalyticsData } from "./HomeAnalytics";
 import type { LivrableGroup } from "./LivrableFilter";
+import { useCurrentUser } from "./CurrentUser";
+import { proofHtml } from "./proofDocument";
+import { flushSharedState, loadSharedState, refreshSharedState, subscribeSharedState, writeSharedState } from "@/lib/stateSync";
 
 
 type Decision = "À qualifier" | "Inclus" | "Hors périmètre";
@@ -180,10 +174,15 @@ type ReviewLink = {
   autoExpire?: boolean;
   deliverableId?: number;
   version?: number;
-  /** People invited by e-mail to this review (manual invitations). */
-  invites?: { email: string; at: string }[];
+  /** People invited by e-mail to this review; `id` makes their personal address (?invitation=<id>). */
+  invites?: { email: string; at: string; id?: string }[];
+  /** Last reminder mailed to the invited clients (ms); the server allows one a day. */
+  lastReminderAt?: number;
 };
 type ReviewLinks = Record<string, ReviewLink>;
+/** Someone with a review link, not invited, asking for access (read-only here, decided through the API). */
+type AccessRequest = { linkKey: string; email: string; message: string | null; requestedAt: string };
+const linkKeyOf = (link: ReviewLink) => `${link.deliverableId ?? 1}:${link.version ?? 1}`;
 
 type ReviewStatus = "pending" | "changes-requested" | "approved";
 type ProposalDecision = "none" | "accepted" | "refused";
@@ -227,9 +226,10 @@ type AuditEvent = {
   description: string;
   timestamp: string;
   commentId?: number;
+  /** Version the event is about, for its proof. */
+  deliverableId?: number;
 };
 
-const storageKey = "scopeguard-review-state";
 /** Deleted items stay restorable this long, then are purged on load. */
 const TRASH_DAYS = 30;
 const recentsKey = "kora-recent-deliverables";
@@ -246,34 +246,10 @@ const panelWidthsKey = "kora-panel-widths";
 const seenKey = "kora-seen-comments";
 const defaultWidths = { panel: 248, inspector: 340 };
 
-const initialProjects: Project[] = [
-  {
-    id: 1,
-    name: "Refonte site Northstar",
-    client: "Northstar Studio",
-    clientId: 1,
-    status: "En cours",
-  },
-];
-
-const initialClients: Client[] = [
-  { id: 1, name: "Northstar Studio", email: "claire@northstar.studio" },
-];
-
-const initialDeliverables: Deliverable[] = [
-  {
-    id: 1,
-    projectId: 1,
-    name: "northstar-landing-v03.pdf",
-    type: "PDF",
-    size: 2_400_000,
-    version: 3,
-    status: "En attente client",
-    importedAt: "Aujourd'hui à 14:32",
-    locked: false,
-  },
-];
-
+// A new agency starts empty: its first space, project and deliverable are created from the home page.
+const initialProjects: Project[] = [];
+const initialClients: Client[] = [];
+const initialDeliverables: Deliverable[] = [];
 const initialComments: Comment[] = [];
 
 const decisionStyles: Record<string, string> = {
@@ -337,6 +313,19 @@ function createReviewLink(deliverableId: number, version: number): ReviewLink {
 }
 
 export function AgencyApp() {
+  const currentUser = useCurrentUser();
+  /** Browser-kept lists hold ids of this agency's records: one entry per agency. */
+  const scoped = (key: string) => `${key}:${currentUser.organizationId}`;
+  /**
+   * Owners and administrators make the commercial decisions and what cannot be undone (sending a quote,
+   * answering a counter-proposal, revoking a link, deleting a space or a project, emptying the trash).
+   * The server refuses them from members too (src/db/agencyPermissions.ts).
+   */
+  const canManage = currentUser.role === "owner" || currentUser.role === "admin";
+  function adminOnly() {
+    if (!canManage) toast.error("Réservé aux administrateurs de l’agence.");
+    return canManage;
+  }
   const router = useRouter();
   const pathname = usePathname();
   const view = parseAgencyPath(pathname);
@@ -433,7 +422,7 @@ export function AgencyApp() {
   const [seenIds, setSeenIds] = useState<number[]>([]);
   useEffect(() => {
     try {
-      const saved = JSON.parse(window.localStorage.getItem(seenKey) ?? "[]");
+      const saved = JSON.parse(window.localStorage.getItem(scoped(seenKey)) ?? "[]");
       if (Array.isArray(saved)) setSeenIds(saved.filter((value) => typeof value === "number"));
     } catch {
       // Everything unread when storage is unavailable.
@@ -446,7 +435,7 @@ export function AgencyApp() {
       if (fresh.length === 0) return current;
       const next = [...current, ...fresh];
       try {
-        window.localStorage.setItem(seenKey, JSON.stringify(next));
+        window.localStorage.setItem(scoped(seenKey), JSON.stringify(next));
       } catch {
         // Ignore storage failures (private mode, quota).
       }
@@ -482,6 +471,7 @@ export function AgencyApp() {
   const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
   const [reviewLink, setReviewLink] = useState<ReviewLink | null>(null);
   const [reviewLinks, setReviewLinks] = useState<ReviewLinks>({});
+  const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [changesOpen, setChangesOpen] = useState(false);
@@ -493,98 +483,99 @@ export function AgencyApp() {
   /** Share dialog: e-mail addresses being typed for a manual invitation. */
   const [inviteDraft, setInviteDraft] = useState("");
   const [inviteError, setInviteError] = useState("");
-  const [lastReminderAt, setLastReminderAt] = useState<number | null>(null);
   const [stateHydrated, setStateHydrated] = useState(false);
 
   useEffect(() => {
-    const savedState = window.localStorage.getItem(storageKey);
+    let cancelled = false;
+    void loadSharedState().then((savedState) => {
+      if (cancelled) return;
+      if (!savedState) {
+        setStateHydrated(true);
+        return;
+      }
 
-    if (!savedState) {
-      setStateHydrated(true);
-      return;
-    }
-
-    try {
-      const parsedState = JSON.parse(savedState) as {
-        projects?: Project[];
-        clients?: Client[];
-        selectedProjectId?: number;
-        selectedClientId?: number;
-        selectedDeliverableId?: number;
-        deliverables?: Deliverable[];
-        reviewLink?: ReviewLink | null;
-        reviewLinks?: ReviewLinks;
-        reviewStatus?: ReviewStatus;
-        approvedAt?: string | null;
-        notifications?: Notification[];
-        comments?: Comment[];
-        approved?: boolean;
-        proposalStates?: ProposalStates;
-        proposalDecisions?: ProposalDecisions;
-        adaptationRequests?: AdaptationRequests;
-        proposalVersions?: ProposalVersions;
-        lastReminderAt?: number | null;
-        auditEvents?: AuditEvent[];
-        trash?: TrashItem[];
-      };
-
-      if (parsedState.projects)
-        setProjects(parsedState.projects.map((project) => ({
-          ...project,
-          clientId: project.clientId ?? clients.find((client) => client.name === project.client)?.id ?? 1,
-        })));
-      if (parsedState.clients) setClients(parsedState.clients);
-      if (parsedState.deliverables)
-        setDeliverables(migrateReviewStatus(parsedState).map((deliverable) => ({
-          ...deliverable,
-          projectId: deliverable.projectId ?? 1,
-        })));
-      const savedReviewLinks = { ...(parsedState.reviewLinks ?? {}) };
-      if (parsedState.reviewLink) {
-        const legacyKey = `${parsedState.reviewLink.deliverableId ?? 1}:${parsedState.reviewLink.version ?? 1}`;
-        savedReviewLinks[legacyKey] ??= {
-          ...parsedState.reviewLink,
-          autoExpire: parsedState.reviewLink.autoExpire !== false,
+      try {
+        const parsedState = JSON.parse(savedState) as {
+          projects?: Project[];
+          clients?: Client[];
+          selectedProjectId?: number;
+          selectedClientId?: number;
+          selectedDeliverableId?: number;
+          deliverables?: Deliverable[];
+          reviewLink?: ReviewLink | null;
+          reviewLinks?: ReviewLinks;
+          reviewStatus?: ReviewStatus;
+          approvedAt?: string | null;
+          notifications?: Notification[];
+          comments?: Comment[];
+          approved?: boolean;
+          proposalStates?: ProposalStates;
+          proposalDecisions?: ProposalDecisions;
+          adaptationRequests?: AdaptationRequests;
+          proposalVersions?: ProposalVersions;
+          auditEvents?: AuditEvent[];
+          trash?: TrashItem[];
+          accessRequests?: AccessRequest[];
         };
-        setReviewLink({ ...parsedState.reviewLink, autoExpire: parsedState.reviewLink.autoExpire !== false });
+
+        if (parsedState.projects)
+          setProjects(parsedState.projects.map((project) => ({
+            ...project,
+            clientId: project.clientId ?? clients.find((client) => client.name === project.client)?.id ?? 1,
+          })));
+        if (parsedState.clients) setClients(parsedState.clients);
+        if (parsedState.deliverables)
+          setDeliverables(migrateReviewStatus(parsedState).map((deliverable) => ({
+            ...deliverable,
+            projectId: deliverable.projectId ?? 1,
+          })));
+        const savedReviewLinks = { ...(parsedState.reviewLinks ?? {}) };
+        if (parsedState.reviewLink) {
+          const legacyKey = `${parsedState.reviewLink.deliverableId ?? 1}:${parsedState.reviewLink.version ?? 1}`;
+          savedReviewLinks[legacyKey] ??= {
+            ...parsedState.reviewLink,
+            autoExpire: parsedState.reviewLink.autoExpire !== false,
+          };
+          setReviewLink({ ...parsedState.reviewLink, autoExpire: parsedState.reviewLink.autoExpire !== false });
+        }
+        setReviewLinks(savedReviewLinks);
+        setAccessRequests(parsedState.accessRequests ?? []);
+        if (parsedState.notifications)
+          setNotifications(parsedState.notifications);
+        if (parsedState.comments)
+          setComments(parsedState.comments.map((comment) => ({
+            ...comment,
+            deliverableId: comment.deliverableId ?? parsedState.deliverables?.[0]?.id ?? 1,
+            decision: ((comment.decision as string) === "À traiter" ? "À qualifier" : comment.decision) ?? "À qualifier",
+          })));
+        if (parsedState.proposalStates)
+          setProposalStates(parsedState.proposalStates);
+        if (parsedState.proposalDecisions)
+          setProposalDecisions(parsedState.proposalDecisions);
+        if (parsedState.adaptationRequests)
+          setAdaptationRequests(parsedState.adaptationRequests);
+        if (parsedState.proposalVersions)
+          setProposalVersions(parsedState.proposalVersions);
+        if (parsedState.auditEvents) setAuditEvents(parsedState.auditEvents);
+        if (parsedState.trash) {
+          const limit = Date.now() - TRASH_DAYS * 24 * 60 * 60 * 1000;
+          // Expired items are purged by an administrator's page (members may not delete for good).
+        setTrash(canManage ? parsedState.trash.filter((item) => item.deletedAt >= limit) : parsedState.trash);
+        }
+        setStateHydrated(true);
+      } catch {
+        setStateHydrated(true);
       }
-      setReviewLinks(savedReviewLinks);
-      if (parsedState.notifications)
-        setNotifications(parsedState.notifications);
-      if (parsedState.comments)
-        setComments(parsedState.comments.map((comment) => ({
-          ...comment,
-          deliverableId: comment.deliverableId ?? parsedState.deliverables?.[0]?.id ?? 1,
-          decision: ((comment.decision as string) === "À traiter" ? "À qualifier" : comment.decision) ?? "À qualifier",
-        })));
-      if (parsedState.proposalStates)
-        setProposalStates(parsedState.proposalStates);
-      if (parsedState.proposalDecisions)
-        setProposalDecisions(parsedState.proposalDecisions);
-      if (parsedState.adaptationRequests)
-        setAdaptationRequests(parsedState.adaptationRequests);
-      if (parsedState.proposalVersions)
-        setProposalVersions(parsedState.proposalVersions);
-      if (parsedState.lastReminderAt)
-        setLastReminderAt(parsedState.lastReminderAt);
-      if (parsedState.auditEvents) setAuditEvents(parsedState.auditEvents);
-      if (parsedState.trash) {
-        const limit = Date.now() - TRASH_DAYS * 24 * 60 * 60 * 1000;
-        setTrash(parsedState.trash.filter((item) => item.deletedAt >= limit));
-      }
-      setStateHydrated(true);
-    } catch {
-      window.localStorage.removeItem(storageKey);
-      setStateHydrated(true);
-    }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    function syncFromStorage(event: StorageEvent) {
-      if (event.key !== storageKey || !event.newValue) return;
-
+    function syncFromStorage(newValue: string) {
       try {
-        const parsedState = JSON.parse(event.newValue) as {
+        const parsedState = JSON.parse(newValue) as {
           projects?: Project[];
           clients?: Client[];
           trash?: TrashItem[];
@@ -601,6 +592,7 @@ export function AgencyApp() {
           reviewLinks?: ReviewLinks;
           auditEvents?: AuditEvent[];
           notifications?: Notification[];
+          accessRequests?: AccessRequest[];
         };
 
         if (parsedState.comments)
@@ -624,6 +616,9 @@ export function AgencyApp() {
         if (parsedState.deliverables) setDeliverables(migrateReviewStatus(parsedState));
         if (parsedState.reviewLinks) setReviewLinks(parsedState.reviewLinks);
         if (parsedState.reviewLink) setReviewLink(parsedState.reviewLink);
+        // The link open in the share dialog follows too (invitations made by the server).
+        if (parsedState.reviewLinks) setReviewLink((current) => (current ? (parsedState.reviewLinks?.[linkKeyOf(current)] ?? current) : current));
+        setAccessRequests(parsedState.accessRequests ?? []);
         if (parsedState.auditEvents) setAuditEvents(parsedState.auditEvents);
         if (parsedState.notifications) setNotifications(parsedState.notifications);
       } catch {
@@ -631,8 +626,7 @@ export function AgencyApp() {
       }
     }
 
-    window.addEventListener("storage", syncFromStorage);
-    return () => window.removeEventListener("storage", syncFromStorage);
+    return subscribeSharedState(syncFromStorage);
   }, []);
 
   useEffect(() => {
@@ -650,18 +644,11 @@ export function AgencyApp() {
       adaptationRequests,
       proposalVersions,
       notifications,
-      lastReminderAt,
       auditEvents,
       trash,
     });
 
-    if (window.localStorage.getItem(storageKey) === newSerialized) return;
-    try {
-      window.localStorage.setItem(storageKey, newSerialized);
-    } catch {
-      // Browser storage is full (files are kept as data URLs in this prototype).
-      setDeliverableError("Le stockage du navigateur est plein : les derniers changements ne seront pas conservés. Retirez des fichiers lourds.");
-    }
+    writeSharedState(newSerialized);
   }, [
     projects,
     clients,
@@ -674,7 +661,6 @@ export function AgencyApp() {
     adaptationRequests,
     proposalVersions,
     notifications,
-    lastReminderAt,
     auditEvents,
     trash,
     stateHydrated,
@@ -730,8 +716,10 @@ export function AgencyApp() {
     proposalPreviewCommentId === null
       ? undefined
       : adaptationRequests[proposalPreviewCommentId];
-  const reminderBlocked =
-    lastReminderAt !== null && Date.now() - lastReminderAt < 24 * 60 * 60 * 1000;
+  const lastReminderAt = reviewLink?.lastReminderAt ?? null;
+  // eslint-disable-next-line react-hooks/purity -- a 24-hour window: a render-time clock is precise enough.
+  const reminderBlocked = lastReminderAt !== null && Date.now() - lastReminderAt < 24 * 60 * 60 * 1000;
+  const nobodyInvited = !(reviewLink?.invites?.length);
 
   // The deliverable dashboard is gone (its analytics are on the home page): old links open the deliverable.
   useEffect(() => {
@@ -756,7 +744,7 @@ export function AgencyApp() {
       : null;
   useEffect(() => {
     try {
-      const saved = JSON.parse(window.localStorage.getItem(recentsKey) ?? "[]");
+      const saved = JSON.parse(window.localStorage.getItem(scoped(recentsKey)) ?? "[]");
       if (Array.isArray(saved)) setRecentLivrableIds(saved.filter((value) => typeof value === "number"));
     } catch {
       // Recents are a convenience: ignore unreadable storage.
@@ -767,7 +755,7 @@ export function AgencyApp() {
     setRecentLivrableIds((current) => {
       const next = [viewLivrableId, ...current.filter((value) => value !== viewLivrableId)].slice(0, 8);
       try {
-        window.localStorage.setItem(recentsKey, JSON.stringify(next));
+        window.localStorage.setItem(scoped(recentsKey), JSON.stringify(next));
       } catch {
         // Ignore storage failures (private mode, quota).
       }
@@ -842,7 +830,7 @@ export function AgencyApp() {
 
   useEffect(() => {
     try {
-      const saved = JSON.parse(window.localStorage.getItem(favoritesKey) ?? "[]");
+      const saved = JSON.parse(window.localStorage.getItem(scoped(favoritesKey)) ?? "[]");
       if (Array.isArray(saved)) setFavorites(saved.filter((key) => typeof key === "string"));
     } catch {
       // Favorites are a convenience: ignore unreadable storage.
@@ -852,7 +840,7 @@ export function AgencyApp() {
     setFavorites((current) => {
       const next = current.includes(key) ? current.filter((item) => item !== key) : [...current, key];
       try {
-        window.localStorage.setItem(favoritesKey, JSON.stringify(next));
+        window.localStorage.setItem(scoped(favoritesKey), JSON.stringify(next));
       } catch {
         // Ignore storage failures (private mode, quota).
       }
@@ -863,7 +851,7 @@ export function AgencyApp() {
   // Open tabs (per browser). Opening a deliverable adds its tab; a tab remembers the version last viewed.
   useEffect(() => {
     try {
-      const saved = JSON.parse(window.localStorage.getItem(tabsKey) ?? "[]");
+      const saved = JSON.parse(window.localStorage.getItem(scoped(tabsKey)) ?? "[]");
       if (Array.isArray(saved))
         setOpenTabs(
           saved
@@ -877,7 +865,7 @@ export function AgencyApp() {
   }, []);
   function saveTabs(next: { livrableId: number; href: string }[]) {
     try {
-      window.localStorage.setItem(tabsKey, JSON.stringify(next));
+      window.localStorage.setItem(scoped(tabsKey), JSON.stringify(next));
     } catch {
       // Ignore storage failures (private mode, quota).
     }
@@ -953,14 +941,19 @@ export function AgencyApp() {
   }, [focusedCommentId, quoteOnFocus, activeComments, pathname, router]);
 
   function recordAudit(type: string, description: string, commentId?: number) {
+    // The version it is about: the request's one, else the version open in the editor (for its proof).
+    const deliverableId =
+      (commentId !== undefined ? comments.find((comment) => comment.id === commentId)?.deliverableId : undefined) ??
+      (view.kind === "deliverable" ? currentDeliverable?.id : undefined);
     setAuditEvents((current) => [
       {
         id: Date.now(),
         type,
-        actor: "Alex Morgan",
+        actor: currentUser.name,
         description,
         timestamp: new Date().toLocaleString("fr-FR"),
         commentId,
+        deliverableId,
       },
       ...current,
     ]);
@@ -1108,6 +1101,7 @@ export function AgencyApp() {
   }
 
   function deleteProject(projectId: number) {
+    if (!adminOnly()) return;
     const project = projects.find((candidate) => candidate.id === projectId);
     if (!project) return;
     const taken = takeRecords(new Set(deliverables.filter((record) => (record.projectId ?? 1) === projectId).map((record) => record.id)));
@@ -1118,6 +1112,7 @@ export function AgencyApp() {
   }
 
   function deleteClient(clientId: number) {
+    if (!adminOnly()) return;
     const client = clients.find((candidate) => candidate.id === clientId);
     if (!client) return;
     const spaceProjects = projects.filter((project) => (project.clientId ?? 1) === clientId);
@@ -1159,6 +1154,7 @@ export function AgencyApp() {
   }
 
   function purgeFromTrash(itemId?: number) {
+    if (!adminOnly()) return;
     setTrash((current) => (itemId === undefined ? [] : current.filter((candidate) => candidate.id !== itemId)));
   }
 
@@ -1198,15 +1194,40 @@ export function AgencyApp() {
     setProjects((current) => current.map((project) => (project.id === projectId ? { ...project, name } : project)));
   }
 
+  /**
+   * Imports a file into the agency's storage (POST /api/files), under its place in the project;
+   * returns its address, or null once the error is shown.
+   */
+  async function uploadFile(
+    file: File,
+    placement: { kind: "version"; projectId: number; livrableId: number; version: number } | { kind: "cover"; projectId: number; livrableId: number },
+  ) {
+    const form = new FormData();
+    form.set("file", file);
+    for (const [key, value] of Object.entries(placement)) form.set(key, String(value));
+    const progress = toast.loading(`Import de « ${file.name} »…`);
+    const response = await fetch("/api/files", { method: "POST", body: form }).catch(() => null);
+    const body = (await response?.json().catch(() => null)) as { href?: string; error?: string } | null;
+    toast.dismiss(progress);
+    if (!response?.ok || !body?.href) {
+      toast.error(body?.error ?? "L’import n’a pas abouti. Réessayez.");
+      return null;
+    }
+    return body.href;
+  }
+
   /** "Nouveau livrable" dialog: a new deliverable (version 1) in the current project. */
   async function createDeliverable(input: NewDeliverable) {
+    const id = Date.now();
+    const projectId = input.projectId ?? selectedProjectId;
     const [fileData, coverData] = await Promise.all([
-      input.file ? readFileAsDataUrl(input.file) : Promise.resolve(undefined),
-      input.cover ? readFileAsDataUrl(input.cover) : Promise.resolve(undefined),
+      input.file ? uploadFile(input.file, { kind: "version", projectId, livrableId: id, version: 1 }) : Promise.resolve(undefined),
+      input.cover ? uploadFile(input.cover, { kind: "cover", projectId, livrableId: id }) : Promise.resolve(undefined),
     ]);
+    if (fileData === null || coverData === null) return;
     const created: Deliverable = {
-      id: Date.now(),
-      projectId: input.projectId ?? selectedProjectId,
+      id,
+      projectId,
       name: input.name,
       type: input.type,
       size: input.file?.size ?? 0,
@@ -1227,7 +1248,6 @@ export function AgencyApp() {
   async function confirmImport(mode: ImportMode, source = pendingImport) {
     if (!source) return;
     const { file, type } = source;
-    const fileData = await readFileAsDataUrl(file);
     const activeDeliverable = currentDeliverable;
     const sameDeliverableVersions = deliverables.filter(
       (deliverable) => deliverable.projectId === selectedProjectId && deliverable.name === activeDeliverable?.name,
@@ -1235,8 +1255,13 @@ export function AgencyApp() {
     const nextVersion = mode === "version"
       ? Math.max(...sameDeliverableVersions.map((deliverable) => deliverable.version), 0) + 1
       : 1;
+    const id = Date.now();
+    // A new version is stored with its deliverable (the id of its first version); a new deliverable is its own.
+    const livrableId = mode === "version" && activeDeliverable ? livrableIdOf(activeDeliverable, deliverables) : id;
+    const fileData = await uploadFile(file, { kind: "version", projectId: selectedProjectId, livrableId, version: nextVersion });
+    if (!fileData) return;
     const importedDeliverable: Deliverable = {
-      id: Date.now(),
+      id,
       projectId: selectedProjectId,
       name: mode === "version" ? activeDeliverable?.name ?? file.name : file.name,
       type,
@@ -1263,15 +1288,6 @@ export function AgencyApp() {
     setPendingImport(null);
   }
 
-  function readFileAsDataUrl(file: File) {
-    return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
-  }
-
   /** Brings a pin to the middle of the canvas, keeping the zoom. */
   function centerOnPin(commentId: number) {
     const pin = document.querySelector<HTMLElement>(`[data-pin="${commentId}"]`);
@@ -1295,7 +1311,7 @@ export function AgencyApp() {
     const created: Comment = {
       id,
       deliverableId: currentDeliverable.id,
-      author: "Alex Morgan",
+      author: currentUser.name,
       initials: "AM",
       time: "À l'instant",
       createdAt: Date.now(),
@@ -1329,7 +1345,7 @@ export function AgencyApp() {
     const created: Comment = {
       id: Math.max(...comments.map((comment) => comment.id), 0) + 1,
       deliverableId: currentDeliverable.id,
-      author: "Alex Morgan",
+      author: currentUser.name,
       initials: "AM",
       time: "À l'instant",
       createdAt: Date.now(),
@@ -1362,7 +1378,7 @@ export function AgencyApp() {
 
   function replyTo(commentId: number, message: string) {
     if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
-    const reply: Reply = { id: Date.now(), author: "Alex Morgan", initials: "AM", message, time: "À l'instant", createdAt: Date.now() };
+    const reply: Reply = { id: Date.now(), author: currentUser.name, initials: "AM", message, time: "À l'instant", createdAt: Date.now() };
     setComments((current) =>
       current.map((comment) => (comment.id === commentId ? { ...comment, replies: [...(comment.replies ?? []), reply] } : comment)),
     );
@@ -1377,7 +1393,7 @@ export function AgencyApp() {
       return;
     }
     if (file.size > MAX_FILE_BYTES) {
-      setDeliverableError(`Fichier trop lourd pour la démo : ${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).`);
+      setDeliverableError(`Fichier trop lourd : ${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).`);
       return;
     }
     setDeliverableError("");
@@ -1392,7 +1408,7 @@ export function AgencyApp() {
       return;
     }
     if (file.size > MAX_FILE_BYTES) {
-      toast("Fichier trop lourd pour la démo", { description: `${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).` });
+      toast("Fichier trop lourd", { description: `${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).` });
       return;
     }
     void confirmImport("deliverable", { file, type });
@@ -1521,7 +1537,7 @@ export function AgencyApp() {
   }
 
   function sendProposal() {
-    if (proposalCommentId === null) return;
+    if (proposalCommentId === null || !adminOnly()) return;
     if (
       !newProposalDescription.trim() ||
       !newProposalAmount.trim() ||
@@ -1557,7 +1573,7 @@ export function AgencyApp() {
   /** Sends the quoted proposal after confirmation: the draft becomes version 1, sent to the client. */
   function sendQuotedProposal(commentId: number) {
     const draft = proposalVersions[commentId]?.find((proposal) => proposal.status === "draft");
-    if (!draft || isReadOnlyVersion) return;
+    if (!draft || isReadOnlyVersion || !adminOnly()) return;
     setProposalVersions((current) => ({
       ...current,
       [commentId]: (current[commentId] ?? []).map((proposal) =>
@@ -1591,6 +1607,8 @@ export function AgencyApp() {
 
   /** New quote after a refusal: the refused version stays in the history, the new one waits to be sent. */
   function saveRequote(commentId: number) {
+    // Re-quoting drops the client's pending counter-proposal: that answers it.
+    if (adaptationRequests[commentId] && !adaptationRequests[commentId].decision && !adminOnly()) return;
     const history = proposalVersions[commentId] ?? [];
     const adaptation = adaptationRequests[commentId];
     const nextVersion = Math.max(...history.map((proposal) => proposal.version), 0) + 1;
@@ -1640,7 +1658,8 @@ export function AgencyApp() {
       proposalCommentId === null ||
       !newProposalDescription.trim() ||
       !newProposalAmount.trim() ||
-      !newProposalDeadline.trim()
+      !newProposalDeadline.trim() ||
+      !adminOnly()
     ) return;
 
     const numericAmount = parseNumericAmount(newProposalAmount);
@@ -1700,11 +1719,11 @@ export function AgencyApp() {
   }
 
   function decideAdaptation(commentId: number, decision: "accepted" | "refused") {
-    if (isReadOnlyVersion || !adaptationRequests[commentId]) return;
+    if (isReadOnlyVersion || !adaptationRequests[commentId] || !adminOnly()) return;
     const decisionAt = new Date().toLocaleString("fr-FR");
     setAdaptationRequests((current) => ({
       ...current,
-      [commentId]: { ...current[commentId], decision, decisionBy: "Alex Morgan", decisionAt },
+      [commentId]: { ...current[commentId], decision, decisionBy: currentUser.name, decisionAt },
     }));
     recordAudit(
       "proposal.adaptation-decision",
@@ -1713,44 +1732,23 @@ export function AgencyApp() {
     );
   }
 
-  function exportProof() {
+  /** Proof of the open version, built by the server from its database (src/db/proof.ts). */
+  async function exportProof() {
+    if (!currentDeliverable) return;
+    // Opened at once, in the click: browsers block windows opened after an await.
     const exportWindow = window.open("", "_blank");
-    if (!exportWindow || !currentDeliverable) return;
-
-    const status = approved
-      ? `Version approuvée${approvedAt ? ` le ${approvedAt}` : ""}`
-      : reviewStatus === "changes-requested"
-        ? "Modifications demandées"
-        : "En attente client";
-    const commentsHtml = activeComments.length > 0
-      ? activeComments.map((comment) => `
-          <li>
-            <strong>${escapeHtml(comment.decision)}</strong>
-            <p>${escapeHtml(comment.message)}</p>
-            <small>${escapeHtml(comment.author)} · ${escapeHtml(comment.time)}</small>
-          </li>`).join("")
-      : "<li>Aucun commentaire sur cette version.</li>";
-    const proposalHtml = activeComments
-      .filter((comment) => comment.decision === "Hors périmètre" && proposalDecisionFor(comment.id) !== "none")
-      .map((comment) => {
-        const proposal = activeProposalFor(comment.id);
-        const amountDisplay = proposal ? formatProposalAmount(proposal.amount) : "-";
-        const deadlineDisplay = proposal ? formatProposalDeadline(proposal.deadline) : "-";
-        return `<li><strong>Demande #${comment.id} · ${proposalDecisionFor(comment.id) === "accepted" ? "Acceptée" : "Refusée"}</strong><p>${escapeHtml(proposal?.description ?? "Proposition non détaillée")}</p><small>${escapeHtml(amountDisplay)} · ${escapeHtml(deadlineDisplay)}</small></li>`;
-      }).join("");
-    const auditHtml = activeAuditEvents.slice(0, 50).map((event) => `
-      <li><strong>${escapeHtml(event.description)}</strong><small>${escapeHtml(event.actor)} · ${escapeHtml(event.timestamp)}</small></li>`).join("");
-
-    // Opened in a separate window where tokens.css is not loaded: Kora token values are inlined (ink, border, graphite, action-ui, status-resolved-bg).
-    const proofHtml = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Preuve Kora - ${escapeHtml(currentDeliverable.name)}</title><style>
-      body{font-family:Arial,sans-serif;color:#111111;max-width:820px;margin:40px auto;padding:0 24px;line-height:1.5}h1{font-size:26px;margin-bottom:4px}h2{font-size:16px;border-bottom:1px solid #ddd9d1;padding-bottom:8px;margin-top:28px}p{margin:4px 0}small{display:block;color:#4c4c48;margin-top:4px}ul{list-style:none;padding:0}li{border:1px solid #ddd9d1;border-radius:5px;padding:12px;margin:8px 0}strong{font-size:12px}header{border-bottom:2px solid #0079d1;padding-bottom:18px}.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;color:#4c4c48;font-size:12px}.status{background:#ddf4e4;border-radius:5px;padding:10px;font-weight:bold;margin-top:18px}@media print{body{margin:0}.no-print{display:none}}
-    </style></head><body><header><p>PREUVE DE VALIDATION</p><h1>${escapeHtml(selectedProject?.name ?? "Projet")}</h1><div class="meta"><span>Client<br><strong>${escapeHtml(selectedClient?.name ?? "-")}</strong></span><span>Livrable<br><strong>${escapeHtml(currentDeliverable.name)}</strong></span><span>Version<br><strong>V${String(currentDeliverable.version).padStart(2, "0")}</strong></span></div><div class="status">${escapeHtml(status)}</div></header><main><h2>Décisions sur les retours</h2><ul>${commentsHtml}</ul>${proposalHtml ? `<h2>Propositions complémentaires</h2><ul>${proposalHtml}</ul>` : ""}<h2>Journal d'activité</h2><ul>${auditHtml || "<li>Aucun événement enregistré.</li>"}</ul></main><p><small>Identifiant : KR-${currentDeliverable.id}-${currentDeliverable.version}</small></p><button class="no-print" onclick="window.print()">Imprimer ou enregistrer en PDF</button></body></html>`;
-    const parsedDocument = new DOMParser().parseFromString(proofHtml, "text/html");
-    const importedDocument = exportWindow.document.importNode(
-      parsedDocument.documentElement,
-      true,
-    );
-    exportWindow.document.documentElement.replaceWith(importedDocument);
+    if (!exportWindow) return;
+    exportWindow.document.title = "Préparation de la preuve…";
+    exportWindow.document.body.textContent = "Préparation de la preuve…";
+    // What was just changed here must be in it.
+    await flushSharedState();
+    const response = await fetch(`/api/proof/${currentDeliverable.id}`, { cache: "no-store" }).catch(() => null);
+    if (!response?.ok) {
+      exportWindow.document.body.textContent = "La preuve n’a pas pu être générée. Réessayez.";
+      return;
+    }
+    const parsed = new DOMParser().parseFromString(proofHtml(await response.json()), "text/html");
+    exportWindow.document.documentElement.replaceWith(exportWindow.document.importNode(parsed.documentElement, true));
     exportWindow.focus();
   }
 
@@ -2294,6 +2292,7 @@ export function AgencyApp() {
               onRenameProject={renameProject}
               onDeleteClient={deleteClient}
               onDeleteProject={deleteProject}
+              canManage={canManage}
               onMoveProject={moveProject}
               onMoveLivrable={moveLivrable}
               onDeleteLivrable={deleteLivrable}
@@ -2314,7 +2313,9 @@ export function AgencyApp() {
                 return latest ? unreadOf(latest.id).length : 0;
               }}
             />
-          ) : view.kind === "dashboard" ? (
+          ) : view.kind === "dashboard" || !currentDeliverable ? (
+            // No deliverable yet: the agency's data is still loading (a new agency starts empty), or the
+            // address points to nothing (the effect above then leaves for the home page).
             null
           ) : (
             <>
@@ -2515,9 +2516,12 @@ export function AgencyApp() {
                 description={sent ? (source?.title ?? source?.message) : "Transformez ce retour en accord clair avant de commencer le travail."}
                 footer={
                   !sent ? (
-                    <Button onClick={sendProposal} disabled={!newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>
-                      Envoyer au client
-                    </Button>
+                    <>
+                      {!canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Envoi réservé aux administrateurs de l’agence</span>}
+                      <Button onClick={sendProposal} disabled={!canManage || !newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>
+                        Envoyer au client
+                      </Button>
+                    </>
                   ) : isReadOnlyVersion ? (
                     <Button variant="outline" onClick={() => setProposalOpen(false)}>
                       Fermer
@@ -2531,15 +2535,16 @@ export function AgencyApp() {
                     </>
                   ) : adaptationPending ? (
                     <>
-                      <Button variant="outline" onClick={() => decideAdaptation(id, "refused")}>
+                      {!canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Réponse réservée aux administrateurs de l’agence</span>}
+                      <Button variant="outline" disabled={!canManage} onClick={() => decideAdaptation(id, "refused")}>
                         Refuser l’adaptation
                       </Button>
                       {selectedAdaptationRequest?.budget !== undefined && (
-                        <Button variant="outline" onClick={() => decideAdaptation(id, "accepted")}>
+                        <Button variant="outline" disabled={!canManage} onClick={() => decideAdaptation(id, "accepted")}>
                           Accepter l’adaptation
                         </Button>
                       )}
-                      <Button onClick={openNewVersion}>Répondre par une nouvelle version</Button>
+                      <Button disabled={!canManage} onClick={openNewVersion}>Répondre par une nouvelle version</Button>
                     </>
                   ) : status.label === "En attente du client" ? (
                     <>
@@ -2729,7 +2734,7 @@ export function AgencyApp() {
             title="Synthèse du périmètre & décisions"
             description="Le registre des demandes, de leurs qualifications et des propositions de cette version."
             size="xl"
-            footer={<Button onClick={exportProof}>Exporter la preuve</Button>}
+            footer={<Button onClick={() => void exportProof()}>Exporter la preuve</Button>}
           >
             <div className="proof-header">
               <div>
@@ -2816,7 +2821,7 @@ export function AgencyApp() {
               </>
             )}
             <div className="proof-footer">
-              <span>Validé par Alex Morgan</span>
+              <span>Validé par {currentUser.name}</span>
               <span>
                 Identifiant : KR-{currentDeliverable.id}-{currentDeliverable.version}
               </span>
@@ -2963,7 +2968,10 @@ export function AgencyApp() {
                   <Button
                     variant="destructive"
                     className="sm:mr-auto"
+                    disabled={!canManage}
+                    title={canManage ? undefined : "Réservé aux administrateurs de l’agence"}
                     onClick={() => {
+                      if (!adminOnly()) return;
                       const revokedLink = { ...reviewLink, active: false };
                       const linkKey = `${reviewLink.deliverableId ?? 1}:${reviewLink.version ?? 1}`;
                       setReviewLink(revokedLink);
@@ -3015,12 +3023,12 @@ export function AgencyApp() {
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           event.preventDefault();
-                          inviteByEmail();
+                          void inviteByEmail();
                         }
                       }}
                       disabled={isReadOnlyVersion}
                     />
-                    <Button variant="outline" className="h-9" onClick={inviteByEmail} disabled={!inviteDraft.trim() || isReadOnlyVersion}>
+                    <Button variant="outline" className="h-9" onClick={() => void inviteByEmail()} disabled={!inviteDraft.trim() || isReadOnlyVersion}>
                       Inviter
                     </Button>
                   </div>
@@ -3032,7 +3040,12 @@ export function AgencyApp() {
                       <li key={invite.email}>
                         <span className="truncate">{invite.email}</span>
                         <small>invité le {invite.at.split(" ")[0]}</small>
-                        <Hint label="Retirer l’invitation">
+                        <Hint label="Copier son lien personnel">
+                          <Button variant="ghost" size="icon-xs" aria-label={`Copier le lien de ${invite.email}`} onClick={() => void copyInviteLink(invite)}>
+                            <Copy />
+                          </Button>
+                        </Hint>
+                        <Hint label="Retirer l’invitation (son accès est coupé)">
                           <Button variant="ghost" size="icon-xs" aria-label={`Retirer ${invite.email}`} onClick={() => removeInvite(invite.email)}>
                             <X />
                           </Button>
@@ -3040,6 +3053,31 @@ export function AgencyApp() {
                       </li>
                     ))}
                   </ul>
+                )}
+                {accessRequests.some((request) => request.linkKey === linkKeyOf(reviewLink)) && (
+                  <div className="grid gap-2">
+                    <Label>Demandes d’accès</Label>
+                    <ul className="invite-list" aria-label="Demandes d’accès">
+                      {accessRequests
+                        .filter((request) => request.linkKey === linkKeyOf(reviewLink))
+                        .map((request) => (
+                          <li key={request.email}>
+                            <span className="grid min-w-0">
+                              <span className="truncate">{request.email}</span>
+                              {request.message && <small className="!ml-0 truncate">« {request.message} »</small>}
+                            </span>
+                            <span className="ml-auto flex shrink-0 gap-1">
+                              <Button variant="outline" size="xs" onClick={() => void decideAccessRequest(request, "refused")}>
+                                Refuser
+                              </Button>
+                              <Button size="xs" onClick={() => void decideAccessRequest(request, "accepted")}>
+                                Accepter
+                              </Button>
+                            </span>
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
                 )}
                 <div className="flex items-center justify-between gap-3">
                   <Label htmlFor="share-auto-expire" className="text-sm font-normal">
@@ -3049,9 +3087,13 @@ export function AgencyApp() {
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-xs text-muted-foreground">
-                    {lastReminderAt ? `Dernière relance : ${new Date(lastReminderAt).toLocaleString("fr-FR")}` : "Aucune relance envoyée"}
+                    {nobodyInvited
+                      ? "Invitez le client pour pouvoir le relancer"
+                      : lastReminderAt
+                        ? `Dernière relance : ${new Date(lastReminderAt).toLocaleString("fr-FR")}`
+                        : "Aucune relance envoyée"}
                   </span>
-                  <Button variant="outline" size="sm" onClick={remindClient} disabled={reminderBlocked || isReadOnlyVersion}>
+                  <Button variant="outline" size="sm" onClick={() => void remindClient()} disabled={reminderBlocked || isReadOnlyVersion || nobodyInvited}>
                     {reminderBlocked ? "Relance déjà envoyée" : "Relancer le client"}
                   </Button>
                 </div>
@@ -3074,10 +3116,13 @@ export function AgencyApp() {
                 className="confirm-send-modal"
                 footer={
                   <>
+                    {!canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Envoi réservé aux administrateurs de l’agence</span>}
                     <Button variant="outline" onClick={() => setConfirmSendId(null)}>
                       Annuler
                     </Button>
-                    <Button onClick={() => confirmSendId !== null && sendQuotedProposal(confirmSendId)}>Envoyer la proposition</Button>
+                    <Button disabled={!canManage} onClick={() => confirmSendId !== null && sendQuotedProposal(confirmSendId)}>
+                      Envoyer la proposition
+                    </Button>
                   </>
                 }
               >
@@ -3174,10 +3219,11 @@ export function AgencyApp() {
             size="lg"
             footer={
               <>
+                {!requoting && !canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Envoi réservé aux administrateurs de l’agence</span>}
                 <Button type="button" variant="outline" onClick={() => setNewProposalVersionOpen(false)}>
                   Annuler
                 </Button>
-                <Button type="submit" disabled={!newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>
+                <Button type="submit" disabled={(!requoting && !canManage) || !newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>
                   {requoting ? "Enregistrer le chiffrage" : "Envoyer la nouvelle proposition"}
                 </Button>
               </>
@@ -3213,8 +3259,11 @@ export function AgencyApp() {
     </main>
     </div>
   );
-  /** Invites the typed addresses (comma, semicolon or space separated) to this review. */
-  function inviteByEmail() {
+  /**
+   * Invites the typed addresses (comma, semicolon or space separated) to this review. The server
+   * records them and mails each one its personal link; the client then confirms with a code.
+   */
+  async function inviteByEmail() {
     if (!reviewLink || isReadOnlyVersion) return;
     const typed = inviteDraft.split(/[\s,;]+/).map((email) => email.trim().toLowerCase()).filter(Boolean);
     const invalid = typed.filter((email) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email));
@@ -3228,16 +3277,48 @@ export function AgencyApp() {
       setInviteError(typed.length ? "Ces personnes sont déjà invitées." : "");
       return;
     }
-    const at = new Date().toLocaleString("fr-FR");
-    const linkKey = `${reviewLink.deliverableId ?? 1}:${reviewLink.version ?? 1}`;
-    const updatedLink = { ...reviewLink, invites: [...(reviewLink.invites ?? []), ...fresh.map((email) => ({ email, at }))] };
-    setReviewLink(updatedLink);
-    setReviewLinks((current) => ({ ...current, [linkKey]: updatedLink }));
-    setNotifications((current) => [...fresh.map((email, index) => ({ id: Date.now() + index, message: `Invitation envoyée à ${email}`, time: "À l'instant" })), ...current]);
-    recordAudit("review.invited", `Invitation envoyée à ${fresh.join(", ")}`);
+    const result = await callReviewAccess("invite", { linkKey: linkKeyOf(reviewLink), emails: fresh });
+    if (!result) return;
     setInviteDraft("");
     setInviteError("");
     toast(fresh.length > 1 ? `${fresh.length} invitations envoyées` : `Invitation envoyée à ${fresh[0]}`);
+  }
+
+  /** Accepts (the address is invited and receives its link) or refuses a request for access. */
+  async function decideAccessRequest(request: AccessRequest, decision: "accepted" | "refused") {
+    const result = await callReviewAccess("requests", { linkKey: request.linkKey, email: request.email, decision });
+    if (!result) return;
+    setAccessRequests((current) => current.filter((candidate) => candidate !== request));
+    toast(decision === "accepted" ? `Accès accordé à ${request.email}` : `Demande de ${request.email} refusée`);
+  }
+
+  /** Invitation endpoints: the link is saved first, the answer updates it here. */
+  async function callReviewAccess(action: "invite" | "requests" | "remind", body: Record<string, unknown>) {
+    await flushSharedState();
+    const response = await fetch(`/api/review-access/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+    const result = (await response?.json().catch(() => null)) as { link?: ReviewLink; notSent?: string[]; error?: string } | null;
+    if (!response?.ok || !result?.link) {
+      setInviteError(result?.error ?? "L’action n’a pas abouti. Réessayez.");
+      return null;
+    }
+    const link = result.link;
+    setReviewLink((current) => (current && linkKeyOf(current) === linkKeyOf(link) ? link : current));
+    setReviewLinks((current) => ({ ...current, [linkKeyOf(link)]: link }));
+    refreshSharedState();
+    if (result.notSent?.length)
+      toast.warning(`E-mail non envoyé à ${result.notSent.join(", ")} : copiez son lien personnel et transmettez-le.`);
+    return result;
+  }
+
+  /** Personal address of an invitation: pre-fills the client's e-mail. */
+  async function copyInviteLink(invite: { email: string; id?: string }) {
+    if (!reviewLink) return;
+    await navigator.clipboard.writeText(`${getReviewUrl()}${invite.id ? `?invitation=${invite.id}` : ""}`);
+    toast(`Lien de ${invite.email} copié`);
   }
 
   function removeInvite(email: string) {
@@ -3248,22 +3329,13 @@ export function AgencyApp() {
     setReviewLinks((current) => ({ ...current, [linkKey]: updatedLink }));
   }
 
-  function remindClient() {
-    if (isReadOnlyVersion) return;
-    const now = Date.now();
-    const cooldown = 24 * 60 * 60 * 1000;
-
-    if (lastReminderAt && now - lastReminderAt < cooldown) return;
-
-    setLastReminderAt(now);
-    setNotifications((current) => [
-      {
-        id: now,
-        message: "Relance envoyée à Claire Martin",
-        time: "À l'instant",
-      },
-      ...current,
-    ]);
+  /** Mails every invited client a reminder with their personal link (once a day per link, checked by the server). */
+  async function remindClient() {
+    if (isReadOnlyVersion || !reviewLink || reminderBlocked || nobodyInvited) return;
+    const result = await callReviewAccess("remind", { linkKey: linkKeyOf(reviewLink) });
+    if (!result) return;
+    const count = reviewLink.invites?.length ?? 0;
+    toast(count > 1 ? `Relance envoyée à ${count} personnes` : `Relance envoyée à ${reviewLink.invites?.[0]?.email}`);
   }
 }
 
