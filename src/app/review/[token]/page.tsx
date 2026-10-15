@@ -15,6 +15,8 @@ import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "@/app/(agenc
 import { Hint } from "@/components/hint";
 import { ResizeHandle } from "@/app/(agency)/editor/ResizeHandle";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
+import { loadSharedState, readSharedState, subscribeSharedState, writeSharedState } from "@/lib/stateSync";
+import { AccessGate } from "./AccessGate";
 
 
 function parseNumericAmount(amount: number | string | undefined): number {
@@ -136,12 +138,16 @@ type ProposalVersion = {
 };
 type ProposalVersions = Record<number, ProposalVersion[]>;
 
-const storageKey = "scopeguard-review-state";
 
 export default function ClientReviewPage() {
   const params = useParams<{ token: string }>();
   const [loading, setLoading] = useState(true);
   const [accessState, setAccessState] = useState<"allowed" | "denied">("denied");
+  /** Who opens the link (see /api/review/[token]/access): "none" shows the e-mail verification first. */
+  const [viewer, setViewer] = useState<{ mode: "client" | "preview" | "none"; verifiedEmail: string | null; invitedEmail: string | null; deliverable: string } | null>(null);
+  const viewerMode = viewer?.mode;
+  /** Name shown on the client's own messages: the verified address (the server signs with it anyway). */
+  const clientName = viewer?.verifiedEmail ?? "Client";
   const [reviewLink, setReviewLink] = useState<ReviewLink | null>(null);
   const [comments, setComments] = useState<ClientComment[]>([]);
   /** "Northstar · Refonte site": where the shared deliverable lives. */
@@ -185,85 +191,111 @@ export default function ClientReviewPage() {
     status: "À valider",
   });
 
+  const [accessCheck, setAccessCheck] = useState(0);
   useEffect(() => {
-    const savedState = window.localStorage.getItem(storageKey);
-
-    if (!savedState || !params.token) {
-      setStateHydrated(true);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const parsedState = JSON.parse(savedState) as {
-        reviewLink?: ReviewLink | null;
-        reviewLinks?: ReviewLinks;
-        deliverables?: Deliverable[];
-        comments?: ClientComment[];
-        proposalStates?: ProposalStates;
-        proposalDecisions?: ProposalDecisions;
-        adaptationRequests?: AdaptationRequests;
-        reviewStatus?: "pending" | "changes-requested" | "approved";
-        approvedAt?: string | null;
-        proposalVersions?: ProposalVersions;
-        projects?: { id: number; name: string; clientId?: number }[];
-        clients?: { id: number; name: string }[];
-      };
-      const savedLinks = Object.values(parsedState.reviewLinks ?? {});
-      const savedLink =
-        savedLinks.find((link) => link.token === params.token) ??
-        (parsedState.reviewLink?.token === params.token ? parsedState.reviewLink : null);
-      const expiresAt = savedLink?.expiresAt
-        ? parseFrenchDate(savedLink.expiresAt)
-        : null;
-      const isExpired =
-        savedLink?.autoExpire !== false &&
-        expiresAt !== null &&
-        expiresAt.getTime() < Date.now();
-      const isValid = Boolean(
-        savedLink &&
-          savedLink.token === params.token &&
-          savedLink.active &&
-          !isExpired,
-      );
-
-      if (isValid) {
-        setReviewLink(savedLink ?? null);
-        setAccessState("allowed");
-        const sharedDeliverable = parsedState.deliverables?.find(
-          (candidate) =>
-            candidate.id === savedLink?.deliverableId &&
-            candidate.version === savedLink?.version,
-        ) ?? parsedState.deliverables?.[0];
-        if (sharedDeliverable) {
-          setDeliverable(sharedDeliverable);
-          const project = parsedState.projects?.find((candidate) => candidate.id === (sharedDeliverable.projectId ?? 1));
-          const client = parsedState.clients?.find((candidate) => candidate.id === (project?.clientId ?? 1));
-          setContext([client?.name, project?.name].filter(Boolean).join(" · "));
+    let cancelled = false;
+    const invitation = new URLSearchParams(window.location.search).get("invitation");
+    const query = invitation ? `?invitation=${encodeURIComponent(invitation)}` : "";
+    fetch(`/api/review/${encodeURIComponent(params.token)}/access${query}`, { cache: "no-store" })
+      .then(async (response) => {
+        if (cancelled) return;
+        if (!response.ok) {
+          setLoading(false);
+          return;
         }
-        const review = reviewStateOf(sharedDeliverable, parsedState);
-        setReviewStatus(review.status);
-        setApprovedAt(review.approvedAt);
-        if (parsedState.comments) {
-          setComments(parsedState.comments);
-        }
-        if (parsedState.proposalStates) setProposalStates(parsedState.proposalStates);
-        if (parsedState.proposalDecisions) setProposalDecisions(parsedState.proposalDecisions);
-        if (parsedState.adaptationRequests) setAdaptationRequests(parsedState.adaptationRequests);
-        if (parsedState.proposalVersions) setProposalVersions(parsedState.proposalVersions);
+        setViewer(await response.json());
+      })
+      .catch(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [params.token, accessCheck]);
+
+  useEffect(() => {
+    if (viewerMode !== "client" && viewerMode !== "preview") return;
+    let cancelled = false;
+    void loadSharedState(params.token).then((savedState) => {
+      if (cancelled) return;
+      if (!savedState || !params.token) {
+        setStateHydrated(true);
+        setLoading(false);
+        return;
       }
-    } catch {
-      setAccessState("denied");
-    } finally {
-      setStateHydrated(true);
-      setLoading(false);
-    }
-  }, [params.token]);
+
+      try {
+        const parsedState = JSON.parse(savedState) as {
+          reviewLink?: ReviewLink | null;
+          reviewLinks?: ReviewLinks;
+          deliverables?: Deliverable[];
+          comments?: ClientComment[];
+          proposalStates?: ProposalStates;
+          proposalDecisions?: ProposalDecisions;
+          adaptationRequests?: AdaptationRequests;
+          reviewStatus?: "pending" | "changes-requested" | "approved";
+          approvedAt?: string | null;
+          proposalVersions?: ProposalVersions;
+          projects?: { id: number; name: string; clientId?: number }[];
+          clients?: { id: number; name: string }[];
+        };
+        const savedLinks = Object.values(parsedState.reviewLinks ?? {});
+        const savedLink =
+          savedLinks.find((link) => link.token === params.token) ??
+          (parsedState.reviewLink?.token === params.token ? parsedState.reviewLink : null);
+        const expiresAt = savedLink?.expiresAt
+          ? parseFrenchDate(savedLink.expiresAt)
+          : null;
+        const isExpired =
+          savedLink?.autoExpire !== false &&
+          expiresAt !== null &&
+          expiresAt.getTime() < Date.now();
+        const isValid = Boolean(
+          savedLink &&
+            savedLink.token === params.token &&
+            savedLink.active &&
+            !isExpired,
+        );
+
+        if (isValid) {
+          setReviewLink(savedLink ?? null);
+          setAccessState("allowed");
+          const sharedDeliverable = parsedState.deliverables?.find(
+            (candidate) =>
+              candidate.id === savedLink?.deliverableId &&
+              candidate.version === savedLink?.version,
+          ) ?? parsedState.deliverables?.[0];
+          if (sharedDeliverable) {
+            setDeliverable(sharedDeliverable);
+            const project = parsedState.projects?.find((candidate) => candidate.id === (sharedDeliverable.projectId ?? 1));
+            const client = parsedState.clients?.find((candidate) => candidate.id === (project?.clientId ?? 1));
+            setContext([client?.name, project?.name].filter(Boolean).join(" · "));
+          }
+          const review = reviewStateOf(sharedDeliverable, parsedState);
+          setReviewStatus(review.status);
+          setApprovedAt(review.approvedAt);
+          if (parsedState.comments) {
+            setComments(parsedState.comments);
+          }
+          if (parsedState.proposalStates) setProposalStates(parsedState.proposalStates);
+          if (parsedState.proposalDecisions) setProposalDecisions(parsedState.proposalDecisions);
+          if (parsedState.adaptationRequests) setAdaptationRequests(parsedState.adaptationRequests);
+          if (parsedState.proposalVersions) setProposalVersions(parsedState.proposalVersions);
+        }
+      } catch {
+        setAccessState("denied");
+      } finally {
+        setStateHydrated(true);
+        setLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [params.token, viewerMode]);
 
   useEffect(() => {
     if (!stateHydrated || loading || accessState !== "allowed") return;
 
-    const savedState = window.localStorage.getItem(storageKey);
+    const savedState = readSharedState();
     if (!savedState) return;
 
     try {
@@ -302,19 +334,16 @@ export default function ClientReviewPage() {
         deliverables: sharedDeliverables,
       });
 
-      if (window.localStorage.getItem(storageKey) === newSerialized) return;
-      window.localStorage.setItem(storageKey, newSerialized);
+      writeSharedState(newSerialized);
     } catch {
       // The access check above remains the source of truth for this view.
     }
   }, [comments, proposalStates, proposalDecisions, adaptationRequests, proposalVersions, reviewStatus, approvedAt, loading, accessState, deliverable.id, deliverable.version, reviewLink, stateHydrated]);
 
   useEffect(() => {
-    function syncFromStorage(event: StorageEvent) {
-      if (event.key !== storageKey || !event.newValue) return;
-
+    function syncFromStorage(newValue: string) {
       try {
-        const parsedState = JSON.parse(event.newValue) as {
+        const parsedState = JSON.parse(newValue) as {
           reviewLink?: ReviewLink | null;
           reviewLinks?: ReviewLinks;
           reviewStatus?: "pending" | "changes-requested" | "approved";
@@ -356,8 +385,7 @@ export default function ClientReviewPage() {
       }
     }
 
-    window.addEventListener("storage", syncFromStorage);
-    return () => window.removeEventListener("storage", syncFromStorage);
+    return subscribeSharedState(syncFromStorage);
   }, [params.token]);
 
   useEffect(() => {
@@ -404,19 +432,22 @@ export default function ClientReviewPage() {
   const isUnread = (comment: ClientComment) => seen !== null && agencyKeysOf(comment).some((key) => !seen.includes(key));
 
   function isReadOnlyVersion() {
+    // The agency previewing the page only reads.
+    if (viewerMode === "preview") return true;
     return reviewStatus === "approved" || deliverable.locked || deliverable.status === "Approuvée" || deliverable.status === "Remplacée";
   }
 
   /** Publishes a comment written on the canvas, or by hand (no position) from the panel. */
   function addComment(message: string, spot: CanvasComposer | null) {
     if (isReadOnlyVersion()) return;
-    const id = Math.max(...comments.map((comment) => comment.id), 0) + 1;
+    // Like the agency: the page only sees this version's comments, ids must not depend on them.
+    const id = Date.now();
     setComments((current) => [
       ...current,
       {
         id,
         deliverableId: reviewLink?.deliverableId ?? deliverable.id,
-        author: "Claire Martin",
+        author: clientName,
         initials: "CM",
         time: "À l'instant",
         createdAt: Date.now(),
@@ -437,7 +468,7 @@ export default function ClientReviewPage() {
 
   function replyTo(commentId: number, message: string) {
     if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
-    const reply: Reply = { id: Date.now(), author: "Claire Martin", initials: "CM", message, time: "À l'instant", createdAt: Date.now() };
+    const reply: Reply = { id: Date.now(), author: clientName, initials: "CM", message, time: "À l'instant", createdAt: Date.now() };
     setComments((current) => current.map((comment) => (comment.id === commentId ? { ...comment, replies: [...(comment.replies ?? []), reply] } : comment)));
   }
 
@@ -555,13 +586,12 @@ export default function ClientReviewPage() {
     overrides?: Record<string, unknown>,
   ) {
     try {
-      const raw = window.localStorage.getItem(storageKey);
+      const raw = readSharedState();
       const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
       const auditEvents = Array.isArray(parsed.auditEvents) ? parsed.auditEvents : [];
       const notifications = Array.isArray(parsed.notifications) ? parsed.notifications : [];
       const timestamp = new Date().toLocaleString("fr-FR");
-      window.localStorage.setItem(
-        storageKey,
+      writeSharedState(
         JSON.stringify({
           ...parsed,
           ...(overrides ?? {}),
@@ -726,6 +756,20 @@ export default function ClientReviewPage() {
     ? undefined
     : adaptationRequests[proposalPreviewCommentId];
 
+  if (viewer?.mode === "none")
+    return (
+      <AccessGate
+        token={params.token}
+        deliverable={viewer.deliverable}
+        invitedEmail={viewer.invitedEmail}
+        verifiedEmail={viewer.verifiedEmail}
+        onVerified={() => {
+          setViewer(null);
+          setAccessCheck((count) => count + 1);
+        }}
+      />
+    );
+
   if (loading) {
     return <main className="client-review-state">Chargement de la revue...</main>;
   }
@@ -777,6 +821,7 @@ export default function ClientReviewPage() {
               <span className="truncate">{deliverable.name}</span>
             </h1>
             {context && <p className="client-topbar-context">{context}</p>}
+            {viewerMode === "preview" && <p className="client-topbar-context">Aperçu agence · lecture seule</p>}
           </div>
         </div>
         <div className="client-topbar-actions">

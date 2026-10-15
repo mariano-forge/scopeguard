@@ -193,3 +193,31 @@ Le produit doit demontrer un effet concret sur le flux commercial des agences.
 A terme, ScopeGuard doit devenir la source de verite des decisions client sur les projets au forfait : le lieu ou une demande est contextualisee, arbitree, chiffree, acceptee et rattachee a une livraison.
 
 Le produit ne remplace pas un outil de gestion de projet, un CRM ou une solution comptable. Il les relie au moment le plus fragile de la relation agence-client : celui ou une remarque apparemment simple peut se transformer en travail gratuit.
+
+## Lancer le prototype en local
+
+Les données sont enregistrées dans PostgreSQL. Le fichier `.env.local` choisit la base avec `DATABASE_TARGET` : `local` (Postgres dans Docker) ou `remote` (Supabase, puis Azure).
+
+```bash
+cp .env.example .env.local   # puis renseigner DATABASE_URL_REMOTE si besoin
+npm install
+npm run db:up                # Postgres local dans Docker
+npm run db:migrate           # crée les tables sur la base choisie par DATABASE_TARGET
+npm run dev
+```
+
+Au premier lancement sur une base vide, les données déjà enregistrées dans le navigateur (ancien `localStorage`) sont importées automatiquement.
+
+- `npm run db:generate` : crée une migration après une modification de `src/db/schema.ts`.
+- `npm run db:studio` : explore les données.
+- Le journal d'audit (`audit_events`) est en ajout seul : la base refuse toute modification ou suppression d'un événement.
+
+### Connexion
+
+L'espace agence demande un compte (`/connexion`) : e-mail et mot de passe, ou Google si `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` sont renseignés.
+
+Le client n'a ni compte ni mot de passe. L'agence l'invite par e-mail depuis « Partager la revue » ; il reçoit un lien personnel qui pré-remplit son adresse, puis confirme avec un code à 6 chiffres envoyé à cette adresse. L'appareil est ensuite reconnu 30 jours. Avec le lien copié-collé, seule une adresse invitée reçoit un code ; les autres peuvent demander l'accès, que l'agence accepte ou refuse. Retirer une invitation coupe l'accès immédiatement. Le lien ne donne accès qu'à la version partagée, et le serveur n'accepte du client que ses propres commentaires, ses décisions sur les propositions envoyées et la validation, signés de son adresse vérifiée (voir `src/db/reviewAuth.ts` et `src/db/reviewAccess.ts`).
+
+- E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (offre gratuite Resend). Sans eux, en développement, invitations, codes et liens « Mot de passe oublié » s'affichent dans la console du serveur ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
+- Tous les comptes voient les mêmes données : la séparation par agence reste à faire.
+- Les fichiers (`/api/files/…`) sont accessibles à qui connaît leur adresse, une empreinte impossible à deviner.

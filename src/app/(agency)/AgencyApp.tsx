@@ -96,6 +96,8 @@ import { RenameDialog } from "./EntitySettings";
 import { Hint } from "@/components/hint";
 import type { HomeAnalyticsData } from "./HomeAnalytics";
 import type { LivrableGroup } from "./LivrableFilter";
+import { useCurrentUser } from "./CurrentUser";
+import { flushSharedState, loadSharedState, refreshSharedState, subscribeSharedState, writeSharedState } from "@/lib/stateSync";
 
 
 type Decision = "À qualifier" | "Inclus" | "Hors périmètre";
@@ -180,10 +182,13 @@ type ReviewLink = {
   autoExpire?: boolean;
   deliverableId?: number;
   version?: number;
-  /** People invited by e-mail to this review (manual invitations). */
-  invites?: { email: string; at: string }[];
+  /** People invited by e-mail to this review; `id` makes their personal address (?invitation=<id>). */
+  invites?: { email: string; at: string; id?: string }[];
 };
 type ReviewLinks = Record<string, ReviewLink>;
+/** Someone with a review link, not invited, asking for access (read-only here, decided through the API). */
+type AccessRequest = { linkKey: string; email: string; message: string | null; requestedAt: string };
+const linkKeyOf = (link: ReviewLink) => `${link.deliverableId ?? 1}:${link.version ?? 1}`;
 
 type ReviewStatus = "pending" | "changes-requested" | "approved";
 type ProposalDecision = "none" | "accepted" | "refused";
@@ -229,7 +234,6 @@ type AuditEvent = {
   commentId?: number;
 };
 
-const storageKey = "scopeguard-review-state";
 /** Deleted items stay restorable this long, then are purged on load. */
 const TRASH_DAYS = 30;
 const recentsKey = "kora-recent-deliverables";
@@ -337,6 +341,7 @@ function createReviewLink(deliverableId: number, version: number): ReviewLink {
 }
 
 export function AgencyApp() {
+  const currentUser = useCurrentUser();
   const router = useRouter();
   const pathname = usePathname();
   const view = parseAgencyPath(pathname);
@@ -482,6 +487,7 @@ export function AgencyApp() {
   const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
   const [reviewLink, setReviewLink] = useState<ReviewLink | null>(null);
   const [reviewLinks, setReviewLinks] = useState<ReviewLinks>({});
+  const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [changesOpen, setChangesOpen] = useState(false);
@@ -497,94 +503,98 @@ export function AgencyApp() {
   const [stateHydrated, setStateHydrated] = useState(false);
 
   useEffect(() => {
-    const savedState = window.localStorage.getItem(storageKey);
+    let cancelled = false;
+    void loadSharedState().then((savedState) => {
+      if (cancelled) return;
+      if (!savedState) {
+        setStateHydrated(true);
+        return;
+      }
 
-    if (!savedState) {
-      setStateHydrated(true);
-      return;
-    }
-
-    try {
-      const parsedState = JSON.parse(savedState) as {
-        projects?: Project[];
-        clients?: Client[];
-        selectedProjectId?: number;
-        selectedClientId?: number;
-        selectedDeliverableId?: number;
-        deliverables?: Deliverable[];
-        reviewLink?: ReviewLink | null;
-        reviewLinks?: ReviewLinks;
-        reviewStatus?: ReviewStatus;
-        approvedAt?: string | null;
-        notifications?: Notification[];
-        comments?: Comment[];
-        approved?: boolean;
-        proposalStates?: ProposalStates;
-        proposalDecisions?: ProposalDecisions;
-        adaptationRequests?: AdaptationRequests;
-        proposalVersions?: ProposalVersions;
-        lastReminderAt?: number | null;
-        auditEvents?: AuditEvent[];
-        trash?: TrashItem[];
-      };
-
-      if (parsedState.projects)
-        setProjects(parsedState.projects.map((project) => ({
-          ...project,
-          clientId: project.clientId ?? clients.find((client) => client.name === project.client)?.id ?? 1,
-        })));
-      if (parsedState.clients) setClients(parsedState.clients);
-      if (parsedState.deliverables)
-        setDeliverables(migrateReviewStatus(parsedState).map((deliverable) => ({
-          ...deliverable,
-          projectId: deliverable.projectId ?? 1,
-        })));
-      const savedReviewLinks = { ...(parsedState.reviewLinks ?? {}) };
-      if (parsedState.reviewLink) {
-        const legacyKey = `${parsedState.reviewLink.deliverableId ?? 1}:${parsedState.reviewLink.version ?? 1}`;
-        savedReviewLinks[legacyKey] ??= {
-          ...parsedState.reviewLink,
-          autoExpire: parsedState.reviewLink.autoExpire !== false,
+      try {
+        const parsedState = JSON.parse(savedState) as {
+          projects?: Project[];
+          clients?: Client[];
+          selectedProjectId?: number;
+          selectedClientId?: number;
+          selectedDeliverableId?: number;
+          deliverables?: Deliverable[];
+          reviewLink?: ReviewLink | null;
+          reviewLinks?: ReviewLinks;
+          reviewStatus?: ReviewStatus;
+          approvedAt?: string | null;
+          notifications?: Notification[];
+          comments?: Comment[];
+          approved?: boolean;
+          proposalStates?: ProposalStates;
+          proposalDecisions?: ProposalDecisions;
+          adaptationRequests?: AdaptationRequests;
+          proposalVersions?: ProposalVersions;
+          lastReminderAt?: number | null;
+          auditEvents?: AuditEvent[];
+          trash?: TrashItem[];
+          accessRequests?: AccessRequest[];
         };
-        setReviewLink({ ...parsedState.reviewLink, autoExpire: parsedState.reviewLink.autoExpire !== false });
+
+        if (parsedState.projects)
+          setProjects(parsedState.projects.map((project) => ({
+            ...project,
+            clientId: project.clientId ?? clients.find((client) => client.name === project.client)?.id ?? 1,
+          })));
+        if (parsedState.clients) setClients(parsedState.clients);
+        if (parsedState.deliverables)
+          setDeliverables(migrateReviewStatus(parsedState).map((deliverable) => ({
+            ...deliverable,
+            projectId: deliverable.projectId ?? 1,
+          })));
+        const savedReviewLinks = { ...(parsedState.reviewLinks ?? {}) };
+        if (parsedState.reviewLink) {
+          const legacyKey = `${parsedState.reviewLink.deliverableId ?? 1}:${parsedState.reviewLink.version ?? 1}`;
+          savedReviewLinks[legacyKey] ??= {
+            ...parsedState.reviewLink,
+            autoExpire: parsedState.reviewLink.autoExpire !== false,
+          };
+          setReviewLink({ ...parsedState.reviewLink, autoExpire: parsedState.reviewLink.autoExpire !== false });
+        }
+        setReviewLinks(savedReviewLinks);
+        setAccessRequests(parsedState.accessRequests ?? []);
+        if (parsedState.notifications)
+          setNotifications(parsedState.notifications);
+        if (parsedState.comments)
+          setComments(parsedState.comments.map((comment) => ({
+            ...comment,
+            deliverableId: comment.deliverableId ?? parsedState.deliverables?.[0]?.id ?? 1,
+            decision: ((comment.decision as string) === "À traiter" ? "À qualifier" : comment.decision) ?? "À qualifier",
+          })));
+        if (parsedState.proposalStates)
+          setProposalStates(parsedState.proposalStates);
+        if (parsedState.proposalDecisions)
+          setProposalDecisions(parsedState.proposalDecisions);
+        if (parsedState.adaptationRequests)
+          setAdaptationRequests(parsedState.adaptationRequests);
+        if (parsedState.proposalVersions)
+          setProposalVersions(parsedState.proposalVersions);
+        if (parsedState.lastReminderAt)
+          setLastReminderAt(parsedState.lastReminderAt);
+        if (parsedState.auditEvents) setAuditEvents(parsedState.auditEvents);
+        if (parsedState.trash) {
+          const limit = Date.now() - TRASH_DAYS * 24 * 60 * 60 * 1000;
+          setTrash(parsedState.trash.filter((item) => item.deletedAt >= limit));
+        }
+        setStateHydrated(true);
+      } catch {
+        setStateHydrated(true);
       }
-      setReviewLinks(savedReviewLinks);
-      if (parsedState.notifications)
-        setNotifications(parsedState.notifications);
-      if (parsedState.comments)
-        setComments(parsedState.comments.map((comment) => ({
-          ...comment,
-          deliverableId: comment.deliverableId ?? parsedState.deliverables?.[0]?.id ?? 1,
-          decision: ((comment.decision as string) === "À traiter" ? "À qualifier" : comment.decision) ?? "À qualifier",
-        })));
-      if (parsedState.proposalStates)
-        setProposalStates(parsedState.proposalStates);
-      if (parsedState.proposalDecisions)
-        setProposalDecisions(parsedState.proposalDecisions);
-      if (parsedState.adaptationRequests)
-        setAdaptationRequests(parsedState.adaptationRequests);
-      if (parsedState.proposalVersions)
-        setProposalVersions(parsedState.proposalVersions);
-      if (parsedState.lastReminderAt)
-        setLastReminderAt(parsedState.lastReminderAt);
-      if (parsedState.auditEvents) setAuditEvents(parsedState.auditEvents);
-      if (parsedState.trash) {
-        const limit = Date.now() - TRASH_DAYS * 24 * 60 * 60 * 1000;
-        setTrash(parsedState.trash.filter((item) => item.deletedAt >= limit));
-      }
-      setStateHydrated(true);
-    } catch {
-      window.localStorage.removeItem(storageKey);
-      setStateHydrated(true);
-    }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    function syncFromStorage(event: StorageEvent) {
-      if (event.key !== storageKey || !event.newValue) return;
-
+    function syncFromStorage(newValue: string) {
       try {
-        const parsedState = JSON.parse(event.newValue) as {
+        const parsedState = JSON.parse(newValue) as {
           projects?: Project[];
           clients?: Client[];
           trash?: TrashItem[];
@@ -601,6 +611,7 @@ export function AgencyApp() {
           reviewLinks?: ReviewLinks;
           auditEvents?: AuditEvent[];
           notifications?: Notification[];
+          accessRequests?: AccessRequest[];
         };
 
         if (parsedState.comments)
@@ -624,6 +635,9 @@ export function AgencyApp() {
         if (parsedState.deliverables) setDeliverables(migrateReviewStatus(parsedState));
         if (parsedState.reviewLinks) setReviewLinks(parsedState.reviewLinks);
         if (parsedState.reviewLink) setReviewLink(parsedState.reviewLink);
+        // The link open in the share dialog follows too (invitations made by the server).
+        if (parsedState.reviewLinks) setReviewLink((current) => (current ? (parsedState.reviewLinks?.[linkKeyOf(current)] ?? current) : current));
+        setAccessRequests(parsedState.accessRequests ?? []);
         if (parsedState.auditEvents) setAuditEvents(parsedState.auditEvents);
         if (parsedState.notifications) setNotifications(parsedState.notifications);
       } catch {
@@ -631,8 +645,7 @@ export function AgencyApp() {
       }
     }
 
-    window.addEventListener("storage", syncFromStorage);
-    return () => window.removeEventListener("storage", syncFromStorage);
+    return subscribeSharedState(syncFromStorage);
   }, []);
 
   useEffect(() => {
@@ -655,13 +668,7 @@ export function AgencyApp() {
       trash,
     });
 
-    if (window.localStorage.getItem(storageKey) === newSerialized) return;
-    try {
-      window.localStorage.setItem(storageKey, newSerialized);
-    } catch {
-      // Browser storage is full (files are kept as data URLs in this prototype).
-      setDeliverableError("Le stockage du navigateur est plein : les derniers changements ne seront pas conservés. Retirez des fichiers lourds.");
-    }
+    writeSharedState(newSerialized);
   }, [
     projects,
     clients,
@@ -957,7 +964,7 @@ export function AgencyApp() {
       {
         id: Date.now(),
         type,
-        actor: "Alex Morgan",
+        actor: currentUser.name,
         description,
         timestamp: new Date().toLocaleString("fr-FR"),
         commentId,
@@ -1295,7 +1302,7 @@ export function AgencyApp() {
     const created: Comment = {
       id,
       deliverableId: currentDeliverable.id,
-      author: "Alex Morgan",
+      author: currentUser.name,
       initials: "AM",
       time: "À l'instant",
       createdAt: Date.now(),
@@ -1329,7 +1336,7 @@ export function AgencyApp() {
     const created: Comment = {
       id: Math.max(...comments.map((comment) => comment.id), 0) + 1,
       deliverableId: currentDeliverable.id,
-      author: "Alex Morgan",
+      author: currentUser.name,
       initials: "AM",
       time: "À l'instant",
       createdAt: Date.now(),
@@ -1362,7 +1369,7 @@ export function AgencyApp() {
 
   function replyTo(commentId: number, message: string) {
     if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
-    const reply: Reply = { id: Date.now(), author: "Alex Morgan", initials: "AM", message, time: "À l'instant", createdAt: Date.now() };
+    const reply: Reply = { id: Date.now(), author: currentUser.name, initials: "AM", message, time: "À l'instant", createdAt: Date.now() };
     setComments((current) =>
       current.map((comment) => (comment.id === commentId ? { ...comment, replies: [...(comment.replies ?? []), reply] } : comment)),
     );
@@ -1704,7 +1711,7 @@ export function AgencyApp() {
     const decisionAt = new Date().toLocaleString("fr-FR");
     setAdaptationRequests((current) => ({
       ...current,
-      [commentId]: { ...current[commentId], decision, decisionBy: "Alex Morgan", decisionAt },
+      [commentId]: { ...current[commentId], decision, decisionBy: currentUser.name, decisionAt },
     }));
     recordAudit(
       "proposal.adaptation-decision",
@@ -2816,7 +2823,7 @@ export function AgencyApp() {
               </>
             )}
             <div className="proof-footer">
-              <span>Validé par Alex Morgan</span>
+              <span>Validé par {currentUser.name}</span>
               <span>
                 Identifiant : KR-{currentDeliverable.id}-{currentDeliverable.version}
               </span>
@@ -3015,12 +3022,12 @@ export function AgencyApp() {
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           event.preventDefault();
-                          inviteByEmail();
+                          void inviteByEmail();
                         }
                       }}
                       disabled={isReadOnlyVersion}
                     />
-                    <Button variant="outline" className="h-9" onClick={inviteByEmail} disabled={!inviteDraft.trim() || isReadOnlyVersion}>
+                    <Button variant="outline" className="h-9" onClick={() => void inviteByEmail()} disabled={!inviteDraft.trim() || isReadOnlyVersion}>
                       Inviter
                     </Button>
                   </div>
@@ -3032,7 +3039,12 @@ export function AgencyApp() {
                       <li key={invite.email}>
                         <span className="truncate">{invite.email}</span>
                         <small>invité le {invite.at.split(" ")[0]}</small>
-                        <Hint label="Retirer l’invitation">
+                        <Hint label="Copier son lien personnel">
+                          <Button variant="ghost" size="icon-xs" aria-label={`Copier le lien de ${invite.email}`} onClick={() => void copyInviteLink(invite)}>
+                            <Copy />
+                          </Button>
+                        </Hint>
+                        <Hint label="Retirer l’invitation (son accès est coupé)">
                           <Button variant="ghost" size="icon-xs" aria-label={`Retirer ${invite.email}`} onClick={() => removeInvite(invite.email)}>
                             <X />
                           </Button>
@@ -3040,6 +3052,31 @@ export function AgencyApp() {
                       </li>
                     ))}
                   </ul>
+                )}
+                {accessRequests.some((request) => request.linkKey === linkKeyOf(reviewLink)) && (
+                  <div className="grid gap-2">
+                    <Label>Demandes d’accès</Label>
+                    <ul className="invite-list" aria-label="Demandes d’accès">
+                      {accessRequests
+                        .filter((request) => request.linkKey === linkKeyOf(reviewLink))
+                        .map((request) => (
+                          <li key={request.email}>
+                            <span className="grid min-w-0">
+                              <span className="truncate">{request.email}</span>
+                              {request.message && <small className="!ml-0 truncate">« {request.message} »</small>}
+                            </span>
+                            <span className="ml-auto flex shrink-0 gap-1">
+                              <Button variant="outline" size="xs" onClick={() => void decideAccessRequest(request, "refused")}>
+                                Refuser
+                              </Button>
+                              <Button size="xs" onClick={() => void decideAccessRequest(request, "accepted")}>
+                                Accepter
+                              </Button>
+                            </span>
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
                 )}
                 <div className="flex items-center justify-between gap-3">
                   <Label htmlFor="share-auto-expire" className="text-sm font-normal">
@@ -3213,8 +3250,11 @@ export function AgencyApp() {
     </main>
     </div>
   );
-  /** Invites the typed addresses (comma, semicolon or space separated) to this review. */
-  function inviteByEmail() {
+  /**
+   * Invites the typed addresses (comma, semicolon or space separated) to this review. The server
+   * records them and mails each one its personal link; the client then confirms with a code.
+   */
+  async function inviteByEmail() {
     if (!reviewLink || isReadOnlyVersion) return;
     const typed = inviteDraft.split(/[\s,;]+/).map((email) => email.trim().toLowerCase()).filter(Boolean);
     const invalid = typed.filter((email) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email));
@@ -3228,16 +3268,48 @@ export function AgencyApp() {
       setInviteError(typed.length ? "Ces personnes sont déjà invitées." : "");
       return;
     }
-    const at = new Date().toLocaleString("fr-FR");
-    const linkKey = `${reviewLink.deliverableId ?? 1}:${reviewLink.version ?? 1}`;
-    const updatedLink = { ...reviewLink, invites: [...(reviewLink.invites ?? []), ...fresh.map((email) => ({ email, at }))] };
-    setReviewLink(updatedLink);
-    setReviewLinks((current) => ({ ...current, [linkKey]: updatedLink }));
-    setNotifications((current) => [...fresh.map((email, index) => ({ id: Date.now() + index, message: `Invitation envoyée à ${email}`, time: "À l'instant" })), ...current]);
-    recordAudit("review.invited", `Invitation envoyée à ${fresh.join(", ")}`);
+    const result = await callReviewAccess("invite", { linkKey: linkKeyOf(reviewLink), emails: fresh });
+    if (!result) return;
     setInviteDraft("");
     setInviteError("");
     toast(fresh.length > 1 ? `${fresh.length} invitations envoyées` : `Invitation envoyée à ${fresh[0]}`);
+  }
+
+  /** Accepts (the address is invited and receives its link) or refuses a request for access. */
+  async function decideAccessRequest(request: AccessRequest, decision: "accepted" | "refused") {
+    const result = await callReviewAccess("requests", { linkKey: request.linkKey, email: request.email, decision });
+    if (!result) return;
+    setAccessRequests((current) => current.filter((candidate) => candidate !== request));
+    toast(decision === "accepted" ? `Accès accordé à ${request.email}` : `Demande de ${request.email} refusée`);
+  }
+
+  /** Invitation endpoints: the link is saved first, the answer updates it here. */
+  async function callReviewAccess(action: "invite" | "requests", body: Record<string, unknown>) {
+    await flushSharedState();
+    const response = await fetch(`/api/review-access/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+    const result = (await response?.json().catch(() => null)) as { link?: ReviewLink; notSent?: string[]; error?: string } | null;
+    if (!response?.ok || !result?.link) {
+      setInviteError(result?.error ?? "Invitation impossible pour l’instant. Réessayez.");
+      return null;
+    }
+    const link = result.link;
+    setReviewLink((current) => (current && linkKeyOf(current) === linkKeyOf(link) ? link : current));
+    setReviewLinks((current) => ({ ...current, [linkKeyOf(link)]: link }));
+    refreshSharedState();
+    if (result.notSent?.length)
+      toast.warning(`E-mail non envoyé à ${result.notSent.join(", ")} : copiez son lien personnel et transmettez-le.`);
+    return result;
+  }
+
+  /** Personal address of an invitation: pre-fills the client's e-mail. */
+  async function copyInviteLink(invite: { email: string; id?: string }) {
+    if (!reviewLink) return;
+    await navigator.clipboard.writeText(`${getReviewUrl()}${invite.id ? `?invitation=${invite.id}` : ""}`);
+    toast(`Lien de ${invite.email} copié`);
   }
 
   function removeInvite(email: string) {

@@ -29,6 +29,7 @@ import { Hint } from "@/components/hint";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { timeLabel, useNow } from "./editor/CanvasComments";
+import { AccountMenu } from "./CurrentUser";
 
 type Notification = { id: number; message: string };
 type Client = { id: number; name: string; email: string };
@@ -162,10 +163,7 @@ export function HomeSidebar({
   return (
     <aside className="sidebar home-sidebar" aria-label="Navigation">
       <div className="sidebar-account">
-        <span className="account">
-          <span className="avatar dark-avatar">AM</span>
-          <b>Alex Morgan</b>
-        </span>
+        <AccountMenu />
         <Notifications notifications={notifications} feedback={feedback} onMarkAllRead={onMarkAllRead} />
       </div>
       <button className="sidebar-search" onClick={onSearch}>
@@ -369,9 +367,7 @@ export function ProjectSidebar({
         />
         <span className="rail-spacer" />
         <Notifications notifications={notifications} feedback={feedback} onMarkAllRead={onMarkAllRead} compact />
-        <span className="avatar dark-avatar rail-avatar" aria-label="Alex Morgan">
-          AM
-        </span>
+        <AccountMenu compact />
       </nav>
 
       {panel && (
