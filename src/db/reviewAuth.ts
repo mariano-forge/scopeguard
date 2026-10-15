@@ -17,7 +17,7 @@ import { createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeE
 import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
 import type { Db } from "./client";
 import { applyChanges, bumpRevision } from "./state";
-import { deliverables, reviewAccessRequests, reviewCodes, reviewLinks, reviewSessions } from "./schema";
+import { commentProposals, comments, deliverables, reviewAccessRequests, reviewCodes, reviewLinks, reviewSessions } from "./schema";
 import type { CurrentUser } from "@/lib/session";
 import type { ReviewAccess } from "./reviewAccess";
 import { appUrl, sendMail } from "@/lib/mail";
@@ -263,4 +263,71 @@ export async function decideAccessRequest(db: Db, org: string, linkKey: string, 
   );
   const row = await linkRow(db, org, linkKey);
   return row ? { link: row.data as Data, notSent: [] as string[] } : null;
+}
+
+/** Minimum time between two reminders on the same link. */
+export const reminderCooldownMs = 24 * 60 * 60 * 1000;
+
+/**
+ * Agency: reminds every client invited on a link that the version waits for them, with their
+ * personal link and what is pending. At most once a day per link, checked here.
+ */
+export async function remindReview(db: Db, org: string, linkKey: string, user: CurrentUser) {
+  const row = await linkRow(db, org, linkKey);
+  if (!row || !row.active || row.deliverableId === null) return { error: "Lien de revue introuvable ou révoqué.", status: 404 } as const;
+  const link = row.data as Data;
+  const invites = invitesOf(link);
+  if (!invites.length) return { error: "Invitez d’abord le client sur cette revue.", status: 400 } as const;
+  const last = typeof link.lastReminderAt === "number" ? link.lastReminderAt : 0;
+  if (Date.now() - last < reminderCooldownMs) return { error: "Une relance a déjà été envoyée il y a moins de 24 heures.", status: 429 } as const;
+
+  const [version] = await db
+    .select({ name: deliverables.name, reviewStatus: deliverables.reviewStatus, data: deliverables.data })
+    .from(deliverables)
+    .where(and(eq(deliverables.organizationId, org), eq(deliverables.id, row.deliverableId)))
+    .limit(1);
+  if (!version || version.reviewStatus === "approved" || ["Approuvée", "Remplacée"].includes((version.data as Data).status as string))
+    return { error: "Cette version n’attend plus de validation.", status: 400 } as const;
+
+  // Quotes sent on this version and not decided yet.
+  const pendingQuotes = (
+    await db
+      .select({ decision: commentProposals.decision })
+      .from(commentProposals)
+      .innerJoin(comments, and(eq(comments.organizationId, commentProposals.organizationId), eq(comments.id, commentProposals.commentId)))
+      .where(and(eq(commentProposals.organizationId, org), eq(comments.deliverableId, row.deliverableId), eq(commentProposals.state, "sent")))
+  ).filter((proposal) => !proposal.decision || proposal.decision === "none").length;
+
+  const waiting = [
+    version.reviewStatus === "changes-requested" ? null : `la version ${row.version ?? ""} attend votre validation`.replace("  ", " "),
+    pendingQuotes ? `${pendingQuotes} proposition${pendingQuotes > 1 ? "s attendent" : " attend"} votre décision` : null,
+  ].filter(Boolean);
+
+  const notSent: string[] = [];
+  for (const invite of invites) {
+    const sent = await sendMail({
+      to: invite.email,
+      subject: `Rappel : « ${version.name} » attend votre retour`,
+      text: `${user.name} vous rappelle que ${waiting.length ? waiting.join(" et ") : "votre retour est attendu"} sur « ${version.name} ».\n\nOuvrir la revue : ${reviewUrl(link, invite.id)}`,
+    });
+    if (!sent) notSent.push(invite.email);
+  }
+
+  const sentAt = Date.now();
+  const updated = { ...link, lastReminderAt: sentAt };
+  const recipients = invites.map((invite) => invite.email).join(", ");
+  await applyChanges(
+    db,
+    org,
+    {
+      lists: {
+        auditEvents: { upsert: [{ id: sentAt, type: "review.reminded", actor: user.name, description: `Relance envoyée à ${recipients}`, timestamp: now() }], remove: [] },
+        notifications: { upsert: [{ id: sentAt, message: `Relance envoyée à ${recipients}`, time: "À l'instant" }], remove: [] },
+      },
+      maps: { reviewLinks: { upsert: { [linkKey]: updated }, remove: [] } },
+      settings: { upsert: {}, remove: [] },
+    },
+    { recordedBy: user.id },
+  );
+  return { link: updated, notSent };
 }

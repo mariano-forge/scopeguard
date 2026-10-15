@@ -184,6 +184,8 @@ type ReviewLink = {
   version?: number;
   /** People invited by e-mail to this review; `id` makes their personal address (?invitation=<id>). */
   invites?: { email: string; at: string; id?: string }[];
+  /** Last reminder mailed to the invited clients (ms); the server allows one a day. */
+  lastReminderAt?: number;
 };
 type ReviewLinks = Record<string, ReviewLink>;
 /** Someone with a review link, not invited, asking for access (read-only here, decided through the API). */
@@ -487,7 +489,6 @@ export function AgencyApp() {
   /** Share dialog: e-mail addresses being typed for a manual invitation. */
   const [inviteDraft, setInviteDraft] = useState("");
   const [inviteError, setInviteError] = useState("");
-  const [lastReminderAt, setLastReminderAt] = useState<number | null>(null);
   const [stateHydrated, setStateHydrated] = useState(false);
 
   useEffect(() => {
@@ -518,7 +519,6 @@ export function AgencyApp() {
           proposalDecisions?: ProposalDecisions;
           adaptationRequests?: AdaptationRequests;
           proposalVersions?: ProposalVersions;
-          lastReminderAt?: number | null;
           auditEvents?: AuditEvent[];
           trash?: TrashItem[];
           accessRequests?: AccessRequest[];
@@ -562,8 +562,6 @@ export function AgencyApp() {
           setAdaptationRequests(parsedState.adaptationRequests);
         if (parsedState.proposalVersions)
           setProposalVersions(parsedState.proposalVersions);
-        if (parsedState.lastReminderAt)
-          setLastReminderAt(parsedState.lastReminderAt);
         if (parsedState.auditEvents) setAuditEvents(parsedState.auditEvents);
         if (parsedState.trash) {
           const limit = Date.now() - TRASH_DAYS * 24 * 60 * 60 * 1000;
@@ -652,7 +650,6 @@ export function AgencyApp() {
       adaptationRequests,
       proposalVersions,
       notifications,
-      lastReminderAt,
       auditEvents,
       trash,
     });
@@ -670,7 +667,6 @@ export function AgencyApp() {
     adaptationRequests,
     proposalVersions,
     notifications,
-    lastReminderAt,
     auditEvents,
     trash,
     stateHydrated,
@@ -726,8 +722,10 @@ export function AgencyApp() {
     proposalPreviewCommentId === null
       ? undefined
       : adaptationRequests[proposalPreviewCommentId];
-  const reminderBlocked =
-    lastReminderAt !== null && Date.now() - lastReminderAt < 24 * 60 * 60 * 1000;
+  const lastReminderAt = reviewLink?.lastReminderAt ?? null;
+  // eslint-disable-next-line react-hooks/purity -- a 24-hour window: a render-time clock is precise enough.
+  const reminderBlocked = lastReminderAt !== null && Date.now() - lastReminderAt < 24 * 60 * 60 * 1000;
+  const nobodyInvited = !(reviewLink?.invites?.length);
 
   // The deliverable dashboard is gone (its analytics are on the home page): old links open the deliverable.
   useEffect(() => {
@@ -2317,7 +2315,9 @@ export function AgencyApp() {
                 return latest ? unreadOf(latest.id).length : 0;
               }}
             />
-          ) : view.kind === "dashboard" ? (
+          ) : view.kind === "dashboard" || !currentDeliverable ? (
+            // No deliverable yet: the agency's data is still loading (a new agency starts empty), or the
+            // address points to nothing (the effect above then leaves for the home page).
             null
           ) : (
             <>
@@ -3089,9 +3089,13 @@ export function AgencyApp() {
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-xs text-muted-foreground">
-                    {lastReminderAt ? `Dernière relance : ${new Date(lastReminderAt).toLocaleString("fr-FR")}` : "Aucune relance envoyée"}
+                    {nobodyInvited
+                      ? "Invitez le client pour pouvoir le relancer"
+                      : lastReminderAt
+                        ? `Dernière relance : ${new Date(lastReminderAt).toLocaleString("fr-FR")}`
+                        : "Aucune relance envoyée"}
                   </span>
-                  <Button variant="outline" size="sm" onClick={remindClient} disabled={reminderBlocked || isReadOnlyVersion}>
+                  <Button variant="outline" size="sm" onClick={() => void remindClient()} disabled={reminderBlocked || isReadOnlyVersion || nobodyInvited}>
                     {reminderBlocked ? "Relance déjà envoyée" : "Relancer le client"}
                   </Button>
                 </div>
@@ -3291,7 +3295,7 @@ export function AgencyApp() {
   }
 
   /** Invitation endpoints: the link is saved first, the answer updates it here. */
-  async function callReviewAccess(action: "invite" | "requests", body: Record<string, unknown>) {
+  async function callReviewAccess(action: "invite" | "requests" | "remind", body: Record<string, unknown>) {
     await flushSharedState();
     const response = await fetch(`/api/review-access/${action}`, {
       method: "POST",
@@ -3300,7 +3304,7 @@ export function AgencyApp() {
     }).catch(() => null);
     const result = (await response?.json().catch(() => null)) as { link?: ReviewLink; notSent?: string[]; error?: string } | null;
     if (!response?.ok || !result?.link) {
-      setInviteError(result?.error ?? "Invitation impossible pour l’instant. Réessayez.");
+      setInviteError(result?.error ?? "L’action n’a pas abouti. Réessayez.");
       return null;
     }
     const link = result.link;
@@ -3327,22 +3331,13 @@ export function AgencyApp() {
     setReviewLinks((current) => ({ ...current, [linkKey]: updatedLink }));
   }
 
-  function remindClient() {
-    if (isReadOnlyVersion) return;
-    const now = Date.now();
-    const cooldown = 24 * 60 * 60 * 1000;
-
-    if (lastReminderAt && now - lastReminderAt < cooldown) return;
-
-    setLastReminderAt(now);
-    setNotifications((current) => [
-      {
-        id: now,
-        message: "Relance envoyée à Claire Martin",
-        time: "À l'instant",
-      },
-      ...current,
-    ]);
+  /** Mails every invited client a reminder with their personal link (once a day per link, checked by the server). */
+  async function remindClient() {
+    if (isReadOnlyVersion || !reviewLink || reminderBlocked || nobodyInvited) return;
+    const result = await callReviewAccess("remind", { linkKey: linkKeyOf(reviewLink) });
+    if (!result) return;
+    const count = reviewLink.invites?.length ?? 0;
+    toast(count > 1 ? `Relance envoyée à ${count} personnes` : `Relance envoyée à ${reviewLink.invites?.[0]?.email}`);
   }
 }
 
