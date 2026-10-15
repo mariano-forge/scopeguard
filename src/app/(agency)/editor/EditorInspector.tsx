@@ -7,6 +7,7 @@ import { ResizeHandle } from "./ResizeHandle";
 import { kindLabels, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
 import { Hint } from "@/components/hint";
 import { Button } from "@/components/ui/button";
+import { sideOf } from "@/lib/authors";
 
 export type InspectorTab = RequestKind;
 
@@ -148,7 +149,7 @@ export function RequestPanel({
                     aria-label={`${kindLabels[kind]} #${comment.id}`}
                     onClick={() => onFocus(comment.id)}
                   >
-                    <span className={`thread-avatar ${comment.initials === "AM" ? "is-agency" : "is-client"}`} aria-hidden="true">
+                    <span className={`thread-avatar ${sideOf(comment) === "agency" ? "is-agency" : "is-client"}`} aria-hidden="true">
                       {comment.initials}
                     </span>
                     <span className="thread-row-body">

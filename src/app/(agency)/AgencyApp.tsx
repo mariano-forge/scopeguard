@@ -88,6 +88,7 @@ import { Hint } from "@/components/hint";
 import type { HomeAnalyticsData } from "./HomeAnalytics";
 import type { LivrableGroup } from "./LivrableFilter";
 import { useCurrentUser } from "./CurrentUser";
+import { initialsOf, sideOf, type Side } from "@/lib/authors";
 import { proofHtml } from "./proofDocument";
 import { flushSharedState, loadSharedState, refreshSharedState, subscribeSharedState, writeSharedState } from "@/lib/stateSync";
 
@@ -98,6 +99,8 @@ type Reply = {
   id: number;
   author: string;
   initials: string;
+  /** Who wrote it (older messages: from their initials, see src/lib/authors.ts). */
+  from?: Side;
   message: string;
   time: string;
   /** When it was written (ms); older data only has `time`. */
@@ -110,6 +113,7 @@ type Comment = {
   deliverableId?: number;
   author: string;
   initials: string;
+  from?: Side;
   time: string;
   /** When it was written (ms); older data only has `time`. */
   createdAt?: number;
@@ -1312,7 +1316,8 @@ export function AgencyApp() {
       id,
       deliverableId: currentDeliverable.id,
       author: currentUser.name,
-      initials: "AM",
+      initials: initialsOf(currentUser.name),
+      from: "agency",
       time: "À l'instant",
       createdAt: Date.now(),
       message: request.description || request.title,
@@ -1346,7 +1351,8 @@ export function AgencyApp() {
       id: Math.max(...comments.map((comment) => comment.id), 0) + 1,
       deliverableId: currentDeliverable.id,
       author: currentUser.name,
-      initials: "AM",
+      initials: initialsOf(currentUser.name),
+      from: "agency",
       time: "À l'instant",
       createdAt: Date.now(),
       message,
@@ -1378,7 +1384,7 @@ export function AgencyApp() {
 
   function replyTo(commentId: number, message: string) {
     if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
-    const reply: Reply = { id: Date.now(), author: currentUser.name, initials: "AM", message, time: "À l'instant", createdAt: Date.now() };
+    const reply: Reply = { id: Date.now(), author: currentUser.name, initials: initialsOf(currentUser.name), from: "agency", message, time: "À l'instant", createdAt: Date.now() };
     setComments((current) =>
       current.map((comment) => (comment.id === commentId ? { ...comment, replies: [...(comment.replies ?? []), reply] } : comment)),
     );
@@ -1438,7 +1444,7 @@ export function AgencyApp() {
   function deleteComment(commentId: number) {
     if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
     const target = comments.find((c) => c.id === commentId);
-    if (target?.initials !== "AM") return;
+    if (!target || sideOf(target) !== "agency") return;
     setComments((current) => {
       const updated = current.filter((comment) => comment.id !== commentId);
       if (selectedId === commentId && updated.length > 0) {
@@ -1826,13 +1832,13 @@ export function AgencyApp() {
     const project = projects.find((candidate) => candidate.id === (record.projectId ?? 1));
     const client = clients.find((candidate) => candidate.id === (project?.clientId ?? 1));
     const context = [client?.name, `${record.name} V${String(record.version).padStart(2, "0")}`].filter(Boolean).join(" · ");
-    const fromClient = (initials: string) => initials !== "AM";
+    const fromClient = (message: { from?: Side; initials: string }) => sideOf(message) === "client";
     return comments
       .filter((comment) => comment.deliverableId === recordId)
       .flatMap((comment) => {
         const target = `${hrefForRecord(record, deliverables)}?demande=${comment.id}`;
         return [comment, ...(comment.replies ?? [])]
-          .filter((message) => fromClient(message.initials) && !seenIds.includes(message.id))
+          .filter((message) => fromClient(message) && !seenIds.includes(message.id))
           .map((message) => ({
             key: `m-${message.id}`,
             id: message.id,
@@ -2415,7 +2421,7 @@ export function AgencyApp() {
                     return draft ? { amount: parseNumericAmount(draft.amount), days: parseNumericDays(draft.deadline), counter: draft.allowCounter ?? false } : undefined;
                   })()}
                   onReply={(message) => replyTo(comment.id, message)}
-                  me="AM"
+                  me="agency"
                   onEditMessage={(messageId, message) => editMessage(comment.id, messageId, message)}
                   onDeleteMessage={(messageId) => deleteMessage(comment.id, messageId)}
                   // Once a proposal has been sent to the client, the qualification no longer changes.
@@ -2429,7 +2435,7 @@ export function AgencyApp() {
                   }
                   onOpenProposal={() => openProposal(comment.id)}
                   onDelete={
-                    comment.initials === "AM" && !isReadOnlyVersion && !isDecisionLocked(comment.id)
+                    sideOf(comment) === "agency" && !isReadOnlyVersion && !isDecisionLocked(comment.id)
                       ? () => {
                           deleteComment(comment.id);
                           setThreadOpen(false);

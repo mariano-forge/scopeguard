@@ -8,11 +8,12 @@
 //   - proposals: accept or refuse a sent proposal once, or ask for an adaptation;
 //   - the version: request changes or approve it, never undo an approval;
 //   - audit events and notifications: add new ones, signed with the verified address.
-// What the client writes is signed with that address, whatever name the page sends.
+// What the client writes is signed by the server with their name and verified address, whatever the page sends.
 // Nothing can be written once the version is approved or replaced.
 
 import { and, eq, inArray } from "drizzle-orm";
 import { sameValue, type ListChange, type MapChange, type SharedState, type StateChanges } from "@/lib/sharedState";
+import { initialsOf, sideOf } from "@/lib/authors";
 import type { Db } from "./client";
 import { commentProposals, comments, deliverables, notifications, proposalVersions, reviewLinks } from "./schema";
 import { readState } from "./state";
@@ -20,7 +21,8 @@ import { readState } from "./state";
 type Data = Record<string, unknown>;
 type Reply = { id?: unknown; initials?: unknown } & Data;
 
-const clientInitials = "CM";
+/** Written by the client (src/lib/authors.ts: `from`, or "CM" initials on older messages). */
+const byClient = (message: Data | undefined) => Boolean(message) && sideOf(message!) === "client";
 const same = (left: unknown, right: unknown) => sameValue(left ?? null, right ?? null);
 const isObject = (value: unknown): value is Data => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const shortText = (value: unknown, max: number) => (typeof value === "string" ? value.slice(0, max) : undefined);
@@ -79,12 +81,12 @@ export async function readReviewState(db: Db, access: ReviewAccess) {
 function repliesAllowed(before: Reply[], after: Reply[]) {
   const afterById = new Map(after.map((reply) => [reply.id, reply]));
   for (const reply of before)
-    if (reply.initials !== clientInitials && !same(afterById.get(reply.id), reply)) return false;
+    if (!byClient(reply) && !same(afterById.get(reply.id), reply)) return false;
   const known = new Set(before.map((reply) => reply.id));
-  return after.every((reply) => known.has(reply.id) || reply.initials === clientInitials);
+  return after.every((reply) => known.has(reply.id) || byClient(reply));
 }
 
-const qualificationFields = ["id", "deliverableId", "author", "initials", "decision", "kind", "title", "description", "sourceId", "createdAt"];
+const qualificationFields = ["id", "deliverableId", "author", "initials", "from", "authorEmail", "decision", "kind", "title", "description", "sourceId", "createdAt"];
 const placementFields = ["message", "edited", "location", "page", "position", "area"];
 
 function commentAllowed(before: Data | undefined, after: Data, deliverableId: number) {
@@ -92,22 +94,30 @@ function commentAllowed(before: Data | undefined, after: Data, deliverableId: nu
   const replies = (value: unknown) => (Array.isArray(value) ? (value as Reply[]) : []);
   if (!before)
     return (
-      after.initials === clientInitials &&
+      byClient(after) &&
       after.decision === "À qualifier" &&
       (after.kind ?? "remark") === "remark" &&
       after.title === undefined &&
       after.description === undefined &&
-      replies(after.replies).every((reply) => reply.initials === clientInitials)
+      replies(after.replies).every((reply) => byClient(reply))
     );
   if (qualificationFields.some((field) => !same(before[field], after[field]))) return false;
-  if (before.initials !== clientInitials && placementFields.some((field) => !same(before[field], after[field]))) return false;
+  if (!byClient(before) && placementFields.some((field) => !same(before[field], after[field]))) return false;
   const known = new Set([...qualificationFields, ...placementFields, "replies", "time"]);
   if ([...Object.keys(before), ...Object.keys(after)].some((field) => !known.has(field) && !same(before[field], after[field]))) return false;
   return repliesAllowed(replies(before.replies), replies(after.replies));
 }
 
 /** Keeps only what the client may write (see the header); everything else is dropped. */
-export async function sanitizeReviewChanges(db: Db, access: ReviewAccess, changes: StateChanges, email: string): Promise<StateChanges | null> {
+export async function sanitizeReviewChanges(
+  db: Db,
+  access: ReviewAccess,
+  changes: StateChanges,
+  email: string,
+  /** The client's full name (review_profiles); the address stands in until they give it. */
+  name: string | null,
+): Promise<StateChanges | null> {
+  const signer = { author: name ?? email, initials: initialsOf(name ?? email), from: "client", authorEmail: email };
   const org = access.organizationId;
   const [record] = await db
     .select()
@@ -137,17 +147,17 @@ export async function sanitizeReviewChanges(db: Db, access: ReviewAccess, change
     const upsert = candidates
       .filter((comment) => !taken.has(comment.id) && commentAllowed(before.get(comment.id), comment, access.deliverableId))
       .map((comment) => {
-        // New remarks and replies of the client carry the verified address as author.
+        // New remarks and replies of the client are signed by the server: name, initials, verified address.
         const previous = before.get(comment.id);
         const known = new Set((Array.isArray(previous?.replies) ? (previous.replies as Reply[]) : []).map((reply) => reply.id));
         const replies = Array.isArray(comment.replies)
-          ? (comment.replies as Reply[]).map((reply) => (known.has(reply.id) ? reply : { ...reply, author: email }))
+          ? (comment.replies as Reply[]).map((reply) => (known.has(reply.id) ? reply : { ...reply, ...signer }))
           : comment.replies;
-        return { ...comment, ...(previous ? {} : { author: email }), ...(replies ? { replies } : {}) };
+        return { ...comment, ...(previous ? {} : signer), ...(replies ? { replies } : {}) };
       });
     const remove = (incoming.remove ?? []).filter((id) => {
       const comment = before.get(id);
-      return comment?.initials === clientInitials && comment.decision === "À qualifier";
+      return byClient(comment) && comment!.decision === "À qualifier";
     });
     if (upsert.length || remove.length) lists.comments = { upsert, remove };
   }
@@ -205,7 +215,7 @@ export async function sanitizeReviewChanges(db: Db, access: ReviewAccess, change
   const events = (changes.lists?.auditEvents?.upsert ?? []).filter(isObject).map((event) => ({
     id: event.id,
     type: shortText(event.type, 100) ?? "client.event",
-    actor: email,
+    actor: signer.author,
     description: shortText(event.description, 1000) ?? "",
     timestamp: shortText(event.timestamp, 40) ?? "",
     deliverableId: access.deliverableId,
@@ -220,11 +230,11 @@ export async function sanitizeReviewChanges(db: Db, access: ReviewAccess, change
     const previous = before.get(comment.id);
     const quote = (text: unknown) => `« ${String(text ?? "").slice(0, 200)} »`;
     if (!previous)
-      events.push({ id: stamp + n++, type: "comment.created", actor: email, description: `Retour du client : ${quote(comment.message)}`, timestamp: "", deliverableId: access.deliverableId, commentId: comment.id });
+      events.push({ id: stamp + n++, type: "comment.created", actor: signer.author, description: `Retour du client : ${quote(comment.message)}`, timestamp: "", deliverableId: access.deliverableId, commentId: comment.id });
     const known = new Set((Array.isArray(previous?.replies) ? (previous.replies as Reply[]) : []).map((reply) => reply.id));
     for (const reply of Array.isArray(comment.replies) ? (comment.replies as Reply[]) : [])
       if (!known.has(reply.id))
-        events.push({ id: stamp + n++, type: "reply.created", actor: email, description: `Réponse du client : ${quote(reply.message)}`, timestamp: "", deliverableId: access.deliverableId, commentId: comment.id });
+        events.push({ id: stamp + n++, type: "reply.created", actor: signer.author, description: `Réponse du client : ${quote(reply.message)}`, timestamp: "", deliverableId: access.deliverableId, commentId: comment.id });
   }
   if (events.length) lists.auditEvents = { upsert: events as ListChange["upsert"], remove: [] };
 

@@ -16,7 +16,8 @@ import { Hint } from "@/components/hint";
 import { ResizeHandle } from "@/app/(agency)/editor/ResizeHandle";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
 import { loadSharedState, readSharedState, subscribeSharedState, writeSharedState } from "@/lib/stateSync";
-import { AccessGate } from "./AccessGate";
+import { AccessGate, ProfileGate } from "./AccessGate";
+import { initialsOf, sideOf, type Side } from "@/lib/authors";
 
 
 function parseNumericAmount(amount: number | string | undefined): number {
@@ -82,6 +83,8 @@ type Reply = {
   id: number;
   author: string;
   initials: string;
+  /** Who wrote it (older messages: from their initials, see src/lib/authors.ts). */
+  from?: Side;
   message: string;
   time: string;
   /** When it was written (ms); older data only has `time`. */
@@ -94,6 +97,8 @@ type ClientComment = {
   deliverableId?: number;
   author: string;
   initials: string;
+  /** Who wrote it (older messages: from their initials, see src/lib/authors.ts). */
+  from?: Side;
   time: string;
   createdAt?: number;
   message: string;
@@ -144,10 +149,17 @@ export default function ClientReviewPage() {
   const [loading, setLoading] = useState(true);
   const [accessState, setAccessState] = useState<"allowed" | "denied">("denied");
   /** Who opens the link (see /api/review/[token]/access): "none" shows the e-mail verification first. */
-  const [viewer, setViewer] = useState<{ mode: "client" | "preview" | "none"; verifiedEmail: string | null; invitedEmail: string | null; deliverable: string } | null>(null);
+  const [viewer, setViewer] = useState<{
+    mode: "client" | "preview" | "none";
+    verifiedEmail: string | null;
+    invitedEmail: string | null;
+    /** The client's full name; null until they give it, at their first verification. */
+    name: string | null;
+    deliverable: string;
+  } | null>(null);
   const viewerMode = viewer?.mode;
   /** Name shown on the client's own messages: the verified address (the server signs with it anyway). */
-  const clientName = viewer?.verifiedEmail ?? "Client";
+  const clientName = viewer?.name ?? viewer?.verifiedEmail ?? "Client";
   const [reviewLink, setReviewLink] = useState<ReviewLink | null>(null);
   const [comments, setComments] = useState<ClientComment[]>([]);
   /** "Northstar · Refonte site": where the shared deliverable lives. */
@@ -422,8 +434,8 @@ export default function ClientReviewPage() {
   /** Keys of the agency's answers on a request: its replies (or the request itself if the agency wrote it), and the proposal sent. */
   function agencyKeysOf(comment: ClientComment) {
     const keys = [
-      ...(comment.initials === "AM" ? [`c${comment.id}`] : []),
-      ...(comment.replies ?? []).filter((reply) => reply.initials === "AM").map((reply) => `r${reply.id}`),
+      ...(sideOf(comment) === "agency" ? [`c${comment.id}`] : []),
+      ...(comment.replies ?? []).filter((reply) => sideOf(reply) === "agency").map((reply) => `r${reply.id}`),
     ];
     const proposal = proposalStates[comment.id] === "sent" ? activeProposalFor(comment.id) : undefined;
     if (proposal) keys.push(`p${proposal.id}`);
@@ -448,7 +460,8 @@ export default function ClientReviewPage() {
         id,
         deliverableId: reviewLink?.deliverableId ?? deliverable.id,
         author: clientName,
-        initials: "CM",
+        initials: initialsOf(clientName),
+        from: "client",
         time: "À l'instant",
         createdAt: Date.now(),
         message,
@@ -468,7 +481,7 @@ export default function ClientReviewPage() {
 
   function replyTo(commentId: number, message: string) {
     if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
-    const reply: Reply = { id: Date.now(), author: clientName, initials: "CM", message, time: "À l'instant", createdAt: Date.now() };
+    const reply: Reply = { id: Date.now(), author: clientName, initials: initialsOf(clientName), from: "client", message, time: "À l'instant", createdAt: Date.now() };
     setComments((current) => current.map((comment) => (comment.id === commentId ? { ...comment, replies: [...(comment.replies ?? []), reply] } : comment)));
   }
 
@@ -488,7 +501,7 @@ export default function ClientReviewPage() {
   function deleteComment(commentId: number) {
     if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
     const target = comments.find((c) => c.id === commentId);
-    if (target?.initials !== "CM") return;
+    if (!target || sideOf(target) !== "client") return;
     setComments((current) => {
       const updated = current.filter((comment) => comment.id !== commentId);
       if (selectedCommentId === commentId) {
@@ -770,6 +783,17 @@ export default function ClientReviewPage() {
       />
     );
 
+  // First verification of this address: their name, before the review.
+  if (viewer?.mode === "client" && !viewer.name && viewer.verifiedEmail)
+    return (
+      <ProfileGate
+        token={params.token}
+        deliverable={viewer.deliverable}
+        email={viewer.verifiedEmail}
+        onSaved={(name) => setViewer((current) => (current ? { ...current, name } : current))}
+      />
+    );
+
   if (loading) {
     return <main className="client-review-state">Chargement de la revue...</main>;
   }
@@ -871,7 +895,7 @@ export default function ClientReviewPage() {
             setComposer(null);
           }}
           transformRef={transformRef}
-          canMove={(comment) => comment.initials === "CM" && requestKind(comment) === "comment"}
+          canMove={(comment) => sideOf(comment) === "client" && requestKind(comment) === "comment"}
           onMovePin={moveComment}
           overlay={
             isReadOnlyVersion() ? (
@@ -896,7 +920,7 @@ export default function ClientReviewPage() {
                 locked={locked}
                 proposal={proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : undefined}
                 onReply={(message) => replyTo(comment.id, message)}
-                me="CM"
+                me="client"
                 onEditMessage={(messageId, message) =>
                   setComments((current) =>
                     current.map((candidate) =>
@@ -923,7 +947,7 @@ export default function ClientReviewPage() {
                     : undefined
                 }
                 onDelete={
-                  comment.initials === "CM" && requestKind(comment) === "comment" && !isReadOnlyVersion() && !locked
+                  sideOf(comment) === "client" && requestKind(comment) === "comment" && !isReadOnlyVersion() && !locked
                     ? () => {
                         deleteComment(comment.id);
                         setThreadOpen(false);

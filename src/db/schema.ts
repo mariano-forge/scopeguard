@@ -281,6 +281,17 @@ export const reviewSessions = pgTable(
   (table) => [index("review_sessions_email_idx").on(table.email)],
 );
 
+/** How a verified client is named: asked once, at their first verification; shown on what they write. */
+export const reviewProfiles = pgTable("review_profiles", {
+  email: text("email").primaryKey(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => new Date()),
+});
+
 /** Someone with the link but not invited asks the agency for access. */
 export const reviewAccessRequests = pgTable(
   "review_access_requests",

@@ -8,6 +8,7 @@
 import type { NextRequest } from "next/server";
 import { getDb } from "@/db/client";
 import { readReviewState, sanitizeReviewChanges } from "@/db/reviewAccess";
+import { reviewProfileName } from "@/db/reviewAuth";
 import { applyChanges, currentRevision } from "@/db/state";
 import { databaseFailure, readChanges, requestOrigin } from "@/lib/api";
 import { getReviewViewer, reviewNotFound } from "@/lib/reviewViewer";
@@ -40,7 +41,7 @@ export async function PATCH(request: Request, context: RouteContext<"/api/review
     if (viewer.mode === "preview") return Response.json({ error: "Aperçu agence : lecture seule" }, { status: 403 });
     if (viewer.mode === "none") return verificationNeeded();
     const db = getDb();
-    const allowed = await sanitizeReviewChanges(db, viewer.access, changes, viewer.email);
+    const allowed = await sanitizeReviewChanges(db, viewer.access, changes, viewer.email, await reviewProfileName(db, viewer.email));
     const result = allowed
       ? await applyChanges(db, viewer.access.organizationId, allowed, { recordedBy: `client:${viewer.email}`, ...requestOrigin(request) })
       : { revision: await currentRevision(db, viewer.access.organizationId), filesStored: 0 };

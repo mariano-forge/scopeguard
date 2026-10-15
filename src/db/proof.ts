@@ -119,7 +119,8 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
     const proposal = proposals.find((candidate) => candidate.commentId === row.id);
     return {
       id: row.id,
-      author: text(data.author),
+      // A client's remark: their name and the address the server verified.
+      author: text(data.authorEmail) && text(data.authorEmail) !== text(data.author) ? `${text(data.author)} <${text(data.authorEmail)}>` : text(data.author),
       message: text(data.message),
       location: text(data.location),
       qualification: text(data.decision),

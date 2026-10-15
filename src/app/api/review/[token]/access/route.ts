@@ -1,12 +1,13 @@
 // Where a visitor of a review link stands, before loading the review:
 //   GET /api/review/:token/access?invitation=<id>
-//   -> { mode: "client" | "preview" | "none", verifiedEmail, invitedEmail, deliverable }
+//   -> { mode: "client" | "preview" | "none", verifiedEmail, invitedEmail, name, deliverable }
 // verifiedEmail: proven on this device (for "none": proven but not invited to this link).
 // invitedEmail: the address of the personal invitation, to pre-fill the form.
+// name: the verified client's full name; null at their first verification (the page asks for it).
 
 import type { NextRequest } from "next/server";
 import { getDb } from "@/db/client";
-import { invitationEmail, reviewedDeliverableName } from "@/db/reviewAuth";
+import { invitationEmail, reviewedDeliverableName, reviewProfileName } from "@/db/reviewAuth";
 import { databaseFailure } from "@/lib/api";
 import { getReviewViewer, reviewNotFound } from "@/lib/reviewViewer";
 
@@ -16,7 +17,14 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/revi
     const viewer = await getReviewViewer(token);
     if (!viewer) return reviewNotFound();
     const invited = invitationEmail(viewer.access.link, request.nextUrl.searchParams.get("invitation"));
-    return Response.json({ mode: viewer.mode, verifiedEmail: viewer.email, invitedEmail: invited, deliverable: await reviewedDeliverableName(getDb(), viewer.access) });
+    const db = getDb();
+    return Response.json({
+      mode: viewer.mode,
+      verifiedEmail: viewer.email,
+      invitedEmail: invited,
+      name: viewer.email ? await reviewProfileName(db, viewer.email) : null,
+      deliverable: await reviewedDeliverableName(db, viewer.access),
+    });
   } catch (error) {
     return databaseFailure("api/review/access", error);
   }

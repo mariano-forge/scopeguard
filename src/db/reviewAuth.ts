@@ -17,7 +17,7 @@ import { createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeE
 import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
 import type { Db } from "./client";
 import { applyChanges, bumpRevision } from "./state";
-import { commentProposals, comments, deliverables, reviewAccessRequests, reviewCodes, reviewLinks, reviewSessions } from "./schema";
+import { commentProposals, comments, deliverables, reviewAccessRequests, reviewCodes, reviewLinks, reviewProfiles, reviewSessions } from "./schema";
 import type { CurrentUser } from "@/lib/session";
 import type { ReviewAccess } from "./reviewAccess";
 import { appUrl, sendMail } from "@/lib/mail";
@@ -129,6 +129,20 @@ export async function reviewSessionEmail(db: Db, token: string | undefined) {
 
 /** Name of the version a link opens, for mails and the verification screen. */
 export const reviewedDeliverableName = (db: Db, access: ReviewAccess) => deliverableName(db, access.organizationId, access.deliverableId);
+
+/** The name a verified client gave at their first verification, if any. */
+export async function reviewProfileName(db: Db, email: string) {
+  const [profile] = await db.select({ name: reviewProfiles.name }).from(reviewProfiles).where(eq(reviewProfiles.email, email)).limit(1);
+  return profile?.name ?? null;
+}
+
+/** Saves the client's full name ("Claire Martin"): 2 to 80 characters, spaces tidied. */
+export async function saveReviewProfileName(db: Db, email: string, raw: string) {
+  const name = raw.replace(/\s+/g, " ").trim();
+  if (name.length < 2 || name.length > 80) return null;
+  await db.insert(reviewProfiles).values({ email, name }).onConflictDoUpdate({ target: reviewProfiles.email, set: { name } });
+  return name;
+}
 
 async function deliverableName(db: Db, org: string, deliverableId: number) {
   const [row] = await db
