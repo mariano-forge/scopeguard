@@ -3,6 +3,7 @@
 //
 // Security choices:
 // - passwords hashed with scrypt, at least 10 characters; sessions in httpOnly cookies (Secure in production);
+// - an address is confirmed by a mailed link before its first session (Google addresses come verified);
 // - a Google sign-in is never linked to an existing password account automatically: e-mail addresses are
 //   not verified at sign-up (no e-mail provider yet), so someone could have registered with another
 //   person's address before them;
@@ -48,6 +49,8 @@ function createAuth() {
     }),
     emailAndPassword: {
       enabled: true,
+      // The address is confirmed by a link before any session: nobody works under someone else's address.
+      requireEmailVerification: true,
       minPasswordLength: 10,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
@@ -60,6 +63,26 @@ function createAuth() {
             paragraphs: ["Pour choisir un nouveau mot de passe, ouvrez ce lien. Il est valable une heure et ne sert qu’une fois."],
             action: { label: "Choisir un mot de passe", href: url },
             footer: "Vous recevez cet e-mail parce qu’une réinitialisation a été demandée pour votre compte Kora. Si ce n’est pas vous, ignorez-le : votre mot de passe ne change pas.",
+          }),
+        });
+      },
+    },
+    emailVerification: {
+      sendOnSignUp: true,
+      // An unconfirmed sign-in is refused and gets the link again.
+      sendOnSignIn: true,
+      autoSignInAfterVerification: true,
+      expiresIn: 60 * 60 * 24,
+      sendVerificationEmail: async ({ user, url }) => {
+        await sendMail({
+          to: user.email,
+          subject: "Confirmez votre adresse e-mail Kora",
+          ...renderMail({
+            preheader: "Un clic pour activer votre compte",
+            heading: "Confirmez votre adresse",
+            paragraphs: [`Bonjour ${user.name}, confirmez que cette adresse est bien la vôtre pour activer votre compte Kora. Le lien est valable 24 heures.`],
+            action: { label: "Confirmer mon adresse", href: url },
+            footer: "Vous recevez cet e-mail parce qu’un compte Kora a été créé avec cette adresse. Si ce n’est pas vous, ignorez-le : le compte ne sera pas activé.",
           }),
         });
       },

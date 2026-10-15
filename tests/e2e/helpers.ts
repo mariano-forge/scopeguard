@@ -47,11 +47,17 @@ const cookiesOf = (response: Response) =>
 
 export type Member = Person & { email: string; name: string; organizationId?: string };
 
+/** A new account, its address confirmed through the mailed link (which opens the session). */
 export async function signUp(name: string, email = `${unique(name.split(" ")[0].toLowerCase())}@agence.test`): Promise<Member> {
   const ip = newIp();
   const response = await fetch(`${baseURL}/api/auth/sign-up/email`, { method: "POST", headers: headers({ ip }), body: JSON.stringify({ name, email, password: PASSWORD }) });
   if (!response.ok) throw new Error(`sign-up ${email}: ${response.status}`);
-  return { cookie: cookiesOf(response), ip, email, name };
+  const link = linkIn(await waitForMail(email, "Confirmez votre adresse"));
+  const confirmed = await fetch(link!, { headers: headers({ ip }), redirect: "manual" });
+  await confirmed.arrayBuffer();
+  const cookie = cookiesOf(confirmed);
+  if (!cookie.includes("session_token")) throw new Error(`confirmation of ${email}: no session (${confirmed.status})`);
+  return { cookie, ip, email, name };
 }
 
 export async function createAgency(owner: Member, name: string) {
@@ -120,6 +126,17 @@ export function codeFor(email: string) {
     .at(-1);
   if (!code) throw new Error(`no code mailed to ${email}`);
   return code;
+}
+
+/** Waits for the last mail to `email` whose subject contains `subject` (written just after the server answers). */
+export async function waitForMail(email: string, subject: string, timeout = 5000) {
+  const until = Date.now() + timeout;
+  for (;;) {
+    const mail = mailsTo(email).filter((candidate) => candidate.subject.includes(subject)).at(-1);
+    if (mail) return mail;
+    if (Date.now() > until) throw new Error(`no mail "${subject}" to ${email}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 }
 
 /** Waits for a code mail to `email` (written just after the server answers), then its 6 digits. */

@@ -25,6 +25,11 @@ function errorMessage(code: string | undefined, status?: number) {
       return "Le mot de passe est trop long (128 caractères au plus).";
     case "invalid_email":
       return "Cette adresse e-mail n'est pas valide.";
+    case "email_not_verified":
+      return "Confirmez d’abord votre adresse : nous venons de vous renvoyer le lien de confirmation par e-mail.";
+    case "invalid_token":
+    case "token_expired":
+      return "Ce lien de confirmation n’est plus valable. Connectez-vous : un nouveau lien vous sera envoyé.";
     case "account_not_linked":
     case "unable_to_link_account":
       return "Un compte avec mot de passe existe déjà pour cet e-mail Google. Connectez-vous avec votre mot de passe.";
@@ -96,13 +101,20 @@ export function SignInForm({
       return;
     }
 
-    const { error: failed } =
+    // The confirmation link brings the person back here (an invitation, the page they asked for).
+    const { data, error: failed } =
       mode === "sign-up"
-        ? await authClient.signUp.email({ name: String(form.get("name") ?? "").trim(), email, password })
-        : await authClient.signIn.email({ email, password });
+        ? await authClient.signUp.email({ name: String(form.get("name") ?? "").trim(), email, password, callbackURL: next })
+        : await authClient.signIn.email({ email, password, callbackURL: next });
     if (failed) {
       setPending(false);
       setError(errorMessage(failed.code, failed.status));
+      return;
+    }
+    // Sign-up opens no session until the address is confirmed (and says nothing about existing accounts).
+    if (!data?.token) {
+      setPending(false);
+      setNotice(`Vérifiez votre boîte de réception : un lien de confirmation a été envoyé à ${email}. Il est valable 24 heures.`);
       return;
     }
     router.replace(next);

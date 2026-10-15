@@ -1,7 +1,7 @@
 // Agencies are sealed from each other; colleagues join by invitation and lose access when removed.
 
 import { expect, test } from "@playwright/test";
-import { PASSWORD, call, createAgency, lastMailTo, linkIn, newPerson, patchState, readState, seedReview, signInPage, signUp, unique } from "./helpers";
+import { PASSWORD, call, createAgency, lastMailTo, linkIn, newPerson, patchState, readState, seedReview, signInPage, signUp, unique, waitForMail } from "./helpers";
 
 test("another agency can neither read, overwrite, preview nor invite on an agency's data", async () => {
   const alice = await signUp("Alice Martin");
@@ -59,6 +59,10 @@ test("a colleague joins from the invitation mail; the wrong account cannot; remo
   await carol.getByLabel("Nom complet").fill("Carol Petit");
   await carol.getByLabel("Mot de passe").fill(PASSWORD);
   await carol.getByRole("button", { name: "Créer mon compte" }).click();
+  // The confirmation link signs Carol in and brings her back to the invitation.
+  await expect(carol.getByRole("status")).toContainText("lien de confirmation");
+  await carol.goto(linkIn(await waitForMail(carolEmail, "Confirmez votre adresse"))!);
+  await carol.waitForLoadState("networkidle");
   await carol.getByRole("button", { name: "Rejoindre l’agence" }).click();
   await carol.waitForURL((url) => url.pathname === "/");
   await carol.goto("/espaces");

@@ -228,7 +228,7 @@ Le fichier est nommé par son empreinte SHA-256 : une version ne peut pas change
 
 ### Connexion
 
-L'espace agence demande un compte (`/connexion`) : e-mail et mot de passe, ou Google si `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` sont renseignés.
+L'espace agence demande un compte (`/connexion`) : e-mail et mot de passe, ou Google si `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` sont renseignés. L'adresse est confirmée par un lien envoyé par e-mail avant la première connexion (les comptes créés avant cette règle sont considérés comme confirmés, migration `0008`).
 
 Chaque compte travaille dans une agence. Après l'inscription, la personne crée la sienne (`/bienvenue`) et en devient propriétaire, ou rejoint celle qui l'a invitée. Le propriétaire et les administrateurs invitent leurs collègues depuis le menu du compte, « Équipe » : l'invité reçoit un lien `/invitation/:id` qu'il ne peut accepter qu'avec l'adresse invitée. Toutes les données sont rangées par agence (`organization_id` dans chaque clé primaire) et le serveur filtre chaque requête sur l'agence du membre ; retirer quelqu'un de l'équipe lui coupe l'accès immédiatement.
 

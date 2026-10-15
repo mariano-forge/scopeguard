@@ -1,7 +1,10 @@
 // Agency sign-in: protected pages, sign-up into a new agency, errors that reveal nothing, password reset.
 
 import { expect, test } from "@playwright/test";
-import { PASSWORD, call, linkIn, lastMailTo, newPerson, signUp, sql, unique } from "./helpers";
+import { baseURL } from "../../playwright.config";
+
+const baseUrl = () => baseURL;
+import { PASSWORD, call, linkIn, lastMailTo, mailsTo, newIp, newPerson, signUp, sql, unique, waitForMail } from "./helpers";
 
 test("pages and data of the agency need a session; a forged cookie gets nothing", async () => {
   const page = await call("/projets/1");
@@ -28,6 +31,10 @@ test("sign-up leads to creating one's agency, then to its empty home", async ({ 
   expect(await page.getByLabel("Mot de passe").evaluate((input: HTMLInputElement) => input.validity.valid)).toBe(false);
   await page.getByLabel("Mot de passe").fill(PASSWORD);
   await page.getByRole("button", { name: "Créer mon compte" }).click();
+  // No session before the address is confirmed: the link in the mail opens it.
+  await expect(page.getByRole("status")).toContainText(`un lien de confirmation a été envoyé à ${email}`);
+  expect((await page.context().cookies()).some((cookie) => cookie.name.includes("session_token"))).toBe(false);
+  await page.goto(linkIn(await waitForMail(email, "Confirmez votre adresse"))!);
 
   await expect(page.getByLabel("Nom de votre agence")).toBeVisible();
   await page.getByLabel("Nom de votre agence").fill("Studio Nina");
@@ -82,4 +89,32 @@ test("password reset: one-time link by mail, old link refused, new password work
   await fresh.getByRole("button", { name: "Se connecter" }).click();
   await fresh.waitForURL((url) => !url.pathname.startsWith("/connexion"));
   expect(new URL(fresh.url()).host).toBe(new URL(page.url()).host);
+});
+
+test("an unconfirmed account cannot sign in and gets its link again; signing up twice reveals nothing", async ({ browser }) => {
+  const email = `${unique("lent")}@agence.test`;
+  const ip = newIp();
+  const signUpAs = () =>
+    fetch(`${baseUrl()}/api/auth/sign-up/email`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl(), "x-forwarded-for": ip },
+      body: JSON.stringify({ name: "Léa Lente", email, password: PASSWORD }),
+    });
+  const first = await signUpAs();
+  expect(first.ok).toBe(true);
+  expect(first.headers.getSetCookie().some((cookie) => cookie.includes("session_token"))).toBe(false);
+  // The same address again: the same answer, and still no session.
+  const second = await signUpAs();
+  expect(second.status).toBe(first.status);
+  expect(second.headers.getSetCookie().some((cookie) => cookie.includes("session_token"))).toBe(false);
+
+  const before = mailsTo(email).length;
+  const { page } = await newPerson(browser);
+  await page.goto("/connexion");
+  await page.getByLabel("E-mail").fill(email);
+  await page.getByLabel("Mot de passe").fill(PASSWORD);
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Confirmez" })).toContainText("nous venons de vous renvoyer le lien");
+  await expect.poll(() => mailsTo(email).length).toBeGreaterThan(before);
+  expect(new URL(page.url()).pathname).toBe("/connexion");
 });
