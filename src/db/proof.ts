@@ -9,6 +9,7 @@ import type { Db } from "./client";
 import { organizations, users } from "./auth-schema";
 import { auditEvents, clients, commentProposals, comments, deliverables, files, projects, proposalVersions, storedFiles } from "./schema";
 import { deciderEventTypes } from "@/lib/clientRoles";
+import { clientFacingText } from "@/lib/internalNotes";
 import { sourceLine, type RequestSource } from "@/lib/requestSource";
 
 type Data = Record<string, unknown>;
@@ -135,7 +136,8 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
       id: row.id,
       // A client's remark: their name and the address the server verified.
       author: text(data.authorEmail) && text(data.authorEmail) !== text(data.author) ? `${text(data.author)} <${text(data.authorEmail)}>` : text(data.author),
-      message: text(data.message),
+      // An agency note's own words stay internal: the proof shows what the client was addressed.
+      message: clientFacingText(data),
       location: text(data.location),
       qualification: text(data.decision),
       title: text(data.title),

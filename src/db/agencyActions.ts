@@ -32,6 +32,7 @@ import {
 import { canManageAgency, reservedActions } from "./agencyPermissions";
 import type { Db } from "./client";
 import { commentProposals, deliverables, proposalVersions, reviewLinks, storedFiles } from "./schema";
+import { visibleToClient } from "./reviewAccess";
 import { mailQuoteToClient, type AgencyQuoteEvent } from "./reviewMails";
 import { applyChanges, type Writer } from "./state";
 import { readWorkspaceAction, workspaceChanges, type WorkspaceAction, type WorkspaceParams } from "./workspaceActions";
@@ -324,6 +325,8 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
         location: action.location ?? "Livrable (général)",
         decision: "À qualifier",
         kind: "remark",
+        // Its words are for the agency: the client gets its title and description once qualified (src/lib/internalNotes.ts).
+        internalNote: true,
         page: action.page ?? 1,
         ...(action.position ? { position: action.position } : {}),
         ...(action.area ? { area: action.area } : {}),
@@ -382,6 +385,14 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
     case "comment.qualify": {
       if (await settled()) return refused();
       if (action.decision === "À qualifier") {
+        // « À clarifier » chosen with a title, as from « + Demande »: the client sees it (visibleToClient).
+        if (action.title) {
+          const rest = { ...comment };
+          delete rest.description;
+          upsertComment({ ...rest, decision: "À qualifier", kind: "remark", title: action.title, ...(action.description ? { description: action.description } : {}) });
+          log.add("scope.classified", `Demande qualifiée « À clarifier » : ${action.title}`, action.commentId);
+          break;
+        }
         upsertComment({ ...comment, decision: "À qualifier", kind: "remark" });
         log.add("scope.classified", "Demande remise à clarifier", action.commentId);
         break;
@@ -399,8 +410,11 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
       if (await settled()) return refused();
       const taken = new Set(replies.map((reply) => reply.id));
       const replyId = action.id && !taken.has(action.id) ? action.id : Math.max(Date.now(), ...replies.map((reply) => Number(reply.id) + 1 || 0));
-      upsertComment({ ...comment, replies: [...replies, { id: replyId, ...signer, message: action.message, time: "À l'instant", createdAt: Date.now() }] });
-      log.add("reply.created", "Réponse agence ajoutée", action.commentId);
+      // Written while the client cannot see the request: it stays internal, even once the request shows.
+      const quotes = (await db.select({ data: proposalVersions.data }).from(proposalVersions).where(and(eq(proposalVersions.organizationId, org), eq(proposalVersions.commentId, action.commentId)))).map((row) => row.data);
+      const internal = !visibleToClient(comment, quotes);
+      upsertComment({ ...comment, replies: [...replies, { id: replyId, ...signer, message: action.message, time: "À l'instant", createdAt: Date.now(), internal }] });
+      log.add("reply.created", internal ? "Note interne de l’agence ajoutée" : "Réponse agence ajoutée", action.commentId);
       log.into(changes);
       return { changes, id: replyId };
     }

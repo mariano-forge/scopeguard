@@ -127,7 +127,7 @@ test("the client sees what is addressed to them: no agency pin without a status,
           request(32, "client", "Hors périmètre", "Ajout demandé par le client"),
           request(33, "agency", "Hors périmètre", "Carte interactive"),
           request(34, "agency", "À qualifier", "Quelle couleur ?"),
-          { id: 35, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Repère de l’agence", decision: "À qualifier", kind: "remark", location: "Page 1", page: 1, position: { x: 40, y: 40 }, time: "t" },
+          { id: 35, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Repère de l’agence", decision: "À qualifier", kind: "remark", location: "Page 1", page: 1, position: { x: 40, y: 40 }, time: "t", replies: [{ id: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "On le facture ?", time: "t" }] },
         ],
         remove: [],
       },
@@ -148,6 +148,21 @@ test("the client sees what is addressed to them: no agency pin without a status,
   const raw = JSON.stringify(answer.json);
   for (const secret of ["Section blog cachée", "4321", "9876", "Repère de l’agence"]) expect(raw).not.toContain(secret);
   expect((await clientAction(client, token, "comments/35/replies", "POST", { message: "Vu ?" })).status).toBe(404);
+  // Once the agency chooses its status, even « À clarifier », the pin shows, under its title.
+  expect((await call("/api/comments/35/qualification", { method: "PUT", person: alice, body: { decision: "À qualifier", title: "Taille du logo ?" } })).status).toBe(200);
+  const after = (await call(`/api/review/${token}`, { person: client })).json.state as { comments: { id: number; title?: string }[] };
+  // What the agency wrote for itself stays internal: the pin's words and the replies before it showed.
+  expect(after.comments.find((entry) => entry.id === 35)).toMatchObject({ title: "Taille du logo ?", message: "Taille du logo ?", replies: [] });
+  for (const internal of ["Repère de l’agence", "On le facture ?"]) expect(JSON.stringify(after)).not.toContain(internal);
+  // From now on, the thread is the conversation with the client.
+  expect((await call("/api/comments/35/replies", { method: "POST", person: alice, body: { message: "Pouvez-vous confirmer ?" } })).status).toBe(200);
+  expect((await clientAction(client, token, "comments/35/replies", "POST", { message: "Plus grand" })).status).toBe(200);
+  const thread = ((await call(`/api/review/${token}`, { person: client })).json.state as { comments: { id: number; replies: { message: string }[] }[] }).comments.find((entry) => entry.id === 35)!;
+  expect(thread.replies.map((reply) => reply.message)).toEqual(["Pouvez-vous confirmer ?", "Plus grand"]);
+  // The proof shows what the client was addressed, not the agency's note.
+  const proof = (await call("/api/proof/1", { person: alice })).json as { requests: { id: number; message: string }[] };
+  expect(proof.requests.find((request) => request.id === 35)?.message).toBe("Taille du logo ?");
+  expect(JSON.stringify(proof)).not.toContain("Repère de l’agence");
 
   // A request the client does not see cannot be reached through the API either.
   expect((await clientAction(client, token, "comments/31/replies", "POST", { message: "Je l’ai trouvée" })).status).toBe(404);

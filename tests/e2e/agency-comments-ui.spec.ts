@@ -47,11 +47,41 @@ test("a member comments, replies, edits and deletes in the editor; each write is
   expect(created.data).toMatchObject({ author: "Alice Martin", initials: "AM", from: "agency", decision: "À qualifier", deliverableId: 1, page: 1 });
   await expect.poll(async () => (await events(org, "comment.created")).map((event) => event.recorded_by)).toEqual([userId]);
   // A pin of the agency, no status chosen: the client does not see it yet, and the bubble says so.
-  await expect(page.getByRole("note").filter({ hasText: "Non visible par le client tant que vous ne l’avez pas qualifiée" })).toBeVisible();
+  const internal = page.getByRole("note").filter({ hasText: "Non visible par le client tant que vous ne l’avez pas qualifiée" });
+  await expect(internal).toBeVisible();
+  // The same three choices as « + Demande »: « À clarifier » chosen with a title makes it a request the client sees.
+  await page.getByRole("button", { name: "Créer une demande" }).click();
+  await page.getByRole("radio", { name: /^À clarifier/ }).click();
+  await page.getByLabel("Titre de la demande").fill("Taille du logo à confirmer");
+  await page.getByRole("button", { name: "Créer la demande" }).click();
+  await expect.poll(async () => (await agencyComments(org))[0].data).toMatchObject({ decision: "À qualifier", title: "Taille du logo à confirmer" });
+  await expect(internal).toHaveCount(0);
+  // Qualified, it is a request: its title, and « À clarifier » as its status, never « Commentaire » again.
+  const bubble = page.getByRole("dialog", { name: /^Demande à clarifier #\d+$/ });
+  await expect(bubble).toContainText("Demande n°");
+  await expect(bubble).toContainText("À clarifier · à préciser avec le client");
+  await expect(bubble).toContainText("Taille du logo à confirmer");
+  // The pin's own words were for the agency: labelled so, the client reads the title.
+  const internalLabels = page.getByText("· Interne, non visible par le client");
+  await expect(internalLabels).toHaveCount(1);
+  // Then « Inclus », then back to clarify: still a request.
+  await bubble.getByRole("button", { name: "Modifier", exact: true }).click();
+  await page.getByRole("radio", { name: /^Inclus/ }).click();
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await expect.poll(async () => (await agencyComments(org))[0].data.decision).toBe("Inclus");
+  const included = page.getByRole("dialog", { name: /^Demande incluse #\d+$/ });
+  await expect(included).toContainText("Inclus · prévu au devis");
+  await included.getByRole("button", { name: "Remettre à clarifier" }).click();
+  await expect.poll(async () => (await agencyComments(org))[0].data).toMatchObject({ decision: "À qualifier", title: "Taille du logo à confirmer" });
+  await expect(page.getByRole("dialog", { name: /^Demande à clarifier #\d+$/ })).toContainText("Demande n°");
+  await expect(page.getByText(/^Commentaire n°/)).toHaveCount(0);
 
   await page.getByRole("textbox", { name: "Répondre" }).fill("Version mobile aussi");
   await page.getByRole("button", { name: "Envoyer la réponse" }).click();
   await expect.poll(async () => ((await agencyComments(org))[0].data.replies as { message: string }[] | undefined)?.map((reply) => reply.message)).toEqual(["Version mobile aussi"]);
+  // Written once the request shows to the client: addressed to them, not internal.
+  expect(((await agencyComments(org))[0].data.replies as { internal: boolean }[])[0].internal).toBe(false);
+  await expect(internalLabels).toHaveCount(1);
   await expect.poll(async () => (await events(org, "reply.created")).length).toBe(1);
 
   await page.getByRole("button", { name: "Modifier le message" }).first().click();
@@ -69,6 +99,10 @@ test("a member comments, replies, edits and deletes in the editor; each write is
   // One request per action; nothing of it through the generic state sync.
   expect(writes.filter((write) => write.includes("/api/comments"))).toEqual([
     "POST /api/comments",
+    // « À clarifier » with a title, « Inclus », back to clarify.
+    expect.stringMatching(/^PUT \/api\/comments\/\d+\/qualification$/),
+    expect.stringMatching(/^PUT \/api\/comments\/\d+\/qualification$/),
+    expect.stringMatching(/^PUT \/api\/comments\/\d+\/qualification$/),
     expect.stringMatching(/^POST \/api\/comments\/\d+\/replies$/),
     expect.stringMatching(/^PATCH \/api\/comments\/\d+$/),
     expect.stringMatching(/^DELETE \/api\/comments\/\d+\/replies\/\d+$/),
