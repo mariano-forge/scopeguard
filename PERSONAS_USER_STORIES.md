@@ -807,9 +807,9 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 
 **Critères d'acceptation**
 
-- Sans compte, le lien mène à la page de connexion avec l'adresse invitée pré-remplie et l'onglet « Créer un compte » ouvert.
+- Sans compte, le lien mène à la page de connexion sur l'onglet « Créer un compte », avec le nom de l'agence et l'adresse invitée masquée (« c•••••@agence.fr ») ; la personne saisit elle-même son adresse, que le serveur vérifie à l'acceptation. Quelqu'un qui détiendrait le lien n'apprend pas l'adresse.
 - Après connexion, la page d'invitation propose « Rejoindre l'agence » ou « Refuser ».
-- Un compte connecté avec une autre adresse voit « Ce n'est pas le bon compte » et peut changer de compte.
+- Un compte connecté avec une autre adresse voit « Ce n'est pas le bon compte », avec l'adresse invitée masquée, et peut changer de compte.
 - Une invitation expirée, annulée ou déjà utilisée affiche un message clair.
 - Les invitations en attente sont aussi proposées sur la page « Bienvenue ».
 

@@ -70,8 +70,8 @@ export function SignInForm({
   next: string;
   googleEnabled: boolean;
   oauthError?: string;
-  /** Opened from an agency invitation: its address is pre-filled. */
-  invitation?: { email: string; organizationName: string };
+  /** Opened from an agency invitation: the agency, and the invited address masked (never whole). */
+  invitation?: { maskedEmail: string; organizationName: string };
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<"sign-in" | "sign-up" | "forgot">(invitation ? "sign-up" : "sign-in");
@@ -168,7 +168,7 @@ export function SignInForm({
     <div className="grid gap-4">
       {invitation && (
         <p className="rounded-[var(--r-field)] bg-[var(--status-low-bg)] px-3 py-2 text-sm text-[var(--status-low-text)]">
-          Rejoignez <b>{invitation.organizationName}</b> : créez votre compte ou connectez-vous avec <b>{invitation.email}</b>.
+          Rejoignez <b>{invitation.organizationName}</b> : créez votre compte ou connectez-vous avec l’adresse invitée, <b>{invitation.maskedEmail}</b>.
         </p>
       )}
       <Tabs value={mode} onValueChange={(value) => (setMode(value as "sign-in" | "sign-up"), setError(""), setNotice(""))}>
@@ -179,7 +179,7 @@ export function SignInForm({
         <TabsContent value={mode}>
           <form className="mt-4 grid gap-4" onSubmit={submit}>
             {mode === "sign-up" && <Field id="name" label="Nom complet" autoComplete="name" maxLength={100} />}
-            <Field id="email" label="E-mail" type="email" autoComplete="email" defaultValue={invitation?.email} />
+            <Field id="email" label="E-mail" type="email" autoComplete="email" />
             <div className="grid gap-1.5">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Mot de passe</Label>

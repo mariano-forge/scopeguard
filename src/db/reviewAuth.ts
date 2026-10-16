@@ -23,6 +23,7 @@ import type { CurrentUser } from "@/lib/session";
 import { expired, type ReviewAccess } from "./reviewAccess";
 import { sendMail } from "@/lib/mail";
 import { renderMail } from "@/lib/mailTemplates";
+import { maskEmail } from "@/lib/maskEmail";
 import { agencyHref, managersOf, reviewUrl } from "./mailTargets";
 import { roleOfInvite, type ClientRole } from "@/lib/clientRoles";
 
@@ -58,14 +59,8 @@ export const inviteRole = (link: Data, email: string) => roleOfInvite(invitesOf(
 export const invitationEmail = (link: Data, invitationId: string | null) =>
   (invitationId && invitesOf(link).find((invite) => invite.id === invitationId)?.email) || null;
 
-/**
- * "c•••••@client.test": what a personal link shows before verification. Whoever holds the link (a
- * forwarded mail, a ticket) recognises nothing more than the first letter and the domain.
- */
-export function maskEmail(email: string) {
-  const [local, domain] = email.split("@");
-  return `${local.slice(0, 1)}${"•".repeat(Math.max(3, Math.min(local.length - 1, 8)))}@${domain}`;
-}
+/** What a personal link shows before verification (src/lib/maskEmail.ts). */
+export { maskEmail };
 
 /** The address a code is asked for: the invitation's when the page names one (personal link), else the one typed. */
 export const requestedEmail = (link: Data, body: Record<string, unknown>) =>
