@@ -415,6 +415,8 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 - L'identité, la date et la version sont enregistrées (adresse e-mail vérifiée, heure du serveur).
 - La version approuvée devient verrouillée : le serveur refuse ensuite toute écriture du client sur cette version, et une approbation ne peut pas être annulée par le client.
 - **Seul le client approuve une version** : l'agence, même son propriétaire, n'a aucun moyen de le faire à sa place.
+- Une version ne se valide pas tant qu'un devis envoyé attend la décision du client : la fenêtre de validation liste ces devis, à accepter ou refuser un par un, et le serveur refuse la validation sinon. Aucun devis n'est refusé implicitement.
+- *À venir* : la validation « avec réserves », qui liste les corrections encore ouvertes et les inscrit dans la preuve.
 - L'agence reçoit une notification.
 - L'agence peut rouvrir la validation d'une version (« Rouvrir la validation ») en expliquant pourquoi ; la raison est inscrite au journal.
 

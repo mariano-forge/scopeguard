@@ -107,12 +107,21 @@ test("quotes: decided once, adaptations only when allowed, nothing on a quote no
   expect(quote.data.status).toBe("refused");
 });
 
-test("the version: changes requested, then approved once; after that, every action is refused", async () => {
+test("the version: changes requested, approved once its quotes are decided; after that, every action is refused", async () => {
   const { org, act } = await review();
   expect((await act("changes-request", "POST", { message: "" })).status).toBe(400);
   expect((await act("changes-request", "POST", { message: "Revoir les couleurs" })).status).toBe(200);
   const events = await sql<{ type: string; description: string }>("select data->>'type' as type, data->>'description' as description from audit_events where organization_id = $1", [org]);
   expect(events).toContainEqual({ type: "review.changes-requested", description: "Le client demande des modifications : « Revoir les couleurs »" });
+
+  // Two sent quotes still wait for the client: no validation that would freeze them undecided.
+  const early = await act("approval", "POST");
+  expect(early.status).toBe(409);
+  expect(early.json.error).toContain("2 propositions attendent votre décision");
+  expect((await sql<{ review_status: string | null }>("select review_status from deliverables where organization_id = $1 and id = 1", [org]))[0].review_status).toBe("changes-requested");
+  expect((await act("proposals/10/decision", "POST", { decision: "accepted" })).status).toBe(200);
+  expect((await act("approval", "POST")).json.error).toContain("1 proposition attend votre décision");
+  expect((await act("proposals/11/decision", "POST", { decision: "refused" })).status).toBe(200);
 
   expect((await act("approval", "POST")).status).toBe(200);
   const [version] = await sql<{ review_status: string; locked: boolean }>("select review_status, locked from deliverables where organization_id = $1 and id = 1", [org]);

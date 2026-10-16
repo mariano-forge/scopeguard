@@ -90,7 +90,7 @@ test("the client comments, replies, edits and deletes on the page; the server si
   expect(errors).toEqual([]);
 });
 
-test("the client accepts one quote, asks to adapt another, then approves the version", async ({ browser }) => {
+test("the client accepts one quote, asks to adapt another, decides it when validating, then approves", async ({ browser }) => {
   const { org, email, page, errors, writes } = await clientPage(browser);
   await page.getByRole("tab", { name: /Hors scope/ }).click();
 
@@ -114,7 +114,15 @@ test("the client accepts one quote, asks to adapt another, then approves the ver
     .toBe("Seulement le formulaire, sans carte");
   await expect.poll(async () => (await eventsOf(org, "proposal.adaptation-requested")).length).toBe(1);
 
+  // The quote under a counter-proposal still waits: decided from the validation dialog first.
   await page.getByRole("button", { name: "Valider cette version" }).click();
+  const waiting = page.getByRole("list", { name: "Propositions en attente de votre décision" });
+  await expect(waiting.getByRole("listitem")).toHaveCount(1);
+  await expect(waiting).toContainText("Formulaire de contact");
+  await expect(page.getByRole("button", { name: "Confirmer la validation" })).toBeDisabled();
+  await waiting.getByRole("button", { name: "Refuser « Formulaire de contact »" }).click();
+  await expect(waiting).toHaveCount(0);
+  await expect.poll(async () => (await sql<{ decision: string }>("select decision from comment_proposals where organization_id = $1 and comment_id = 11", [org]))[0]?.decision).toBe("refused");
   await page.getByRole("button", { name: "Confirmer la validation" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Validée" })).toBeVisible();
   await expect.poll(async () => (await sql<{ review_status: string; locked: boolean }>("select review_status, locked from deliverables where organization_id = $1 and id = 1", [org]))[0]).toEqual({
@@ -127,6 +135,7 @@ test("the client accepts one quote, asks to adapt another, then approves the ver
   expect(writes).toEqual([
     "POST /api/review/:token/proposals/10/decision",
     "POST /api/review/:token/proposals/11/adaptation",
+    "POST /api/review/:token/proposals/11/decision",
     "POST /api/review/:token/approval",
   ]);
 

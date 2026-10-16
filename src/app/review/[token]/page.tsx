@@ -626,6 +626,11 @@ export default function ClientReviewPage() {
   const sharedComments = comments.filter(
     (comment) => (comment.deliverableId ?? comments[0]?.deliverableId ?? sharedDeliverableId) === sharedDeliverableId,
   );
+  // Quotes still waiting for this client: decided before validating, since the version then locks
+  // (the server refuses the validation otherwise, src/db/reviewActions.ts).
+  const quotesToDecide = sharedComments.filter(
+    (comment) => proposalStates[comment.id] === "sent" && (proposalDecisions[comment.id] ?? "none") === "none" && !adaptationRequests[comment.id]?.decision,
+  );
   // Canvas threads: corrections and remarks (older "À traiter" counts as to clarify).
   const canvasComments: (ThreadComment & { page?: number; sourceId?: number })[] = sharedComments.map((comment) => ({
     ...comment,
@@ -998,16 +1003,48 @@ export default function ClientReviewPage() {
         onClose={() => setApprovalOpen(false)}
         role="alertdialog"
         title="Valider cette version ?"
-        description="L’agence en est informée et la version passe en lecture seule."
+        description={
+          quotesToDecide.length
+            ? "Avant de valider, décidez de chaque proposition en attente : une fois validée, la version est verrouillée."
+            : "L’agence en est informée et la version passe en lecture seule."
+        }
         footer={
           <>
             <Button variant="outline" onClick={() => setApprovalOpen(false)}>
               Annuler
             </Button>
-            <Button onClick={confirmApproval}>Confirmer la validation</Button>
+            <Button onClick={confirmApproval} disabled={quotesToDecide.length > 0}>
+              Confirmer la validation
+            </Button>
           </>
         }
-      />
+      >
+        {quotesToDecide.length > 0 && (
+          <ul className="grid gap-2" aria-label="Propositions en attente de votre décision">
+            {quotesToDecide.map((comment) => {
+              const proposal = activeProposalFor(comment.id);
+              return (
+                <li key={comment.id} className="grid gap-2 rounded-[var(--r-field)] border border-[var(--border)] px-3 py-2 text-sm">
+                  <span className="grid gap-0.5">
+                    <b className="font-medium">{comment.title ?? comment.message}</b>
+                    <span className="text-muted-foreground">
+                      {formatProposalAmount(proposal?.amount)} HT · {formatProposalDeadline(proposal?.deadline)}
+                    </span>
+                  </span>
+                  <span className="flex justify-end gap-2">
+                    <Button size="sm" variant="outline" aria-label={`Refuser « ${comment.title ?? comment.message} »`} onClick={() => decideProposal(comment.id, "refused")}>
+                      Refuser
+                    </Button>
+                    <Button size="sm" aria-label={`Accepter « ${comment.title ?? comment.message} »`} onClick={() => decideProposal(comment.id, "accepted")}>
+                      Accepter
+                    </Button>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Modal>
     </main>
   );
 }
