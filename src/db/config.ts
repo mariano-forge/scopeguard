@@ -4,7 +4,8 @@
 //   DATABASE_TARGET=remote   -> DATABASE_URL_REMOTE (Supabase today, Azure PostgreSQL later)
 //
 // For a remote server the connection is encrypted. Set DATABASE_SSL_CA to the provider's CA
-// certificate (PEM file) to also verify the server; without it the certificate is not checked.
+// certificate to also verify the server: a file path (local), or the PEM text itself (hosts such as
+// Vercel, where no file is deployed). Without it the certificate is not checked.
 
 import { readFileSync } from "node:fs";
 
@@ -19,12 +20,12 @@ export function databaseConfig() {
   const url = process.env[variable];
   if (!url) throw new Error(`DATABASE_TARGET is "${target}" but ${variable} is not set (see .env.example).`);
 
-  const caPath = process.env.DATABASE_SSL_CA;
+  const ca = process.env.DATABASE_SSL_CA;
   const ssl =
     target === "local"
       ? false
-      : caPath
-        ? { ca: readFileSync(caPath, "utf8"), rejectUnauthorized: true }
+      : ca
+        ? { ca: ca.includes("-----BEGIN") ? ca.replace(/\\n/g, "\n") : readFileSync(ca, "utf8"), rejectUnauthorized: true }
         : { rejectUnauthorized: false };
 
   return { target, url, ssl };

@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, BadgeEuro, ChevronDown, ClipboardCheck, Pencil, Tag, Trash2, Undo2, X } from "lucide-react";
 import { Hint } from "@/components/hint";
 import { Button } from "@/components/ui/button";
+import { sideOf, type Side } from "@/lib/authors";
 
 /**
  * One request, three states:
@@ -15,7 +16,7 @@ import { Button } from "@/components/ui/button";
 export type Qualification = "À qualifier" | "Inclus" | "Hors périmètre";
 export type RequestKind = "comment" | "correction" | "outside";
 
-type ThreadReply = { id: number; author: string; initials: string; message: string; time: string; createdAt?: number; edited?: boolean };
+type ThreadReply = { id: number; author: string; initials: string; message: string; time: string; createdAt?: number; edited?: boolean; from?: Side };
 
 /** Current time, refreshed every 15 s (for "il y a 5 min"). */
 export function useNow() {
@@ -50,6 +51,8 @@ export type ThreadComment = {
   edited?: boolean;
   author: string;
   initials: string;
+  /** Who wrote it (older comments: from their initials, see src/lib/authors.ts). */
+  from?: Side;
   time: string;
   /** When it was written (ms); older data only has `time`. */
   createdAt?: number;
@@ -124,7 +127,7 @@ export function CommentPin({
     <button
       type="button"
       data-pin={comment.id}
-      className={`canvas-pin is-${kind} ${active ? "is-active" : ""} ${moving ? "is-moving" : ""} ${comment.initials === "AM" ? "is-agency" : "is-client"}`}
+      className={`canvas-pin is-${kind} ${active ? "is-active" : ""} ${moving ? "is-moving" : ""} ${sideOf(comment) === "agency" ? "is-agency" : "is-client"}`}
       style={{ left: `${comment.position?.x ?? 50}%`, top: `${comment.position?.y ?? 50}%` }}
       onClick={(event) => {
         event.stopPropagation();
@@ -165,7 +168,7 @@ function ThreadMessage({
     setEditing(false);
   };
   return (
-    <div className={`thread-message ${message.initials === "AM" ? "is-agency" : "is-client"}`}>
+    <div className={`thread-message ${sideOf(message) === "agency" ? "is-agency" : "is-client"}`}>
       <span className="thread-avatar" aria-hidden="true">
         {message.initials}
       </span>
@@ -312,8 +315,8 @@ export function ThreadPopover({
   onOpenProposal?: () => void;
   onDelete?: () => void;
   onClose: () => void;
-  /** Initials of the reader: their own messages can be edited or deleted while the discussion is open. */
-  me?: string;
+  /** The side this page writes for (agency or client): its messages can be edited or deleted while the discussion is open. */
+  me?: Side;
   /** Edits a message (0 = the comment itself). */
   onEditMessage?: (messageId: number, message: string) => void;
   /** Deletes a reply (the comment itself is deleted with onDelete). */
@@ -345,7 +348,10 @@ export function ThreadPopover({
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [comment.replies?.length]);
 
-  const messages = [{ id: 0, author: comment.author, initials: comment.initials, message: comment.message, time: comment.time, createdAt: comment.createdAt, edited: comment.edited }, ...(comment.replies ?? [])];
+  const messages = [
+    { id: 0, author: comment.author, initials: comment.initials, from: comment.from, message: comment.message, time: comment.time, createdAt: comment.createdAt, edited: comment.edited },
+    ...(comment.replies ?? []),
+  ];
   return (
     <div
       ref={bubbleRef}
@@ -527,7 +533,7 @@ export function ThreadPopover({
                 message={message}
                 now={now}
                 // Own messages, while the discussion is open.
-                editable={Boolean(me) && message.initials === me && kind === "comment" && canWrite}
+                editable={Boolean(me) && sideOf(message) === me && kind === "comment" && canWrite}
                 onEdit={onEditMessage ? (text) => onEditMessage(message.id, text) : undefined}
                 onDelete={message.id === 0 ? onDelete : onDeleteMessage ? () => onDeleteMessage(message.id) : undefined}
               />

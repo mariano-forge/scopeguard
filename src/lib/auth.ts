@@ -3,6 +3,7 @@
 //
 // Security choices:
 // - passwords hashed with scrypt, at least 10 characters; sessions in httpOnly cookies (Secure in production);
+// - an address is confirmed by a mailed link before its first session (Google addresses come verified);
 // - a Google sign-in is never linked to an existing password account automatically: e-mail addresses are
 //   not verified at sign-up (no e-mail provider yet), so someone could have registered with another
 //   person's address before them;
@@ -22,6 +23,7 @@ import { organization } from "better-auth/plugins";
 import { getDb } from "@/db/client";
 import { accounts, invitations, members, organizations, rateLimits, sessions, users, verifications } from "@/db/auth-schema";
 import { appUrl, sendMail } from "./mail";
+import { renderMail } from "./mailTemplates";
 
 export const googleSignInEnabled = () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
@@ -47,13 +49,41 @@ function createAuth() {
     }),
     emailAndPassword: {
       enabled: true,
+      // The address is confirmed by a link before any session: nobody works under someone else's address.
+      requireEmailVerification: true,
       minPasswordLength: 10,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
         await sendMail({
           to: user.email,
           subject: "Réinitialiser votre mot de passe Kora",
-          text: `Pour choisir un nouveau mot de passe, ouvrez ce lien (valable une heure) :\n${url}\n\nSi vous n'avez rien demandé, ignorez cet e-mail.`,
+          ...renderMail({
+            preheader: "Choisissez un nouveau mot de passe",
+            heading: "Nouveau mot de passe",
+            paragraphs: ["Pour choisir un nouveau mot de passe, ouvrez ce lien. Il est valable une heure et ne sert qu’une fois."],
+            action: { label: "Choisir un mot de passe", href: url },
+            footer: "Vous recevez cet e-mail parce qu’une réinitialisation a été demandée pour votre compte Kora. Si ce n’est pas vous, ignorez-le : votre mot de passe ne change pas.",
+          }),
+        });
+      },
+    },
+    emailVerification: {
+      sendOnSignUp: true,
+      // An unconfirmed sign-in is refused and gets the link again.
+      sendOnSignIn: true,
+      autoSignInAfterVerification: true,
+      expiresIn: 60 * 60 * 24,
+      sendVerificationEmail: async ({ user, url }) => {
+        await sendMail({
+          to: user.email,
+          subject: "Confirmez votre adresse e-mail Kora",
+          ...renderMail({
+            preheader: "Un clic pour activer votre compte",
+            heading: "Confirmez votre adresse",
+            paragraphs: [`Bonjour ${user.name}, confirmez que cette adresse est bien la vôtre pour activer votre compte Kora. Le lien est valable 24 heures.`],
+            action: { label: "Confirmer mon adresse", href: url },
+            footer: "Vous recevez cet e-mail parce qu’un compte Kora a été créé avec cette adresse. Si ce n’est pas vous, ignorez-le : le compte ne sera pas activé.",
+          }),
         });
       },
     },
@@ -89,7 +119,17 @@ function createAuth() {
           await sendMail({
             to: email,
             subject: `${inviter.user.name} vous invite à rejoindre ${agency.name} sur Kora`,
-            text: `${inviter.user.name} vous invite à rejoindre l'agence ${agency.name} sur Kora.\n\nRejoindre l'agence : ${appUrl()}/invitation/${id}\n\nConnectez-vous ou créez votre compte avec cette adresse (${email}). L'invitation est valable 7 jours.`,
+            replyTo: inviter.user.email,
+            ...renderMail({
+              preheader: `Rejoignez l’équipe de ${agency.name}`,
+              heading: `Rejoignez ${agency.name}`,
+              paragraphs: [
+                `${inviter.user.name} vous invite à rejoindre l’agence ${agency.name} sur Kora.`,
+                `Connectez-vous ou créez votre compte avec cette adresse (${email}). L’invitation est valable 7 jours.`,
+              ],
+              action: { label: "Rejoindre l’agence", href: `${appUrl()}/invitation/${id}` },
+              footer: `Vous recevez cet e-mail parce que ${inviter.user.name} vous a invité sur Kora. Répondez à cet e-mail pour lui écrire.`,
+            }),
           });
         },
       }),

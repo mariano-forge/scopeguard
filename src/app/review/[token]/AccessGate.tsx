@@ -205,3 +205,54 @@ export function AccessGate({
     </AuthShell>
   );
 }
+
+/**
+ * After a client's first verification: their full name, shown on what they write instead of their
+ * address. Asked once per address (review_profiles).
+ */
+export function ProfileGate({ token, deliverable, email, onSaved }: { token: string; deliverable: string; email: string; onSaved: (name: string) => void }) {
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setPending(true);
+    setError("");
+    const response = await fetch(`/api/review/${encodeURIComponent(token)}/access/profile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).catch(() => null);
+    const result = (await response?.json().catch(() => null)) as { name?: string; error?: string } | null;
+    setPending(false);
+    if (response?.ok && result?.name) onSaved(result.name);
+    else setError(result?.error ?? "Enregistrement impossible. Réessayez.");
+  }
+
+  return (
+    <AuthShell>
+      <form className="grid gap-4" onSubmit={save}>
+        <div className="grid gap-1">
+          <p className="text-xs font-semibold tracking-wide text-[var(--graphite)] uppercase">Revue · {deliverable || "livrable"}</p>
+          <h1 className="font-heading text-lg font-bold">Comment vous appelez-vous ?</h1>
+          <p className="text-sm text-[var(--graphite)]">
+            Votre nom accompagnera vos retours et vos validations. Votre adresse <b>{email}</b> est vérifiée.
+          </p>
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="profile-name">Nom complet</Label>
+          <Input id="profile-name" required minLength={2} maxLength={80} autoComplete="name" autoFocus placeholder="Claire Martin" value={name} onChange={(event) => setName(event.target.value)} />
+        </div>
+        {error && (
+          <p role="alert" className="rounded-[var(--r-field)] bg-[var(--status-high-bg)] px-3 py-2 text-sm text-[var(--status-high-text)]">
+            {error}
+          </p>
+        )}
+        <Button type="submit" size="lg" disabled={pending || name.trim().length < 2}>
+          Accéder à la revue
+        </Button>
+      </form>
+    </AuthShell>
+  );
+}

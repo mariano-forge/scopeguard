@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Building2, Check, LogOut, Users } from "lucide-react";
 import type { CurrentUser } from "@/lib/session";
 import { authClient } from "@/lib/auth-client";
+import { initialsOf } from "@/lib/authors";
 import { TeamDialog } from "./TeamDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -21,10 +22,6 @@ export function useCurrentUser() {
   return user;
 }
 
-export function initialsOf(name: string) {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  return ((words[0]?.[0] ?? "") + (words.length > 1 ? words[words.length - 1][0] : (words[0]?.[1] ?? ""))).toUpperCase() || "?";
-}
 
 /** Avatar (and name, outside the rail) opening the account menu: team, agency switch, sign-out. */
 export function AccountMenu({ compact = false }: { compact?: boolean }) {

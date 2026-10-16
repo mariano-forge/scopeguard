@@ -5,7 +5,10 @@ import "server-only";
 import { cookies } from "next/headers";
 import { getDb } from "@/db/client";
 import { findReviewAccess, type ReviewAccess } from "@/db/reviewAccess";
+import { readReviewAction, runReviewAction, type ReviewAction } from "@/db/reviewActions";
 import { isInvited, reviewSessionCookie, reviewSessionDays, reviewSessionEmail } from "@/db/reviewAuth";
+import { requestLimit, tooManyRequests, withinLimit } from "@/db/requestLimits";
+import { databaseFailure, requestOrigin } from "./api";
 import { getCurrentUser, isMemberOf } from "./session";
 
 export type ReviewViewer =
@@ -47,5 +50,34 @@ export async function readBody(request: Request): Promise<Record<string, unknown
     return body && typeof body === "object" && !Array.isArray(body) ? body : {};
   } catch {
     return {};
+  }
+}
+
+/**
+ * One client action on a review (routes under /api/review/:token/, see src/db/reviewActions.ts):
+ * a verified client of this link, within the write limit; the agency's preview only reads.
+ * Cross-site requests are refused by src/proxy.ts.
+ */
+export async function reviewActionResponse(
+  request: Request,
+  token: string,
+  type: ReviewAction["type"],
+  params: { commentId?: string; replyId?: string } = {},
+) {
+  const body = request.method === "DELETE" ? {} : await readBody(request);
+  const action = readReviewAction(type, body, params);
+  if (!action) return Response.json({ error: "Requête invalide" }, { status: 400 });
+  try {
+    const viewer = await getReviewViewer(token);
+    if (!viewer) return reviewNotFound();
+    if (viewer.mode === "preview") return Response.json({ error: "Aperçu agence : lecture seule" }, { status: 403 });
+    if (viewer.mode === "none") return Response.json({ error: "Vérification de votre adresse requise" }, { status: 401 });
+    const db = getDb();
+    if (!(await withinLimit(db, `client-write:${viewer.email}`, requestLimit.writes()))) return tooManyRequests();
+    const result = await runReviewAction(db, viewer.access, viewer.email, requestOrigin(request), action);
+    if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+    return Response.json({ revision: result.revision, ...(result.id ? { id: result.id } : {}) });
+  } catch (error) {
+    return databaseFailure(`api/review ${type}`, error);
   }
 }

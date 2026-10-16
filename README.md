@@ -222,13 +222,15 @@ agence-<agence>/projets/<id>/livrables/<id>/couverture/<sha256>.<ext>
 
 Le fichier est nommé par son empreinte SHA-256 : une version ne peut pas changer de contenu sans changer de nom. Les chemins utilisent les identifiants, pas les noms, et ne bougent pas si l'on renomme ou déplace un projet (la base fait foi). Les pages n'accèdent jamais au stockage : `/api/files/<id>` vérifie que la personne est membre de l'agence, ou client vérifié invité sur une revue qui montre ce fichier, puis redirige vers une adresse en lecture seule valable 5 minutes. La taille maximale d'un import est `MAX_UPLOAD_MB` (50 par défaut).
 
-- Le compte Azure reçoit une règle CORS de lecture (toutes origines, GET) : le lecteur PDF suit la redirection avec une origine « null ». Sans adresse signée, rien n'est lisible.
+L'import ne passe pas par l'application (dont l'hébergeur limite la taille des requêtes, 4,5 Mo sur Vercel) : la page calcule l'empreinte du fichier et demande une autorisation (`POST /api/files/upload`), qui vérifie session, place, taille et limite de débit. Elle reçoit une adresse d'écriture valable 15 minutes, qui ne permet que de créer ce fichier-là (ni le lire, ni en remplacer un autre), et un jeton signé par le serveur. Elle envoie le fichier à Azure, puis demande sa validation (`POST /api/files/complete`) : le serveur relit le fichier dans le stockage et recalcule lui-même l'empreinte ; s'il ne correspond pas à celui annoncé, il est supprimé et refusé (`src/lib/upload.ts`, `prepareUpload` et `completeUpload` dans `src/lib/storage.ts`). Sur une page sans Web Crypto (ni HTTPS, ni localhost), l'import repasse par `POST /api/files`.
+
+- Le compte Azure reçoit une règle CORS (toutes origines, GET, HEAD et PUT) : le lecteur PDF suit la redirection avec une origine « null », et la page envoie les fichiers directement. Sans adresse signée, rien n'est lisible ni modifiable.
 - pdf.js est chargé dans sa version « legacy » (`next.config.ts`) : la version moderne exige des navigateurs très récents.
-- Les fichiers importés avant ce changement restent servis depuis Postgres (table `files`), sans contrôle d'accès, en attendant d'être migrés.
+- Les fichiers importés avant ce changement (table `files` de Postgres) ne sont plus servis : réimportez-les si besoin.
 
 ### Connexion
 
-L'espace agence demande un compte (`/connexion`) : e-mail et mot de passe, ou Google si `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` sont renseignés.
+L'espace agence demande un compte (`/connexion`) : e-mail et mot de passe, ou Google si `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` sont renseignés. L'adresse est confirmée par un lien envoyé par e-mail avant la première connexion (les comptes créés avant cette règle sont considérés comme confirmés, migration `0008`).
 
 Chaque compte travaille dans une agence. Après l'inscription, la personne crée la sienne (`/bienvenue`) et en devient propriétaire, ou rejoint celle qui l'a invitée. Le propriétaire et les administrateurs invitent leurs collègues depuis le menu du compte, « Équipe » : l'invité reçoit un lien `/invitation/:id` qu'il ne peut accepter qu'avec l'adresse invitée. Toutes les données sont rangées par agence (`organization_id` dans chaque clé primaire) et le serveur filtre chaque requête sur l'agence du membre ; retirer quelqu'un de l'équipe lui coupe l'accès immédiatement.
 
@@ -242,8 +244,48 @@ Le serveur refuse ces actions à un membre (`src/db/agencyPermissions.ts`), l'in
 
 Le client n'a ni compte ni mot de passe. L'agence l'invite par e-mail depuis « Partager la revue » ; il reçoit un lien personnel qui pré-remplit son adresse, puis confirme avec un code à 6 chiffres envoyé à cette adresse. L'appareil est ensuite reconnu 30 jours. Avec le lien copié-collé, seule une adresse invitée reçoit un code ; les autres peuvent demander l'accès, que l'agence accepte ou refuse. Retirer une invitation coupe l'accès immédiatement. Le lien ne donne accès qu'à la version partagée, et le serveur n'accepte du client que ses propres commentaires, ses décisions sur les propositions envoyées et la validation, signés de son adresse vérifiée (voir `src/db/reviewAuth.ts` et `src/db/reviewAccess.ts`).
 
-- E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (offre gratuite Resend). Sans eux, en développement, invitations, codes et liens « Mot de passe oublié » s'affichent dans la console du serveur ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
-- Les fichiers (`/api/files/…`) sont accessibles à qui connaît leur adresse, une empreinte impossible à deviner.
+La page du client écrit une action à la fois, chacune sur sa route (`src/db/reviewActions.ts`). Le serveur construit la modification à partir de ce qu'il a en base, la passe par les règles du client, puis l'applique en une transaction, avec son événement d'audit et, pour une décision, la notification de l'agence. Une action que les règles refusent est refusée en entier (409).
+
+| Route (`/api/review/:token/…`) | Action |
+| --- | --- |
+| `POST comments` | Commentaire sur la version |
+| `PATCH comments/:id` | Modifier son commentaire (`message`) ou déplacer son repère (`page`, `x`, `y`) |
+| `DELETE comments/:id` | Supprimer son commentaire, tant que l'agence ne l'a pas qualifié |
+| `POST comments/:id/replies` | Répondre dans un fil de la version |
+| `PATCH`, `DELETE comments/:id/replies/:replyId` | Modifier ou supprimer sa réponse |
+| `POST proposals/:id/decision` | Accepter ou refuser un devis envoyé, une seule fois |
+| `POST proposals/:id/adaptation` | Demander une adaptation, si l'agence l'a permise |
+| `POST changes-request` | Demander des modifications |
+| `POST approval` | Valider la version, ce qui la verrouille |
+
+Seul le client valide une version, depuis sa page : l'agence n'a aucune route pour le faire. L'agence suit le même chemin pour toutes ses écritures (`src/db/agencyActions.ts`, `src/db/workspaceActions.ts`) : le serveur signe chaque message avec le membre, refuse toute écriture sur une version validée ou remplacée et sur une demande dont le devis est tranché, et applique aux membres les réserves de `src/db/agencyPermissions.ts`. `/api/state` est en lecture seule : les pages lisent l'état et le relisent après chaque action.
+
+| Route (`/api/comments…`) | Action de l'agence |
+| --- | --- |
+| `POST /api/comments` | Commentaire (`deliverableId`, `message`…), demande déjà qualifiée (`request`), ou commentaire remis après sa suppression (`restore`) |
+| `PATCH /api/comments/:id` | Modifier un message de l'agence (`message`) ou déplacer un repère (`page`, `x`, `y`) |
+| `DELETE /api/comments/:id` | Supprimer un commentaire de l'agence |
+| `PUT /api/comments/:id/qualification` | « À traiter », « Hors scope » avec un chiffrage en brouillon, ou retour « À clarifier » |
+| `POST /api/comments/:id/replies` | Répondre |
+| `PATCH`, `DELETE /api/comments/:id/replies/:replyId` | Modifier ou supprimer une réponse de l'agence |
+| `POST /api/comments/:id/proposal` | Envoyer un premier devis écrit dans la fenêtre de proposition (administrateurs) |
+| `POST /api/comments/:id/proposal/send` | Envoyer le devis en brouillon (administrateurs) |
+| `POST /api/comments/:id/proposal/versions` | Nouvelle version : envoyée à la place du devis en attente (`send: true`, administrateurs), ou rechiffrage après un refus, en brouillon (`send: false`) |
+| `POST /api/comments/:id/adaptation/decision` | Accepter ou refuser la contre-proposition du client (administrateurs) |
+| `POST /api/deliverables/:id/review-link` | Lien client de la version : l'actif, ou un nouveau au jeton tiré par le serveur |
+| `DELETE /api/deliverables/:id/review-link` | Révoquer le lien (administrateurs) |
+| `DELETE /api/deliverables/:id/review-link/invites/:email` | Retirer une invitation, ce qui coupe l'accès de cette adresse |
+| `POST /api/deliverables/:id/reopen` | Rouvrir la validation, avec la raison dans le journal |
+| `PATCH /api/deliverables/:id/review-link` | Expiration du lien après 7 jours, ou jamais (`autoExpire`) |
+| `POST /api/spaces`, `PATCH`, `DELETE /api/spaces/:id` | Créer, renommer, supprimer un espace (suppression : administrateurs) |
+| `POST /api/projects`, `PATCH`, `DELETE /api/projects/:id` | Créer, renommer (`name`), déplacer (`clientId`), supprimer un projet (suppression : administrateurs) |
+| `POST /api/deliverables` | Nouveau livrable, ses fichiers importés au préalable |
+| `POST /api/deliverables/:id/versions` | Nouvelle version : les précédentes sont figées |
+| `PATCH`, `DELETE /api/deliverables/:id` | Renommer (`name`), déplacer (`projectId`) ou mettre à la corbeille toutes les versions d'un livrable |
+| `POST /api/trash/:id/restore` | Restaurer un élément de la corbeille |
+| `DELETE /api/trash/:id`, `DELETE /api/trash`, `DELETE /api/trash/expired` | Supprimer définitivement un élément, tout, ou ce qui a plus de 30 jours (administrateurs) |
+
+- E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (domaine vérifié dans Resend, avec SPF, DKIM et DMARC). Chaque e-mail part en HTML avec sa version texte, et avec un « Répondre à » vers le membre de l'agence concerné (ou `MAIL_REPLY_TO`) : l'adresse d'envoi n'a pas de boîte. `MAIL_TRANSPORT=console` n'envoie jamais rien et affiche les e-mails dans la console, même avec une clé Resend (tests, démonstrations). Sans clé, en développement, ils s'affichent dans la console ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
 
 ### Preuve de validation
 

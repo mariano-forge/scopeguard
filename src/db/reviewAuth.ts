@@ -17,10 +17,11 @@ import { createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeE
 import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
 import type { Db } from "./client";
 import { applyChanges, bumpRevision } from "./state";
-import { commentProposals, comments, deliverables, reviewAccessRequests, reviewCodes, reviewLinks, reviewSessions } from "./schema";
+import { commentProposals, comments, deliverables, reviewAccessRequests, reviewCodes, reviewLinks, reviewProfiles, reviewSessions } from "./schema";
 import type { CurrentUser } from "@/lib/session";
 import type { ReviewAccess } from "./reviewAccess";
 import { appUrl, sendMail } from "@/lib/mail";
+import { renderMail } from "@/lib/mailTemplates";
 
 type Data = Record<string, unknown>;
 type Invite = { email: string; at: string; id?: string };
@@ -71,7 +72,13 @@ export async function sendAccessCode(db: Db, link: Data, email: string, delivera
   await sendMail({
     to: email,
     subject: `${code} est votre code d'accès Kora`,
-    text: `Votre code pour accéder à la revue « ${deliverableName} » : ${code}\n\nIl est valable ${codeMinutes} minutes. Si vous n'avez rien demandé, ignorez cet e-mail.`,
+    ...renderMail({
+      preheader: `Votre code pour la revue « ${deliverableName} »`,
+      heading: "Votre code d’accès",
+      paragraphs: [`Saisissez ce code pour accéder à la revue « ${deliverableName} ». Il est valable ${codeMinutes} minutes.`],
+      code,
+      footer: "Vous recevez cet e-mail parce qu’un code a été demandé pour cette adresse sur Kora. Si ce n’est pas vous, ignorez-le : personne ne peut accéder à la revue sans ce code.",
+    }),
   });
   return true;
 }
@@ -122,6 +129,20 @@ export async function reviewSessionEmail(db: Db, token: string | undefined) {
 
 /** Name of the version a link opens, for mails and the verification screen. */
 export const reviewedDeliverableName = (db: Db, access: ReviewAccess) => deliverableName(db, access.organizationId, access.deliverableId);
+
+/** The name a verified client gave at their first verification, if any. */
+export async function reviewProfileName(db: Db, email: string) {
+  const [profile] = await db.select({ name: reviewProfiles.name }).from(reviewProfiles).where(eq(reviewProfiles.email, email)).limit(1);
+  return profile?.name ?? null;
+}
+
+/** Saves the client's full name ("Claire Martin"): 2 to 80 characters, spaces tidied. */
+export async function saveReviewProfileName(db: Db, email: string, raw: string) {
+  const name = raw.replace(/\s+/g, " ").trim();
+  if (name.length < 2 || name.length > 80) return null;
+  await db.insert(reviewProfiles).values({ email, name }).onConflictDoUpdate({ target: reviewProfiles.email, set: { name } });
+  return name;
+}
 
 async function deliverableName(db: Db, org: string, deliverableId: number) {
   const [row] = await db
@@ -196,7 +217,17 @@ export async function inviteToReview(db: Db, org: string, linkKey: string, email
     const sent = await sendMail({
       to: invite.email,
       subject: `${user.name} vous invite à valider « ${name} »`,
-      text: `${user.name} vous invite à consulter et valider « ${name} » sur Kora.\n\nOuvrir la revue : ${reviewUrl(updated, invite.id)}\n\nUn code de vérification vous sera envoyé à cette adresse pour confirmer qu'il s'agit bien de vous.`,
+      replyTo: user.email,
+      ...renderMail({
+        preheader: `${user.name}${user.organizationName ? ` (${user.organizationName})` : ""} partage « ${name} » avec vous`,
+        heading: `« ${name} » attend votre validation`,
+        paragraphs: [
+          `${user.name}${user.organizationName ? `, de ${user.organizationName},` : ""} vous invite à consulter ce livrable, à y laisser vos retours et à le valider.`,
+          "Pour protéger la revue, un code de vérification vous sera envoyé à cette adresse à l’ouverture.",
+        ],
+        action: { label: "Ouvrir la revue", href: reviewUrl(updated, invite.id) },
+        footer: `Vous recevez cet e-mail parce que ${user.name} a partagé une revue avec ${invite.email} sur Kora. Répondez à cet e-mail pour lui écrire.`,
+      }),
     });
     if (!sent) notSent.push(invite.email);
   }
@@ -315,7 +346,14 @@ export async function remindReview(db: Db, org: string, linkKey: string, user: C
     const sent = await sendMail({
       to: invite.email,
       subject: `Rappel : « ${version.name} » attend votre retour`,
-      text: `${user.name} vous rappelle que ${waiting.length ? waiting.join(" et ") : "votre retour est attendu"} sur « ${version.name} ».\n\nOuvrir la revue : ${reviewUrl(link, invite.id)}`,
+      replyTo: user.email,
+      ...renderMail({
+        preheader: waiting.length ? `${waiting.join(" et ")}`.replace(/^./, (first) => first.toUpperCase()) : "Votre retour est attendu",
+        heading: `« ${version.name} » attend votre retour`,
+        paragraphs: [`${user.name} vous rappelle que ${waiting.length ? waiting.join(" et ") : "votre retour est attendu"}.`],
+        action: { label: "Ouvrir la revue", href: reviewUrl(link, invite.id) },
+        footer: `Vous recevez ce rappel parce que ${user.name} a partagé cette revue avec ${invite.email} sur Kora. Répondez à cet e-mail pour lui écrire.`,
+      }),
     });
     if (!sent) notSent.push(invite.email);
   }
