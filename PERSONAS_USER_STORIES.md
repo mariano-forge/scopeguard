@@ -857,7 +857,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 **Critères d'acceptation**
 
 - Depuis « Partager la revue », l'agence saisit une ou plusieurs adresses.
-- Chaque invité reçoit par e-mail un lien personnel (`/review/<lien>?invitation=<id>`) qui pré-remplit son adresse.
+- Chaque invité reçoit par e-mail un lien personnel (`/review/<lien>?invitation=<id>`, un identifiant aléatoire) qui montre son adresse masquée (« c•••••@client.fr ») : quelqu'un qui détiendrait le lien n'apprend pas l'adresse.
 - Chaque invité a un bouton pour copier son lien personnel.
 - Retirer une invitation coupe l'accès de cette personne immédiatement, même sur un appareil déjà reconnu.
 
@@ -869,7 +869,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 
 **Critères d'acceptation**
 
-- Avec son lien personnel, l'adresse est pré-remplie ; « Ce n'est pas moi » permet d'en changer.
+- Avec son lien personnel, l'adresse est reconnue sans être affichée en entier : le code part à l'adresse invitée ; « Ce n'est pas moi » permet de saisir une autre adresse.
 - Un code à 6 chiffres est envoyé, valable 10 minutes, avec 5 essais au maximum.
 - Les envois sont limités (1 par minute, 5 par heure et par adresse).
 - Le code n'est envoyé qu'aux adresses invitées, mais l'écran est identique dans tous les cas : on ne peut pas deviner qui est invité.

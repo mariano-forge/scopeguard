@@ -17,21 +17,25 @@ type Step = "email" | "code" | "request" | "requested";
 export function AccessGate({
   token,
   deliverable,
-  invitedEmail,
+  invitation,
   verifiedEmail,
   onVerified,
 }: {
   token: string;
   deliverable: string;
-  /** From the personal invitation address. */
-  invitedEmail: string | null;
+  /** A personal link: the invited address, masked, and the invitation that asks the code for it. */
+  invitation: { id: string | null; masked: string } | null;
   /** Verified on this device, but not invited to this link. */
   verifiedEmail: string | null;
   onVerified: () => void;
 }) {
   const [step, setStep] = useState<Step>(verifiedEmail ? "request" : "email");
-  const [email, setEmail] = useState(verifiedEmail ?? invitedEmail ?? "");
-  const [editingEmail, setEditingEmail] = useState(!invitedEmail);
+  const [email, setEmail] = useState(verifiedEmail ?? "");
+  // A personal link asks the code by its invitation: the page only ever shows the address masked.
+  const [byInvitation, setByInvitation] = useState(Boolean(invitation?.id));
+  const shownEmail = byInvitation ? (invitation?.masked ?? "") : email;
+  /** Who the code is for: the invitation, or the address typed. */
+  const target = (): Record<string, string> => (byInvitation && invitation?.id ? { invitation: invitation.id } : { email });
   const [code, setCode] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -64,7 +68,7 @@ export function AccessGate({
 
   async function sendCode(event?: React.FormEvent) {
     event?.preventDefault();
-    if (await post("/code", { email })) {
+    if (await post("/code", target())) {
       setStep("code");
       setCode("");
       setResendIn(60);
@@ -73,7 +77,7 @@ export function AccessGate({
 
   async function verify(event: React.FormEvent) {
     event.preventDefault();
-    if (await post("/verify", { email, code })) onVerified();
+    if (await post("/verify", { ...target(), code })) onVerified();
   }
 
   async function requestAccess(event: React.FormEvent) {
@@ -99,21 +103,21 @@ export function AccessGate({
       {step === "email" && (
         <form className="grid gap-4" onSubmit={sendCode}>
           {heading("Confirmez votre adresse", "Pour protéger cette revue, nous envoyons un code à usage unique à votre adresse e-mail.")}
-          {editingEmail ? (
+          {!byInvitation ? (
             <div className="grid gap-1.5">
               <Label htmlFor="access-email">Votre e-mail</Label>
               <Input id="access-email" type="email" required autoComplete="email" autoFocus value={email} onChange={(event) => setEmail(event.target.value)} />
             </div>
           ) : (
             <div className="flex items-center justify-between gap-3 rounded-[var(--r-field)] border border-[var(--border)] px-3 py-2 text-sm">
-              <span className="truncate font-medium">{email}</span>
-              <button type="button" className="shrink-0 text-[var(--action-text)] underline-offset-2 hover:underline" onClick={() => setEditingEmail(true)}>
+              <span className="truncate font-medium">{shownEmail}</span>
+              <button type="button" className="shrink-0 text-[var(--action-text)] underline-offset-2 hover:underline" onClick={() => setByInvitation(false)}>
                 Ce n’est pas moi
               </button>
             </div>
           )}
           {errorBox}
-          <Button type="submit" size="lg" disabled={pending || !email.trim()}>
+          <Button type="submit" size="lg" disabled={pending || !shownEmail.trim()}>
             Recevoir un code
           </Button>
         </form>
@@ -124,7 +128,7 @@ export function AccessGate({
           {heading(
             "Saisissez votre code",
             <>
-              Si <b>{email}</b> est invitée sur cette revue, un code à 6 chiffres vient d’y être envoyé. Il est valable 10 minutes.
+              Si <b>{shownEmail}</b> est invitée sur cette revue, un code à 6 chiffres vient d’y être envoyé. Il est valable 10 minutes.
             </>,
           )}
           <div className="grid gap-1.5">
@@ -150,7 +154,7 @@ export function AccessGate({
             <button type="button" className="text-[var(--action-text)] underline-offset-2 hover:underline disabled:text-[var(--graphite)] disabled:no-underline" disabled={resendIn > 0 || pending} onClick={() => void sendCode()}>
               {resendIn > 0 ? `Renvoyer le code (${resendIn} s)` : "Renvoyer le code"}
             </button>
-            <button type="button" className="text-[var(--action-text)] underline-offset-2 hover:underline" onClick={() => (setStep("email"), setEditingEmail(true), setError(""))}>
+            <button type="button" className="text-[var(--action-text)] underline-offset-2 hover:underline" onClick={() => (setStep("email"), setByInvitation(false), setError(""))}>
               Changer d’adresse
             </button>
           </div>

@@ -58,6 +58,19 @@ export const inviteRole = (link: Data, email: string) => roleOfInvite(invitesOf(
 export const invitationEmail = (link: Data, invitationId: string | null) =>
   (invitationId && invitesOf(link).find((invite) => invite.id === invitationId)?.email) || null;
 
+/**
+ * "c•••••@client.test": what a personal link shows before verification. Whoever holds the link (a
+ * forwarded mail, a ticket) recognises nothing more than the first letter and the domain.
+ */
+export function maskEmail(email: string) {
+  const [local, domain] = email.split("@");
+  return `${local.slice(0, 1)}${"•".repeat(Math.max(3, Math.min(local.length - 1, 8)))}@${domain}`;
+}
+
+/** The address a code is asked for: the invitation's when the page names one (personal link), else the one typed. */
+export const requestedEmail = (link: Data, body: Record<string, unknown>) =>
+  typeof body.invitation === "string" && body.invitation ? (invitationEmail(link, body.invitation) ?? "") : normalizeEmail(body.email);
+
 /** Sends a code to an invited address. Returns false when throttled or not invited (the caller answers the same). */
 export async function sendAccessCode(db: Db, link: Data, email: string, deliverableName: string) {
   if (!validEmail(email) || !isInvited(link, email)) return false;
