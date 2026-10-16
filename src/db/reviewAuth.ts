@@ -8,16 +8,17 @@
 // 3. Once verified, the device is remembered for 30 days (httpOnly cookie). The session belongs to the
 //    address: it opens every link that address is invited to, and stops as soon as the agency
 //    removes the invitation or revokes the link.
-// 4. Someone with the link but not invited can ask for access; the agency accepts or refuses.
+// 4. Someone with the link but not invited can ask for access; the agency's owner and administrators
+//    are told by e-mail, and accept or refuse.
 //
 // Codes: 10 minutes, 5 tries each, at most 5 per hour and 1 per minute per address, stored as an HMAC.
 
 import "server-only";
 import { createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
-import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lt } from "drizzle-orm";
 import type { Db } from "./client";
 import { applyChanges, bumpRevision } from "./state";
-import { commentProposals, comments, deliverables, reviewAccessRequests, reviewCodes, reviewLinks, reviewProfiles, reviewSessions } from "./schema";
+import { commentProposals, comments, deliverables, members, reviewAccessRequests, reviewCodes, reviewLinks, reviewProfiles, reviewSessions, users } from "./schema";
 import type { CurrentUser } from "@/lib/session";
 import type { ReviewAccess } from "./reviewAccess";
 import { appUrl, sendMail } from "@/lib/mail";
@@ -274,6 +275,50 @@ export async function requestReviewAccess(db: Db, access: ReviewAccess, email: s
     },
     { recordedBy: `review-request:${access.key}`, ...origin },
   );
+  await mailAccessRequest(db, access, email, message, name);
+}
+
+/**
+ * The agency's owner and administrators hear of an access request by e-mail: they are the ones who
+ * open a review to someone. A failed send only leaves the request in the app (notifications, share dialog).
+ */
+async function mailAccessRequest(db: Db, access: ReviewAccess, email: string, message: string, name: string) {
+  const org = access.organizationId;
+  const managers = await db
+    .select({ email: users.email })
+    .from(members)
+    .innerJoin(users, eq(members.userId, users.id))
+    .where(and(eq(members.organizationId, org), inArray(members.role, ["owner", "admin"])));
+  if (!managers.length) return;
+  // The deliverable's address: its first version (the later ones open from it).
+  const [version] = await db.select({ projectId: deliverables.projectId, name: deliverables.name }).from(deliverables).where(and(eq(deliverables.organizationId, org), eq(deliverables.id, access.deliverableId))).limit(1);
+  const [first] = version
+    ? await db
+        .select({ id: deliverables.id })
+        .from(deliverables)
+        .where(and(eq(deliverables.organizationId, org), eq(deliverables.projectId, version.projectId ?? 1), eq(deliverables.name, version.name)))
+        .orderBy(asc(deliverables.version))
+        .limit(1)
+    : [];
+  const href = `${appUrl()}/projets/${version?.projectId ?? 1}/livrables/${first?.id ?? access.deliverableId}`;
+  for (const manager of managers) {
+    await sendMail({
+      to: manager.email,
+      subject: `${email} demande l’accès à « ${name} »`,
+      replyTo: email,
+      ...renderMail({
+        preheader: `Une personne qui a le lien de « ${name} » demande à participer à la revue`,
+        heading: "Nouvelle demande d’accès",
+        paragraphs: [
+          `${email} a ouvert le lien de la revue « ${name} » et demande à y participer.`,
+          ...(message ? [`Son message : « ${message} »`] : []),
+          "Ouvrez le livrable, puis « Partager la revue » : vous pouvez accepter la demande (la personne reçoit son lien personnel) ou la refuser.",
+        ],
+        action: { label: "Voir la demande", href },
+        footer: `Vous recevez cet e-mail parce que vous êtes propriétaire ou administrateur de l’agence sur Kora. L’adresse ${email} n’est pas encore vérifiée : répondre à cet e-mail lui écrit directement.`,
+      }),
+    }).catch((error) => console.error("[access request mail]", error));
+  }
 }
 
 /** Agency: accepts (invites the address) or refuses an access request to one of its links. */

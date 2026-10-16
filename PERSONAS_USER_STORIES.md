@@ -880,9 +880,11 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 **Critères d'acceptation**
 
 - Depuis l'écran de vérification, la personne saisit son adresse et un message facultatif.
-- L'agence reçoit une notification et voit la demande dans « Partager la revue », avec « Accepter » et « Refuser ».
+- L'écran du code explique qu'un code n'arrive qu'aux adresses invitées et propose « Demander l'accès à l'agence ».
+- Le propriétaire et les administrateurs reçoivent un e-mail (message de la personne, lien vers le livrable, « Répondre à » vers elle) ; l'agence reçoit aussi une notification et voit la demande dans « Partager la revue », avec « Accepter » et « Refuser ».
 - Accepter invite l'adresse : elle reçoit son lien personnel.
-- Une adresse n'a qu'une demande en attente par lien, et un lien n'en accumule pas plus de 20.
+- Une adresse n'a qu'une demande en attente par lien, un lien n'en accumule pas plus de 20, et une même adresse IP n'en envoie pas plus de 10 par heure.
+- Une demande acceptée vaut invitation : la personne reçoit son lien personnel, confirme son adresse par un code, puis donne son nom si c'est sa première revue.
 
 #### US-044 : prévisualiser la page client
 
@@ -1070,7 +1072,7 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-040 changer d'agence | ✅ | |
 | US-041 inviter un client sur une revue | ✅ | |
 | US-042 confirmer son identité par un code | ✅ | Nom complet demandé à la première vérification |
-| US-043 demander l'accès à une revue | ✅ | |
+| US-043 demander l'accès à une revue | ✅ | E-mail au propriétaire et aux administrateurs |
 | US-044 prévisualiser la page client | ✅ | |
 | US-045 périmètre de référence | ⬜ | Prochaine priorité produit |
 | US-046 demande offerte | ⬜ | |
