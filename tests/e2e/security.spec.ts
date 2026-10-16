@@ -51,6 +51,27 @@ test("request limits: uploads per hour and saves per minute (lowered for tests)"
   expect(saves[120]).toBe(429);
 });
 
+test("an /api address no route answers is a JSON 404, whatever the method; existing routes keep theirs", async () => {
+  const alice = await signUp("Alice Martin");
+  await createAgency(alice, "Studio Adresses");
+  for (const [path, method] of [
+    ["/api/inconnue", "GET"],
+    ["/api/deliverables/1/approval", "POST"],
+    ["/api/comments/1/inconnue", "PUT"],
+    ["/api/spaces/1/a/b", "PATCH"],
+    ["/api/projets", "DELETE"],
+  ] as const) {
+    const answer = await call(path, { method, person: alice, body: method === "GET" || method === "DELETE" ? undefined : {} });
+    expect(answer.status, `${method} ${path}`).toBe(404);
+    expect(answer.json).toEqual({ error: "Route inconnue" });
+  }
+  // Without a session, the proxy answers first, as for any agency route.
+  expect((await call("/api/inconnue")).status).toBe(401);
+  // A known route keeps its own answers: read only state, missing method.
+  expect((await call("/api/state", { person: alice })).status).toBe(200);
+  expect((await call("/api/state", { method: "PATCH", person: alice, body: {} })).status).toBe(405);
+});
+
 test("files kept in Postgres before Azure storage are no longer served", async () => {
   const alice = await signUp("Alice Martin");
   await createAgency(alice, "Studio Ancien");

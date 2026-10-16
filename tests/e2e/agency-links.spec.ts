@@ -64,9 +64,7 @@ test("removing an invitation cuts that address only; reopening keeps the reason"
 
 test("only the client approves a version: the agency, even its owner, has no way to", async () => {
   const { alice, org, act } = await agency();
-  // No such route: the address falls to the app's pages (HTML), nothing is written.
-  const approval = await act(alice, "1/approval", "POST");
-  expect(approval.response.headers.get("content-type")).not.toContain("application/json");
+  expect((await act(alice, "1/approval", "POST")).status).toBe(404);
   expect((await call("/api/deliverables/1", { method: "PATCH", person: alice, body: { name: "maquette.png", reviewStatus: "approved", status: "Approuvée", locked: true } })).status).toBe(200);
   expect((await call("/api/state", { method: "PATCH", person: alice, body: { changes: { lists: { deliverables: { upsert: [{ id: 1, reviewStatus: "approved" }], remove: [] } }, maps: {}, settings: { upsert: {}, remove: [] } } } })).status).toBe(405);
   const [version] = await sql<{ review_status: string | null; locked: boolean; status: string }>("select review_status, locked, data->>'status' as status from deliverables where organization_id = $1 and id = 1", [org]);
