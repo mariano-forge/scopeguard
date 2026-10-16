@@ -5,6 +5,8 @@ Ce document définit les utilisateurs prioritaires et les besoins fonctionnels d
 ScopeGuard ne doit pas être conçu comme un simple outil d'annotation. Le produit doit aider les agences à transformer chaque retour client en décision claire : travail inclus, demande à clarifier ou prestation supplémentaire acceptée.
 
 > **Mise à jour du 15 octobre 2026.** Le prototype s'appelle désormais **Kora** dans l'interface. Il dispose d'une base de données PostgreSQL, de comptes agence (e-mail et mot de passe, Google en option), d'agences isolées avec équipe et rôles, et d'un accès client vérifié par code e-mail. Les stories existantes ont été mises à jour en conséquence, les nouvelles stories sont regroupées dans les Epics 14 à 16, et la section [Suivi de réalisation](#suivi-de-réalisation) donne l'état de chaque story.
+>
+> **Mise à jour du 16 octobre 2026.** Kora est en ligne (Vercel à Francfort, Supabase, Azure, e-mails Resend). Une adresse agence est confirmée par e-mail avant la première connexion. Les fichiers sont envoyés directement au stockage et vérifiés par le serveur. Chaque action, de l'agence comme du client, passe par sa propre route et est contrôlée par le serveur. Seul le client valide une version ; l'agence peut rouvrir une validation en donnant la raison.
 
 ## Personas prioritaires
 
@@ -227,10 +229,12 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 **Critères d'acceptation**
 
 - Les formats autorisés sont clairement indiqués.
-- Le fichier est stocké de manière sécurisée.
+- Le fichier est stocké de manière sécurisée : conteneur privé propre à l'agence, lecture par adresse signée valable 5 minutes.
+- Le navigateur envoie le fichier directement au stockage ; le serveur en recalcule l'empreinte SHA-256 et refuse un fichier différent de celui annoncé.
 - Une première version est créée automatiquement.
 - Le fichier possède un nom, une date et un auteur.
-- Le système refuse les fichiers trop volumineux ou invalides.
+- Le système refuse les fichiers trop volumineux (`MAX_UPLOAD_MB`, 50 Mo par défaut) ou invalides.
+- Un livrable ne peut pointer que vers des fichiers importés par sa propre agence ; un lien web n'accepte que `http` et `https`.
 
 #### US-006 : créer une nouvelle version
 
@@ -253,8 +257,8 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 
 **Critères d'acceptation**
 
-- Un lien client sécurisé est généré, un par version du livrable.
-- Le lien peut être révoqué *(réservé aux administrateurs)*.
+- Un lien client sécurisé est généré, un par version du livrable ; son jeton est tiré au sort par le serveur.
+- Le lien peut être révoqué *(réservé aux administrateurs)* ; la révocation est inscrite au journal.
 - Le lien expire automatiquement après 7 jours, sauf si l'agence désactive l'expiration.
 - Ouvrir le lien ne suffit pas : seules les adresses invitées y accèdent, après vérification par code (voir Epic 15).
 - Le client ne voit que le livrable et les informations prévues pour lui : le serveur ne lui transmet que la version partagée, ses commentaires et ses propositions.
@@ -270,9 +274,9 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 **Critères d'acceptation**
 
 - Le commentaire conserve ses coordonnées et sa page.
-- Le commentaire indique son auteur et sa date ; pour un client, l'auteur est son adresse e-mail vérifiée, fixée par le serveur.
+- Le commentaire indique son auteur et sa date ; pour un client, l'auteur est son nom complet (demandé à sa première vérification) et son adresse e-mail vérifiée, fixés par le serveur.
 - Le commentaire est lié à la version consultée.
-- Le client peut modifier ou supprimer son commentaire tant qu'il n'est pas traité.
+- Le client peut modifier, déplacer ou supprimer son commentaire tant que l'agence ne l'a pas qualifié ; il ne peut jamais modifier un message de l'agence.
 
 #### US-009 : répondre à un commentaire
 
@@ -297,8 +301,10 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 
 - Le client peut envoyer une demande globale accompagnée de commentaires.
 - Le livrable passe au statut `modifications demandées`.
-- L'agence reçoit une notification.
+- L'agence reçoit une notification ; le message du client est inscrit au journal.
 - La validation finale n'est pas possible tant que le client demande des modifications.
+
+*État : la règle et la route serveur existent et sont testées, mais la page client n'a pas de bouton pour les déclencher.*
 
 ### Epic 5 : qualifier le périmètre
 
@@ -408,7 +414,9 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 - Une confirmation explicite est demandée avant l'approbation.
 - L'identité, la date et la version sont enregistrées (adresse e-mail vérifiée, heure du serveur).
 - La version approuvée devient verrouillée : le serveur refuse ensuite toute écriture du client sur cette version, et une approbation ne peut pas être annulée par le client.
+- **Seul le client approuve une version** : l'agence, même son propriétaire, n'a aucun moyen de le faire à sa place.
 - L'agence reçoit une notification.
+- L'agence peut rouvrir la validation d'une version (« Rouvrir la validation ») en expliquant pourquoi ; la raison est inscrite au journal.
 
 #### US-017 : consulter la preuve de validation
 
@@ -449,7 +457,7 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 **Critères d'acceptation**
 
 - L'invitation par e-mail envoie à chaque client son lien personnel de revue.
-- L'e-mail part par le service d'envoi configuré (Resend) ; sans service configuré, en développement, il s'affiche dans la console du serveur.
+- L'e-mail part par Resend, en HTML et en texte, avec « Répondre à » vers le membre de l'agence concerné ; sans service configuré, en développement, il s'affiche dans la console du serveur.
 - Si l'e-mail ne peut pas partir, l'agence en est avertie et peut copier le lien personnel pour le transmettre.
 
 #### US-019 : relancer une validation
@@ -555,8 +563,9 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 - Les fichiers importés sont stockés une seule fois sur le serveur.
 - Les données sont isolées par organisation.
 - Un rechargement ou un changement de navigateur ne perd aucune décision.
+- Chaque action (commenter, qualifier, envoyer un devis, déplacer un projet…) passe par sa propre route ; le serveur la construit à partir de la base et renvoie l'état à jour.
 - Les changements d'un membre ou du client apparaissent chez les autres en quelques secondes.
-- Les erreurs de synchronisation sont visibles et récupérables : nouvel essai automatique, message si la base est injoignable.
+- Une action refusée est signalée et disparaît de la page ; un message s'affiche si la base est injoignable.
 
 #### US-026 : sécuriser les accès et les rôles
 
@@ -570,6 +579,7 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 - Les liens clients sont révocables et expirables côté serveur.
 - Une organisation ne peut jamais lire ni modifier les données d'une autre, même avec des identifiants identiques.
 - Les actions sensibles sont enregistrées dans le journal d'audit.
+- Une écriture venant d'un autre site est refusée, et le nombre d'écritures, d'imports et d'invitations est limité par personne.
 
 ## Epic 12 : adaptation des propositions commerciales
 
@@ -775,6 +785,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 
 - La page `/connexion` propose « Se connecter » et « Créer un compte ».
 - Le mot de passe compte au moins 10 caractères ; il est stocké haché, jamais en clair.
+- Un compte créé par e-mail doit confirmer son adresse par le lien reçu avant sa première session ; tant qu'il ne l'a pas fait, chaque connexion renvoie le lien.
 - Un e-mail inconnu et un mauvais mot de passe donnent le même message.
 - Les tentatives répétées sont bloquées pendant une minute.
 - « Mot de passe oublié » envoie un lien valable une heure et à usage unique ; il ferme les autres sessions.
@@ -857,7 +868,8 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - Les envois sont limités (1 par minute, 5 par heure et par adresse).
 - Le code n'est envoyé qu'aux adresses invitées, mais l'écran est identique dans tous les cas : on ne peut pas deviner qui est invité.
 - Une fois vérifié, l'appareil est reconnu 30 jours.
-- Les commentaires, réponses, acceptations et validations du client sont signés par le serveur avec son adresse vérifiée.
+- À sa première vérification, le client indique son nom complet ; il apparaît sur ses messages (initiales comprises) et dans la preuve.
+- Les commentaires, réponses, acceptations et validations du client sont signés par le serveur avec son nom et son adresse vérifiée.
 
 #### US-043 : demander l'accès à une revue
 
@@ -1015,7 +1027,7 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 
 ## Suivi de réalisation
 
-État au 15 octobre 2026. ✅ réalisé · 🟡 partiel · ⬜ à faire · ⛔ abandonné.
+État au 16 octobre 2026. ✅ réalisé · 🟡 partiel · ⬜ à faire · ⛔ abandonné.
 
 | Story | État | Remarque |
 | --- | :-: | --- |
@@ -1023,27 +1035,27 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-002 inviter un collaborateur | ✅ | Invitation par e-mail, rôle, annulation, retrait |
 | US-003 créer un client | ✅ | Le client est un « espace » |
 | US-004 créer un projet | 🟡 | Statuts limités à `Brouillon` et `En cours` |
-| US-005 importer un livrable | 🟡 | PDF, image, vidéo, document, lien ; taille limitée ; pas encore l'auteur de l'import |
+| US-005 importer un livrable | ✅ | Envoi direct vers Azure, empreinte vérifiée par le serveur ; l'auteur de l'import est enregistré, pas encore affiché |
 | US-006 créer une nouvelle version | ✅ | Les versions remplacées sont verrouillées |
-| US-007 envoyer le livrable en revue | ✅ | Lien par version, expiration 7 jours, révocation |
+| US-007 envoyer le livrable en revue | ✅ | Lien par version au jeton tiré par le serveur, expiration 7 jours, révocation |
 | US-008 commenter un emplacement précis | ✅ | Épingle, zone, page ; auteur client signé par le serveur |
 | US-009 répondre à un commentaire | 🟡 | Fil de réponses fait ; pas de statut « résolu » |
-| US-010 demander des modifications | ✅ | |
+| US-010 demander des modifications | 🟡 | Règle et route serveur faites ; pas de bouton sur la page client |
 | US-011 qualifier une demande | 🟡 | Trois états au lieu de quatre ; pas de justification interne |
 | US-012 demander une clarification | 🟡 | État « À qualifier » ; pas de blocage ni de notification dédiés |
 | US-013 créer une proposition complémentaire | 🟡 | Brouillon, envoi, montant, délai ; pas de date d'expiration de l'offre |
 | US-014 accepter une proposition | ✅ | Adresse vérifiée, heure du serveur, une seule décision |
 | US-015 refuser une proposition | ✅ | |
-| US-016 approuver une version | ✅ | Verrouillage contrôlé par le serveur |
+| US-016 approuver une version | ✅ | Par le client seulement ; verrouillage contrôlé par le serveur ; réouverture par l'agence avec sa raison |
 | US-017 consulter la preuve de validation | ✅ | Construite par le serveur : identités vérifiées, heures du serveur, IP, empreintes du fichier et du récapitulatif |
-| US-018 notifier le client | 🟡 | Invitations et codes par e-mail ; service d'envoi à configurer (Resend) |
+| US-018 notifier le client | ✅ | Resend, HTML et texte, « Répondre à » ; DMARC à publier pour la délivrabilité |
 | US-019 relancer une validation | ✅ | E-mail à chaque invité ; une relance par jour et par revue |
 | US-020 ouvrir une revue client | ✅ | Après vérification par code |
 | US-021 commenter depuis la revue client | ✅ | |
 | US-022 décision commerciale depuis la revue | ✅ | |
 | US-023 consulter le journal d'activité | ✅ | Journal en ajout seul, garanti par la base |
 | US-024 réinitialiser une démonstration | ⛔ | Remplacé par la création d'une agence de démonstration |
-| US-025 persister les données de l'agence | ✅ | PostgreSQL, synchronisation entre pages |
+| US-025 persister les données de l'agence | ✅ | PostgreSQL ; une route par action, état relu en une requête |
 | US-026 sécuriser les accès et les rôles | ✅ | |
 | US-027 demander une adaptation | ✅ | |
 | US-028 répondre à une demande d'adaptation | ✅ | Réservé aux administrateurs |
@@ -1052,12 +1064,12 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-034 viewer de revue interactif | ✅ | |
 | US-035 PDF multi-pages | ✅ | Pages à la suite sur le plan de travail ; navigation page à page abandonnée |
 | US-036 capturer une page web | ⬜ | L'URL est enregistrée, pas de capture |
-| US-037 se connecter à l'espace agence | ✅ | Google à configurer |
+| US-037 se connecter à l'espace agence | ✅ | Adresse confirmée par e-mail ; Google à configurer |
 | US-038 rejoindre une agence sur invitation | ✅ | |
 | US-039 droits selon le rôle | ✅ | |
 | US-040 changer d'agence | ✅ | |
 | US-041 inviter un client sur une revue | ✅ | |
-| US-042 confirmer son identité par un code | ✅ | |
+| US-042 confirmer son identité par un code | ✅ | Nom complet demandé à la première vérification |
 | US-043 demander l'accès à une revue | ✅ | |
 | US-044 prévisualiser la page client | ✅ | |
 | US-045 périmètre de référence | ⬜ | Prochaine priorité produit |
@@ -1065,4 +1077,9 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-047 envoi vers Jira ou Notion | ⬜ | |
 | US-048 annoter un site web en ligne | ⬜ | |
 
-**Avant les premiers pilotes**, il reste à brancher l'envoi d'e-mails (US-018, US-042) et à mettre l'application en ligne : sans e-mails, un client ne reçoit pas son code.
+**Avant les premiers pilotes**, il reste à :
+
+- décider du bouton « Demander des modifications » côté client (US-010) ;
+- publier un enregistrement DMARC sur le domaine d'envoi, pour que les e-mails n'arrivent pas en spam ;
+- brancher un suivi des erreurs en production et vérifier les sauvegardes de la base ;
+- nettoyer les fichiers envoyés au stockage mais jamais validés.
