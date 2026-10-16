@@ -15,14 +15,15 @@
 
 import "server-only";
 import { createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
-import { and, asc, desc, eq, gt, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
 import type { Db } from "./client";
 import { applyChanges, bumpRevision } from "./state";
-import { commentProposals, comments, deliverables, members, reviewAccessRequests, reviewCodes, reviewLinks, reviewProfiles, reviewSessions, users } from "./schema";
+import { commentProposals, comments, deliverables, reviewAccessRequests, reviewCodes, reviewLinks, reviewProfiles, reviewSessions } from "./schema";
 import type { CurrentUser } from "@/lib/session";
 import { expired, type ReviewAccess } from "./reviewAccess";
-import { appUrl, sendMail } from "@/lib/mail";
+import { sendMail } from "@/lib/mail";
 import { renderMail } from "@/lib/mailTemplates";
+import { agencyHref, managersOf, reviewUrl } from "./mailTargets";
 import { roleOfInvite, type ClientRole } from "@/lib/clientRoles";
 
 type Data = Record<string, unknown>;
@@ -167,8 +168,6 @@ async function linkRow(db: Db, org: string, linkKey: string) {
   return row ?? null;
 }
 
-const reviewUrl = (link: Data, invitationId?: string) =>
-  `${appUrl()}/review/${encodeURIComponent(String(link.token))}${invitationId ? `?invitation=${invitationId}` : ""}`;
 
 const requestOf = (org: string, linkKey: string) =>
   and(eq(reviewAccessRequests.organizationId, org), eq(reviewAccessRequests.linkKey, linkKey));
@@ -315,26 +314,12 @@ export async function requestReviewAccess(db: Db, access: ReviewAccess, email: s
  */
 async function mailAccessRequest(db: Db, access: ReviewAccess, email: string, message: string, name: string) {
   const org = access.organizationId;
-  const managers = await db
-    .select({ email: users.email })
-    .from(members)
-    .innerJoin(users, eq(members.userId, users.id))
-    .where(and(eq(members.organizationId, org), inArray(members.role, ["owner", "admin"])));
+  const managers = await managersOf(db, org);
   if (!managers.length) return;
-  // The deliverable's address: its first version (the later ones open from it).
-  const [version] = await db.select({ projectId: deliverables.projectId, name: deliverables.name }).from(deliverables).where(and(eq(deliverables.organizationId, org), eq(deliverables.id, access.deliverableId))).limit(1);
-  const [first] = version
-    ? await db
-        .select({ id: deliverables.id })
-        .from(deliverables)
-        .where(and(eq(deliverables.organizationId, org), eq(deliverables.projectId, version.projectId ?? 1), eq(deliverables.name, version.name)))
-        .orderBy(asc(deliverables.version))
-        .limit(1)
-    : [];
-  const href = `${appUrl()}/projets/${version?.projectId ?? 1}/livrables/${first?.id ?? access.deliverableId}`;
+  const href = await agencyHref(db, org, access.deliverableId);
   for (const manager of managers) {
     await sendMail({
-      to: manager.email,
+      to: manager,
       subject: `${email} demande l’accès à « ${name} »`,
       replyTo: email,
       ...renderMail({

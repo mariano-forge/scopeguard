@@ -66,7 +66,7 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 
 | Technologie | Rôle |
 | --- | --- |
-| **Resend** (API HTTP) | Invitations, codes d'accès, relances, réinitialisations. Domaine `gmmforge.com` vérifié (SPF, DKIM ; DMARC à ajouter). Chaque e-mail part en HTML et en texte, avec « Répondre à » vers le membre de l'agence concerné (`src/lib/mail.ts`, `src/lib/mailTemplates.ts`). |
+| **Resend** (API HTTP) | Invitations, codes d'accès, relances, réinitialisations, demandes d'accès, devis envoyés et décisions du client. Domaine `gmmforge.com` vérifié (SPF, DKIM ; DMARC à ajouter). Chaque e-mail part en HTML et en texte, avec « Répondre à » vers le membre de l'agence concerné (`src/lib/mail.ts`, `src/lib/mailTemplates.ts`). |
 
 ### Tests et qualité
 

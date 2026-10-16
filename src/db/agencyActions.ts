@@ -32,6 +32,7 @@ import {
 import { canManageAgency, reservedActions } from "./agencyPermissions";
 import type { Db } from "./client";
 import { commentProposals, deliverables, proposalVersions, reviewLinks, storedFiles } from "./schema";
+import { mailQuoteToClient, type AgencyQuoteEvent } from "./reviewMails";
 import { applyChanges, type Writer } from "./state";
 import { readWorkspaceAction, workspaceChanges, type WorkspaceAction, type WorkspaceParams } from "./workspaceActions";
 
@@ -481,5 +482,14 @@ export async function runAgencyAction(db: Db, member: AgencyMember, writer: Omit
     if (reserved.length) return { ok: false, status: 403, error: `Réservé aux administrateurs de l’agence : ${reserved.join(", ")}.`, code: "ADMIN_ONLY" };
   }
   const { revision } = await applyChanges(db, member.organizationId, built.changes, { recordedBy: member.id, ...writer });
+  // The client's deciders hear of a quote, or of the answer to their counter-proposal, by e-mail.
+  const quoteEvent: AgencyQuoteEvent | null =
+    action.type === "proposal.send" || action.type === "proposal.send-draft" || (action.type === "proposal.version" && action.send)
+      ? { type: "sent" }
+      : action.type === "adaptation.decide"
+        ? { type: "adaptation", decision: action.decision }
+        : null;
+  if (quoteEvent && "commentId" in action)
+    await mailQuoteToClient(db, member.organizationId, member, action.commentId, quoteEvent).catch((error) => console.error("[review mail]", error));
   return { ok: true, revision, ...(built.id ? { id: built.id } : {}), ...(built.data ? { data: built.data } : {}) };
 }

@@ -305,6 +305,7 @@ Seul le client valide une version, depuis sa page : l'agence n'a aucune route po
 | `POST /api/trash/:id/restore` | Restaurer un élément de la corbeille |
 | `DELETE /api/trash/:id`, `DELETE /api/trash`, `DELETE /api/trash/expired` | Supprimer définitivement un élément, tout, ou ce qui a plus de 30 jours (administrateurs) |
 
+- E-mails de devis et de décisions (`src/db/reviewMails.ts`) : un devis envoyé, ou la réponse à une contre-proposition, part par e-mail aux **décideurs** du client, avec leur lien personnel (« Répondre à » : l'administrateur qui l'a envoyé). Chaque décision du client (devis accepté ou refusé, contre-proposition, validation, demande de modifications) part au **propriétaire et à tous les administrateurs** de l'agence, avec un lien vers la demande (« Répondre à » : le client). Ni les membres ni les contributeurs ne les reçoivent. Un e-mail qui échoue est journalisé et n'annule jamais l'action.
 - E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (domaine vérifié dans Resend, avec SPF, DKIM et DMARC). Chaque e-mail part en HTML avec sa version texte, et avec un « Répondre à » vers le membre de l'agence concerné (ou `MAIL_REPLY_TO`) : l'adresse d'envoi n'a pas de boîte. `MAIL_TRANSPORT=console` n'envoie jamais rien et affiche les e-mails dans la console, même avec une clé Resend (tests, démonstrations). Sans clé, en développement, ils s'affichent dans la console ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
 
 ### Preuve de validation

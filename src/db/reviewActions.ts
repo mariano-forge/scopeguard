@@ -9,6 +9,7 @@ import { displayedNow, freeCommentId, id, movedComment, noChanges, percent, read
 import type { Db } from "./client";
 import { clientSeesComment, sanitizeReviewChanges, type ReviewAccess } from "./reviewAccess";
 import { reviewProfileName } from "./reviewAuth";
+import { mailClientDecision } from "./reviewMails";
 import { commentProposals, comments } from "./schema";
 import { applyChanges, type Writer } from "./state";
 
@@ -254,5 +255,8 @@ export async function runReviewAction(db: Db, access: ReviewAccess, email: strin
   const sanitized = await sanitizeReviewChanges(db, access, built.changes, email, await reviewProfileName(db, email));
   if (!kept(action, sanitized, commentId)) return refused();
   const { revision } = await applyChanges(db, access.organizationId, sanitized!, { recordedBy: `client:${email}`, ...writer });
+  // The agency hears of the client's decisions by e-mail too: they may not be watching the app.
+  if (action.type === "proposal.decide" || action.type === "proposal.adapt" || action.type === "version.approve" || action.type === "version.request-changes")
+    await mailClientDecision(db, access, email, action).catch((error) => console.error("[review mail]", error));
   return { ok: true, revision, ...(built.id ? { id: built.id } : {}) };
 }

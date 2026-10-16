@@ -920,6 +920,20 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - Le serveur n'accepte qu'un canal connu, une date valide, un extrait de 5 000 caractères au plus, et une image importée par l'agence elle-même.
 - La preuve reprend la source, l'extrait et l'empreinte SHA-256 de la capture.
 
+#### US-051 : être prévenu par e-mail des devis et des décisions
+
+**En tant que** client ou membre de l'agence,  
+**je veux** recevoir un e-mail quand un devis m'attend ou quand l'autre partie a décidé,  
+**afin de** ne pas dépendre d'une visite de l'application pour savoir qu'il faut agir.
+
+**Critères d'acceptation**
+
+- Un devis envoyé (premier, nouvelle version, réponse à une contre-proposition) part aux décideurs invités sur la version, avec le titre, le montant, le délai et leur lien personnel ; « Répondre à » vers l'administrateur qui l'a envoyé.
+- La réponse de l'agence à une contre-proposition (acceptée ou non retenue) part aux décideurs.
+- Un devis accepté ou refusé, une contre-proposition, la validation et la demande de modifications partent au propriétaire et à tous les administrateurs, avec un lien direct vers la demande ou la version ; « Répondre à » vers le client.
+- Les membres de l'agence et les contributeurs du client ne reçoivent pas ces e-mails.
+- Un e-mail qui ne part pas n'annule jamais l'action : la notification de la cloche reste.
+
 #### US-049 : attribuer un rôle aux personnes invitées
 
 **En tant que** chef de projet,  
@@ -1126,6 +1140,7 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-048 annoter un site web en ligne | ⬜ | |
 | US-049 rôles des personnes invitées | ✅ | Décideur et contributeur, contrôlés par le serveur |
 | US-050 saisir une demande reçue ailleurs | ✅ | Source, date, extrait et capture ; visibles par le client et dans la preuve |
+| US-051 e-mails des devis et des décisions | ✅ | Décideurs côté client, propriétaire et administrateurs côté agence |
 
 **Avant les premiers pilotes**, il reste à :
 
