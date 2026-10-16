@@ -1,9 +1,10 @@
 // Where a visitor of a review link stands, before loading the review:
 //   GET /api/review/:token/access?invitation=<id>
-//   -> { mode: "client" | "preview" | "none", verifiedEmail, invitedEmail, name, deliverable }
+//   -> { mode: "client" | "preview" | "none", verifiedEmail, invitedEmail, name, deliverable, role }
 // verifiedEmail: proven on this device (for "none": proven but not invited to this link).
 // invitedEmail: the address of the personal invitation, to pre-fill the form.
 // name: the verified client's full name; null at their first verification (the page asks for it).
+// role: the client's role on this link ("decider" | "contributor", src/lib/clientRoles.ts); null otherwise.
 
 import type { NextRequest } from "next/server";
 import { getDb } from "@/db/client";
@@ -24,6 +25,7 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/revi
       invitedEmail: invited,
       name: viewer.email ? await reviewProfileName(db, viewer.email) : null,
       deliverable: await reviewedDeliverableName(db, viewer.access),
+      role: viewer.mode === "client" ? viewer.role : null,
     });
   } catch (error) {
     return databaseFailure("api/review/access", error);

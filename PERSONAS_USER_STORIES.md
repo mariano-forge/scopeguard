@@ -881,10 +881,11 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 
 - Depuis l'écran de vérification, la personne saisit son adresse et un message facultatif.
 - L'écran du code explique qu'un code n'arrive qu'aux adresses invitées et propose « Demander l'accès à l'agence ».
+- Dans la cloche de l'agence, la notification de la demande ouvre le livrable avec « Partager la revue », sur la demande ; les autres activités (décision sur un devis, validation, relance) ouvrent aussi ce qu'elles concernent.
 - Le propriétaire et les administrateurs reçoivent un e-mail (message de la personne, lien vers le livrable, « Répondre à » vers elle) ; l'agence reçoit aussi une notification et voit la demande dans « Partager la revue », avec « Accepter » et « Refuser ».
 - Accepter invite l'adresse : elle reçoit son lien personnel.
 - Une adresse n'a qu'une demande en attente par lien, un lien n'en accumule pas plus de 20, et une même adresse IP n'en envoie pas plus de 10 par heure.
-- Une demande acceptée vaut invitation : la personne reçoit son lien personnel, confirme son adresse par un code, puis donne son nom si c'est sa première revue.
+- Une demande acceptée vaut invitation, avec le rôle de **contributeur** (voir US-049) : la personne reçoit son lien personnel, confirme son adresse par un code, puis donne son nom si c'est sa première revue.
 
 #### US-044 : prévisualiser la page client
 
@@ -897,6 +898,30 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - Un membre de l'agence qui possède le lien ouvre la page client sans code.
 - L'aperçu est en lecture seule et l'indique ; aucune action n'y est enregistrée.
 - Un membre d'une autre agence n'a pas d'aperçu.
+
+#### US-049 : attribuer un rôle aux personnes invitées
+
+**En tant que** chef de projet,  
+**je veux** distinguer chez le client qui décide et qui donne seulement son avis,  
+**afin que** seule la personne habilitée valide la version et engage un budget.
+
+**Droits**
+
+| Action | Décideur | Contributeur |
+| --- | :-: | :-: |
+| Consulter la version, commenter, répondre | ✅ | ✅ |
+| Accepter ou refuser un devis, faire une contre-proposition | ✅ | ❌ |
+| Valider la version, demander des modifications | ✅ | ❌ |
+
+**Critères d'acceptation**
+
+- L'agence choisit le rôle en invitant (décideur par défaut) et peut le changer à tout moment dans « Partager la revue » ; le changement est inscrit au journal.
+- Une demande d'accès acceptée donne le rôle de contributeur.
+- Les invitations faites avant l'existence des rôles sont des invitations de décideur.
+- Le serveur refuse à un contributeur toute décision, avec un message qui l'explique ; la page ne lui montre ni « Valider cette version » ni les boutons de décision, et lui dit à qui elles reviennent.
+- L'e-mail d'invitation d'un contributeur lui demande ses retours, pas sa validation ; les relances ne partent qu'aux décideurs.
+- La preuve indique « Client vérifié, décideur » sur les décisions du client.
+- Un client ne voit jamais la liste des autres invités ni leurs liens personnels.
 
 ## Epic 16 : prochaines évolutions
 
@@ -1078,6 +1103,7 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-046 demande offerte | ⬜ | |
 | US-047 envoi vers Jira ou Notion | ⬜ | |
 | US-048 annoter un site web en ligne | ⬜ | |
+| US-049 rôles des personnes invitées | ✅ | Décideur et contributeur, contrôlés par le serveur |
 
 **Avant les premiers pilotes**, il reste à :
 

@@ -48,6 +48,13 @@ export async function findReviewAccess(db: Db, token: string): Promise<ReviewAcc
   return { organizationId: row.organizationId, key: row.key, link, deliverableId: row.deliverableId, version: row.version };
 }
 
+/** What the client page needs of its link. */
+const publicLink = (link: Data) => {
+  const shown: Data = {};
+  for (const field of ["token", "active", "expiresAt", "autoExpire", "deliverableId", "version"]) if (field in link) shown[field] = link[field];
+  return shown;
+};
+
 /** The part of the shared state the client page needs, in the same shape. */
 export async function readReviewState(db: Db, access: ReviewAccess) {
   const { revision, state } = await readState(db, access.organizationId);
@@ -67,7 +74,8 @@ export async function readReviewState(db: Db, access: ReviewAccess) {
     comments: versionComments,
     notifications: [],
     auditEvents: [],
-    reviewLinks: { [access.key]: access.link },
+    // The link without its invitations: a client never sees who else is invited, nor their personal links.
+    reviewLinks: { [access.key]: publicLink(access.link) },
     proposalStates: only(state.proposalStates),
     proposalDecisions: only(state.proposalDecisions),
     adaptationRequests: only(state.adaptationRequests),
@@ -253,7 +261,14 @@ export async function sanitizeReviewChanges(
     : new Set<number>();
   const fresh = notes
     .filter((note) => !known.has(note.id))
-    .map((note) => ({ id: note.id, message: shortText(note.message, 500) ?? "", time: shortText(note.time, 40) ?? "" }));
+    .map((note) => ({
+      id: note.id,
+      message: shortText(note.message, 500) ?? "",
+      time: shortText(note.time, 40) ?? "",
+      // Where the agency's bell leads: this version, and the request when it is one of its own.
+      deliverableId: access.deliverableId,
+      ...(typeof note.commentId === "number" && before.has(note.commentId) ? { commentId: note.commentId } : {}),
+    }));
   if (fresh.length) lists.notifications = { upsert: fresh, remove: [] };
 
   const sanitized: StateChanges = { lists, maps, settings: { upsert: {}, remove: [] } };

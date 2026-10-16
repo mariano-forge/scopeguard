@@ -94,3 +94,21 @@ test("the audit trail cannot be changed, even directly in the database", async (
   await expect(sql("delete from audit_events where organization_id = $1 and id = $2", [org, event.id])).rejects.toThrow(/append-only/);
   await expect(sql("update audit_events set actor = 'x' where organization_id = $1 and id = $2", [org, event.id])).rejects.toThrow(/append-only/);
 });
+
+test("a client never sees who else is invited, nor their personal links", async () => {
+  const { token, client, email } = await reviewWithQuote();
+  const [{ organization_id: org }] = await sql<{ organization_id: string }>("select organization_id from review_links where token = $1", [token]);
+  const other = `${unique("autre")}@client.test`;
+  await sql("update review_links set data = jsonb_set(data, '{invites}', data->'invites' || jsonb_build_array(jsonb_build_object('email', $2::text, 'at', 'x', 'id', 'lien-personnel-secret'))) where organization_id = $1 and token = $3", [org, other, token]);
+  const linkKey = "1:3";
+  const answer = await call(`/api/review/${token}`, { person: client });
+  const link = (answer.json.state as { reviewLinks: Record<string, Record<string, unknown>> }).reviewLinks[linkKey];
+  expect(link.token).toBe(token);
+  expect(link.invites).toBeUndefined();
+  expect(JSON.stringify(answer.json)).not.toContain(other);
+  expect(JSON.stringify(answer.json)).not.toContain(email);
+  expect(JSON.stringify(answer.json)).not.toContain("lien-personnel-secret");
+  // Nor in an action's answer.
+  const acted = await clientAction(client, token, "comments", "POST", { message: "Bonjour" });
+  expect(JSON.stringify(acted.json)).not.toContain(other);
+});

@@ -1,5 +1,6 @@
-// Agency: DELETE /api/deliverables/:deliverableId/review-link/invites/:email -> the invitation is
-// removed, which cuts that client's access at once (src/db/agencyActions.ts).
+// Agency, one invitation on a version's client link (src/db/agencyActions.ts):
+//   PATCH  /api/deliverables/:deliverableId/review-link/invites/:email { role } -> "decider" or "contributor"
+//   DELETE /api/deliverables/:deliverableId/review-link/invites/:email          -> removed: that client's access stops at once
 
 import { agencyActionResponse } from "@/lib/agencyActionRoute";
 
@@ -12,7 +13,14 @@ const decoded = (value: string) => {
   }
 };
 
-export async function DELETE(request: Request, context: RouteContext<"/api/deliverables/[deliverableId]/review-link/invites/[email]">) {
+type Context = RouteContext<"/api/deliverables/[deliverableId]/review-link/invites/[email]">;
+
+export async function PATCH(request: Request, context: Context) {
+  const { deliverableId, email } = await context.params;
+  return agencyActionResponse(request, "invite.role", { deliverableId, email: decoded(email) });
+}
+
+export async function DELETE(request: Request, context: Context) {
   const { deliverableId, email } = await context.params;
   return agencyActionResponse(request, "invite.remove", { deliverableId, email: decoded(email) });
 }

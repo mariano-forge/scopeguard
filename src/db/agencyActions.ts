@@ -7,6 +7,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
 import { initialsOf, sideOf } from "@/lib/authors";
+import { clientRoleLabels, readClientRole, roleOfInvite, type ClientRole } from "@/lib/clientRoles";
 import { formatProposalAmount, formatProposalDeadline } from "@/lib/proposalFormat";
 import type { ListChange, StateChanges } from "@/lib/sharedState";
 import {
@@ -55,7 +56,8 @@ export type AgencyAction =
   | { type: "version.reopen"; deliverableId: number; message: string }
   | { type: "link.share"; deliverableId: number }
   | { type: "link.revoke"; deliverableId: number }
-  | { type: "invite.remove"; deliverableId: number; email: string };
+  | { type: "invite.remove"; deliverableId: number; email: string }
+  | { type: "invite.role"; deliverableId: number; email: string; role: ClientRole };
 
 export type AgencyMember = { id: string; name: string; organizationId: string; role: string | null | undefined };
 export type AgencyActionResult = { ok: true; revision: number; id?: number; data?: Data } | { ok: false; status: number; error: string; code?: string };
@@ -146,9 +148,13 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
     case "link.share":
     case "link.revoke":
       return deliverableId ? { type, deliverableId } : null;
-    case "invite.remove": {
+    case "invite.remove":
+    case "invite.role": {
       const email = text(params.email, 320)?.toLowerCase();
-      return deliverableId && email ? { type, deliverableId, email } : null;
+      if (!deliverableId || !email) return null;
+      if (type === "invite.remove") return { type, deliverableId, email };
+      const role = readClientRole(body.role);
+      return role ? { type, deliverableId, email, role } : null;
     }
     default:
       return null;
@@ -214,7 +220,7 @@ function newReviewLink(deliverableId: number, version: number) {
 }
 
 /** Actions on a version: its validation and its client link (one per version, keyed "id:version"). */
-async function versionChanges(db: Db, member: AgencyMember, action: Extract<AgencyAction, { deliverableId: number; type: "version.reopen" | "link.share" | "link.revoke" | "invite.remove" }>) {
+async function versionChanges(db: Db, member: AgencyMember, action: Extract<AgencyAction, { deliverableId: number; type: "version.reopen" | "link.share" | "link.revoke" | "invite.remove" | "invite.role" }>) {
   const org = member.organizationId;
   const changes = noChanges();
   const [record] = await db.select().from(deliverables).where(and(eq(deliverables.organizationId, org), eq(deliverables.id, action.deliverableId))).limit(1);
@@ -252,6 +258,15 @@ async function versionChanges(db: Db, member: AgencyMember, action: Extract<Agen
       log.add("review-link.invite-removed", `Invitation retirée : ${action.email}`);
       break;
     }
+    case "invite.role": {
+      const invites = Array.isArray(link?.invites) ? (link.invites as Data[]) : [];
+      const invite = invites.find((candidate) => candidate.email === action.email);
+      if (!link || !invite) return refused("Invitation introuvable.", 404);
+      if (roleOfInvite(invite) === action.role) return { changes };
+      putLink({ ...link, invites: invites.map((candidate) => (candidate === invite ? { ...candidate, role: action.role } : candidate)) });
+      log.add("review-link.invite-role", `${action.email} : ${clientRoleLabels[action.role].toLowerCase()}`);
+      break;
+    }
   }
   log.into(changes);
   return { changes };
@@ -259,7 +274,8 @@ async function versionChanges(db: Db, member: AgencyMember, action: Extract<Agen
 
 async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): Promise<{ changes: StateChanges; id?: number; data?: Data } | AgencyActionResult> {
   if (isWorkspace(action)) return workspaceChanges(db, member.organizationId, member.name, action);
-  if (action.type === "version.reopen" || action.type === "link.share" || action.type === "link.revoke" || action.type === "invite.remove") return versionChanges(db, member, action);
+  if (action.type === "version.reopen" || action.type === "link.share" || action.type === "link.revoke" || action.type === "invite.remove" || action.type === "invite.role")
+    return versionChanges(db, member, action);
   const org = member.organizationId;
   const changes = noChanges();
   const signer = { author: member.name, initials: initialsOf(member.name), from: "agency" };

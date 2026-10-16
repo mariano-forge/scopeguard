@@ -8,6 +8,7 @@ import { and, asc, eq, inArray, or } from "drizzle-orm";
 import type { Db } from "./client";
 import { organizations, users } from "./auth-schema";
 import { auditEvents, clients, commentProposals, comments, deliverables, files, projects, proposalVersions, storedFiles } from "./schema";
+import { deciderEventTypes } from "@/lib/clientRoles";
 
 type Data = Record<string, unknown>;
 
@@ -38,6 +39,10 @@ async function identities(db: Db, values: (string | null)[]) {
     return { kind: "agency", label: member ? `Agence : ${member.name} <${member.email}>` : "Agence : membre retiré" };
   };
 }
+
+/** A client's decisions are a decider's: the server refuses them to contributors (src/lib/clientRoles.ts). */
+const decider = (identity: ProofIdentity, type: string | null): ProofIdentity =>
+  identity.kind === "client" && type && deciderEventTypes.has(type) ? { ...identity, label: identity.label.replace("Client vérifié", "Client vérifié, décideur") } : identity;
 
 export async function buildProof(db: Db, org: string, deliverableId: number, generatedBy: { name: string; email: string }) {
   const [record] = await db
@@ -105,7 +110,7 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
     type: row.type,
     description: text((row.data as Data).description),
     actor: row.actor,
-    identity: identify(row.recordedBy),
+    identity: decider(identify(row.recordedBy), row.type),
     recordedAt: row.recordedAt.toISOString(),
     ipAddress: row.ipAddress,
     userAgent: row.userAgent,

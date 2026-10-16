@@ -23,9 +23,10 @@ import type { CurrentUser } from "@/lib/session";
 import type { ReviewAccess } from "./reviewAccess";
 import { appUrl, sendMail } from "@/lib/mail";
 import { renderMail } from "@/lib/mailTemplates";
+import { roleOfInvite, type ClientRole } from "@/lib/clientRoles";
 
 type Data = Record<string, unknown>;
-type Invite = { email: string; at: string; id?: string };
+type Invite = { email: string; at: string; id?: string; role?: ClientRole };
 
 export const reviewSessionCookie = "kora_review_session";
 export const reviewSessionDays = 30;
@@ -48,6 +49,9 @@ export function invitesOf(link: Data): Invite[] {
 }
 
 export const isInvited = (link: Data, email: string) => invitesOf(link).some((invite) => normalizeEmail(invite.email) === email);
+
+/** The role of an invited address on a link (src/lib/clientRoles.ts). */
+export const inviteRole = (link: Data, email: string) => roleOfInvite(invitesOf(link).find((invite) => normalizeEmail(invite.email) === email));
 
 /** E-mail of a personal invitation address, to pre-fill the form. */
 export const invitationEmail = (link: Data, invitationId: string | null) =>
@@ -176,13 +180,17 @@ const requestOf = (org: string, linkKey: string) =>
 /** Where an agency or client request came from (src/lib/api.ts requestOrigin), kept on its audit events. */
 type Origin = { ipAddress?: string | null; userAgent?: string | null };
 
-export async function inviteToReview(db: Db, org: string, linkKey: string, emails: string[], user: CurrentUser, origin: Origin = {}) {
+/**
+ * Invites addresses on a link with a role (decider: the agency's own invitations; contributor: an
+ * access request accepted). An address already invited keeps its role: the agency changes it apart.
+ */
+export async function inviteToReview(db: Db, org: string, linkKey: string, emails: string[], user: CurrentUser, origin: Origin = {}, role: ClientRole = "decider") {
   const row = await linkRow(db, org, linkKey);
   if (!row || !row.active) return null;
   const link = row.data as Data;
   const typed = [...new Set(emails.map(normalizeEmail))].filter(validEmail);
   const fresh = typed.filter((email) => !isInvited(link, email));
-  const added: Invite[] = fresh.map((email) => ({ email, at: now(), id: randomBytes(12).toString("base64url") }));
+  const added: Invite[] = fresh.map((email) => ({ email, at: now(), id: randomBytes(12).toString("base64url"), role }));
   const updated = { ...link, invites: [...invitesOf(link), ...added] };
   // Their access requests, if any, are answered by the invitation.
   if (typed.length)
@@ -202,7 +210,7 @@ export async function inviteToReview(db: Db, org: string, linkKey: string, email
     {
       lists: {
         auditEvents: {
-          upsert: [{ id, type: "review.invited", actor: user.name, description: `Invitation envoyée à ${fresh.join(", ")}`, timestamp: now(), deliverableId: row.deliverableId }],
+          upsert: [{ id, type: "review.invited", actor: user.name, description: `Invitation envoyée à ${fresh.join(", ")} (${role === "decider" ? "décideur" : "contributeur"})`, timestamp: now(), deliverableId: row.deliverableId }],
           remove: [],
         },
       },
@@ -217,13 +225,15 @@ export async function inviteToReview(db: Db, org: string, linkKey: string, email
   for (const invite of added) {
     const sent = await sendMail({
       to: invite.email,
-      subject: `${user.name} vous invite à valider « ${name} »`,
+      subject: role === "decider" ? `${user.name} vous invite à valider « ${name} »` : `${user.name} vous invite à donner votre avis sur « ${name} »`,
       replyTo: user.email,
       ...renderMail({
         preheader: `${user.name}${user.organizationName ? ` (${user.organizationName})` : ""} partage « ${name} » avec vous`,
-        heading: `« ${name} » attend votre validation`,
+        heading: role === "decider" ? `« ${name} » attend votre validation` : `« ${name} » attend vos retours`,
         paragraphs: [
-          `${user.name}${user.organizationName ? `, de ${user.organizationName},` : ""} vous invite à consulter ce livrable, à y laisser vos retours et à le valider.`,
+          role === "decider"
+            ? `${user.name}${user.organizationName ? `, de ${user.organizationName},` : ""} vous invite à consulter ce livrable, à y laisser vos retours et à le valider.`
+            : `${user.name}${user.organizationName ? `, de ${user.organizationName},` : ""} vous invite à consulter ce livrable et à y laisser vos retours. La validation et les décisions sur les devis restent à la personne désignée par l’agence.`,
           "Pour protéger la revue, un code de vérification vous sera envoyé à cette adresse à l’ouverture.",
         ],
         action: { label: "Ouvrir la revue", href: reviewUrl(updated, invite.id) },
@@ -264,7 +274,8 @@ export async function requestReviewAccess(db: Db, access: ReviewAccess, email: s
     org,
     {
       lists: {
-        notifications: { upsert: [{ id, message: `${email} demande l'accès à la revue de « ${name} »`, time: "À l'instant" }], remove: [] },
+        // The bell opens the version with « Partager la revue », where the request is answered.
+        notifications: { upsert: [{ id, message: `${email} demande l'accès à la revue de « ${name} »`, time: "À l'instant", deliverableId: access.deliverableId, open: "share" }], remove: [] },
         auditEvents: {
           upsert: [{ id, type: "review.access-requested", actor: email, description: `Demande d'accès de ${email}`, timestamp: now(), deliverableId: access.deliverableId }],
           remove: [],
@@ -323,7 +334,8 @@ async function mailAccessRequest(db: Db, access: ReviewAccess, email: string, me
 
 /** Agency: accepts (invites the address) or refuses an access request to one of its links. */
 export async function decideAccessRequest(db: Db, org: string, linkKey: string, email: string, accepted: boolean, user: CurrentUser, origin: Origin = {}) {
-  if (accepted) return inviteToReview(db, org, linkKey, [email], user, origin);
+  // Someone given the link by a colleague comments; deciding stays with whom the agency chose.
+  if (accepted) return inviteToReview(db, org, linkKey, [email], user, origin, "contributor");
   const row = await linkRow(db, org, linkKey);
   if (!row) return null;
   await db
@@ -359,8 +371,9 @@ export async function remindReview(db: Db, org: string, linkKey: string, user: C
   const row = await linkRow(db, org, linkKey);
   if (!row || !row.active || row.deliverableId === null) return { error: "Lien de revue introuvable ou révoqué.", status: 404 } as const;
   const link = row.data as Data;
-  const invites = invitesOf(link);
-  if (!invites.length) return { error: "Invitez d’abord le client sur cette revue.", status: 400 } as const;
+  // The reminder asks for a validation and quote decisions: deciders only.
+  const invites = invitesOf(link).filter((invite) => roleOfInvite(invite) === "decider");
+  if (!invites.length) return { error: "Invitez d’abord un décideur sur cette revue.", status: 400 } as const;
   const last = typeof link.lastReminderAt === "number" ? link.lastReminderAt : 0;
   if (Date.now() - last < reminderCooldownMs) return { error: "Une relance a déjà été envoyée il y a moins de 24 heures.", status: 429 } as const;
 
@@ -415,7 +428,7 @@ export async function remindReview(db: Db, org: string, linkKey: string, user: C
           upsert: [{ id: sentAt, type: "review.reminded", actor: user.name, description: `Relance envoyée à ${recipients}`, timestamp: now(), deliverableId: row.deliverableId }],
           remove: [],
         },
-        notifications: { upsert: [{ id: sentAt, message: `Relance envoyée à ${recipients}`, time: "À l'instant" }], remove: [] },
+        notifications: { upsert: [{ id: sentAt, message: `Relance envoyée à ${recipients}`, time: "À l'instant", deliverableId: row.deliverableId }], remove: [] },
       },
       maps: { reviewLinks: { upsert: { [linkKey]: updated }, remove: [] } },
       settings: { upsert: {}, remove: [] },

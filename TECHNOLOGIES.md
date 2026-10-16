@@ -72,7 +72,7 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 
 | Technologie | Version | Rôle |
 | --- | --- | --- |
-| **Playwright Test** | 1.63 | 62 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier. Couvre la connexion, les agences, les rôles, l'accès client, les fichiers, la preuve et les relances. |
+| **Playwright Test** | 1.63 | 72 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier. Couvre la connexion, les agences et leurs rôles, chaque geste de l'agence et du client dans l'interface et par l'API (refus compris), l'accès client et ses rôles, les fichiers, la preuve, les relances et les notifications. |
 | **ESLint** | 9.39 | Analyse du code, avec la configuration de Next.js. |
 | **Prettier** | 3.9 | Mise en forme. |
 
@@ -111,8 +111,8 @@ Les e-mails partent par Resend dès que `RESEND_API_KEY` et `MAIL_FROM` sont ren
 | `src/app/review/[token]/` | La page de revue du client et son écran de vérification. |
 | `src/app/connexion`, `bienvenue`, `invitation`, `reinitialiser` | Connexion, création de l'agence, invitation d'un collègue, nouveau mot de passe. |
 | `src/app/api/` | Les routes API. |
-| `src/db/` | Schéma, migrations appliquées par Drizzle, règles d'accès, synchronisation, preuve. |
-| `src/lib/` | Authentification, sessions, stockage, e-mails, synchronisation côté navigateur. |
+| `src/db/` | Schéma, lecture de l'état (`state.ts`), actions de l'agence (`agencyActions.ts`, `workspaceActions.ts`) et du client (`reviewActions.ts`, règles dans `reviewAccess.ts`), accès client (`reviewAuth.ts`), droits (`agencyPermissions.ts`), preuve (`proof.ts`). |
+| `src/lib/` | Authentification, sessions, stockage, e-mails, rôles client (`clientRoles.ts`), lecture de l'état et envoi des actions côté navigateur (`stateSync.ts`, `actionRequest.ts`). |
 | `src/proxy.ts` | Redirection rapide vers `/connexion` sans session (l'ancien « middleware » de Next.js). |
 | `drizzle/` | Migrations SQL, à appliquer avant chaque déploiement qui en ajoute. |
 | `tests/e2e/` | La suite de tests. |
@@ -121,14 +121,15 @@ Les e-mails partent par Resend dès que `RESEND_API_KEY` et `MAIL_FROM` sont ren
 
 - **Isolation des agences** : chaque enregistrement porte l'identifiant de son agence dans sa clé primaire, et le serveur filtre chaque requête dessus.
 - **Rôles** : les décisions commerciales et irréversibles sont réservées aux administrateurs, et le serveur les refuse aux membres (`src/db/agencyPermissions.ts`).
-- **Clients** : ils n'accèdent qu'à la version partagée avec eux. Ils écrivent une action à la fois, que le serveur construit depuis la base : leurs propres commentaires, leurs décisions et la validation. Le serveur signe ce qu'ils écrivent avec leur nom et leur adresse vérifiée (`src/db/reviewActions.ts`, `src/db/reviewAccess.ts`).
+- **Clients** : ils n'accèdent qu'à la version partagée avec eux, sans voir qui d'autre est invité. Seuls les décideurs désignés par l'agence prennent les décisions (devis, validation) ; les contributeurs commentent. Ils écrivent une action à la fois, que le serveur construit depuis la base : leurs propres commentaires, leurs décisions et la validation. Le serveur signe ce qu'ils écrivent avec leur nom et leur adresse vérifiée (`src/db/reviewActions.ts`, `src/db/reviewAccess.ts`).
 - **Journal d'audit** : il est en ajout seul, et un trigger PostgreSQL refuse toute modification ou suppression. Chaque événement garde l'heure du serveur, l'identité constatée, l'IP et le navigateur. Il alimente la preuve de validation (`src/db/proof.ts`).
 - **Base** : la sécurité par ligne est activée sur toutes les tables, ce qui ferme l'API publique de Supabase.
 - **Fichiers** : les conteneurs sont privés, l'accès est vérifié avant chaque lecture, et l'adresse signée n'est valable que 5 minutes. Une adresse d'import ne permet que de créer un fichier, jamais de le lire ou d'en remplacer un ; le serveur recalcule l'empreinte de ce qu'il reçoit et supprime tout fichier non conforme.
 - **Adresses IP** : seule l'adresse ajoutée par un proxy de confiance est retenue (`TRUSTED_PROXY_HOPS`). Sinon, elle est marquée « non vérifiée ».
 - **En-têtes HTTP** (`next.config.ts`) : politique de sécurité du contenu en production (scripts et connexions limités au site et au stockage, pas de plugin, `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS en HTTPS. Next.js ne s'annonce plus. Les scripts gardent `'unsafe-inline'` : une politique à nonces rendrait toutes les pages dynamiques.
 - **Requêtes d'un autre site** : toute écriture dont l'origine n'est pas le site est refusée (`src/proxy.ts`, `crossSiteWrite`), en plus des cookies `SameSite=Lax`.
-- **Limites de débit** (`src/db/requestLimits.ts`), comptées en base : imports par heure, enregistrements par minute, invitations par heure, réglables par variable d'environnement. Elles s'ajoutent aux limites de connexion (Better Auth) et des codes client.
+- **Limites de débit** (`src/db/requestLimits.ts`), comptées en base : imports par heure, enregistrements par minute, invitations par heure, réglables par variable d'environnement, et 10 demandes d'accès par heure et par adresse IP. Elles s'ajoutent aux limites de connexion (Better Auth) et des codes client.
+- **Adresses `/api` inconnues** : elles répondent `404 { error }` (`src/app/api/[...unknown]/route.ts`) au lieu de retomber sur les pages.
 
 ## Points d'attention
 
@@ -136,7 +137,8 @@ Les e-mails partent par Resend dès que `RESEND_API_KEY` et `MAIL_FROM` sont ren
 - **Imports abandonnés** : un fichier envoyé au stockage sans validation y reste (aucun enregistrement ne le sert). Un nettoyage périodique est à prévoir.
 - **Fichiers antérieurs au stockage Azure** : la table `files` est conservée, mais ses fichiers ne sont plus servis (Supabase n'en contient aucun).
 - **`npm audit`** signale encore, en production, des paquets qui ne sont pas exploitables dans Kora : `drizzle-kit` et `esbuild` (tirés par Better Auth ; la faille d'esbuild concerne son serveur de développement), `source-map-js` (compilation CSS) et `sharp` (optimisation d'images de Next, désactivée par `images.unoptimized`). À revoir à chaque mise à jour de ces dépendances.
-- **Dette** : `src/app/(agency)/AgencyApp.tsx` dépasse 3 300 lignes, et 24 erreurs ESLint antérieures restent à traiter.
+- **Dette** : `src/app/(agency)/AgencyApp.tsx` fait près de 2 900 lignes (à découper au fil des évolutions de l'éditeur), et 20 erreurs ESLint anciennes restent à traiter.
+- **Sauvegardes et suivi des erreurs** : à vérifier (offre Supabase) et à brancher (Sentry ou équivalent) avant d'élargir les pilotes.
 
 ## Commandes utiles
 

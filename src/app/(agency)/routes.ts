@@ -103,3 +103,20 @@ export function hrefForRecord<T extends VersionRecord>(record: T, records: T[]) 
   const latest = versionsOfLivrable(livrableId, records)[0];
   return href.deliverable(record.projectId ?? 1, livrableId, latest?.id === record.id ? undefined : record.version);
 }
+
+/**
+ * Where an "Activité" notification of the bell leads: its version, on its request (?demande=) or
+ * with « Partager la revue » open (?partage=1). None when it has no target (older notifications) or
+ * its version is gone.
+ */
+export function notificationHref<T extends VersionRecord>(
+  notification: { deliverableId?: number; commentId?: number; open?: string },
+  records: T[],
+  commentIds: Set<number>,
+) {
+  const record = records.find((candidate) => candidate.id === notification.deliverableId);
+  if (!record) return undefined;
+  const target = hrefForRecord(record, records);
+  if (notification.open === "share") return `${target}?partage=1`;
+  return notification.commentId !== undefined && commentIds.has(notification.commentId) ? `${target}?demande=${notification.commentId}` : target;
+}

@@ -18,6 +18,7 @@ import { ResizeHandle } from "@/app/(agency)/editor/ResizeHandle";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
 import { loadSharedState, subscribeSharedState } from "@/lib/stateSync";
 import { reviewAction } from "@/lib/reviewActions";
+import type { ClientRole } from "@/lib/clientRoles";
 import { AccessGate, ProfileGate } from "./AccessGate";
 import { initialsOf, sideOf, type Side } from "@/lib/authors";
 
@@ -136,8 +137,11 @@ export default function ClientReviewPage() {
     /** The client's full name; null until they give it, at their first verification. */
     name: string | null;
     deliverable: string;
+    /** On this link: a decider approves and decides quotes, a contributor comments (src/lib/clientRoles.ts). */
+    role: ClientRole | null;
   } | null>(null);
   const viewerMode = viewer?.mode;
+  const contributor = viewerMode === "client" && viewer?.role === "contributor";
   /** Name shown on the client's own messages: the verified address (the server signs with it anyway). */
   const clientName = viewer?.name ?? viewer?.verifiedEmail ?? "Client";
   const [reviewLink, setReviewLink] = useState<ReviewLink | null>(null);
@@ -688,7 +692,7 @@ export default function ClientReviewPage() {
         : deliverable.status === "Remplacée"
           ? { tone: "replaced", icon: <Lock />, label: "Remplacée", hint: "Une version plus récente existe" }
           : { tone: "pending", icon: <Clock />, label: "À valider", hint: "En attente de votre validation" };
-  const canValidate = !isReadOnlyVersion() && reviewStatus === "pending";
+  const canValidate = !isReadOnlyVersion() && reviewStatus === "pending" && !contributor;
   /** Where the client's decision on a proposal stands. */
   const proposalStatus = (commentId: number) => {
     const adaptation = adaptationRequests[commentId];
@@ -699,7 +703,7 @@ export default function ClientReviewPage() {
     if (adaptation) return { label: "Adaptation demandée", tone: "decision-sent" };
     return { label: "À décider", tone: "decision-sent" };
   };
-  const canDecide = (commentId: number) => !isReadOnlyVersion() && !isCommercialDecisionLocked(commentId) && !adaptationRequests[commentId];
+  const canDecide = (commentId: number) => !isReadOnlyVersion() && !contributor && !isCommercialDecisionLocked(commentId) && !adaptationRequests[commentId];
 
   return (
     <main className="client-app">
@@ -714,6 +718,7 @@ export default function ClientReviewPage() {
             </h1>
             {context && <p className="client-topbar-context">{context}</p>}
             {viewerMode === "preview" && <p className="client-topbar-context">Aperçu agence · lecture seule</p>}
+            {contributor && <p className="client-topbar-context">Contributeur · vos retours sont transmis, la validation revient au décideur désigné par l’agence</p>}
           </div>
         </div>
         <div className="client-topbar-actions">
@@ -923,6 +928,9 @@ export default function ClientReviewPage() {
               <span className={`decision-badge ${proposalStatus(proposalPreviewCommentId).tone}`}>{proposalStatus(proposalPreviewCommentId).label}</span>
               <span className="text-muted-foreground">Version {previewProposal.version} de la proposition</span>
             </p>
+            {contributor && proposalStatus(proposalPreviewCommentId).label === "À décider" && (
+              <p className="text-sm text-muted-foreground">Seul le décideur désigné par l’agence peut accepter ou refuser cette proposition.</p>
+            )}
             {!canCounter(proposalPreviewCommentId) && canDecide(proposalPreviewCommentId) && (
               <p className="text-sm text-muted-foreground">L’agence ne propose pas de contre-proposition sur ce devis : un refus est définitif.</p>
             )}

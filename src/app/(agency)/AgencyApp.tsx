@@ -39,7 +39,7 @@ import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
 import { todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { HomeSidebar, ProjectSidebar, type ClientFeedback, type PanelMode, type SidebarLivrable, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
-import { href, hrefForRecord, livrableIdOf, parseAgencyPath, versionsOfLivrable } from "./routes";
+import { href, hrefForRecord, livrableIdOf, notificationHref, parseAgencyPath, versionsOfLivrable } from "./routes";
 import { MAX_FILE_BYTES, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
 import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialog";
 import {
@@ -71,6 +71,9 @@ import { sideOf, type Side } from "@/lib/authors";
 import { proofHtml } from "./proofDocument";
 import { uploadFile as sendFile, type UploadPlacement } from "@/lib/upload";
 import { agencyAction } from "@/lib/agencyActions";
+import type { ClientRole } from "@/lib/clientRoles";
+import { InviteList, roleOptions, type Invite } from "./InviteList";
+import { Select } from "@/components/Select";
 import { loadSharedState, refreshSharedState, subscribeSharedState } from "@/lib/stateSync";
 
 
@@ -160,7 +163,7 @@ type ReviewLink = {
   deliverableId?: number;
   version?: number;
   /** People invited by e-mail to this review; `id` makes their personal address (?invitation=<id>). */
-  invites?: { email: string; at: string; id?: string }[];
+  invites?: Invite[];
   /** Last reminder mailed to the invited clients (ms); the server allows one a day. */
   lastReminderAt?: number;
 };
@@ -203,6 +206,10 @@ type Notification = {
   id: number;
   message: string;
   time: string;
+  /** What it is about, so the bell opens it (src/app/(agency)/routes.ts notificationHref). */
+  deliverableId?: number;
+  commentId?: number;
+  open?: "share";
 };
 type AuditEvent = {
   id: number;
@@ -454,6 +461,8 @@ export function AgencyApp() {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   /** Share dialog: e-mail addresses being typed for a manual invitation. */
   const [inviteDraft, setInviteDraft] = useState("");
+  /** Role given to the addresses invited from "Partager la revue" (src/lib/clientRoles.ts). */
+  const [inviteRole, setInviteRole] = useState<ClientRole>("decider");
   const [inviteError, setInviteError] = useState("");
   const [stateHydrated, setStateHydrated] = useState(false);
 
@@ -857,6 +866,14 @@ export function AgencyApp() {
   useEffect(() => {
     if (openThreadId !== null) markSeen([openThreadId, ...openReplyIds.split(",").filter(Boolean).map(Number)]);
   }, [openThreadId, openReplyIds]);
+
+  // ?partage=1 (from the bell, an access request): « Partager la revue » is open on the version until
+  // closed, which drops the parameter. Derived from the address: no effect needed.
+  const shareFromBell = searchParams.get("partage") === "1" && view.kind === "deliverable";
+  function closeShare() {
+    setShareOpen(false);
+    if (shareFromBell) router.replace(pathname, { scroll: false });
+  }
 
   // ?demande=ID (from "À traiter"): select that comment once, then drop the param so clicks work normally.
   useEffect(() => {
@@ -1436,6 +1453,10 @@ export function AgencyApp() {
       });
   }
   // Notifications: every unread client message, newest first, plus what the client asked on whole versions.
+  /** The bell's "Activité": each notification with the page it is about, when there is one. */
+  const commentIdSet = new Set(comments.map((comment) => comment.id));
+  const bellNotifications = notifications.map((notification) => ({ ...notification, href: notificationHref(notification, deliverables, commentIdSet) }));
+
   const clientFeedback: ClientFeedback[] = [
     ...deliverables.flatMap((record) => {
       const latest = versionsOfLivrable(livrableIdOf(record, deliverables), deliverables)[0];
@@ -1841,7 +1862,7 @@ export function AgencyApp() {
           onPanel={showPanel}
           canvasHref={href.deliverable(selectedProject.id, livrableRootId)}
           onNavigate={(target) => router.push(target)}
-          notifications={notifications}
+          notifications={bellNotifications}
           feedback={clientFeedback}
           onMarkAllRead={markAllRead}
           livrables={projectLivrables}
@@ -1853,7 +1874,7 @@ export function AgencyApp() {
           view={view}
           clients={clients}
           favorites={sidebarFavorites}
-          notifications={notifications}
+          notifications={bellNotifications}
           feedback={clientFeedback}
           onMarkAllRead={markAllRead}
           onSearch={() => setPaletteOpen(true)}
@@ -2506,8 +2527,8 @@ export function AgencyApp() {
           </Modal>
 
           <Modal
-            open={shareOpen}
-            onClose={() => setShareOpen(false)}
+            open={shareOpen || shareFromBell}
+            onClose={closeShare}
             title="Partager la revue"
             description="Le client pourra consulter la version actuelle et déposer ses retours depuis ce lien."
             footer={
@@ -2520,7 +2541,7 @@ export function AgencyApp() {
                     title={canManage ? undefined : "Réservé aux administrateurs de l’agence"}
                     onClick={() => {
                       if (!adminOnly()) return;
-                      setShareOpen(false);
+                      closeShare();
                       void agencyAction(`deliverables/${reviewLink.deliverableId ?? currentDeliverable.id}/review-link`, "DELETE").then((result) => result && toast("Lien de revue révoqué"));
                     }}
                   >
@@ -2552,7 +2573,7 @@ export function AgencyApp() {
                 >
                   <Input id="share-url" readOnly value={getReviewUrl()} onFocus={(event) => event.target.select()} />
                 </Field>
-                <Field id="share-invite" label="Inviter par e-mail" hint="Plusieurs adresses : séparez-les par une virgule.">
+                <Field id="share-invite" label="Inviter par e-mail" hint="Plusieurs adresses : séparez-les par une virgule. Un décideur peut valider la version et accepter les devis ; un contributeur commente seulement.">
                   <div className="flex gap-2">
                     <Input
                       id="share-invite"
@@ -2572,6 +2593,7 @@ export function AgencyApp() {
                       }}
                       disabled={isReadOnlyVersion}
                     />
+                    <Select label="Rôle des personnes invitées" value={inviteRole} options={roleOptions} onChange={setInviteRole} />
                     <Button variant="outline" className="h-9" onClick={() => void inviteByEmail()} disabled={!inviteDraft.trim() || isReadOnlyVersion}>
                       Inviter
                     </Button>
@@ -2579,24 +2601,7 @@ export function AgencyApp() {
                 </Field>
                 {inviteError && <FormError>{inviteError}</FormError>}
                 {(reviewLink.invites?.length ?? 0) > 0 && (
-                  <ul className="invite-list" aria-label="Personnes invitées">
-                    {reviewLink.invites?.map((invite) => (
-                      <li key={invite.email}>
-                        <span className="truncate">{invite.email}</span>
-                        <small>invité le {invite.at.split(" ")[0]}</small>
-                        <Hint label="Copier son lien personnel">
-                          <Button variant="ghost" size="icon-xs" aria-label={`Copier le lien de ${invite.email}`} onClick={() => void copyInviteLink(invite)}>
-                            <Copy />
-                          </Button>
-                        </Hint>
-                        <Hint label="Retirer l’invitation (son accès est coupé)">
-                          <Button variant="ghost" size="icon-xs" aria-label={`Retirer ${invite.email}`} onClick={() => removeInvite(invite.email)}>
-                            <X />
-                          </Button>
-                        </Hint>
-                      </li>
-                    ))}
-                  </ul>
+                  <InviteList invites={reviewLink.invites ?? []} onCopy={(invite) => void copyInviteLink(invite)} onRemove={removeInvite} onRole={changeInviteRole} />
                 )}
                 {accessRequests.some((request) => request.linkKey === linkKeyOf(reviewLink)) && (
                   <div className="grid gap-2">
@@ -2821,7 +2826,7 @@ export function AgencyApp() {
       setInviteError(typed.length ? "Ces personnes sont déjà invitées." : "");
       return;
     }
-    const result = await callReviewAccess("invite", { linkKey: linkKeyOf(reviewLink), emails: fresh });
+    const result = await callReviewAccess("invite", { linkKey: linkKeyOf(reviewLink), emails: fresh, role: inviteRole });
     if (!result) return;
     setInviteDraft("");
     setInviteError("");
@@ -2861,6 +2866,11 @@ export function AgencyApp() {
     if (!reviewLink) return;
     await navigator.clipboard.writeText(`${getReviewUrl()}${invite.id ? `?invitation=${invite.id}` : ""}`);
     toast(`Lien de ${invite.email} copié`);
+  }
+
+  function changeInviteRole(email: string, role: ClientRole) {
+    if (!reviewLink) return;
+    void agencyAction(`deliverables/${reviewLink.deliverableId ?? currentDeliverable.id}/review-link/invites/${encodeURIComponent(email)}`, "PATCH", { role });
   }
 
   function removeInvite(email: string) {
