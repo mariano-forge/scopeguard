@@ -52,7 +52,7 @@ import {
   type Area,
   } from "./editor/CanvasComments";
 import { EditorInspector, threadsToMarkdown, type InspectorTab } from "./editor/EditorInspector";
-import { NewRequestDialog } from "./editor/NewRequestDialog";
+import { NewRequestDialog, type NewRequest } from "./editor/NewRequestDialog";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "./editor/ReviewCanvas";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -1103,13 +1103,18 @@ export function AgencyApp() {
     requestAnimationFrame(() => centerOnPin(commentId));
   }
 
-  /** A request created directly, already qualified (from the panel's ▾), with its optional quote. */
-  async function addRequest(request: Qualified) {
+  /** A request entered from « + Demande »: its capture is imported first, then the request with its source. */
+  async function addRequest(request: NewRequest) {
     if (isReadOnlyVersion || !currentDeliverable) return;
+    const captureHref = request.capture
+      ? await uploadFile(request.capture, { kind: "request", projectId: currentDeliverable.projectId ?? 1, livrableId: livrableIdOf(currentDeliverable, deliverables) })
+      : undefined;
+    if (captureHref === null) return;
     setNewRequestKind(null);
-    setInspectorTab(request.decision === "Inclus" ? "correction" : "outside");
+    setInspectorTab(request.decision === "Inclus" ? "correction" : request.decision === "Hors périmètre" ? "outside" : "comment");
+    const source = request.source ? { ...request.source, ...(captureHref ? { capture: captureHref } : {}) } : undefined;
     const result = await agencyAction("comments", "POST", {
-      request: { deliverableId: currentDeliverable.id, decision: request.decision, title: request.title, description: request.description, quote: request.quote },
+      request: { deliverableId: currentDeliverable.id, decision: request.decision, title: request.title, description: request.description, quote: request.quote, source },
     });
     if (!result?.id) return;
     setSelectedId(result.id);
@@ -2359,7 +2364,7 @@ export function AgencyApp() {
             </div>
             <div className="scope-summary-grid">
               <div className="scope-summary-card">
-                <span className="scope-card-label">À traiter</span>
+                <span className="scope-card-label">Inclus</span>
                 <b>{activeComments.filter((c) => c.decision === "Inclus").length}</b>
                 <small>0 € (compris au forfait)</small>
               </div>
@@ -2381,7 +2386,7 @@ export function AgencyApp() {
               {activeComments.map((comment) => (
                 <div className="proof-comment" key={comment.id}>
                   <span className={`decision-badge ${decisionStyles[comment.decision]}`}>
-                    {comment.decision === "Inclus" ? "À traiter" : comment.decision === "Hors périmètre" ? "Hors scope" : "À clarifier"}
+                    {comment.decision === "Inclus" ? "Inclus" : comment.decision === "Hors périmètre" ? "Hors scope" : "À clarifier"}
                   </span>
                   <p>{comment.title ?? comment.message}</p>
                 </div>

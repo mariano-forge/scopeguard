@@ -11,7 +11,7 @@ async function sharedReview() {
   return { alice, token, linkKey };
 }
 
-test("personal link: e-mail pre-filled, code, name asked once, then the review", async ({ browser }) => {
+test("personal link: the address shown masked, the code sent to it, name asked once, then the review", async ({ browser }) => {
   const { alice, token, linkKey } = await sharedReview();
   expect((await call(`/api/review/${token}`)).status).toBe(401);
 
@@ -22,12 +22,27 @@ test("personal link: e-mail pre-filled, code, name asked once, then the review",
   const personalLink = linkIn(invitation);
   expect(personalLink).toContain(`/review/${token}?invitation=`);
 
+  // Whoever holds the link (a forwarded mail) learns the first letter and the domain, never the address.
+  const masked = `c${"•".repeat(8)}@client.test`;
+  const access = await call(`/api/review/${token}/access${new URL(personalLink!).search}`);
+  expect(access.json.invitation).toMatchObject({ masked });
+  expect(JSON.stringify(access.json)).not.toContain(email);
+
   const { page, errors } = await newPerson(browser);
+  const answers: string[] = [];
+  page.on("response", async (response) => {
+    if (response.url().includes("/api/")) answers.push(await response.text().catch(() => ""));
+  });
   await page.goto(personalLink!);
-  await expect(page.getByText(email)).toBeVisible();
+  await expect(page.getByText(masked)).toBeVisible();
+  await expect(page.getByText(email)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Valider cette version" })).toHaveCount(0);
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await page.getByLabel("Code").fill(await waitForCode(email));
+  await expect(page.getByText(masked)).toBeVisible();
+  // Until the code proves it, no answer of the server carries the address.
+  expect(answers.length).toBeGreaterThan(1);
+  expect(answers.some((answer) => answer.includes(email))).toBe(false);
   await page.getByRole("button", { name: "Accéder à la revue" }).click();
   await expect(page.getByRole("heading", { name: "Comment vous appelez-vous ?" })).toBeVisible();
   await page.getByLabel("Nom complet").fill("  Claire   Dubois ");
@@ -143,4 +158,23 @@ test("the agency previews read-only; removing an invitation or revoking the link
   await seedState(alice, { maps: { reviewLinks: { upsert: { [linkKey]: { ...link, active: false } }, remove: [] } } });
   expect((await call(`/api/review/${token}`, { person: client })).status).toBe(404);
   expect((await clientAction(client, token, "approval")).status).toBe(404);
+});
+
+test("a personal link asks the code by its invitation: it reaches the invitee; an unknown invitation gets the same answer and nothing", async () => {
+  const { alice, token, linkKey } = await sharedReview();
+  const email = `${unique("claire")}@client.test`;
+  await call("/api/review-access/invite", { person: alice, body: { linkKey, emails: [email] } });
+  const invitation = new URL(linkIn(lastMailTo(email))!).searchParams.get("invitation")!;
+  const ip = newIp();
+
+  const unknown = await call(`/api/review/${token}/access/code`, { person: { ip }, body: { invitation: "inventee" } });
+  expect(unknown.status).toBe(200);
+  const before = mailsTo(email).length;
+  const sent = await call(`/api/review/${token}/access/code`, { person: { ip }, body: { invitation } });
+  expect(sent.json).toEqual(unknown.json);
+  const code = await waitForCode(email);
+  expect(mailsTo(email).length).toBe(before + 1);
+
+  expect((await call(`/api/review/${token}/access/verify`, { person: { ip }, body: { invitation: "inventee", code } })).status).toBe(400);
+  expect((await call(`/api/review/${token}/access/verify`, { person: { ip }, body: { invitation, code } })).status).toBe(200);
 });

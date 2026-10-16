@@ -324,7 +324,7 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 - `Hors périmètre`
 - `À clarifier`
 
-*Implémentation actuelle : trois états, `À qualifier`, `Inclus` (« À traiter ») et `Hors périmètre` (« Hors scope »). `Modification mineure` n'existe pas encore ; `À clarifier` correspond à l'état non qualifié.*
+*Implémentation actuelle : trois états, `À qualifier`, `Inclus` (« Inclus », prévu au devis) et `Hors périmètre` (« Hors scope »). `Modification mineure` n'existe pas encore ; `À clarifier` correspond à l'état non qualifié.*
 
 **Critères d'acceptation**
 
@@ -420,7 +420,7 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 - **Seul le client approuve une version** : l'agence, même son propriétaire, n'a aucun moyen de le faire à sa place.
 - Une version ne se valide pas tant qu'un devis envoyé attend la décision du client : la fenêtre de validation liste ces devis, à accepter ou refuser un par un, et le serveur refuse la validation sinon. Aucun devis n'est refusé implicitement.
 - Les remarques encore « À clarifier » ne bloquent pas la validation : la fenêtre prévient qu'en validant, le client y renonce, les liste, et le bouton devient « Valider et renoncer à ces remarques ». L'événement de validation les nomme dans le journal et la preuve.
-- *À venir* : la validation « avec réserves », qui liste les corrections « À traiter » encore ouvertes et les inscrit dans la preuve.
+- *À venir* : la validation « avec réserves », qui liste les demandes « Inclus » encore ouvertes et les inscrit dans la preuve.
 - L'agence reçoit une notification.
 - L'agence peut rouvrir la validation d'une version (« Rouvrir la validation ») en expliquant pourquoi ; la raison est inscrite au journal.
 
@@ -807,9 +807,9 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 
 **Critères d'acceptation**
 
-- Sans compte, le lien mène à la page de connexion avec l'adresse invitée pré-remplie et l'onglet « Créer un compte » ouvert.
+- Sans compte, le lien mène à la page de connexion sur l'onglet « Créer un compte », avec le nom de l'agence et l'adresse invitée masquée (« c•••••@agence.fr ») ; la personne saisit elle-même son adresse, que le serveur vérifie à l'acceptation. Quelqu'un qui détiendrait le lien n'apprend pas l'adresse.
 - Après connexion, la page d'invitation propose « Rejoindre l'agence » ou « Refuser ».
-- Un compte connecté avec une autre adresse voit « Ce n'est pas le bon compte » et peut changer de compte.
+- Un compte connecté avec une autre adresse voit « Ce n'est pas le bon compte », avec l'adresse invitée masquée, et peut changer de compte.
 - Une invitation expirée, annulée ou déjà utilisée affiche un message clair.
 - Les invitations en attente sont aussi proposées sur la page « Bienvenue ».
 
@@ -857,7 +857,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 **Critères d'acceptation**
 
 - Depuis « Partager la revue », l'agence saisit une ou plusieurs adresses.
-- Chaque invité reçoit par e-mail un lien personnel (`/review/<lien>?invitation=<id>`) qui pré-remplit son adresse.
+- Chaque invité reçoit par e-mail un lien personnel (`/review/<lien>?invitation=<id>`, un identifiant aléatoire) qui montre son adresse masquée (« c•••••@client.fr ») : quelqu'un qui détiendrait le lien n'apprend pas l'adresse.
 - Chaque invité a un bouton pour copier son lien personnel.
 - Retirer une invitation coupe l'accès de cette personne immédiatement, même sur un appareil déjà reconnu.
 
@@ -869,7 +869,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 
 **Critères d'acceptation**
 
-- Avec son lien personnel, l'adresse est pré-remplie ; « Ce n'est pas moi » permet d'en changer.
+- Avec son lien personnel, l'adresse est reconnue sans être affichée en entier : le code part à l'adresse invitée ; « Ce n'est pas moi » permet de saisir une autre adresse.
 - Un code à 6 chiffres est envoyé, valable 10 minutes, avec 5 essais au maximum.
 - Les envois sont limités (1 par minute, 5 par heure et par adresse).
 - Le code n'est envoyé qu'aux adresses invitées, mais l'écran est identique dans tous les cas : on ne peut pas deviner qui est invité.
@@ -904,6 +904,35 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - Un membre de l'agence qui possède le lien ouvre la page client sans code.
 - L'aperçu est en lecture seule et l'indique ; aucune action n'y est enregistrée.
 - Un membre d'une autre agence n'a pas d'aperçu.
+
+#### US-050 : saisir une demande reçue ailleurs
+
+**En tant que** chef de projet,  
+**je veux** enregistrer dans Kora une demande que le client a faite par e-mail, au téléphone, en réunion ou sur Slack,  
+**afin que** toutes les demandes finissent dans le même registre, d'où qu'elles viennent.
+
+**Critères d'acceptation**
+
+- « + Demande » crée une demande « À clarifier », « Inclus » ou « Hors scope », pour une demande reçue ailleurs ou portant sur tout le livrable (une zone qu'on ne peut pas pointer).
+- La source est facultative : E-mail, Appel, Réunion, Slack, Figma ou Autre, avec la date de la demande d'origine.
+- L'agence peut coller le texte du client (l'extrait) et joindre une capture (image collée dans l'extrait ou choisie) ; les deux sont indiqués « Visible par le client ».
+- La demande affiche « Demande reçue par e-mail le 14/10/2026, saisie par Alice Martin », avec l'extrait et la capture, chez l'agence comme chez le client.
+- Le serveur n'accepte qu'un canal connu, une date valide, un extrait de 5 000 caractères au plus, et une image importée par l'agence elle-même.
+- La preuve reprend la source, l'extrait et l'empreinte SHA-256 de la capture.
+
+#### US-051 : être prévenu par e-mail des devis et des décisions
+
+**En tant que** client ou membre de l'agence,  
+**je veux** recevoir un e-mail quand un devis m'attend ou quand l'autre partie a décidé,  
+**afin de** ne pas dépendre d'une visite de l'application pour savoir qu'il faut agir.
+
+**Critères d'acceptation**
+
+- Un devis envoyé (premier, nouvelle version, réponse à une contre-proposition) part aux décideurs invités sur la version, avec le titre, le montant, le délai et leur lien personnel ; « Répondre à » vers l'administrateur qui l'a envoyé.
+- La réponse de l'agence à une contre-proposition (acceptée ou non retenue) part aux décideurs.
+- Un devis accepté ou refusé, une contre-proposition, la validation et la demande de modifications partent au propriétaire et à tous les administrateurs, avec un lien direct vers la demande ou la version ; « Répondre à » vers le client.
+- Les membres de l'agence et les contributeurs du client ne reçoivent pas ces e-mails.
+- Un e-mail qui ne part pas n'annule jamais l'action : la notification de la cloche reste.
 
 #### US-049 : attribuer un rôle aux personnes invitées
 
@@ -982,6 +1011,21 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - Un commentaire est rattaché à la page, à l'élément visé et à la largeur d'écran ; une capture est conservée.
 - Si l'élément a disparu, le commentaire est signalé « élément introuvable » au lieu d'être perdu.
 - Les commentaires rejoignent le panneau « Demandes » et le même parcours de qualification.
+
+#### Décisions et pistes notées (16 octobre 2026)
+
+Discutées avec le porteur du produit ; à reprendre telles quelles :
+
+- **Validation avec réserves** *(à voir avec le designer)* : la fenêtre de validation liste les demandes « Inclus » encore ouvertes ; la version est « validée avec réserves » et la preuve les nomme. Les devis en attente restent bloquants, les « À clarifier » sont abandonnées (déjà fait).
+- **Demande offerte** (US-046) : en attente du designer.
+- **Qualifier en lot** : sélectionner plusieurs demandes et les qualifier d'un coup.
+- **Devis groupé** : un devis couvrant plusieurs demandes, accepté ou refusé en entier ; le client retire ce qu'il ne veut pas par une contre-proposition (pas d'acceptation partielle).
+- **Alignement « demande »** : abandonner la distinction par le champ `kind` ; la qualification et la présence d'un repère suffisent.
+- **Bouton « J'ai terminé mes retours »** côté client (US-010) : reporté, utile surtout pour compter les tournées de révision (US-045).
+- **Lien copié sans invité** : seul un avertissement dans « Partager la revue » (fait). Écarté : ouvrir le lien à tout porteur. Écarté pour l'instant : autoriser un domaine entier.
+- **Annotation de site web** (US-048) : un script Kora sur le site de recette, limité aux domaines déclarés ; vérification par le même code e-mail ; retours dans le même panneau ; une version = une tournée de revue déclarée par l'agence (« V3 en ligne ») ; la preuve repose sur des captures, pas sur le site en direct ; « élément introuvable » si l'élément a disparu. Difficultés : la connexion depuis un autre domaine (cookies tiers), les sites protégés. Écartés : proxy ou iframe, extension de navigateur.
+- **Jira / Notion** (US-047) : aucune licence requise ; jeton API pour les pilotes (chiffré en base, jamais renvoyé à la page), OAuth ensuite.
+- **E-mails groupés** : un e-mail par action pour l'instant ; un récapitulatif seulement si les pilotes s'en plaignent.
 
 ## User stories à reporter
 
@@ -1110,6 +1154,8 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-047 envoi vers Jira ou Notion | ⬜ | |
 | US-048 annoter un site web en ligne | ⬜ | |
 | US-049 rôles des personnes invitées | ✅ | Décideur et contributeur, contrôlés par le serveur |
+| US-050 saisir une demande reçue ailleurs | ✅ | Source, date, extrait et capture ; visibles par le client et dans la preuve |
+| US-051 e-mails des devis et des décisions | ✅ | Décideurs côté client, propriétaire et administrateurs côté agence |
 
 **Avant les premiers pilotes**, il reste à :
 

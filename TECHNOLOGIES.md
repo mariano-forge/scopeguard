@@ -66,13 +66,13 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 
 | Technologie | Rôle |
 | --- | --- |
-| **Resend** (API HTTP) | Invitations, codes d'accès, relances, réinitialisations. Domaine `gmmforge.com` vérifié (SPF, DKIM ; DMARC à ajouter). Chaque e-mail part en HTML et en texte, avec « Répondre à » vers le membre de l'agence concerné (`src/lib/mail.ts`, `src/lib/mailTemplates.ts`). |
+| **Resend** (API HTTP) | Invitations, codes d'accès, relances, réinitialisations, demandes d'accès, devis envoyés et décisions du client. Domaine `gmmforge.com` vérifié (SPF, DKIM ; DMARC à ajouter). Chaque e-mail part en HTML et en texte, avec « Répondre à » vers le membre de l'agence concerné (`src/lib/mail.ts`, `src/lib/mailTemplates.ts`). |
 
 ### Tests et qualité
 
 | Technologie | Version | Rôle |
 | --- | --- | --- |
-| **Playwright Test** | 1.63 | 75 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier. Couvre la connexion, les agences et leurs rôles, chaque geste de l'agence et du client dans l'interface et par l'API (refus compris), l'accès client et ses rôles, les fichiers, la preuve, les relances et les notifications. |
+| **Playwright Test** | 1.63 | 83 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier. Couvre la connexion, les agences et leurs rôles, chaque geste de l'agence et du client dans l'interface et par l'API (refus compris), l'accès client et ses rôles, les fichiers, la preuve, les relances et les notifications. |
 | **ESLint** | 9.39 | Analyse du code, avec la configuration de Next.js. |
 | **Prettier** | 3.9 | Mise en forme. |
 

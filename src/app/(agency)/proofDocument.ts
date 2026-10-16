@@ -52,10 +52,13 @@ export function proofHtml(proof: Proof) {
           const decision = request.decision
             ? `<p class="decision ${request.decision === "accepted" ? "ok" : "ko"}">Proposition ${request.decision === "accepted" ? "acceptée" : "refusée"}<small>${signature(request.decisionEvent) || "Décision antérieure au journal signé"}</small></p>`
             : "";
+          const source = request.source
+            ? `<p class="note">${escapeHtml(request.source.line)}${request.source.excerpt ? ` : « ${escapeHtml(request.source.excerpt)} »` : ""}${request.source.captureSha256 ? `<small>Capture jointe · SHA-256 ${escapeHtml(request.source.captureSha256)}</small>` : ""}</p>`
+            : "";
           const adaptation = request.adaptation?.message
             ? `<p class="note">Adaptation demandée par le client : « ${escapeHtml(request.adaptation.message)} »${request.adaptation.decision ? ` · ${request.adaptation.decision === "accepted" ? "acceptée" : "refusée"} par l’agence` : ""}</p>`
             : "";
-          return `<li><div class="row"><b>Demande ${index + 1}${request.title ? ` · ${escapeHtml(request.title)}` : ""}</b><span class="tag">${escapeHtml(qualificationLabels[request.qualification] ?? request.qualification)}</span></div><p>« ${escapeHtml(request.message)} »</p><small>${escapeHtml(request.author)}${request.location ? ` · ${escapeHtml(request.location)}` : ""} · réf. ${request.id}</small>${quotes}${adaptation}${decision}</li>`;
+          return `<li><div class="row"><b>Demande ${index + 1}${request.title ? ` · ${escapeHtml(request.title)}` : ""}</b><span class="tag">${escapeHtml(qualificationLabels[request.qualification] ?? request.qualification)}</span></div><p>« ${escapeHtml(request.message)} »</p><small>${escapeHtml(request.author)}${request.location ? ` · ${escapeHtml(request.location)}` : ""} · réf. ${request.id}</small>${source}${quotes}${adaptation}${decision}</li>`;
         })
         .join("")
     : "<li>Aucune demande sur cette version.</li>";

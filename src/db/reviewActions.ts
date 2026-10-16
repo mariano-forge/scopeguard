@@ -7,8 +7,9 @@ import { and, eq } from "drizzle-orm";
 import type { ListChange, StateChanges } from "@/lib/sharedState";
 import { displayedNow, freeCommentId, id, movedComment, noChanges, percent, readArea, readPoint, text, number, type Area, type Data } from "./actions";
 import type { Db } from "./client";
-import { sanitizeReviewChanges, type ReviewAccess } from "./reviewAccess";
+import { clientSeesComment, sanitizeReviewChanges, type ReviewAccess } from "./reviewAccess";
 import { reviewProfileName } from "./reviewAuth";
+import { mailClientDecision } from "./reviewMails";
 import { commentProposals, comments } from "./schema";
 import { applyChanges, type Writer } from "./state";
 
@@ -246,11 +247,16 @@ function kept(action: ReviewAction, sanitized: StateChanges | null, commentId: n
 
 /** Runs one client action: checked by the client rules, then applied with its trail, or refused whole. */
 export async function runReviewAction(db: Db, access: ReviewAccess, email: string, writer: Omit<Writer, "recordedBy">, action: ReviewAction): Promise<ReviewActionResult> {
+  // A request the client does not see (an out-of-scope one not quoted yet) is unknown to them.
+  if ("commentId" in action && !(await clientSeesComment(db, access, action.commentId))) return refused("Commentaire introuvable.", 404);
   const built = await changesFor(db, access, action);
   if ("ok" in built) return built;
   const commentId = action.type === "reply.create" || action.type === "reply.edit" || action.type === "reply.delete" ? action.commentId : built.id;
   const sanitized = await sanitizeReviewChanges(db, access, built.changes, email, await reviewProfileName(db, email));
   if (!kept(action, sanitized, commentId)) return refused();
   const { revision } = await applyChanges(db, access.organizationId, sanitized!, { recordedBy: `client:${email}`, ...writer });
+  // The agency hears of the client's decisions by e-mail too: they may not be watching the app.
+  if (action.type === "proposal.decide" || action.type === "proposal.adapt" || action.type === "version.approve" || action.type === "version.request-changes")
+    await mailClientDecision(db, access, email, action).catch((error) => console.error("[review mail]", error));
   return { ok: true, revision, ...(built.id ? { id: built.id } : {}) };
 }

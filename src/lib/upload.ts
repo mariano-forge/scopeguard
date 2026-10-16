@@ -4,7 +4,8 @@
 
 export type UploadPlacement =
   | { kind: "version"; projectId: number; livrableId: number; version: number }
-  | { kind: "cover"; projectId: number; livrableId: number };
+  | { kind: "cover"; projectId: number; livrableId: number }
+  | { kind: "request"; projectId: number; livrableId: number };
 
 const post = async (url: string, body: unknown) => {
   const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);

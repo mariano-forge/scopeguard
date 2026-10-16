@@ -1,12 +1,12 @@
 // Agency: POST /api/files (multipart) imports a file into the agency's container.
 //   file        the file
-//   kind        "version" | "cover"
+//   kind        "version" | "cover" | "request"
 //   projectId, livrableId, version   where it belongs, for its path (projets/<id>/livrables/<id>/v<n>/…)
 // Returns { id, href, sha256, size }; the page then stores `href` in the deliverable.
 
 import { crossSiteRefusal, crossSiteWrite, databaseFailure } from "@/lib/api";
 import { requireAgencyUser } from "@/lib/session";
-import { maxUploadBytes, storeFile, type FilePlacement } from "@/lib/storage";
+import { maxUploadBytes, readPlacement, storeFile } from "@/lib/storage";
 import { getDb } from "@/db/client";
 import { requestLimit, tooManyRequests, withinLimit } from "@/db/requestLimits";
 
@@ -37,14 +37,7 @@ export async function POST(request: Request) {
   const livrableId = integer(form.get("livrableId"));
   const version = integer(form.get("version"));
   const kind = form.get("kind");
-  const placement: FilePlacement | null =
-    projectId === null || livrableId === null
-      ? null
-      : kind === "cover"
-        ? { kind: "cover", projectId, livrableId }
-        : kind === "version" && version !== null
-          ? { kind: "version", projectId, livrableId, version }
-          : null;
+  const placement = readPlacement(kind, projectId, livrableId, version);
   if (!placement) return Response.json({ error: "Emplacement du fichier invalide" }, { status: 400 });
 
   try {

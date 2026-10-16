@@ -48,11 +48,21 @@ test("a colleague joins from the invitation mail; the wrong account cannot; remo
   const intruder = await signUp("Ivan Intrus");
   const invitationId = invitation!.split("/").pop();
   expect((await call("/api/auth/organization/accept-invitation", { person: intruder, body: { invitationId } })).status).toBe(403);
+  const { page: intruderPage } = await newPerson(browser);
+  await signInPage(intruderPage, intruder.email);
+  await intruderPage.goto(invitation!);
+  await expect(intruderPage.getByRole("heading", { name: "Ce n’est pas le bon compte" })).toBeVisible();
+  await expect(intruderPage.getByText(`c${"•".repeat(8)}@agence.test`)).toBeVisible();
+  expect(await intruderPage.content()).not.toContain(carolEmail);
 
   const { page: carol } = await newPerson(browser);
   await carol.goto(invitation!);
+  // Whoever holds the link learns the agency and the address masked, never the address itself.
   await expect(carol.getByText("Rejoignez Studio Gamma")).toBeVisible();
-  await expect(carol.getByLabel("E-mail")).toHaveValue(carolEmail);
+  await expect(carol.getByText(`c${"•".repeat(8)}@agence.test`)).toBeVisible();
+  expect(await carol.content()).not.toContain(carolEmail);
+  await expect(carol.getByLabel("E-mail")).toHaveValue("");
+  await carol.getByLabel("E-mail").fill(carolEmail);
   await carol.getByLabel("Nom complet").fill("Carol Petit");
   await carol.getByLabel("Mot de passe").fill(PASSWORD);
   await carol.getByRole("button", { name: "Créer mon compte" }).click();

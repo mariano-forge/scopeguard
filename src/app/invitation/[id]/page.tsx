@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AuthShell } from "@/components/AuthShell";
 import { Button } from "@/components/ui/button";
 import { agencyInvitation } from "@/lib/agencyInvitations";
+import { maskEmail } from "@/lib/maskEmail";
 import { getCurrentUser } from "@/lib/session";
 import { InvitationActions } from "./InvitationActions";
 
@@ -36,7 +37,7 @@ export default async function InvitationPage({ params }: PageProps<"/invitation/
         <div className="grid gap-4">
           <h1 className="font-heading text-lg font-bold">Ce n’est pas le bon compte</h1>
           <p className="text-sm text-[var(--graphite)]">
-            Cette invitation est destinée à <b>{invitation.email}</b>, mais vous êtes connecté en tant que <b>{user.email}</b>. Déconnectez-vous, puis
+            Cette invitation est destinée à <b>{maskEmail(invitation.email)}</b>, mais vous êtes connecté en tant que <b>{user.email}</b>. Déconnectez-vous, puis
             connectez-vous ou créez un compte avec la bonne adresse.
           </p>
           <InvitationActions invitationId={id} mode="switch-account" />

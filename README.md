@@ -113,7 +113,7 @@ Le MVP doit permettre de tester ce positionnement avec un flux complet, sans con
 
 ### Controle du perimetre
 
-- Qualification de chaque demande : `incluse`, `modification mineure`, `hors perimetre`, `a clarifier` *(realise : « À traiter », « Hors scope » et « À clarifier »)*.
+- Qualification de chaque demande : `incluse`, `modification mineure`, `hors perimetre`, `a clarifier` *(realise : « Inclus », « Hors scope » et « À clarifier »)*.
 - Justification interne facultative pour l'equipe *(a faire)*.
 - Conversion d'un commentaire en proposition complementaire.
 - Proposition comprenant description, prix, impact planning et date d'expiration *(la date d'expiration est a faire)*.
@@ -244,7 +244,7 @@ L'import ne passe pas par l'application (dont l'hébergeur limite la taille des 
 
 L'espace agence demande un compte (`/connexion`) : e-mail et mot de passe, ou Google si `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` sont renseignés. L'adresse est confirmée par un lien envoyé par e-mail avant la première connexion (les comptes créés avant cette règle sont considérés comme confirmés, migration `0008`).
 
-Chaque compte travaille dans une agence. Après l'inscription, la personne crée la sienne (`/bienvenue`) et en devient propriétaire, ou rejoint celle qui l'a invitée. Le propriétaire et les administrateurs invitent leurs collègues depuis le menu du compte, « Équipe » : l'invité reçoit un lien `/invitation/:id` qu'il ne peut accepter qu'avec l'adresse invitée. Toutes les données sont rangées par agence (`organization_id` dans chaque clé primaire) et le serveur filtre chaque requête sur l'agence du membre ; retirer quelqu'un de l'équipe lui coupe l'accès immédiatement.
+Chaque compte travaille dans une agence. Après l'inscription, la personne crée la sienne (`/bienvenue`) et en devient propriétaire, ou rejoint celle qui l'a invitée. Le propriétaire et les administrateurs invitent leurs collègues depuis le menu du compte, « Équipe » : l'invité reçoit un lien `/invitation/:id` qu'il ne peut accepter qu'avec l'adresse invitée. Le lien ne montre que le nom de l'agence et l'adresse masquée : l'invité saisit lui-même son adresse. Toutes les données sont rangées par agence (`organization_id` dans chaque clé primaire) et le serveur filtre chaque requête sur l'agence du membre ; retirer quelqu'un de l'équipe lui coupe l'accès immédiatement.
 
 | Rôle | Peut faire |
 | --- | --- |
@@ -254,9 +254,13 @@ Chaque compte travaille dans une agence. Après l'inscription, la personne crée
 
 Le serveur refuse ces actions à un membre (`src/db/agencyPermissions.ts`), l'interface les affiche grisées avec la raison.
 
-Le client n'a ni compte ni mot de passe. L'agence l'invite par e-mail depuis « Partager la revue » ; il reçoit un lien personnel qui pré-remplit son adresse, puis confirme avec un code à 6 chiffres envoyé à cette adresse. L'appareil est ensuite reconnu 30 jours. Une nouvelle version n'est jamais partagée automatiquement : après l'import, la fenêtre « Partager la V03 ? » propose les personnes de la version précédente, cochées avec leur rôle, qui reçoivent un e-mail « Nouvelle version ». « Plus tard » laisse la version à l'agence, avec un rappel dans l'éditeur et dans « À traiter ». Le client sur une ancienne version voit « Vous consultez une ancienne version » et un bouton vers la nouvelle seulement si elle lui a été partagée ; sinon, rien ne lui révèle qu'elle existe. Tant que personne n'est invité, « Partager la revue » prévient que le lien copié ne s'ouvrira pour personne. Avec le lien copié-collé, seule une adresse invitée reçoit un code ; les autres peuvent demander l'accès (l'écran du code le leur indique). Le propriétaire et les administrateurs de l'agence sont prévenus par e-mail, avec un lien vers le livrable, et acceptent ou refusent depuis « Partager la revue ». Une même adresse IP ne peut pas envoyer plus de 10 demandes par heure. Retirer une invitation coupe l'accès immédiatement. Le lien ne donne accès qu'à la version partagée, et le serveur n'accepte du client que ses propres commentaires, ses décisions sur les propositions envoyées et la validation, signés de son adresse vérifiée (voir `src/db/reviewAuth.ts` et `src/db/reviewAccess.ts`).
+Le client n'a ni compte ni mot de passe. L'agence l'invite par e-mail depuis « Partager la revue » ; il reçoit un lien personnel, qui ne contient qu'un identifiant aléatoire et montre son adresse masquée (`c•••••@client.fr`) : celui qui détient le lien n'apprend pas l'adresse, et le code est demandé par l'identifiant de l'invitation, puis envoyé à l'adresse invitée; sinon, rien ne lui révèle qu'elle existe. Tant que personne n'est invité, « Partager la revue » prévient que le lien copié ne s'ouvrira pour personne. Avec le lien copié-collé, seule une adresse invitée reçoit un code ; les autres peuvent demander l'accès (l'écran du code le leur indique). Le propriétaire et les administrateurs de l'agence sont prévenus par e-mail, avec un lien vers le livrable, et acceptent ou refusent depuis « Partager la revue ». Une même adresse IP ne peut pas envoyer plus de 10 demandes par heure. Retirer une invitation coupe l'accès immédiatement. Le lien ne donne accès qu'à la version partagée, et le serveur n'accepte du client que ses propres commentaires, ses décisions sur les propositions envoyées et la validation, signés de son adresse vérifiée (voir `src/db/reviewAuth.ts` et `src/db/reviewAccess.ts`).
 
 Chaque invité a un rôle sur la revue (`src/lib/clientRoles.ts`). Un **décideur** valide la version, demande des modifications, accepte ou refuse les devis et fait des contre-propositions. Un **contributeur** consulte, commente et répond. L'agence choisit le rôle en invitant (décideur par défaut) et peut le changer dans « Partager la revue » ; une demande d'accès acceptée donne le rôle de contributeur. Le serveur refuse les décisions d'un contributeur, les relances ne partent qu'aux décideurs, et la page du client ne reçoit jamais la liste des autres invités.
+
+« + Demande » sert aux demandes reçues ailleurs (e-mail, appel, réunion, Slack, Figma) ou portant sur tout le livrable. Leur source (canal, date, extrait collé, capture) est visible par le client, qui voit ainsi qu'il s'agit de sa propre demande, et figure dans la preuve avec l'empreinte de la capture (`src/lib/requestSource.ts`). La capture est une image importée par l'agence (`projets/<id>/livrables/<id>/demandes/`), que le client n'ouvre que s'il voit la demande.
+
+Le client voit toutes les demandes de la version, sauf les demandes hors scope de l'agence tant qu'aucun devis ne lui a été envoyé ; ses propres demandes restent toujours visibles. Un devis en brouillon ne quitte jamais le serveur, pas même dans les données reçues par la page. Une demande cachée est introuvable pour le client, y compris par l'API (`visibleToClient`, `src/db/reviewAccess.ts`).
 
 La page du client écrit une action à la fois, chacune sur sa route (`src/db/reviewActions.ts`). Le serveur construit la modification à partir de ce qu'il a en base, la passe par les règles du client, puis l'applique en une transaction, avec son événement d'audit et, pour une décision, la notification de l'agence. Une action que les règles refusent est refusée en entier (409).
 
@@ -278,10 +282,10 @@ Seul le client valide une version, depuis sa page : l'agence n'a aucune route po
 
 | Route (`/api/comments…`) | Action de l'agence |
 | --- | --- |
-| `POST /api/comments` | Commentaire (`deliverableId`, `message`…), demande déjà qualifiée (`request`), ou commentaire remis après sa suppression (`restore`) |
+| `POST /api/comments` | Commentaire (`deliverableId`, `message`…), demande saisie par l'agence (`request` : « À clarifier », « Inclus » ou « Hors scope », avec sa source facultative : canal, date, extrait, capture), ou commentaire remis après sa suppression (`restore`) |
 | `PATCH /api/comments/:id` | Modifier un message de l'agence (`message`) ou déplacer un repère (`page`, `x`, `y`) |
 | `DELETE /api/comments/:id` | Supprimer un commentaire de l'agence |
-| `PUT /api/comments/:id/qualification` | « À traiter », « Hors scope » avec un chiffrage en brouillon, ou retour « À clarifier » |
+| `PUT /api/comments/:id/qualification` | « Inclus », « Hors scope » avec un chiffrage en brouillon, ou retour « À clarifier » |
 | `POST /api/comments/:id/replies` | Répondre |
 | `PATCH`, `DELETE /api/comments/:id/replies/:replyId` | Modifier ou supprimer une réponse de l'agence |
 | `POST /api/comments/:id/proposal` | Envoyer un premier devis écrit dans la fenêtre de proposition (administrateurs) |
@@ -301,6 +305,7 @@ Seul le client valide une version, depuis sa page : l'agence n'a aucune route po
 | `POST /api/trash/:id/restore` | Restaurer un élément de la corbeille |
 | `DELETE /api/trash/:id`, `DELETE /api/trash`, `DELETE /api/trash/expired` | Supprimer définitivement un élément, tout, ou ce qui a plus de 30 jours (administrateurs) |
 
+- E-mails de devis et de décisions (`src/db/reviewMails.ts`) : un devis envoyé, ou la réponse à une contre-proposition, part par e-mail aux **décideurs** du client, avec leur lien personnel (« Répondre à » : l'administrateur qui l'a envoyé). Chaque décision du client (devis accepté ou refusé, contre-proposition, validation, demande de modifications) part au **propriétaire et à tous les administrateurs** de l'agence, avec un lien vers la demande (« Répondre à » : le client). Ni les membres ni les contributeurs ne les reçoivent. Un e-mail qui échoue est journalisé et n'annule jamais l'action.
 - E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (domaine vérifié dans Resend, avec SPF, DKIM et DMARC). Chaque e-mail part en HTML avec sa version texte, et avec un « Répondre à » vers le membre de l'agence concerné (ou `MAIL_REPLY_TO`) : l'adresse d'envoi n'a pas de boîte. `MAIL_TRANSPORT=console` n'envoie jamais rien et affiche les e-mails dans la console, même avec une clé Resend (tests, démonstrations). Sans clé, en développement, ils s'affichent dans la console ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
 
 ### Preuve de validation

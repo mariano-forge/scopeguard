@@ -133,7 +133,8 @@ export default function ClientReviewPage() {
   const [viewer, setViewer] = useState<{
     mode: "client" | "preview" | "none";
     verifiedEmail: string | null;
-    invitedEmail: string | null;
+    /** A personal link's invitation: its address masked, the code asked by its id (never the whole address). */
+    invitation: { id: string | null; masked: string } | null;
     /** The client's full name; null until they give it, at their first verification. */
     name: string | null;
     deliverable: string;
@@ -655,7 +656,7 @@ export default function ClientReviewPage() {
       <AccessGate
         token={params.token}
         deliverable={viewer.deliverable}
-        invitedEmail={viewer.invitedEmail}
+        invitation={viewer.invitation}
         verifiedEmail={viewer.verifiedEmail}
         onVerified={() => {
           setViewer(null);
