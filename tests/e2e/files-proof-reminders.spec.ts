@@ -146,7 +146,7 @@ test("the proof shows who decided, when and from where, from the server's record
 
   const proof = (await call("/api/proof/1", { person: alice })).json as Record<string, unknown>;
   expect(proof.deliverable).toMatchObject({ file: { sha256: createHash("sha256").update(makePdf("maquette")).digest("hex"), originalName: "maquette.pdf" } });
-  expect(proof.approval).toMatchObject({ identity: { kind: "client", label: `Client vérifié : ${email}` }, ipAddress: "203.0.113.7" });
+  expect(proof.approval).toMatchObject({ identity: { kind: "client", label: `Client vérifié, décideur : ${email}` }, ipAddress: "203.0.113.7" });
   const request = (proof.requests as { id: number; decision: string; decisionEvent: { ipAddress: string } }[]).find((entry) => entry.id === 10)!;
   expect(request.decision).toBe("accepted");
   expect(request.decisionEvent.ipAddress).toBe("203.0.113.7");

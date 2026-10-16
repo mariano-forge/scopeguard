@@ -6,13 +6,14 @@ import { cookies } from "next/headers";
 import { getDb } from "@/db/client";
 import { findReviewAccess, readReviewState, type ReviewAccess } from "@/db/reviewAccess";
 import { readReviewAction, runReviewAction, type ReviewAction } from "@/db/reviewActions";
-import { isInvited, reviewSessionCookie, reviewSessionDays, reviewSessionEmail } from "@/db/reviewAuth";
+import { inviteRole, isInvited, reviewSessionCookie, reviewSessionDays, reviewSessionEmail } from "@/db/reviewAuth";
+import { deciderActions, type ClientRole } from "./clientRoles";
 import { requestLimit, tooManyRequests, withinLimit } from "@/db/requestLimits";
 import { databaseFailure, requestOrigin } from "./api";
 import { getCurrentUser, isMemberOf } from "./session";
 
 export type ReviewViewer =
-  | { mode: "client"; access: ReviewAccess; email: string }
+  | { mode: "client"; access: ReviewAccess; email: string; role: ClientRole }
   | { mode: "preview"; access: ReviewAccess; email: null }
   /** `email`: verified on this device, but not invited to this link. */
   | { mode: "none"; access: ReviewAccess; email: string | null };
@@ -23,7 +24,7 @@ export async function getReviewViewer(token: string): Promise<ReviewViewer | nul
   const access = await findReviewAccess(db, token);
   if (!access) return null;
   const email = await reviewSessionEmail(db, (await cookies()).get(reviewSessionCookie)?.value);
-  if (email && isInvited(access.link, email)) return { mode: "client", access, email };
+  if (email && isInvited(access.link, email)) return { mode: "client", access, email, role: inviteRole(access.link, email) };
   // Preview: a member of the agency that owns the link, not any signed-in member.
   const user = await getCurrentUser();
   if (user && (await isMemberOf(user.id, access.organizationId))) return { mode: "preview", access, email: null };
@@ -72,6 +73,8 @@ export async function reviewActionResponse(
     if (!viewer) return reviewNotFound();
     if (viewer.mode === "preview") return Response.json({ error: "Aperçu agence : lecture seule" }, { status: 403 });
     if (viewer.mode === "none") return Response.json({ error: "Vérification de votre adresse requise" }, { status: 401 });
+    if (deciderActions.has(type) && viewer.role !== "decider")
+      return Response.json({ error: "Seul un décideur désigné par l’agence peut prendre cette décision.", code: "DECIDER_ONLY" }, { status: 403 });
     const db = getDb();
     if (!(await withinLimit(db, `client-write:${viewer.email}`, requestLimit.writes()))) return tooManyRequests();
     const result = await runReviewAction(db, viewer.access, viewer.email, requestOrigin(request), action);
