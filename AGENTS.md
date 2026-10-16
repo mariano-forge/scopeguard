@@ -115,7 +115,7 @@ Pour les tests :
 
 ## Vocabulaire
 
-- Une **demande** est tout retour du livrable, posé par un clic (avec un repère) ou par « + Demande » (sans repère : reçue ailleurs, ou sur tout le livrable). Les **commentaires** sont les réponses dans son fil. Le champ `kind` (`remark` / `request`) est un vestige : la qualification fait foi.
+- Une **demande** est tout retour du livrable, posé par un clic (avec un repère) ou par « + Demande » (sans repère : reçue ailleurs, ou sur tout le livrable). Les **commentaires** sont les réponses dans son fil. Le champ `kind` (`remark` / `request`) est un vestige : la qualification fait foi. Un pin est un **commentaire** jusqu'à sa qualification, puis une **demande** avec un titre ; une demande remise « À clarifier » garde son titre et reste une demande (`isTitledRequest`, `itemLabel` dans `src/app/(agency)/editor/CanvasComments.tsx`).
 - Qualifications : « À clarifier » (valeur `À qualifier`), « Inclus » (`Inclus`, prévu au devis), « Hors scope » (`Hors périmètre`, ajout à chiffrer). L'ancienne valeur `À traiter` en base se lit « À clarifier ». La page « À traiter » (`/a-traiter`) est autre chose : les décisions en attente de l'agence sur tous les projets.
 - Rôles d'agence : propriétaire, administrateur, membre. Rôles du client sur une revue : décideur, contributeur.
 

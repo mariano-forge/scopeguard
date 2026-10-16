@@ -92,6 +92,13 @@ export const requestKind = (comment: Pick<ThreadComment, "decision">): RequestKi
   comment.decision === "Inclus" ? "correction" : comment.decision === "Hors périmètre" ? "outside" : "comment";
 export const isQualified = (comment: Pick<ThreadComment, "decision">) => requestKind(comment) !== "comment";
 export const kindLabels: Record<RequestKind, string> = { comment: "Commentaire", correction: "Demande incluse", outside: "Demande hors scope" };
+/**
+ * A pin is a comment until qualified; then a request, with a title. A request back « À clarifier » keeps
+ * its title and stays a request (to clarify), not a comment again.
+ */
+export const isTitledRequest = (comment: Pick<ThreadComment, "decision" | "title">) => requestKind(comment) !== "comment" || Boolean(comment.title?.trim());
+export const itemLabel = (comment: Pick<ThreadComment, "decision" | "title">) =>
+  requestKind(comment) === "comment" && comment.title?.trim() ? "Demande à clarifier" : kindLabels[requestKind(comment)];
 /** Short status shown on badges. */
 export const statusLabels: Record<RequestKind, string> = { comment: "À clarifier", correction: "Inclus", outside: "Hors scope" };
 export const statusTones: Record<RequestKind, string> = { comment: "decision-pending", correction: "decision-included", outside: "decision-outside" };
@@ -156,7 +163,7 @@ export function CommentPin({
         onMove?.();
       }}
       title={onMove ? "Glisser pour déplacer" : undefined}
-      aria-label={`${kindLabels[kind]} #${comment.id} : ${requestText(comment)}`}
+      aria-label={`${itemLabel(comment)} #${comment.id} : ${requestText(comment)}`}
       aria-expanded={active}
     >
       {kind === "correction" ? <ClipboardCheck aria-hidden="true" /> : kind === "outside" ? <BadgeEuro aria-hidden="true" /> : <span>{comment.initials}</span>}
@@ -342,6 +349,8 @@ export function ThreadPopover({
   onDeleteMessage?: (messageId: number) => void;
 }) {
   const kind = requestKind(comment);
+  /** A request (qualified, or back to clarify with its title) rather than a comment. */
+  const asRequest = isTitledRequest(comment);
   const [draft, setDraft] = useState("");
   const [qualifying, setQualifying] = useState(Boolean(startQuoting));
   // A new request starts empty (placeholders guide it); an existing one keeps its wording.
@@ -350,7 +359,7 @@ export function ThreadPopover({
   const now = useNow();
   // The discussion is open on a comment, folded on a qualified request (it is closed anyway).
   const [showDiscussion, setShowDiscussion] = useState(kind === "comment");
-  const [decision, setDecision] = useState<Qualification>(kind === "outside" ? "Hors périmètre" : "Inclus");
+  const [decision, setDecision] = useState<Qualification>(kind === "outside" ? "Hors périmètre" : asRequest && kind === "comment" ? "À qualifier" : "Inclus");
   const [quoteOn, setQuoteOn] = useState(Boolean(quote) || Boolean(startQuoting));
   const [amount, setAmount] = useState(quote ? String(quote.amount) : "");
   const [days, setDays] = useState(quote ? String(quote.days) : "");
@@ -377,7 +386,7 @@ export function ThreadPopover({
       className={`thread is-${kind} ${qualifying ? "is-qualifying" : ""} ${placement}`}
       style={{ left: `${x}%`, top: `${y}%` }}
       role="dialog"
-      aria-label={`${kindLabels[kind]} #${comment.id}`}
+      aria-label={`${itemLabel(comment)} #${comment.id}`}
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
@@ -386,10 +395,10 @@ export function ThreadPopover({
     >
       <header className="thread-header">
         <span className="thread-title">
-          {kind === "comment" ? "Commentaire" : "Demande"} n°{comment.id}
+          {asRequest ? "Demande" : "Commentaire"} n°{comment.id}
         </span>
         <span className="thread-header-actions">
-          {kind === "comment" && onQualify && canWrite && !qualifying && (
+          {!asRequest && onQualify && canWrite && !qualifying && (
             <Hint label="Créer une demande (incluse ou hors scope)">
               <Button variant="outline" size="icon-sm" className="thread-create" onClick={() => setQualifying(true)} aria-label="Créer une demande">
                 <Tag />
@@ -472,17 +481,17 @@ export function ThreadPopover({
               Annuler
             </button>
             <button type="submit" className="primary-button" disabled={!title.trim() || !quoteReady}>
-              {kind === "comment" ? "Créer la demande" : "Enregistrer"}
+              {asRequest ? "Enregistrer" : "Créer la demande"}
             </button>
           </div>
         </form>
       ) : (
         <>
-          {kind !== "comment" && (
+          {asRequest && (
             <div className="request-body">
               <p className={`request-kind is-${kind}`}>
                 <i className={`kind-square is-${kind}`} aria-hidden="true" />
-                {kind === "outside" ? "Hors scope · ajout à chiffrer" : "Inclus · prévu au devis"}
+                {kind === "outside" ? "Hors scope · ajout à chiffrer" : kind === "correction" ? "Inclus · prévu au devis" : "À clarifier · à préciser avec le client"}
               </p>
               <p className="request-title">{requestText(comment)}</p>
               {comment.description && <p className="request-description">{comment.description}</p>}
@@ -526,13 +535,15 @@ export function ThreadPopover({
                       <Tag aria-hidden="true" /> Modifier
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className="thread-link"
-                    onClick={() => onQualify({ title: comment.title ?? "", description: comment.description ?? "", decision: "À qualifier" })}
-                  >
-                    <Undo2 aria-hidden="true" /> Remettre à clarifier
-                  </button>
+                  {kind !== "comment" && (
+                    <button
+                      type="button"
+                      className="thread-link"
+                      onClick={() => onQualify({ title: comment.title ?? "", description: comment.description ?? "", decision: "À qualifier" })}
+                    >
+                      <Undo2 aria-hidden="true" /> Remettre à clarifier
+                    </button>
+                  )}
                 </div>
               )}
             </div>

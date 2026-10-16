@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Eye, History, MessageSquare, Plus, Share2 } from "lucide-react";
 import type { ProposalStage, Qualification } from "./CanvasComments";
 import { ResizeHandle } from "./ResizeHandle";
-import { kindLabels, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
+import { itemLabel, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
 import { Hint } from "@/components/hint";
 import { Button } from "@/components/ui/button";
 import { sideOf } from "@/lib/authors";
@@ -146,7 +146,7 @@ export function RequestPanel({
                   <button
                     className={`thread-row ${comment.id === selectedId ? "is-selected" : ""}`}
                     aria-current={comment.id === selectedId ? "true" : undefined}
-                    aria-label={`${kindLabels[kind]} #${comment.id}`}
+                    aria-label={`${itemLabel(comment)} #${comment.id}`}
                     onClick={() => onFocus(comment.id)}
                   >
                     <span className={`thread-avatar ${sideOf(comment) === "agency" ? "is-agency" : "is-client"}`} aria-hidden="true">
