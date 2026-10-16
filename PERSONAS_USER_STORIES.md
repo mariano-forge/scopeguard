@@ -246,7 +246,7 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 
 - Une nouvelle version ne remplace jamais l'ancienne.
 - Elle n'est jamais partagée automatiquement : après l'import, « Partager la V03 ? » propose les personnes invitées sur la version précédente, cochées avec leur rôle (modifiable) ; « Partager » leur envoie un e-mail « Nouvelle version », « Plus tard » la laisse à l'agence.
-- Tant qu'une dernière version n'est partagée avec personne, l'éditeur l'indique (« La V03 n'est partagée avec personne », avec « Partager ») et « À traiter » la liste.
+- Tant qu'une dernière version n'est partagée avec personne, l'éditeur l'indique (« La V03 n'est partagée avec personne », avec « Partager ») et « À traiter » la liste. Le rappel de l'éditeur se ferme d'une croix, pour cette version et dans ce navigateur ; « À traiter » le garde.
 - Le client sur une version remplacée voit « Vous consultez une ancienne version » et « Voir la V03 », sans nouveau code, seulement si cette version lui a été partagée ; sinon, seulement « Lecture seule · Cette version n'est plus en revue ».
 - Les commentaires sont liés à une version précise.
 - La version précédente reste consultable par l'agence.

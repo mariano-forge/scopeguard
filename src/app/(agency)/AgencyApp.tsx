@@ -231,6 +231,7 @@ const maxTabs = 12;
 const sidebarKey = "kora-sidebar";
 /** Import date stored on a version, e.g. "14 oct. 2026, 10:32". */
 const favoritesKey = "kora-favorites";
+const unsharedClosedKey = "kora-unshared-closed";
 /** Widths of the side panels, set by dragging their edge (per browser). */
 const panelWidthsKey = "kora-panel-widths";
 /** Comments the agency has opened (per browser): the tab alert only counts the others. */
@@ -325,6 +326,24 @@ export function AgencyApp() {
   const lastPanelRef = useRef<PanelMode>("livrables");
   /** Starred items, "p:<projectId>" or "l:<livrableId>" (per browser for now). */
   const [favorites, setFavorites] = useState<string[]>([]);
+  /** Versions whose « partagée avec personne » banner was closed (per browser and agency; « À traiter » still lists them). */
+  const [closedUnshared, setClosedUnshared] = useState<number[]>(() => {
+    try {
+      const saved = typeof window === "undefined" ? null : window.localStorage.getItem(scoped(unsharedClosedKey));
+      return saved ? (JSON.parse(saved) as number[]).filter((id) => typeof id === "number") : [];
+    } catch {
+      return [];
+    }
+  });
+  function closeUnshared(versionId: number) {
+    const next = [...closedUnshared.filter((id) => id !== versionId), versionId].slice(-200);
+    setClosedUnshared(next);
+    try {
+      window.localStorage.setItem(scoped(unsharedClosedKey), JSON.stringify(next));
+    } catch {
+      // Closed for this visit only when storage is unavailable.
+    }
+  }
   const [trash, setTrash] = useState<TrashItem[]>([]);
   const [openTabs, setOpenTabs] = useState<{ livrableId: number; href: string }[]>([]);
 
@@ -2015,7 +2034,7 @@ export function AgencyApp() {
                     </div>
                   )}
                   {/* A reminder until the latest version is shared with someone. */}
-                  {!isReadOnlyVersion && latestVersionRecord?.id === currentDeliverable.id && !reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]?.invites?.length && (
+                  {!isReadOnlyVersion && latestVersionRecord?.id === currentDeliverable.id && !reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]?.invites?.length && !closedUnshared.includes(currentDeliverable.id) && (
                     <div className="canvas-banner" role="status">
                       <span className="canvas-banner-icon" aria-hidden="true">
                         <Share2 />
@@ -2027,6 +2046,9 @@ export function AgencyApp() {
                       <Button size="sm" onClick={shareCurrentVersion}>
                         Partager
                       </Button>
+                      <button className="thread-icon-button" onClick={() => closeUnshared(currentDeliverable.id)} aria-label="Fermer ce rappel">
+                        <X />
+                      </button>
                     </div>
                   )}
                   {deliverableError && (

@@ -74,6 +74,16 @@ test("« Plus tard » leaves the version unshared, with a reminder in the editor
   // The editor's reminder reopens the same choice.
   await page.getByRole("button", { name: "Partager", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Partager la V02 ?" })).toBeVisible();
+  await page.getByRole("button", { name: "Plus tard" }).click();
+
+  // The reminder can be closed: gone from the editor, even after a reload; « À traiter » keeps it.
+  await page.getByRole("button", { name: "Fermer ce rappel" }).click();
+  await expect(page.getByText("La V02 n’est partagée avec personne")).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator("[data-page]").first()).toBeVisible();
+  await expect(page.getByText("La V02 n’est partagée avec personne")).toHaveCount(0);
+  await page.goto("/a-traiter");
+  await expect(page.getByRole("link", { name: /Version partagée avec personne.*maquette\.pdf V02/ })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
