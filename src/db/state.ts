@@ -2,7 +2,7 @@
 // transaction. Every query is limited to that agency (`org`): rows of other agencies are never read,
 // written or deleted, even when ids collide.
 
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 import type { ListCollection, SharedState, StateChanges } from "@/lib/sharedState";
 import type { Db } from "./client";
@@ -69,60 +69,49 @@ const proposalColumns = {
   adaptationRequests: "adaptation",
 } as const;
 
+/**
+ * The agency's whole state in one query: each collection is aggregated to JSON by Postgres, in the
+ * order the pages expect. One statement reads one consistent snapshot, and costs one round trip
+ * (the app and the database may sit in different places).
+ */
 export async function readState(db: Db, org: string): Promise<{ revision: number; state: SharedState | null }> {
-  return db.transaction(
-    async (tx) => {
-      const [sync] = await tx.select().from(syncState).where(eq(syncState.organizationId, org)).limit(1);
-      if (!sync) return { revision: 0, state: null };
+  const listColumns = (Object.entries(lists) as [ListCollection, (typeof lists)[ListCollection]][]).map(([collection, { table }]) => {
+    const list = table as typeof clients;
+    return sql`(select coalesce(json_agg(${list.data} order by ${list.position}, ${list.id}), '[]'::json) from ${list} where ${list.organizationId} = ${org}) as ${sql.identifier(collection)}`;
+  });
+  const result = await db.execute(sql`select
+    (select ${syncState.revision} from ${syncState} where ${syncState.organizationId} = ${org}) as "revision",
+    ${sql.join(listColumns, sql`, `)},
+    (select coalesce(json_object_agg(${reviewLinks.key}, ${reviewLinks.data}), '{}'::json) from ${reviewLinks} where ${reviewLinks.organizationId} = ${org}) as "reviewLinks",
+    (select coalesce(json_agg(json_build_object('commentId', ${commentProposals.commentId}::text, 'state', ${commentProposals.state}, 'decision', ${commentProposals.decision}, 'adaptation', ${commentProposals.adaptation})), '[]'::json)
+       from ${commentProposals} where ${commentProposals.organizationId} = ${org}) as "proposals",
+    (select coalesce(json_agg(json_build_object('commentId', ${proposalVersions.commentId}::text, 'data', ${proposalVersions.data}) order by ${proposalVersions.commentId}, ${proposalVersions.position}), '[]'::json)
+       from ${proposalVersions} where ${proposalVersions.organizationId} = ${org}) as "versions",
+    (select coalesce(json_agg(json_build_object('linkKey', ${reviewAccessRequests.linkKey}, 'email', ${reviewAccessRequests.email}, 'message', ${reviewAccessRequests.message},
+       'requestedAt', to_char(${reviewAccessRequests.requestedAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))), '[]'::json)
+       from ${reviewAccessRequests} where ${reviewAccessRequests.organizationId} = ${org} and ${reviewAccessRequests.status} = 'pending') as "accessRequests",
+    (select coalesce(json_agg(json_build_object('key', ${settings.key}, 'value', ${settings.value})), '[]'::json) from ${settings} where ${settings.organizationId} = ${org}) as "settings"`);
+  const row = result.rows[0] as Record_ & {
+    revision: number | string | null;
+    reviewLinks: Record_;
+    proposals: { commentId: string; state: unknown; decision: unknown; adaptation: unknown }[];
+    versions: { commentId: string; data: unknown }[];
+    settings: { key: string; value: unknown }[];
+  };
+  if (row.revision === null) return { revision: 0, state: null };
 
-      const state: SharedState = {};
-      for (const [collection, { table }] of Object.entries(lists) as [ListCollection, (typeof lists)[ListCollection]][]) {
-        const list = table as typeof clients;
-        const rows = await tx
-          .select({ data: list.data })
-          .from(list)
-          .where(eq(list.organizationId, org))
-          .orderBy(asc(list.position), asc(list.id));
-        state[collection] = rows.map((row) => row.data) as never;
-      }
-
-      const links = await tx.select({ key: reviewLinks.key, data: reviewLinks.data }).from(reviewLinks).where(eq(reviewLinks.organizationId, org));
-      state.reviewLinks = Object.fromEntries(links.map((link) => [link.key, link.data]));
-
-      const proposals = await tx.select().from(commentProposals).where(eq(commentProposals.organizationId, org));
-      for (const [collection, column] of Object.entries(proposalColumns) as [keyof typeof proposalColumns, (typeof proposalColumns)[keyof typeof proposalColumns]][])
-        state[collection] = Object.fromEntries(
-          proposals.filter((row) => row[column] != null).map((row) => [String(row.commentId), row[column]]),
-        );
-
-      const versions = await tx
-        .select({ commentId: proposalVersions.commentId, data: proposalVersions.data })
-        .from(proposalVersions)
-        .where(eq(proposalVersions.organizationId, org))
-        .orderBy(asc(proposalVersions.commentId), asc(proposalVersions.position));
-      const byComment: Record<string, unknown[]> = {};
-      for (const row of versions) (byComment[String(row.commentId)] ??= []).push(row.data);
-      state.proposalVersions = byComment;
-
-      // Pending access requests to review links (read-only here: decided through /api/review-access).
-      const requests = await tx
-        .select()
-        .from(reviewAccessRequests)
-        .where(and(eq(reviewAccessRequests.organizationId, org), eq(reviewAccessRequests.status, "pending")));
-      (state as Record_).accessRequests = requests.map((request) => ({
-        linkKey: request.linkKey,
-        email: request.email,
-        message: request.message,
-        requestedAt: request.requestedAt.toISOString(),
-      }));
-
-      const values = await tx.select().from(settings).where(eq(settings.organizationId, org));
-      for (const row of values) (state as Record_)[row.key] = row.value;
-
-      return { revision: sync.revision, state };
-    },
-    { isolationLevel: "repeatable read", accessMode: "read only" },
-  );
+  const state: SharedState = {};
+  for (const collection of Object.keys(lists) as ListCollection[]) state[collection] = row[collection] as never;
+  state.reviewLinks = row.reviewLinks;
+  for (const [collection, column] of Object.entries(proposalColumns) as [keyof typeof proposalColumns, (typeof proposalColumns)[keyof typeof proposalColumns]][])
+    state[collection] = Object.fromEntries(row.proposals.filter((proposal) => proposal[column] != null).map((proposal) => [proposal.commentId, proposal[column]]));
+  const byComment: Record<string, unknown[]> = {};
+  for (const version of row.versions) (byComment[version.commentId] ??= []).push(version.data);
+  state.proposalVersions = byComment;
+  // Pending access requests to review links (read-only here: decided through /api/review-access).
+  (state as Record_).accessRequests = row.accessRequests;
+  for (const setting of row.settings) (state as Record_)[setting.key] = setting.value;
+  return { revision: Number(row.revision), state };
 }
 
 /** Lists whose new records go first when a page sends no order (the client page only sees part of them). */

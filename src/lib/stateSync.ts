@@ -18,6 +18,8 @@ let loading: Promise<string | null> | null = null;
 let endpoint = "/api/state";
 /** Actions sent to their own route and not answered yet. */
 let acting = 0;
+/** States taken from action answers, counted so an action knows whether it still has to fetch one. */
+let accepted = 0;
 const listeners = new Set<(serialized: string) => void>();
 
 /**
@@ -85,14 +87,25 @@ export function refreshSharedState() {
  */
 export async function sendAction<T>(run: () => Promise<T>): Promise<T> {
   acting++;
+  const before = accepted;
   let result: T;
   try {
     result = await run();
   } finally {
     acting--;
   }
-  await refreshSharedState();
+  // The answer usually brings the state (acceptState); otherwise (a refusal) it is fetched.
+  if (accepted === before) await refreshSharedState();
   return result;
+}
+
+/** The state an action route answered with. An older one (answers crossing) is ignored. */
+export function acceptState(next: { revision: number; state: SharedState | null }) {
+  accepted++;
+  if (!next.state || next.revision < revision) return;
+  revision = next.revision;
+  cache = JSON.stringify(next.state);
+  for (const listener of listeners) listener(cache);
 }
 
 async function poll() {
@@ -104,7 +117,7 @@ async function poll() {
     if (response.status !== 200) return;
     const body = (await response.json()) as { revision: number; state: SharedState | null };
     // An action started meanwhile: the poll after it brings its result.
-    if (!body.state || acting) return;
+    if (!body.state || acting || body.revision < revision) return;
     revision = body.revision;
     cache = JSON.stringify(body.state);
     for (const listener of listeners) listener(cache);

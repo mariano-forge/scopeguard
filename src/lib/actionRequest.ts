@@ -3,7 +3,8 @@
 // (src/lib/stateSync.ts sendAction), so a refused action disappears from the page.
 
 import { toast } from "sonner";
-import { sendAction } from "./stateSync";
+import type { SharedState } from "./sharedState";
+import { acceptState, sendAction } from "./stateSync";
 
 export type Method = "POST" | "PUT" | "PATCH" | "DELETE";
 type Refusal = { status: number; error?: string; code?: string };
@@ -22,7 +23,10 @@ export function actionRequest(url: string, method: Method, body: Record<string, 
       body: body ? JSON.stringify(body) : undefined,
     }).catch(() => null);
     const answer = (await response?.json().catch(() => null)) as (ActionAnswer & { error?: string; code?: string }) | null;
-    if (response?.ok) return answer ?? {};
+    if (response?.ok) {
+      if (answer && typeof answer.revision === "number" && answer.state) acceptState({ revision: answer.revision, state: answer.state as SharedState });
+      return answer ?? {};
+    }
     if (!response || !refused({ status: response.status, error: answer?.error, code: answer?.code }))
       toast.error(answer?.error ?? "Enregistrement impossible pour l’instant. Réessayez.");
     return null;

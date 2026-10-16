@@ -51,6 +51,11 @@ test("comments: created and signed by the server, changed only by their author, 
   expect(id).not.toBe(20);
   expect(await commentData(org, id)).toMatchObject({ message: "Le logo", author: "Claire Dubois", from: "client", authorEmail: email, decision: "À qualifier", page: 2, position: { x: 10, y: 20 } });
   expect((await commentData(org, 20)).message).toBe("Autre version");
+  // The answer brings the review after the action, limited to the shared version.
+  const answered = created.json as { state: { comments: { id: number }[]; deliverables: { id: number }[] } };
+  expect(answered.state.comments.map((comment) => comment.id)).toContain(id);
+  expect(answered.state.comments.map((comment) => comment.id)).not.toContain(20);
+  expect(answered.state.deliverables.map((deliverable) => deliverable.id)).toEqual([1]);
 
   expect((await act(`comments/${id}`, "PATCH", { page: 3, x: 50, y: 60 })).status).toBe(200);
   expect(await commentData(org, id)).toMatchObject({ page: 3, position: { x: 50, y: 60 }, area: { x: 45, y: 55, w: 10, h: 10 } });

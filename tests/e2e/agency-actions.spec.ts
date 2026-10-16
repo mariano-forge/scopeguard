@@ -48,6 +48,10 @@ test("comments and replies are signed by the server; the agency changes only its
   expect(id).not.toBe(30);
   expect(await commentData(org, id)).toMatchObject({ message: "Logo", author: "Alice Martin", initials: "AM", from: "agency", decision: "À qualifier", kind: "remark" });
   expect(await commentData(org, 30)).toMatchObject({ message: "Avis client" });
+  // The answer brings the state after the action: the page shows it without another request.
+  const answered = created.json as { revision: number; state: { comments: { id: number }[] } };
+  expect(answered.revision).toBeGreaterThan(0);
+  expect(answered.state.comments.map((comment) => comment.id)).toContain(id);
 
   const reply = await act(alice, "comments/30/replies", "POST", { message: "Bien noté", author: "Faux" });
   expect(reply.status).toBe(200);
