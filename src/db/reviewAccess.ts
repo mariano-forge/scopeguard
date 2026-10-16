@@ -55,6 +55,28 @@ const publicLink = (link: Data) => {
   return shown;
 };
 
+/**
+ * What the client sees of a version: every request but the agency's out-of-scope ones never quoted to
+ * them (a quote sent at least once; a draft stays internal). Their own requests always show.
+ */
+export function visibleToClient(comment: Data, quotes: unknown) {
+  if (byClient(comment) || comment.decision !== "Hors périmètre") return true;
+  return Array.isArray(quotes) && quotes.some((quote) => isObject(quote) && quote.status !== "draft");
+}
+
+/** Whether a request of the shared version is one the client may see, and so act on. */
+export async function clientSeesComment(db: Db, access: ReviewAccess, commentId: number) {
+  const org = access.organizationId;
+  const [row] = await db
+    .select({ data: comments.data })
+    .from(comments)
+    .where(and(eq(comments.organizationId, org), eq(comments.id, commentId), eq(comments.deliverableId, access.deliverableId)))
+    .limit(1);
+  if (!row) return false;
+  const quotes = (await db.select({ data: proposalVersions.data }).from(proposalVersions).where(and(eq(proposalVersions.organizationId, org), eq(proposalVersions.commentId, commentId)))).map((quote) => quote.data);
+  return visibleToClient(row.data as Data, quotes);
+}
+
 /** The part of the shared state the client page needs, in the same shape. */
 export async function readReviewState(db: Db, access: ReviewAccess) {
   const { revision, state } = await readState(db, access.organizationId);
@@ -63,9 +85,15 @@ export async function readReviewState(db: Db, access: ReviewAccess) {
   const record = state.deliverables?.find((item) => item.id === access.deliverableId && item.version === access.version);
   const project = state.projects?.find((item) => item.id === ((record?.projectId as number | undefined) ?? 1));
   const client = state.clients?.find((item) => item.id === ((project?.clientId as number | undefined) ?? 1));
-  const versionComments = (state.comments ?? []).filter((comment) => comment.deliverableId === access.deliverableId);
+  const quotesOf = (id: number) => (state.proposalVersions ?? {})[String(id)];
+  const versionComments = (state.comments ?? []).filter((comment) => comment.deliverableId === access.deliverableId && visibleToClient(comment, quotesOf(comment.id)));
   const ids = new Set(versionComments.map((comment) => String(comment.id)));
   const only = (map: Record<string, unknown> | undefined) => Object.fromEntries(Object.entries(map ?? {}).filter(([key]) => ids.has(key)));
+  // Draft quotes never leave the server: neither their amounts nor the fact that one is being prepared.
+  const sentStates = Object.fromEntries(Object.entries(only(state.proposalStates)).filter(([, value]) => value === "sent"));
+  const sentQuotes = Object.fromEntries(
+    Object.entries(only(state.proposalVersions)).map(([key, list]) => [key, Array.isArray(list) ? list.filter((quote) => isObject(quote) && quote.status !== "draft") : []]),
+  );
 
   const filtered: SharedState = {
     clients: client ? [{ id: client.id, name: client.name }] : [],
@@ -76,10 +104,10 @@ export async function readReviewState(db: Db, access: ReviewAccess) {
     auditEvents: [],
     // The link without its invitations: a client never sees who else is invited, nor their personal links.
     reviewLinks: { [access.key]: publicLink(access.link) },
-    proposalStates: only(state.proposalStates),
+    proposalStates: sentStates,
     proposalDecisions: only(state.proposalDecisions),
     adaptationRequests: only(state.adaptationRequests),
-    proposalVersions: only(state.proposalVersions),
+    proposalVersions: sentQuotes,
     reviewLink: null,
   };
   return { revision, state: filtered };

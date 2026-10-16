@@ -51,7 +51,7 @@ Pour les tests :
 - Ce que le client écrit est signé par le serveur (nom, initiales, adresse vérifiée).
 - Les décisions du client (devis, contre-proposition, validation, demande de modifications) sont réservées aux **décideurs** (`src/lib/clientRoles.ts`) : une nouvelle décision s'ajoute à `deciderActions` et son événement d'audit à `deciderEventTypes`. Seul le client valide une version : l'agence n'a aucune route pour le faire, n'en ajoute pas.
 - Une version n'est partagée avec un client que par un geste de l'agence (`ReshareDialog`, « Partager la revue ») ; ne la partage jamais automatiquement à l'import, et ne révèle pas au client une version qui ne lui est pas partagée.
-- Le client ne reçoit que `readReviewState` (`src/db/reviewAccess.ts`) : la version partagée, sans les invités des autres ni aucun champ interne de l'agence. Toute donnée nouvelle envoyée au client passe par ce filtre.
+- Le client ne reçoit que `readReviewState` (`src/db/reviewAccess.ts`) : la version partagée, sans les invités des autres ni aucun champ interne de l'agence. Toute donnée nouvelle envoyée au client passe par ce filtre. Une demande hors scope de l'agence ne lui apparaît qu'une fois un devis envoyé (`visibleToClient`), un devis en brouillon jamais, et ses actions sur une demande qu'il ne voit pas répondent 404.
 - L'auteur d'un message se lit avec `sideOf()` (`src/lib/authors.ts`), jamais avec les initiales.
 
 **Preuve et journal**

@@ -258,6 +258,8 @@ Le client n'a ni compte ni mot de passe. L'agence l'invite par e-mail depuis « 
 
 Chaque invité a un rôle sur la revue (`src/lib/clientRoles.ts`). Un **décideur** valide la version, demande des modifications, accepte ou refuse les devis et fait des contre-propositions. Un **contributeur** consulte, commente et répond. L'agence choisit le rôle en invitant (décideur par défaut) et peut le changer dans « Partager la revue » ; une demande d'accès acceptée donne le rôle de contributeur. Le serveur refuse les décisions d'un contributeur, les relances ne partent qu'aux décideurs, et la page du client ne reçoit jamais la liste des autres invités.
 
+Le client voit toutes les demandes de la version, sauf les demandes hors scope de l'agence tant qu'aucun devis ne lui a été envoyé ; ses propres demandes restent toujours visibles. Un devis en brouillon ne quitte jamais le serveur, pas même dans les données reçues par la page. Une demande cachée est introuvable pour le client, y compris par l'API (`visibleToClient`, `src/db/reviewAccess.ts`).
+
 La page du client écrit une action à la fois, chacune sur sa route (`src/db/reviewActions.ts`). Le serveur construit la modification à partir de ce qu'il a en base, la passe par les règles du client, puis l'applique en une transaction, avec son événement d'audit et, pour une décision, la notification de l'agence. Une action que les règles refusent est refusée en entier (409).
 
 | Route (`/api/review/:token/…`) | Action |

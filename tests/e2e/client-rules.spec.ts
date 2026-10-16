@@ -28,7 +28,7 @@ async function reviewWithQuote() {
   const email = `${unique("claire")}@client.test`;
   await call("/api/review-access/invite", { person: alice, body: { linkKey, emails: [email] } });
   const client = await verifiedClient(token, email, "Claire Dubois");
-  return { org: alice.organizationId!, token, client, email };
+  return { alice, org: alice.organizationId!, token, client, email };
 }
 
 /** Every query is limited to the test's agency: other tests' agencies use the same ids. */
@@ -56,7 +56,8 @@ test("the client cannot requalify, rewrite the agency, reach another version, cr
   expect((await clientAction(client, token, "comments/10", "DELETE")).status).toBe(409);
   expect((await clientAction(client, token, "comments/20", "PATCH", { message: "pwned" })).status).toBe(404);
   expect((await clientAction(client, token, "comments/20/replies", "POST", { message: "pwned" })).status).toBe(404);
-  expect((await clientAction(client, token, "proposals/20/decision", "POST", { decision: "accepted" })).status).toBe(409);
+  // 20 belongs to another version: unknown to this link.
+  expect((await clientAction(client, token, "proposals/20/decision", "POST", { decision: "accepted" })).status).toBe(404);
 
   expect(await comment(org, 10)).toMatchObject({ decision: "Hors périmètre", message: "Section témoignages", from: "agency" });
   expect((await comment(org, 20)).message).toBe("Note interne");
@@ -111,4 +112,47 @@ test("a client never sees who else is invited, nor their personal links", async 
   // Nor in an action's answer.
   const acted = await clientAction(client, token, "comments", "POST", { message: "Bonjour" });
   expect(JSON.stringify(acted.json)).not.toContain(other);
+});
+
+test("the client sees what is addressed to them: no unquoted out-of-scope request, never a draft quote", async () => {
+  const { alice, org, token, client } = await reviewWithQuote();
+  const quote = (id: number, commentId: number, status: string, amount: number) => ({ id, version: 1, commentId, description: "Devis", amount, deadline: 2, status, createdAt: "x" });
+  const request = (id: number, from: "agency" | "client", decision: string, title: string) => ({ id, deliverableId: 1, author: "x", initials: "XX", from, message: title, title, decision, kind: "request", location: "", time: "t" });
+  await seedState(alice, {
+    lists: {
+      comments: {
+        upsert: [
+          request(30, "agency", "Inclus", "Titre plus lisible"),
+          request(31, "agency", "Hors périmètre", "Section blog cachée"),
+          request(32, "client", "Hors périmètre", "Ajout demandé par le client"),
+          request(33, "agency", "Hors périmètre", "Carte interactive"),
+          request(34, "agency", "À qualifier", "Quelle couleur ?"),
+        ],
+        remove: [],
+      },
+    },
+    maps: {
+      proposalStates: { upsert: { "31": "draft", "33": "draft" }, remove: [] },
+      // 31: a draft never sent. 33: refused once, a new draft is being prepared.
+      proposalVersions: { upsert: { "31": [quote(310, 31, "draft", 4321)], "33": [quote(330, 33, "refused", 1200), { ...quote(331, 33, "draft", 9876), version: 2 }] }, remove: [] },
+    },
+  });
+
+  const answer = await call(`/api/review/${token}`, { person: client });
+  const state = answer.json.state as { comments: { id: number }[]; proposalStates: Record<string, string>; proposalVersions: Record<string, { id: number }[]> };
+  expect(state.comments.map((comment) => comment.id).sort()).toEqual([10, 30, 32, 33, 34]);
+  expect(state.proposalStates).toEqual({ "10": "sent" });
+  expect(state.proposalVersions["33"].map((entry) => entry.id)).toEqual([330]);
+  const raw = JSON.stringify(answer.json);
+  for (const secret of ["Section blog cachée", "4321", "9876"]) expect(raw).not.toContain(secret);
+
+  // A request the client does not see cannot be reached through the API either.
+  expect((await clientAction(client, token, "comments/31/replies", "POST", { message: "Je l’ai trouvée" })).status).toBe(404);
+  expect((await clientAction(client, token, "proposals/31/decision", "POST", { decision: "accepted" })).status).toBe(404);
+  // An action's answer carries the same filtered state.
+  const replied = await clientAction(client, token, "comments/30/replies", "POST", { message: "Merci" });
+  expect(replied.status).toBe(200);
+  expect(JSON.stringify(replied.json)).not.toContain("9876");
+  expect(JSON.stringify(replied.json)).not.toContain("Section blog cachée");
+  expect(await comment(org, 31)).toMatchObject({ title: "Section blog cachée" });
 });
