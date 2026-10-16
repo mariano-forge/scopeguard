@@ -13,7 +13,7 @@ export type InspectorTab = RequestKind;
 
 const tabs: { kind: RequestKind; label: string; empty: string }[] = [
   { kind: "comment", label: "À clarifier", empty: "Aucun commentaire. Cliquez sur le livrable pour en ajouter un." },
-  { kind: "correction", label: "À traiter", empty: "Aucune demande à traiter. Créez-en une avec « + Demande » ou depuis un commentaire." },
+  { kind: "correction", label: "Inclus", empty: "Aucune demande incluse. Créez-en une avec « + Demande » ou depuis un commentaire." },
   { kind: "outside", label: "Hors scope", empty: "Aucune demande hors scope. Créez-en une avec « + Demande » ou depuis un commentaire." },
 ];
 
@@ -32,11 +32,11 @@ export function threadsToMarkdown(title: string, comments: ThreadComment[]) {
       )
       .join("\n")}\n\n`;
   };
-  return `# ${title}\n\n${section("correction", "À traiter")}${section("outside", "Hors scope")}${section("comment", "À clarifier")}`.trim() + "\n";
+  return `# ${title}\n\n${section("correction", "Inclus")}${section("outside", "Hors scope")}${section("comment", "À clarifier")}`.trim() + "\n";
 }
 
 /**
- * Requests of a version in three tabs (À clarifier · À traiter · Hors scope), with a manual comment form.
+ * Requests of a version in three tabs (À clarifier · Inclus · Hors scope), with a manual comment form.
  * Used by the agency inspector and by the client page.
  */
 export function RequestPanel({
@@ -285,7 +285,7 @@ export function EditorInspector({
             </Button>
           </Hint>
           {onAddRequest && (
-            <Hint label="Une demande déjà qualifiée : à traiter ou hors scope">
+            <Hint label="Une demande déjà qualifiée : incluse ou hors scope">
               <Button className="requests-add" onClick={() => onAddRequest(tab === "outside" ? "Hors périmètre" : "Inclus")}>
                 <Plus /> Demande
               </Button>

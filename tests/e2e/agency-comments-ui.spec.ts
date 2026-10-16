@@ -80,6 +80,9 @@ test("a member qualifies a client remark as out of scope, with a draft quote", a
   const { org, page, errors, writes } = await editor(browser);
   await page.locator('[data-pin="30"]').click();
   await page.getByRole("button", { name: "Créer une demande" }).click();
+  // The two qualifications, named for what they mean against the quote.
+  await expect(page.getByRole("radio", { name: /^Inclus/ })).toContainText("Prévu au devis");
+  await expect(page.getByRole("tab", { name: /^Inclus/ })).toBeVisible();
   await page.getByRole("radio", { name: /Hors scope/ }).click();
   await page.getByLabel("Titre de la demande").fill("Section témoignages");
   await page.getByRole("switch").check();

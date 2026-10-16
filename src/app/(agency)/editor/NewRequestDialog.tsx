@@ -10,7 +10,7 @@ import { AddonInput, Field, Modal } from "@/components/modal";
 import { ScopeChoice, type Qualification, type Qualified } from "./CanvasComments";
 
 /**
- * A request created directly, already qualified (À traiter or Hors scope), without a comment first.
+ * A request created directly, already qualified (Inclus or Hors scope), without a comment first.
  * Same fields as qualifying a comment in its bubble: choice, title, description, and the optional quote.
  */
 export function NewRequestDialog({

@@ -211,7 +211,7 @@ function quoteChanges(changes: StateChanges, commentId: number, update: { state?
   else if (update.dropAdaptation) changes.maps.adaptationRequests = { upsert: {}, remove: [key] };
 }
 
-const scopeLabel = (decision: "Inclus" | "Hors périmètre") => (decision === "Inclus" ? "À traiter" : "Hors scope");
+const scopeLabel = (decision: "Inclus" | "Hors périmètre") => (decision === "Inclus" ? "Inclus" : "Hors scope");
 
 /** A new client link for a version: a random token, valid 7 days unless the agency says otherwise. */
 function newReviewLink(deliverableId: number, version: number) {

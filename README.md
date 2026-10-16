@@ -113,7 +113,7 @@ Le MVP doit permettre de tester ce positionnement avec un flux complet, sans con
 
 ### Controle du perimetre
 
-- Qualification de chaque demande : `incluse`, `modification mineure`, `hors perimetre`, `a clarifier` *(realise : « À traiter », « Hors scope » et « À clarifier »)*.
+- Qualification de chaque demande : `incluse`, `modification mineure`, `hors perimetre`, `a clarifier` *(realise : « Inclus », « Hors scope » et « À clarifier »)*.
 - Justification interne facultative pour l'equipe *(a faire)*.
 - Conversion d'un commentaire en proposition complementaire.
 - Proposition comprenant description, prix, impact planning et date d'expiration *(la date d'expiration est a faire)*.
@@ -283,7 +283,7 @@ Seul le client valide une version, depuis sa page : l'agence n'a aucune route po
 | `POST /api/comments` | Commentaire (`deliverableId`, `message`…), demande déjà qualifiée (`request`), ou commentaire remis après sa suppression (`restore`) |
 | `PATCH /api/comments/:id` | Modifier un message de l'agence (`message`) ou déplacer un repère (`page`, `x`, `y`) |
 | `DELETE /api/comments/:id` | Supprimer un commentaire de l'agence |
-| `PUT /api/comments/:id/qualification` | « À traiter », « Hors scope » avec un chiffrage en brouillon, ou retour « À clarifier » |
+| `PUT /api/comments/:id/qualification` | « Inclus », « Hors scope » avec un chiffrage en brouillon, ou retour « À clarifier » |
 | `POST /api/comments/:id/replies` | Répondre |
 | `PATCH`, `DELETE /api/comments/:id/replies/:replyId` | Modifier ou supprimer une réponse de l'agence |
 | `POST /api/comments/:id/proposal` | Envoyer un premier devis écrit dans la fenêtre de proposition (administrateurs) |

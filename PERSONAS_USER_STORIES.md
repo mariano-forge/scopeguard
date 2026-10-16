@@ -324,7 +324,7 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 - `Hors périmètre`
 - `À clarifier`
 
-*Implémentation actuelle : trois états, `À qualifier`, `Inclus` (« À traiter ») et `Hors périmètre` (« Hors scope »). `Modification mineure` n'existe pas encore ; `À clarifier` correspond à l'état non qualifié.*
+*Implémentation actuelle : trois états, `À qualifier`, `Inclus` (« Inclus », prévu au devis) et `Hors périmètre` (« Hors scope »). `Modification mineure` n'existe pas encore ; `À clarifier` correspond à l'état non qualifié.*
 
 **Critères d'acceptation**
 
@@ -420,7 +420,7 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 - **Seul le client approuve une version** : l'agence, même son propriétaire, n'a aucun moyen de le faire à sa place.
 - Une version ne se valide pas tant qu'un devis envoyé attend la décision du client : la fenêtre de validation liste ces devis, à accepter ou refuser un par un, et le serveur refuse la validation sinon. Aucun devis n'est refusé implicitement.
 - Les remarques encore « À clarifier » ne bloquent pas la validation : la fenêtre prévient qu'en validant, le client y renonce, les liste, et le bouton devient « Valider et renoncer à ces remarques ». L'événement de validation les nomme dans le journal et la preuve.
-- *À venir* : la validation « avec réserves », qui liste les corrections « À traiter » encore ouvertes et les inscrit dans la preuve.
+- *À venir* : la validation « avec réserves », qui liste les demandes « Inclus » encore ouvertes et les inscrit dans la preuve.
 - L'agence reçoit une notification.
 - L'agence peut rouvrir la validation d'une version (« Rouvrir la validation ») en expliquant pourquoi ; la raison est inscrite au journal.
 

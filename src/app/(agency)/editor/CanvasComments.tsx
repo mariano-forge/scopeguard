@@ -9,7 +9,7 @@ import { sideOf, type Side } from "@/lib/authors";
 /**
  * One request, three states:
  * - "À qualifier" → Commentaire (to clarify): written on the canvas or by hand;
- * - "Inclus"      → À traiter: qualified as part of the scope (work to do);
+ * - "Inclus"      → Inclus: part of the scope sold (work to do);
  * - "Hors périmètre" → Hors scope: qualified as an addition, leads to a proposal.
  * Included and out-of-scope requests only come from qualifying a comment.
  */
@@ -73,9 +73,9 @@ export type ThreadComment = {
 export const requestKind = (comment: Pick<ThreadComment, "decision">): RequestKind =>
   comment.decision === "Inclus" ? "correction" : comment.decision === "Hors périmètre" ? "outside" : "comment";
 export const isQualified = (comment: Pick<ThreadComment, "decision">) => requestKind(comment) !== "comment";
-export const kindLabels: Record<RequestKind, string> = { comment: "Commentaire", correction: "Demande à traiter", outside: "Demande hors scope" };
+export const kindLabels: Record<RequestKind, string> = { comment: "Commentaire", correction: "Demande incluse", outside: "Demande hors scope" };
 /** Short status shown on badges. */
-export const statusLabels: Record<RequestKind, string> = { comment: "À clarifier", correction: "À traiter", outside: "Hors scope" };
+export const statusLabels: Record<RequestKind, string> = { comment: "À clarifier", correction: "Inclus", outside: "Hors scope" };
 export const statusTones: Record<RequestKind, string> = { comment: "decision-pending", correction: "decision-included", outside: "decision-outside" };
 /** What a request asks, in one line: its title once qualified, else the comment. */
 export const requestText = (comment: Pick<ThreadComment, "title" | "message">) => comment.title ?? comment.message;
@@ -241,10 +241,10 @@ function ThreadMessage({
   );
 }
 
-/** À traiter / Hors scope switch. */
+/** Inclus / Hors scope switch. */
 export function ScopeChoice({ value, onChange }: { value: Qualification; onChange: (value: Qualification) => void }) {
   const options: { value: Qualification; label: string; hint: string }[] = [
-    { value: "Inclus", label: "À traiter", hint: "Dans le scope prévu" },
+    { value: "Inclus", label: "Inclus", hint: "Prévu au devis" },
     { value: "Hors périmètre", label: "Hors scope", hint: "Ajout à chiffrer" },
   ];
   return (
@@ -371,7 +371,7 @@ export function ThreadPopover({
         </span>
         <span className="thread-header-actions">
           {kind === "comment" && onQualify && canWrite && !qualifying && (
-            <Hint label="Créer une demande (à traiter ou hors scope)">
+            <Hint label="Créer une demande (incluse ou hors scope)">
               <Button variant="outline" size="icon-sm" className="thread-create" onClick={() => setQualifying(true)} aria-label="Créer une demande">
                 <Tag />
               </Button>
@@ -463,7 +463,7 @@ export function ThreadPopover({
             <div className="request-body">
               <p className={`request-kind is-${kind}`}>
                 <i className={`kind-square is-${kind}`} aria-hidden="true" />
-                {kind === "outside" ? "Hors scope · ajout à chiffrer" : "À traiter · dans le scope"}
+                {kind === "outside" ? "Hors scope · ajout à chiffrer" : "Inclus · prévu au devis"}
               </p>
               <p className="request-title">{requestText(comment)}</p>
               {comment.description && <p className="request-description">{comment.description}</p>}

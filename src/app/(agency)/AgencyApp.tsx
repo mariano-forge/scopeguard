@@ -2359,7 +2359,7 @@ export function AgencyApp() {
             </div>
             <div className="scope-summary-grid">
               <div className="scope-summary-card">
-                <span className="scope-card-label">À traiter</span>
+                <span className="scope-card-label">Inclus</span>
                 <b>{activeComments.filter((c) => c.decision === "Inclus").length}</b>
                 <small>0 € (compris au forfait)</small>
               </div>
@@ -2381,7 +2381,7 @@ export function AgencyApp() {
               {activeComments.map((comment) => (
                 <div className="proof-comment" key={comment.id}>
                   <span className={`decision-badge ${decisionStyles[comment.decision]}`}>
-                    {comment.decision === "Inclus" ? "À traiter" : comment.decision === "Hors périmètre" ? "Hors scope" : "À clarifier"}
+                    {comment.decision === "Inclus" ? "Inclus" : comment.decision === "Hors périmètre" ? "Hors scope" : "À clarifier"}
                   </span>
                   <p>{comment.title ?? comment.message}</p>
                 </div>
