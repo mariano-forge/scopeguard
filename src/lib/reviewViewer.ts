@@ -4,7 +4,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { getDb } from "@/db/client";
-import { findReviewAccess, type ReviewAccess } from "@/db/reviewAccess";
+import { findReviewAccess, readReviewState, type ReviewAccess } from "@/db/reviewAccess";
 import { readReviewAction, runReviewAction, type ReviewAction } from "@/db/reviewActions";
 import { isInvited, reviewSessionCookie, reviewSessionDays, reviewSessionEmail } from "@/db/reviewAuth";
 import { requestLimit, tooManyRequests, withinLimit } from "@/db/requestLimits";
@@ -76,7 +76,9 @@ export async function reviewActionResponse(
     if (!(await withinLimit(db, `client-write:${viewer.email}`, requestLimit.writes()))) return tooManyRequests();
     const result = await runReviewAction(db, viewer.access, viewer.email, requestOrigin(request), action);
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
-    return Response.json({ revision: result.revision, ...(result.id ? { id: result.id } : {}) });
+    // The review after the action comes with the answer: the page needs no second request to show it.
+    const fresh = await readReviewState(db, viewer.access);
+    return Response.json({ ...(result.id ? { id: result.id } : {}), revision: fresh.revision, state: fresh.state });
   } catch (error) {
     return databaseFailure(`api/review ${type}`, error);
   }

@@ -88,7 +88,7 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 
 | Service | Usage |
 | --- | --- |
-| **Vercel** | Déploiement actuel (prévisualisations et pilotes). Fonctions à placer à Francfort, près de Supabase. |
+| **Vercel** | Déploiement actuel (prévisualisations et pilotes). Fonctions à Francfort (`fra1`, fixé dans `vercel.json`), à côté de Supabase : chaque requête à la base ne fait qu'un aller-retour court. |
 | **Supabase** | PostgreSQL en ligne. Seule la base est utilisée : ni son API REST (fermée par la sécurité par ligne), ni son authentification, ni son stockage. |
 | **Azure** | Stockage des fichiers aujourd'hui ; cible de production pour l'application et la base (voir la trajectoire Azure). |
 
@@ -132,7 +132,7 @@ Les e-mails partent par Resend dès que `RESEND_API_KEY` et `MAIL_FROM` sont ren
 
 ## Points d'attention
 
-- **Synchronisation d'état** : les pages lisent l'état par `/api/state` (agence) et `/api/review/:token` (client), et le relisent toutes les 2 secondes. Elles ne l'écrivent jamais : chaque écriture a sa route par action (`src/db/agencyActions.ts`, `workspaceActions.ts`, `reviewActions.ts`). Les routes du client serviront aussi à l'annotation des sites web.
+- **Synchronisation d'état** : les pages lisent l'état par `/api/state` (agence) et `/api/review/:token` (client), en une seule requête SQL (`readState`), et le relisent toutes les 2 secondes ; chaque action renvoie l'état à jour dans sa réponse. Elles ne l'écrivent jamais : chaque écriture a sa route par action (`src/db/agencyActions.ts`, `workspaceActions.ts`, `reviewActions.ts`). Les routes du client serviront aussi à l'annotation des sites web.
 - **Imports abandonnés** : un fichier envoyé au stockage sans validation y reste (aucun enregistrement ne le sert). Un nettoyage périodique est à prévoir.
 - **Fichiers antérieurs au stockage Azure** : la table `files` est conservée, mais ses fichiers ne sont plus servis (Supabase n'en contient aucun).
 - **`npm audit`** signale encore, en production, des paquets qui ne sont pas exploitables dans Kora : `drizzle-kit` et `esbuild` (tirés par Better Auth ; la faille d'esbuild concerne son serveur de développement), `source-map-js` (compilation CSS) et `sharp` (optimisation d'images de Next, désactivée par `images.unoptimized`). À revoir à chaque mise à jour de ces dépendances.

@@ -6,6 +6,7 @@ import "server-only";
 import { getDb } from "@/db/client";
 import { readAgencyAction, runAgencyAction, type ActionParams, type AgencyAction } from "@/db/agencyActions";
 import { requestLimit, tooManyRequests, withinLimit } from "@/db/requestLimits";
+import { readState } from "@/db/state";
 import { databaseFailure, requestOrigin } from "./api";
 import { readBody } from "./reviewViewer";
 import { requireAgencyUser } from "./session";
@@ -22,7 +23,9 @@ export async function agencyActionResponse(request: Request, type: AgencyAction[
     const member = { id: auth.user.id, name: auth.user.name, organizationId: auth.user.organizationId, role: auth.user.role };
     const result = await runAgencyAction(db, member, requestOrigin(request), action);
     if (!result.ok) return Response.json({ error: result.error, ...(result.code ? { code: result.code } : {}) }, { status: result.status });
-    return Response.json({ revision: result.revision, ...(result.id ? { id: result.id } : {}), ...result.data });
+    // The state after the action comes with the answer: the page needs no second request to show it.
+    const fresh = await readState(db, auth.user.organizationId);
+    return Response.json({ ...(result.id ? { id: result.id } : {}), ...result.data, revision: fresh.revision, state: fresh.state });
   } catch (error) {
     return databaseFailure(`api ${type}`, error);
   }
