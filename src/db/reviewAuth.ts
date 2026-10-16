@@ -20,7 +20,7 @@ import type { Db } from "./client";
 import { applyChanges, bumpRevision } from "./state";
 import { commentProposals, comments, deliverables, members, reviewAccessRequests, reviewCodes, reviewLinks, reviewProfiles, reviewSessions, users } from "./schema";
 import type { CurrentUser } from "@/lib/session";
-import type { ReviewAccess } from "./reviewAccess";
+import { expired, type ReviewAccess } from "./reviewAccess";
 import { appUrl, sendMail } from "@/lib/mail";
 import { renderMail } from "@/lib/mailTemplates";
 import { roleOfInvite, type ClientRole } from "@/lib/clientRoles";
@@ -184,7 +184,17 @@ type Origin = { ipAddress?: string | null; userAgent?: string | null };
  * Invites addresses on a link with a role (decider: the agency's own invitations; contributor: an
  * access request accepted). An address already invited keeps its role: the agency changes it apart.
  */
-export async function inviteToReview(db: Db, org: string, linkKey: string, emails: string[], user: CurrentUser, origin: Origin = {}, role: ClientRole = "decider") {
+export async function inviteToReview(
+  db: Db,
+  org: string,
+  linkKey: string,
+  emails: string[],
+  user: CurrentUser,
+  origin: Origin = {},
+  role: ClientRole = "decider",
+  /** The agency shares a new version with the people of the previous one: the mail says so. */
+  newVersion = false,
+) {
   const row = await linkRow(db, org, linkKey);
   if (!row || !row.active) return null;
   const link = row.data as Data;
@@ -225,11 +235,21 @@ export async function inviteToReview(db: Db, org: string, linkKey: string, email
   for (const invite of added) {
     const sent = await sendMail({
       to: invite.email,
-      subject: role === "decider" ? `${user.name} vous invite à valider « ${name} »` : `${user.name} vous invite à donner votre avis sur « ${name} »`,
+      subject: newVersion
+        ? `Nouvelle version de « ${name} » (V${row.version ?? ""})`
+        : role === "decider"
+          ? `${user.name} vous invite à valider « ${name} »`
+          : `${user.name} vous invite à donner votre avis sur « ${name} »`,
       replyTo: user.email,
       ...renderMail({
-        preheader: `${user.name}${user.organizationName ? ` (${user.organizationName})` : ""} partage « ${name} » avec vous`,
-        heading: role === "decider" ? `« ${name} » attend votre validation` : `« ${name} » attend vos retours`,
+        preheader: newVersion
+          ? `La version ${row.version ?? ""} de « ${name} » vous est partagée`
+          : `${user.name}${user.organizationName ? ` (${user.organizationName})` : ""} partage « ${name} » avec vous`,
+        heading: newVersion
+          ? `La version ${row.version ?? ""} de « ${name} » est disponible`
+          : role === "decider"
+            ? `« ${name} » attend votre validation`
+            : `« ${name} » attend vos retours`,
         paragraphs: [
           role === "decider"
             ? `${user.name}${user.organizationName ? `, de ${user.organizationName},` : ""} vous invite à consulter ce livrable, à y laisser vos retours et à le valider.`
@@ -330,6 +350,30 @@ async function mailAccessRequest(db: Db, access: ReviewAccess, email: string, me
       }),
     }).catch((error) => console.error("[access request mail]", error));
   }
+}
+
+/**
+ * A later version of the same deliverable shared with this client (active link, address invited):
+ * the client page offers it from the version they are on. Nothing when none is open to them, so a
+ * version still in preparation at the agency stays unknown to the client.
+ */
+export async function newerSharedVersion(db: Db, access: ReviewAccess, email: string) {
+  const org = access.organizationId;
+  const [current] = await db.select({ projectId: deliverables.projectId, name: deliverables.name }).from(deliverables).where(and(eq(deliverables.organizationId, org), eq(deliverables.id, access.deliverableId))).limit(1);
+  if (!current) return null;
+  const later = await db
+    .select({ id: deliverables.id, version: deliverables.version, projectId: deliverables.projectId })
+    .from(deliverables)
+    .where(and(eq(deliverables.organizationId, org), eq(deliverables.name, current.name), gt(deliverables.version, access.version)))
+    .orderBy(desc(deliverables.version));
+  // The same deliverable: same project and name (src/app/(agency)/routes.ts).
+  for (const version of later.filter((record) => (record.projectId ?? 1) === (current.projectId ?? 1))) {
+    const row = await linkRow(db, org, `${version.id}:${version.version}`);
+    const link = row?.data as Data | undefined;
+    if (row?.active && link && link.active === true && !expired(link) && isInvited(link, email))
+      return { version: version.version, href: `/review/${encodeURIComponent(String(link.token))}` };
+  }
+  return null;
 }
 
 /** Agency: accepts (invites the address) or refuses an access request to one of its links. */

@@ -4,7 +4,7 @@ import { formatProposalAmount, formatProposalDeadline, parseNumericAmount, parse
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
-import { Check, Clock, Lock, PenLine } from "lucide-react";
+import { ArrowRight, Check, Clock, Lock, PenLine } from "lucide-react";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { Composer, ThreadPopover, requestKind, type Area, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
 import { RequestPanel, type InspectorTab } from "@/app/(agency)/editor/EditorInspector";
@@ -139,6 +139,8 @@ export default function ClientReviewPage() {
     deliverable: string;
     /** On this link: a decider approves and decides quotes, a contributor comments (src/lib/clientRoles.ts). */
     role: ClientRole | null;
+    /** A later version shared with this client (src/db/reviewAuth.ts newerSharedVersion); none otherwise. */
+    newerVersion?: { version: number; href: string } | null;
   } | null>(null);
   const viewerMode = viewer?.mode;
   const contributor = viewerMode === "client" && viewer?.role === "contributor";
@@ -690,14 +692,19 @@ export default function ClientReviewPage() {
     );
   }
 
-  const versionLabel = `V${String(deliverable.version).padStart(2, "0")}`;
+  const versionName = (version: number) => `V${String(version).padStart(2, "0")}`;
+  const versionLabel = versionName(deliverable.version);
+  const newerVersion = viewer?.newerVersion ?? null;
   const reviewState =
     reviewStatus === "approved"
       ? { tone: "approved", icon: <Check />, label: "Validée", hint: approvedAt ? `Validée le ${approvedAt}` : "Version validée" }
       : reviewStatus === "changes-requested"
         ? { tone: "changes", icon: <PenLine />, label: "Modifications demandées", hint: "En attente d’une nouvelle version de l’agence" }
         : deliverable.status === "Remplacée"
-          ? { tone: "replaced", icon: <Lock />, label: "Remplacée", hint: "Une version plus récente existe" }
+          ? // A version still in preparation at the agency stays unknown to the client.
+            newerVersion
+            ? { tone: "replaced", icon: <Lock />, label: "Ancienne version", hint: `La ${versionName(newerVersion.version)} vous a été partagée` }
+            : { tone: "replaced", icon: <Lock />, label: "Fermée", hint: "Cette version n’est plus en revue" }
           : { tone: "pending", icon: <Clock />, label: "À valider", hint: "En attente de votre validation" };
   const canValidate = !isReadOnlyVersion() && reviewStatus === "pending" && !contributor;
   /** Where the client's decision on a proposal stands. */
@@ -778,14 +785,31 @@ export default function ClientReviewPage() {
           canMove={(comment) => sideOf(comment) === "client" && requestKind(comment) === "comment"}
           onMovePin={moveComment}
           overlay={
-            isReadOnlyVersion() ? (
+            newerVersion ? (
+              <div className="canvas-banner" role="status">
+                <span className="canvas-banner-icon" aria-hidden="true">
+                  <Lock />
+                </span>
+                <span className="canvas-banner-text">
+                  <b>Vous consultez une ancienne version</b>
+                  <small>
+                    {reviewStatus === "approved" ? "Vous avez validé cette version. " : ""}La {versionName(newerVersion.version)} vous a été partagée.
+                  </small>
+                </span>
+                <Button asChild size="sm">
+                  <a href={newerVersion.href}>
+                    Voir la {versionName(newerVersion.version)} <ArrowRight />
+                  </a>
+                </Button>
+              </div>
+            ) : isReadOnlyVersion() ? (
               <div className="canvas-banner" role="status">
                 <span className="canvas-banner-icon" aria-hidden="true">
                   <Lock />
                 </span>
                 <span className="canvas-banner-text">
                   <b>Lecture seule</b>
-                  <small>{reviewStatus === "approved" ? "Vous avez validé cette version" : "Une version plus récente existe"}</small>
+                  <small>{reviewStatus === "approved" ? "Vous avez validé cette version" : "Cette version n’est plus en revue"}</small>
                 </span>
               </div>
             ) : null
