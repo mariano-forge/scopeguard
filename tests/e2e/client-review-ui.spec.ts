@@ -17,6 +17,8 @@ async function clientPage(browser: Browser) {
         upsert: [
           { id: 10, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Section témoignages", decision: "Hors périmètre", kind: "request", title: "Témoignages", location: "", time: "t" },
           { id: 11, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Page contact", decision: "Hors périmètre", kind: "request", title: "Formulaire de contact", location: "", time: "t" },
+          // A question still to clarify: validating gives it up.
+          { id: 12, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Quelle police pour les titres ?", decision: "À qualifier", kind: "remark", location: "", time: "t" },
         ],
         remove: [],
       },
@@ -119,17 +121,23 @@ test("the client accepts one quote, asks to adapt another, decides it when valid
   const waiting = page.getByRole("list", { name: "Propositions en attente de votre décision" });
   await expect(waiting.getByRole("listitem")).toHaveCount(1);
   await expect(waiting).toContainText("Formulaire de contact");
-  await expect(page.getByRole("button", { name: "Confirmer la validation" })).toBeDisabled();
+  const confirm = page.getByRole("button", { name: "Valider et renoncer à ces remarques" });
+  await expect(confirm).toBeDisabled();
   await waiting.getByRole("button", { name: "Refuser « Formulaire de contact »" }).click();
   await expect(waiting).toHaveCount(0);
   await expect.poll(async () => (await sql<{ decision: string }>("select decision from comment_proposals where organization_id = $1 and comment_id = 11", [org]))[0]?.decision).toBe("refused");
-  await page.getByRole("button", { name: "Confirmer la validation" }).click();
+  // The remark still to clarify: named, and given up knowingly.
+  await expect(page.getByRole("note").filter({ hasText: "Certaines remarques n’ont pas encore été clarifiées" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Remarques auxquelles vous renoncez" })).toContainText("Quelle police pour les titres ?");
+  await confirm.click();
   await expect(page.getByRole("status").filter({ hasText: "Validée" })).toBeVisible();
   await expect.poll(async () => (await sql<{ review_status: string; locked: boolean }>("select review_status, locked from deliverables where organization_id = $1 and id = 1", [org]))[0]).toEqual({
     review_status: "approved",
     locked: true,
   });
   await expect.poll(async () => (await eventsOf(org, "deliverable.approved")).map((event) => event.recorded_by)).toEqual([`client:${email}`]);
+  const [approval] = await sql<{ description: string }>("select data->>'description' as description from audit_events where organization_id = $1 and type = 'deliverable.approved'", [org]);
+  expect(approval.description).toBe("Version 1 approuvée par le client ; remarque abandonnée : « Quelle police pour les titres ? »");
   await expect.poll(() => notificationsOf(org)).toContainEqual(expect.stringContaining("approuvé la version 1"));
 
   expect(writes).toEqual([

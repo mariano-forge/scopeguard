@@ -126,6 +126,9 @@ test("the version: changes requested, approved once its quotes are decided; afte
   expect((await act("approval", "POST")).status).toBe(200);
   const [version] = await sql<{ review_status: string; locked: boolean }>("select review_status, locked from deliverables where organization_id = $1 and id = 1", [org]);
   expect(version).toEqual({ review_status: "approved", locked: true });
+  // Its remark still to clarify (12) is named as given up, from the database, not from the page.
+  const [approval] = await sql<{ description: string }>("select data->>'description' as description from audit_events where organization_id = $1 and type = 'deliverable.approved'", [org]);
+  expect(approval.description).toBe("Version 1 approuvée par le client ; remarque abandonnée : « Note de l’agence »");
 
   expect((await act("approval", "POST")).status).toBe(409);
   expect((await act("changes-request", "POST", { message: "Finalement non" })).status).toBe(409);

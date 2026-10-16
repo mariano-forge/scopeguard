@@ -631,6 +631,8 @@ export default function ClientReviewPage() {
   const quotesToDecide = sharedComments.filter(
     (comment) => proposalStates[comment.id] === "sent" && (proposalDecisions[comment.id] ?? "none") === "none" && !adaptationRequests[comment.id]?.decision,
   );
+  // Remarks still to clarify: validating gives them up, which the dialog says and the server records.
+  const remarksToClarify = sharedComments.filter((comment) => comment.decision !== "Inclus" && comment.decision !== "Hors périmètre");
   // Canvas threads: corrections and remarks (older "À traiter" counts as to clarify).
   const canvasComments: (ThreadComment & { page?: number; sourceId?: number })[] = sharedComments.map((comment) => ({
     ...comment,
@@ -1014,7 +1016,7 @@ export default function ClientReviewPage() {
               Annuler
             </Button>
             <Button onClick={confirmApproval} disabled={quotesToDecide.length > 0}>
-              Confirmer la validation
+              {remarksToClarify.length ? "Valider et renoncer à ces remarques" : "Confirmer la validation"}
             </Button>
           </>
         }
@@ -1043,6 +1045,20 @@ export default function ClientReviewPage() {
               );
             })}
           </ul>
+        )}
+        {remarksToClarify.length > 0 && (
+          <div className="grid gap-2 text-sm">
+            <p role="note" className="rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-[var(--status-medium-text)]">
+              <b>Certaines remarques n’ont pas encore été clarifiées avec l’agence.</b> En validant, vous y renoncez : elles ne seront pas traitées dans cette version.
+            </p>
+            <ul className="grid gap-1 text-muted-foreground" aria-label="Remarques auxquelles vous renoncez">
+              {remarksToClarify.map((comment) => (
+                <li key={comment.id} className="truncate">
+                  « {comment.message} »
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </Modal>
     </main>

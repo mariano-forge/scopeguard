@@ -270,7 +270,7 @@ La page du client écrit une action à la fois, chacune sur sa route (`src/db/re
 | `POST proposals/:id/decision` | Accepter ou refuser un devis envoyé, une seule fois |
 | `POST proposals/:id/adaptation` | Demander une adaptation, si l'agence l'a permise |
 | `POST changes-request` | Demander des modifications |
-| `POST approval` | Valider la version, ce qui la verrouille ; refusé tant qu'un devis envoyé attend la décision du client (la fenêtre de validation les liste, à accepter ou refuser) |
+| `POST approval` | Valider la version, ce qui la verrouille ; refusé tant qu'un devis envoyé attend la décision du client (la fenêtre de validation les liste, à accepter ou refuser). Les remarques encore « À clarifier » sont abandonnées en validant : la fenêtre le dit et les liste, le journal les nomme |
 
 Dans la cloche, chaque activité ouvre ce qu'elle concerne : une décision du client ouvre la demande, une demande d'accès ouvre « Partager la revue » sur le livrable, une relance ouvre la version (`notificationHref`, `src/app/(agency)/routes.ts`). Les notifications plus anciennes, ou dont le livrable a disparu, restent du simple texte.
 
