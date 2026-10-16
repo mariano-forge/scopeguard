@@ -1,5 +1,7 @@
 # Plan d'execution de ScopeGuard
 
+> **Document de cadrage d'origine.** Il garde le raisonnement et les jalons initiaux. Le produit s'appelle désormais Kora ; l'état réel des fonctionnalités est dans [PERSONAS_USER_STORIES.md](PERSONAS_USER_STORIES.md#suivi-de-réalisation), l'architecture actuelle dans [TECHNOLOGIES.md](TECHNOLOGIES.md). L'architecture technique recommandée plus bas a été en partie remplacée (Better Auth, Supabase puis Azure, Vercel).
+
 Ce document transforme le positionnement defini dans [README.md](README.md) en plan d'action concret. ScopeGuard ne vise pas a devenir un outil generique de commentaires : il doit aider les agences a qualifier les demandes client, faire accepter les prestations hors perimetre et conserver une preuve de chaque decision.
 
 ## Priorite no 1 : valider le probleme avant de construire

@@ -2,23 +2,20 @@
 
 Ce document decrit la trajectoire entre le prototype actuel et une version de production hebergee dans l'organisation Azure. Il ne modifie pas la demo actuelle et sert de reference pour eviter les oublis lors de la migration.
 
-## 1. Etat actuel du prototype
+## 1. État actuel (16 octobre 2026)
 
-Le prototype est une application Next.js avec TypeScript et App Router.
+Kora tourne en ligne pour des pilotes, hors d'Azure pour l'application et la base :
 
-- Application : Next.js 16 avec React.
-- Validation actuelle : `npm.cmd run build` passe.
-- Persistance : `localStorage` sous la cle `scopeguard-review-state`.
-- Fichiers : PDF et images manipules cote navigateur.
-- PDF : rendu multi-pages avec `react-pdf`.
-- Viewer : zoom, deplacement, commentaires positionnes et plein ecran cote agence et client.
-- Liens de revue : tokens conserves dans l'etat local, avec expiration automatique ou revocation manuelle.
-- Synchronisation : evenement navigateur `storage` entre onglets.
-- Preuve : export HTML imprimable ou enregistrable en PDF.
-- Authentification : absente.
-- API et base de donnees : absentes.
+- **Application** : Next.js 16 sur Vercel, région Francfort (`fra1`, `vercel.json`).
+- **Base** : PostgreSQL sur Supabase (Francfort), schéma et migrations Drizzle (`drizzle/`), sécurité par ligne sur toutes les tables, journal d'audit en ajout seul garanti par un trigger. Connexion chiffrée et certificat vérifié (`DATABASE_SSL_CA`).
+- **Fichiers** : déjà sur **Azure Blob Storage**, un conteneur privé par agence, envoi direct du navigateur avec une adresse de création seule, empreinte vérifiée par le serveur, lecture par adresse signée de 5 minutes.
+- **Identité agence** : Better Auth (e-mail et mot de passe avec adresse confirmée, Google en option), agences, rôles propriétaire, administrateur et membre.
+- **Identité client** : liens signés Kora, code à 6 chiffres par e-mail, appareil reconnu 30 jours, rôles décideur et contributeur.
+- **E-mails** : Resend.
+- **API** : une route par action, l'état lu en une requête ; limites de débit en base ; en-têtes de sécurité et refus des écritures d'un autre site.
+- **Pas encore** : réseau privé, Key Vault, Application Insights, sauvegardes testées en restauration.
 
-Cet etat est adapte a une demo personnelle dans un meme navigateur. Il ne constitue pas encore une persistance partagee entre une agence et un client sur des appareils differents.
+Les choix d'identité diffèrent donc de la cible ci-dessous : Better Auth plutôt qu'Entra ID pour l'agence, et les liens signés Kora pour le client. Ils restent compatibles avec une migration vers Azure (la base et les secrets se déplacent, le code d'identité ne change pas).
 
 ## 2. Cible de production
 
@@ -57,7 +54,7 @@ Une application accessible par un client externe aura generalement un point d'en
 
 ## 3. Modele de donnees cible
 
-Les donnees actuellement regroupees dans `scopeguard-review-state` devront etre separees en entites persistantes.
+*Réalisé* : les données sont réparties en tables PostgreSQL (`src/db/schema.ts`), chacune rattachée à son agence par la clé primaire. La table ci-dessous reste la correspondance d'origine.
 
 | Etat ou type actuel | Entite cible |
 | --- | --- |
@@ -96,7 +93,7 @@ Les commentaires, propositions, decisions et approbations doivent pointer vers l
 
 ## 4. Migration du stockage des fichiers
 
-Le prototype stocke temporairement les PDF sous forme de `fileData` dans `localStorage`. En production :
+*Réalisé sur Azure Blob Storage* (`src/lib/storage.ts`), avec un chemin rangé par projet, livrable et version (`projets/<id>/livrables/<id>/v<n>/<sha256>.<ext>`) et l'empreinte en base. Restent à faire : l'identité managée et les SAS de délégation (aujourd'hui, clé de compte et SAS de service), le versionnement Blob et le cycle de vie. Cible d'origine :
 
 ```text
 Blob path :
@@ -126,7 +123,9 @@ Regles :
 
 ## 5. Migration fonctionnelle par phases
 
-### Phase 0 - Prototype personnel
+État des phases au 16 octobre 2026 : **0, 2 et 3 réalisées**, **4 réalisée hors Entra ID** (Better Auth), **1 et 5 à faire** pour la production sur Azure.
+
+### Phase 0 - Prototype personnel *(réalisée, dépassée)*
 
 Objectif : demontrer le parcours sans infrastructure serveur.
 
@@ -135,7 +134,7 @@ Objectif : demontrer le parcours sans infrastructure serveur.
 - Ne pas utiliser de donnees client confidentielles.
 - Garder le stockage PDF local limite aux demos.
 
-### Phase 1 - Socle Azure de test
+### Phase 1 - Socle Azure de test *(à faire ; seul le compte de stockage existe)*
 
 Objectif : preparer un environnement partage sans encore migrer toutes les fonctions.
 
@@ -149,7 +148,7 @@ Objectif : preparer un environnement partage sans encore migrer toutes les fonct
 - Definir Managed Identity pour l'application.
 - Configurer Private DNS Zones et Private Endpoints.
 
-### Phase 2 - Backend minimal partage
+### Phase 2 - Backend minimal partage *(réalisée : Drizzle, PostgreSQL, routes par action)*
 
 Objectif : remplacer les donnees critiques de `localStorage`.
 
@@ -162,7 +161,7 @@ Objectif : remplacer les donnees critiques de `localStorage`.
 - Ajouter une API de decisions et d'approbations.
 - Conserver temporairement un mode demo local si necessaire.
 
-### Phase 3 - Fichiers et revue client
+### Phase 3 - Fichiers et revue client *(réalisée)*
 
 Objectif : rendre le lien client utilisable sur un autre appareil.
 
@@ -173,7 +172,7 @@ Objectif : rendre le lien client utilisable sur un autre appareil.
 - Verification des anciennes versions et de leur verrouillage.
 - Suppression de `fileData` du modele serveur.
 
-### Phase 4 - Identite et securite
+### Phase 4 - Identite et securite *(réalisée avec Better Auth au lieu d'Entra ID)*
 
 Objectif : isoler correctement les organisations et proteger les acces.
 
@@ -186,7 +185,7 @@ Objectif : isoler correctement les organisations et proteger les acces.
 - Ajouter validation de taille et type des fichiers.
 - Journaliser les actions sensibles en append-only.
 
-### Phase 5 - Exposition reseau et production
+### Phase 5 - Exposition reseau et production *(à faire)*
 
 Objectif : exposer le produit sans exposer directement les donnees.
 
@@ -221,7 +220,7 @@ Objectif : exposer le produit sans exposer directement les donnees.
 - Ne pas construire un reverse proxy de pages web sans analyse SSRF approfondie.
 - Ne pas exposer directement PostgreSQL ou Blob sur Internet.
 - Ne pas migrer toute l'interface en une seule fois.
-- Ne pas supprimer immediatement le mode demo `localStorage` tant que le backend partage n'est pas teste.
+- *(Obsolète : le mode `localStorage` a été retiré, toutes les données sont en base.)*
 
 ## 8. Criteres de passage en production
 
@@ -229,7 +228,7 @@ Le passage du prototype a la production est considere pret lorsque :
 
 - deux navigateurs differents voient les memes projets et decisions ;
 - un client peut ouvrir un lien depuis une autre machine ;
-- un PDF est stocke dans Blob et non dans `localStorage` ;
+- un PDF est stocke dans Blob et non dans le navigateur *(fait)* ;
 - une version approuvee reste immuable ;
 - une revocation rend le lien inutilisable ;
 - une expiration rend le lien inutilisable ;
@@ -243,12 +242,12 @@ Le passage du prototype a la production est considere pret lorsque :
 ## 9. Ordre recommande
 
 ```text
-Prototype localStorage stable
-    -> tests de parcours et pilotes personnels
-    -> modele PostgreSQL et API minimale
-    -> Blob Storage prive
-    -> authentification agence
-    -> isolation par organisation
+Prototype localStorage stable                       (fait)
+    -> tests de parcours et pilotes personnels      (fait : 72 tests de bout en bout)
+    -> modele PostgreSQL et API minimale            (fait, sur Supabase)
+    -> Blob Storage prive                           (fait)
+    -> authentification agence                      (fait, Better Auth)
+    -> isolation par organisation                   (fait)
     -> reseau prive et Private Endpoints
     -> Front Door + WAF
     -> observabilite et sauvegardes

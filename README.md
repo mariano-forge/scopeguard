@@ -1,6 +1,8 @@
-# ScopeGuard
+# Kora (nom de code ScopeGuard)
 
 > Le portail de validation client qui transforme les demandes hors perimetre en decisions facturees.
+
+> **État du produit.** Kora est en ligne pour des pilotes (Vercel à Francfort, Supabase, Azure, Resend). Les sections qui suivent décrivent le positionnement et le MVP visé ; l'état réel de chaque fonctionnalité est suivi dans [PERSONAS_USER_STORIES.md](PERSONAS_USER_STORIES.md#suivi-de-réalisation). La pile et la sécurité sont décrites dans [TECHNOLOGIES.md](TECHNOLOGIES.md), les règles pour les agents IA dans [AGENTS.md](AGENTS.md).
 
 ScopeGuard est un SaaS destine aux agences web, studios de design et consultants creatifs. Il centralise les retours clients sur des livrables visuels et aide les equipes a transformer chaque demande en une decision claire : incluse dans le perimetre, modification mineure, ou prestation supplementaire a chiffrer.
 
@@ -98,23 +100,23 @@ Le MVP doit permettre de tester ce positionnement avec un flux complet, sans con
 - Espaces de travail par agence.
 - Projets associes a un client.
 - Import de PDF et d'images.
-- Ajout d'une capture de page web depuis une URL.
+- Ajout d'une capture de page web depuis une URL *(à faire : l'URL est enregistrée, sans capture)*.
 - Versions de livrables avec statut clair : brouillon, en revue, modifications demandees, approuve.
 
 ### Revue client
 
 - Liens partageables et proteges.
 - Commentaires positionnes sur un point precis du document.
-- Fils de discussion et resolution de commentaires.
-- Boutons explicites `Demander des modifications` et `Approuver la version`.
+- Fils de discussion et resolution de commentaires *(la resolution est a faire)*.
+- Boutons explicites `Demander des modifications` *(regle serveur faite, bouton a ajouter cote client)* et `Approuver la version`.
 - Relances par e-mail pour les validations en attente.
 
 ### Controle du perimetre
 
-- Qualification de chaque demande : `incluse`, `modification mineure`, `hors perimetre`, `a clarifier`.
-- Justification interne facultative pour l'equipe.
+- Qualification de chaque demande : `incluse`, `modification mineure`, `hors perimetre`, `a clarifier` *(realise : « À traiter », « Hors scope » et « À clarifier »)*.
+- Justification interne facultative pour l'equipe *(a faire)*.
 - Conversion d'un commentaire en proposition complementaire.
-- Proposition comprenant description, prix, impact planning et date d'expiration.
+- Proposition comprenant description, prix, impact planning et date d'expiration *(la date d'expiration est a faire)*.
 - Acceptation ou refus explicite par le client.
 
 ### Tracabilite
@@ -199,17 +201,27 @@ Le produit ne remplace pas un outil de gestion de projet, un CRM ou une solution
 Les données sont enregistrées dans PostgreSQL. Le fichier `.env.local` choisit la base avec `DATABASE_TARGET` : `local` (Postgres dans Docker) ou `remote` (Supabase, puis Azure).
 
 ```bash
-cp .env.example .env.local   # puis renseigner DATABASE_URL_REMOTE si besoin
+cp .env.example .env.local   # puis renseigner BETTER_AUTH_SECRET (et DATABASE_URL_REMOTE si besoin)
 npm install
 npm run db:up                # Postgres et Azurite (émulateur Azure Storage) dans Docker
 npm run db:migrate           # crée les tables sur la base choisie par DATABASE_TARGET
 npm run dev
+npm run test:e2e             # la suite de tests : base de test kora_test recréée, e-mails écrits dans un fichier
 ```
 
 - Base en ligne (Supabase) : `DATABASE_URL_REMOTE` = chaîne « Session pooler » (Connect › Session pooler), puis `DATABASE_TARGET=remote npm run db:migrate`. Toutes les tables ont la sécurité par ligne activée sans règle : l'API REST publique de Supabase n'y voit rien, l'application (propriétaire des tables) n'est pas concernée. Désactivez aussi l'API de données (Project Settings › Data API). Les variables `NEXT_PUBLIC_SUPABASE_*` ne servent pas.
 - `npm run db:generate` : crée une migration après une modification de `src/db/schema.ts`.
 - `npm run db:studio` : explore les données.
 - Le journal d'audit (`audit_events`) est en ajout seul : la base refuse toute modification ou suppression d'un événement.
+
+### Déploiement
+
+L'application tourne sur Vercel, dans la région de Francfort (`fra1`, fixée par [vercel.json](vercel.json)), à côté de la base Supabase : une base éloignée multiplie la latence de chaque action. À chaque déploiement :
+
+1. **Migrations d'abord.** Si le déploiement ajoute des fichiers dans `drizzle/`, appliquez-les sur la base en ligne **avant** de déployer le code : `DATABASE_TARGET=remote npm run db:migrate`.
+2. **Variables d'environnement** (Vercel › Settings › Environment Variables), voir [.env.example](.env.example) : `DATABASE_TARGET=remote`, `DATABASE_URL_REMOTE` (pooler Supabase de Francfort), `DATABASE_SSL_CA` (le texte PEM du certificat), `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` (l'adresse publique), `TRUSTED_PROXY_HOPS=1`, `STORAGE_TARGET=remote` et les `STORAGE_*_REMOTE`, `RESEND_API_KEY`, `MAIL_FROM`. Jamais `MAIL_TRANSPORT` en ligne.
+3. **E-mails** : le domaine d'envoi doit avoir SPF, DKIM et un enregistrement DMARC, sans quoi les codes d'accès arrivent en spam.
+4. **Après le déploiement**, un onglet resté ouvert sur l'ancienne version doit être rechargé.
 
 ### Fichiers importés
 
