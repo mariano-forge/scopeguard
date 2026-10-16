@@ -36,13 +36,18 @@ test("sharing creates the link; an invitation is removed; the link is revoked", 
   const created = await link(org);
   expect(created.token).toMatch(/^[0-9a-f-]{36}$/);
   expect(created.data.expiresAt).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
+  // Nobody invited yet: the dialog says the copied link will not open for anyone.
+  const warning = page.getByRole("note").filter({ hasText: "Personne n’est encore invité" });
+  await expect(warning).toBeVisible();
 
   const email = `${unique("claire")}@client.test`;
   await page.getByLabel("Inviter par e-mail").fill(email);
   await page.getByRole("button", { name: "Inviter", exact: true }).click();
   await expect.poll(async () => (await link(org)).data.invites?.map((invite) => invite.email)).toEqual([email]);
+  await expect(warning).toHaveCount(0);
   await page.getByRole("button", { name: `Retirer ${email}` }).click();
   await expect.poll(async () => (await link(org)).data.invites?.length ?? 0).toBe(0);
+  await expect(warning).toBeVisible();
 
   await page.getByRole("button", { name: "Révoquer ce lien" }).click();
   await expect.poll(async () => (await link(org)).active).toBe(false);

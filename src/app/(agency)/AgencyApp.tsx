@@ -1400,6 +1400,7 @@ export function AgencyApp() {
     if (!reviewLink?.active) return;
     await navigator.clipboard.writeText(getReviewUrl());
     setLinkCopied(true);
+    if (!reviewLink.invites?.length) toast.warning("Lien copié, mais personne n’est invité : seules les adresses invitées peuvent l’ouvrir.");
   }
 
   // Deliverable status = its latest version: what needs the agency first, then what waits on the client.
@@ -2573,6 +2574,12 @@ export function AgencyApp() {
                 >
                   <Input id="share-url" readOnly value={getReviewUrl()} onFocus={(event) => event.target.select()} />
                 </Field>
+                {/* A copied link opens to invited addresses only (src/db/reviewAuth.ts): said before it is sent. */}
+                {!(reviewLink.invites?.length) && (
+                  <p role="note" className="rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-sm text-[var(--status-medium-text)]">
+                    <b>Personne n’est encore invité.</b> Ce lien ne s’ouvre qu’aux adresses invitées ci-dessous : invitez d’abord votre client, sinon il ne recevra pas de code.
+                  </p>
+                )}
                 <Field id="share-invite" label="Inviter par e-mail" hint="Plusieurs adresses : séparez-les par une virgule. Un décideur peut valider la version et accepter les devis ; un contributeur commente seulement.">
                   <div className="flex gap-2">
                     <Input
