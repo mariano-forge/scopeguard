@@ -382,6 +382,14 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
     case "comment.qualify": {
       if (await settled()) return refused();
       if (action.decision === "À qualifier") {
+        // « À clarifier » chosen with a title, as from « + Demande »: the client sees it (visibleToClient).
+        if (action.title) {
+          const rest = { ...comment };
+          delete rest.description;
+          upsertComment({ ...rest, decision: "À qualifier", kind: "remark", title: action.title, ...(action.description ? { description: action.description } : {}) });
+          log.add("scope.classified", `Demande qualifiée « À clarifier » : ${action.title}`, action.commentId);
+          break;
+        }
         upsertComment({ ...comment, decision: "À qualifier", kind: "remark" });
         log.add("scope.classified", "Demande remise à clarifier", action.commentId);
         break;

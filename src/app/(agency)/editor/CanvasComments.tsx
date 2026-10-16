@@ -430,7 +430,7 @@ export function ThreadPopover({
             <span className="scope-field-label" id={`scope-${comment.id}`}>
               Qualifier la demande
             </span>
-            <ScopeChoice value={decision} onChange={setDecision} />
+            <ScopeChoice value={decision} onChange={setDecision} clarify />
           </div>
           <label>
             Titre de la demande

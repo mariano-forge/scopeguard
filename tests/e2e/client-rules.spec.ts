@@ -148,6 +148,11 @@ test("the client sees what is addressed to them: no agency pin without a status,
   const raw = JSON.stringify(answer.json);
   for (const secret of ["Section blog cachée", "4321", "9876", "Repère de l’agence"]) expect(raw).not.toContain(secret);
   expect((await clientAction(client, token, "comments/35/replies", "POST", { message: "Vu ?" })).status).toBe(404);
+  // Once the agency chooses its status, even « À clarifier », the pin shows, under its title.
+  expect((await call("/api/comments/35/qualification", { method: "PUT", person: alice, body: { decision: "À qualifier", title: "Taille du logo ?" } })).status).toBe(200);
+  const after = (await call(`/api/review/${token}`, { person: client })).json.state as { comments: { id: number; title?: string }[] };
+  expect(after.comments.find((entry) => entry.id === 35)).toMatchObject({ title: "Taille du logo ?" });
+  expect((await clientAction(client, token, "comments/35/replies", "POST", { message: "Plus grand" })).status).toBe(200);
 
   // A request the client does not see cannot be reached through the API either.
   expect((await clientAction(client, token, "comments/31/replies", "POST", { message: "Je l’ai trouvée" })).status).toBe(404);
