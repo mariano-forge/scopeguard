@@ -538,6 +538,12 @@ export function ThreadPopover({
             </div>
           )}
 
+          {/* A pin of the agency, no status chosen yet, is internal (src/db/reviewAccess.ts visibleToClient). */}
+          {me === "agency" && kind === "comment" && sideOf(comment) === "agency" && !comment.title?.trim() && (
+            <p className="request-internal" role="note">
+              Non visible par le client tant que vous ne l’avez pas qualifiée.
+            </p>
+          )}
           {comment.source && <RequestSourceNote source={comment.source} enteredBy={comment.author} />}
           {kind !== "comment" && (
             <button type="button" className="discussion-toggle" aria-expanded={showDiscussion} onClick={() => setShowDiscussion((open) => !open)}>

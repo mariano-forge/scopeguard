@@ -18,7 +18,7 @@ async function clientPage(browser: Browser) {
           { id: 10, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Section témoignages", decision: "Hors périmètre", kind: "request", title: "Témoignages", location: "", time: "t" },
           { id: 11, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Page contact", decision: "Hors périmètre", kind: "request", title: "Formulaire de contact", location: "", time: "t" },
           // A question still to clarify: validating gives it up.
-          { id: 12, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Quelle police pour les titres ?", decision: "À qualifier", kind: "remark", location: "", time: "t" },
+          { id: 12, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", title: "Quelle police pour les titres ?", message: "Quelle police pour les titres ?", decision: "À qualifier", kind: "remark", location: "", time: "t" },
         ],
         remove: [],
       },
