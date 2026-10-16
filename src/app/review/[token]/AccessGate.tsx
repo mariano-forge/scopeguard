@@ -124,7 +124,7 @@ export function AccessGate({
           {heading(
             "Saisissez votre code",
             <>
-              Si <b>{email}</b> a accès à cette revue, un code à 6 chiffres vient d’y être envoyé. Il est valable 10 minutes.
+              Si <b>{email}</b> est invitée sur cette revue, un code à 6 chiffres vient d’y être envoyé. Il est valable 10 minutes.
             </>,
           )}
           <div className="grid gap-1.5">
@@ -154,12 +154,15 @@ export function AccessGate({
               Changer d’adresse
             </button>
           </div>
-          <p className="border-t border-[var(--border)] pt-3 text-sm text-[var(--graphite)]">
-            Pas de code ? Votre adresse n’est peut-être pas invitée.{" "}
-            <button type="button" className="text-[var(--action-text)] underline-offset-2 hover:underline" onClick={() => (setStep("request"), setError(""))}>
+          {/* A code only reaches invited addresses: someone given the link by a colleague asks the agency. */}
+          <div className="grid gap-2 border-t border-[var(--border)] pt-4 text-sm text-[var(--graphite)]">
+            <p>
+              <b className="text-[var(--ink)]">Pas de code ?</b> Il n’est envoyé qu’aux adresses invitées par l’agence. Si ce lien vous a été transmis par quelqu’un d’autre, demandez l’accès.
+            </p>
+            <Button type="button" variant="outline" onClick={() => (setStep("request"), setError(""))}>
               Demander l’accès à l’agence
-            </button>
-          </p>
+            </Button>
+          </div>
         </form>
       )}
 
@@ -199,7 +202,7 @@ export function AccessGate({
 
       {step === "requested" && (
         <div className="grid gap-4" role="status">
-          {heading("Demande envoyée", "L’agence a été prévenue. Si elle accepte, vous recevrez un e-mail avec votre lien d’accès.")}
+          {heading("Demande envoyée", "L’agence a été prévenue par e-mail. Si elle accepte, vous recevrez votre lien personnel à cette adresse.")}
         </div>
       )}
     </AuthShell>

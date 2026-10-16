@@ -1,7 +1,7 @@
 // A client reaches a review with a personal link, a code by mail and their name; nobody else does.
 
 import { expect, test } from "@playwright/test";
-import { call, clientAction, codeFor, createAgency, waitForCode, lastMailTo, linkIn, mailsTo, newIp, newPerson, seedState, readState, seedReview, signUp, unique, verifiedClient } from "./helpers";
+import { addColleague, call, clientAction, codeFor, createAgency, waitForCode, waitForMail, lastMailTo, linkIn, mailsTo, newIp, newPerson, seedState, readState, seedReview, signUp, unique, verifiedClient } from "./helpers";
 
 async function sharedReview() {
   const alice = await signUp("Alice Martin");
@@ -78,6 +78,50 @@ test("an uninvited person asks for access; the agency accepts and they get their
   await call("/api/review-access/requests", { person: alice, body: { linkKey, email, decision: "accepted" } });
   expect(linkIn(lastMailTo(email))).toContain("invitation=");
   expect(((await readState(alice)).accessRequests as unknown[]).length).toBe(0);
+});
+
+test("a copied link: the uninvited person gets no code, asks for access, and the owner and administrators are e-mailed", async ({ browser }) => {
+  const { alice, token } = await sharedReview();
+  const admin = await addColleague(alice, "Adam Admin", "admin");
+  const member = await addColleague(alice, "Mia Membre", "member");
+  const email = `${unique("transmis")}@client.test`;
+
+  const { page, errors } = await newPerson(browser);
+  await page.goto(`/review/${token}`);
+  await page.getByLabel("Votre e-mail").fill(email);
+  await page.getByRole("button", { name: "Recevoir un code" }).click();
+  // No code for an address nobody invited; the page says so and leads to the request.
+  await expect(page.getByRole("heading", { name: "Saisissez votre code" })).toBeVisible();
+  await expect(page.getByText("Il n’est envoyé qu’aux adresses invitées par l’agence")).toBeVisible();
+  expect(mailsTo(email)).toEqual([]);
+  await page.getByRole("button", { name: "Demander l’accès à l’agence" }).click();
+  await expect(page.getByLabel("Votre e-mail")).toHaveValue(email);
+  await page.getByLabel("Message (facultatif)").fill("Je remplace Claire");
+  await page.getByRole("button", { name: "Envoyer la demande" }).click();
+  await expect(page.getByRole("heading", { name: "Demande envoyée" })).toBeVisible();
+
+  // The owner and the administrator, not the member; replying writes to the person.
+  for (const manager of [alice, admin]) {
+    const mail = await waitForMail(manager.email, "demande l’accès");
+    expect(mail.replyTo).toBe(email);
+    expect(mail.text).toContain("Je remplace Claire");
+    expect(linkIn(mail)).toMatch(/\/projets\/1\/livrables\/1$/);
+  }
+  expect(mailsTo(member.email).filter((mail) => mail.subject.includes("demande l’accès"))).toEqual([]);
+  // Asking again while the request is pending sends nothing more.
+  await call(`/api/review/${token}/access/request`, { body: { email, message: "Relance" } });
+  expect(mailsTo(alice.email).filter((mail) => mail.subject.includes("demande l’accès"))).toHaveLength(1);
+  expect(errors).toEqual([]);
+});
+
+test("access requests are limited per address: a widely shared link cannot flood the agency", async () => {
+  const { token } = await sharedReview();
+  const ip = newIp();
+  const statuses: number[] = [];
+  for (let index = 0; index < 11; index++)
+    statuses.push((await call(`/api/review/${token}/access/request`, { person: { ip }, body: { email: `${unique("flot")}@client.test` } })).status);
+  expect(statuses.slice(0, 10).every((status) => status === 200)).toBe(true);
+  expect(statuses[10]).toBe(429);
 });
 
 test("the agency previews read-only; removing an invitation or revoking the link closes the review", async () => {
