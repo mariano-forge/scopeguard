@@ -14,6 +14,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { sameValue, type ListChange, type MapChange, type SharedState, type StateChanges } from "@/lib/sharedState";
 import { initialsOf, sideOf } from "@/lib/authors";
+import { clientFacingText, isInternalReply } from "@/lib/internalNotes";
 import type { Db } from "./client";
 import { commentProposals, comments, deliverables, notifications, proposalVersions, reviewLinks } from "./schema";
 import { readState } from "./state";
@@ -91,7 +92,14 @@ export async function readReviewState(db: Db, access: ReviewAccess) {
   const project = state.projects?.find((item) => item.id === ((record?.projectId as number | undefined) ?? 1));
   const client = state.clients?.find((item) => item.id === ((project?.clientId as number | undefined) ?? 1));
   const quotesOf = (id: number) => (state.proposalVersions ?? {})[String(id)];
-  const versionComments = (state.comments ?? []).filter((comment) => comment.deliverableId === access.deliverableId && visibleToClient(comment, quotesOf(comment.id)));
+  // Shown requests without what the agency wrote for itself (src/lib/internalNotes.ts).
+  const versionComments = (state.comments ?? [])
+    .filter((comment) => comment.deliverableId === access.deliverableId && visibleToClient(comment, quotesOf(comment.id)))
+    .map((comment) => ({
+      ...comment,
+      message: clientFacingText(comment),
+      ...(Array.isArray(comment.replies) ? { replies: (comment.replies as Reply[]).filter((reply) => !isInternalReply(comment, reply)) } : {}),
+    }));
   const ids = new Set(versionComments.map((comment) => String(comment.id)));
   const only = (map: Record<string, unknown> | undefined) => Object.fromEntries(Object.entries(map ?? {}).filter(([key]) => ids.has(key)));
   // Draft quotes never leave the server: neither their amounts nor the fact that one is being prepared.

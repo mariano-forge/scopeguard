@@ -6420,6 +6420,10 @@ button.rail-logo .lucide {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.thread-internal {
+  color: var(--graphite);
+  font-style: italic;
+}
 .request-internal {
   margin: 8px 0 0;
   font-size: var(--t-caption-size);

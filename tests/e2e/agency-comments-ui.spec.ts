@@ -61,6 +61,9 @@ test("a member comments, replies, edits and deletes in the editor; each write is
   await expect(bubble).toContainText("Demande n°");
   await expect(bubble).toContainText("À clarifier · à préciser avec le client");
   await expect(bubble).toContainText("Taille du logo à confirmer");
+  // The pin's own words were for the agency: labelled so, the client reads the title.
+  const internalLabels = page.getByText("· Interne, non visible par le client");
+  await expect(internalLabels).toHaveCount(1);
   // Then « Inclus », then back to clarify: still a request.
   await bubble.getByRole("button", { name: "Modifier", exact: true }).click();
   await page.getByRole("radio", { name: /^Inclus/ }).click();
@@ -76,6 +79,9 @@ test("a member comments, replies, edits and deletes in the editor; each write is
   await page.getByRole("textbox", { name: "Répondre" }).fill("Version mobile aussi");
   await page.getByRole("button", { name: "Envoyer la réponse" }).click();
   await expect.poll(async () => ((await agencyComments(org))[0].data.replies as { message: string }[] | undefined)?.map((reply) => reply.message)).toEqual(["Version mobile aussi"]);
+  // Written once the request shows to the client: addressed to them, not internal.
+  expect(((await agencyComments(org))[0].data.replies as { internal: boolean }[])[0].internal).toBe(false);
+  await expect(internalLabels).toHaveCount(1);
   await expect.poll(async () => (await events(org, "reply.created")).length).toBe(1);
 
   await page.getByRole("button", { name: "Modifier le message" }).first().click();

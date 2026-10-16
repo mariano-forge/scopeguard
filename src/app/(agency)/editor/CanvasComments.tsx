@@ -5,6 +5,7 @@ import { ArrowUp, BadgeEuro, ChevronDown, ClipboardCheck, Pencil, Tag, Trash2, U
 import { Hint } from "@/components/hint";
 import { Button } from "@/components/ui/button";
 import { sideOf, type Side } from "@/lib/authors";
+import { isInternalNote, isInternalReply } from "@/lib/internalNotes";
 import { sourceLine, type RequestSource } from "@/lib/requestSource";
 
 /**
@@ -17,7 +18,7 @@ import { sourceLine, type RequestSource } from "@/lib/requestSource";
 export type Qualification = "À qualifier" | "Inclus" | "Hors périmètre";
 export type RequestKind = "comment" | "correction" | "outside";
 
-type ThreadReply = { id: number; author: string; initials: string; message: string; time: string; createdAt?: number; edited?: boolean; from?: Side };
+type ThreadReply = { id: number; author: string; initials: string; message: string; time: string; createdAt?: number; edited?: boolean; from?: Side; internal?: boolean };
 
 /** Current time, refreshed every 15 s (for "il y a 5 min"). */
 export function useNow() {
@@ -68,6 +69,8 @@ export type ThreadComment = {
   sourceId?: number;
   /** Where a request entered by the agency came from (src/lib/requestSource.ts). */
   source?: RequestSource;
+  /** A pin of the agency: its own words stay internal (src/lib/internalNotes.ts). */
+  internalNote?: boolean;
   position?: { x: number; y: number };
   area?: Area;
   replies?: ThreadReply[];
@@ -176,12 +179,15 @@ function ThreadMessage({
   message,
   now,
   editable,
+  internal,
   onEdit,
   onDelete,
 }: {
   message: ThreadReply;
   now: number;
   editable: boolean;
+  /** Written for the agency only: the client does not see it (src/lib/internalNotes.ts). */
+  internal?: boolean;
   onEdit?: (message: string) => void;
   onDelete?: () => void;
 }) {
@@ -201,6 +207,7 @@ function ThreadMessage({
         <p className="thread-meta">
           <b>{message.author}</b> {timeLabel(message, now) && <small>{timeLabel(message, now)}</small>}
           {message.edited && <small>· modifié</small>}
+          {internal && <small className="thread-internal">· Interne, non visible par le client</small>}
         </p>
         {editing ? (
           <form
@@ -571,6 +578,8 @@ export function ThreadPopover({
                 now={now}
                 // Own messages, while the discussion is open.
                 editable={Boolean(me) && sideOf(message) === me && kind === "comment" && canWrite}
+                // Once the request shows to the client, what was written for the agency only is labelled.
+                internal={me === "agency" && asRequest && (message.id === 0 ? isInternalNote(comment) : isInternalReply(comment, message))}
                 onEdit={onEditMessage ? (text) => onEditMessage(message.id, text) : undefined}
                 onDelete={message.id === 0 ? onDelete : onDeleteMessage ? () => onDeleteMessage(message.id) : undefined}
               />
