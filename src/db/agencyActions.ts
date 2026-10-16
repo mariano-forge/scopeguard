@@ -9,6 +9,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { initialsOf, sideOf } from "@/lib/authors";
 import { clientRoleLabels, readClientRole, roleOfInvite, type ClientRole } from "@/lib/clientRoles";
 import { formatProposalAmount, formatProposalDeadline } from "@/lib/proposalFormat";
+import { readRequestSource, sourceLine, type RequestSource } from "@/lib/requestSource";
 import type { ListChange, StateChanges } from "@/lib/sharedState";
 import {
   trail,
@@ -30,7 +31,7 @@ import {
 } from "./actions";
 import { canManageAgency, reservedActions } from "./agencyPermissions";
 import type { Db } from "./client";
-import { commentProposals, deliverables, proposalVersions, reviewLinks } from "./schema";
+import { commentProposals, deliverables, proposalVersions, reviewLinks, storedFiles } from "./schema";
 import { applyChanges, type Writer } from "./state";
 import { readWorkspaceAction, workspaceChanges, type WorkspaceAction, type WorkspaceParams } from "./workspaceActions";
 
@@ -40,7 +41,7 @@ type Quote = { amount: number; days: number; counter: boolean };
 export type AgencyAction =
   | WorkspaceAction
   | { type: "comment.create"; deliverableId: number; id?: number; message: string; location?: string; page?: number; position?: { x: number; y: number }; area?: Area }
-  | { type: "request.create"; deliverableId: number; decision: "Inclus" | "Hors périmètre"; title: string; description?: string; quote?: Quote }
+  | { type: "request.create"; deliverableId: number; decision: Qualification; title: string; description?: string; quote?: Quote; source?: RequestSource }
   | { type: "comment.restore"; comment: Data }
   | { type: "comment.edit"; commentId: number; message: string }
   | { type: "comment.move"; commentId: number; page: number; x: number; y: number }
@@ -101,8 +102,10 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
       const request = body.request && typeof body.request === "object" ? (body.request as Data) : {};
       const deliverableId = id(request.deliverableId);
       const title = text(request.title, 300);
-      const decision = request.decision === "Inclus" || request.decision === "Hors périmètre" ? request.decision : null;
-      return deliverableId && title && decision ? { type, deliverableId, decision, title, description: text(request.description), quote: readQuote(request.quote) } : null;
+      const decision = request.decision === "Inclus" || request.decision === "Hors périmètre" || request.decision === "À qualifier" ? request.decision : null;
+      const source = readRequestSource(request.source);
+      if (!deliverableId || !title || !decision || source === null) return null;
+      return { type, deliverableId, decision, title, description: text(request.description), quote: readQuote(request.quote), source };
     }
     case "comment.restore": {
       const comment = body.restore && typeof body.restore === "object" && !Array.isArray(body.restore) ? (body.restore as Data) : null;
@@ -211,7 +214,17 @@ function quoteChanges(changes: StateChanges, commentId: number, update: { state?
   else if (update.dropAdaptation) changes.maps.adaptationRequests = { upsert: {}, remove: [key] };
 }
 
-const scopeLabel = (decision: "Inclus" | "Hors périmètre") => (decision === "Inclus" ? "Inclus" : "Hors scope");
+const scopeLabel = (decision: Qualification) => (decision === "Inclus" ? "Inclus" : decision === "Hors périmètre" ? "Hors scope" : "À clarifier");
+
+/** An image the agency imported itself, by its address (/api/files/<id>). */
+async function ownImage(db: Db, org: string, href: string) {
+  const [file] = await db
+    .select({ mimeType: storedFiles.mimeType })
+    .from(storedFiles)
+    .where(and(eq(storedFiles.organizationId, org), eq(storedFiles.id, href.split("/").at(-1)!)))
+    .limit(1);
+  return Boolean(file?.mimeType.startsWith("image/"));
+}
 
 /** A new client link for a version: a random token, valid 7 days unless the agency says otherwise. */
 function newReviewLink(deliverableId: number, version: number) {
@@ -316,17 +329,22 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
       });
       log.add("comment.created", "Commentaire agence ajouté", commentId);
     } else {
+      // A capture must be an image the agency imported itself (src/lib/upload.ts).
+      if (action.source?.capture && !(await ownImage(db, org, action.source.capture))) return refused("Capture introuvable.", 404);
       upsertComment({
         ...base,
         message: action.description || action.title,
         location: "Livrable (général)",
         decision: action.decision,
-        kind: "request",
+        // A request not qualified yet is a question, like a pinned one (src/app/(agency)/editor/CanvasComments.tsx).
+        kind: action.decision === "À qualifier" ? "remark" : "request",
         title: action.title,
         ...(action.description ? { description: action.description } : {}),
+        ...(action.source ? { source: action.source } : {}),
         page: 1,
       });
-      log.add("scope.classified", `Demande créée « ${scopeLabel(action.decision)} » : ${action.title}`, commentId);
+      const origin = action.source ? ` (${sourceLine(action.source).replace("Demande reçue ", "reçue ")})` : "";
+      log.add("scope.classified", `Demande créée « ${scopeLabel(action.decision)} » : ${action.title}${origin}`, commentId);
       if (action.quote && action.decision === "Hors périmètre" && (await draftQuote(db, org, changes, commentId, action.title, action.quote)))
         log.add("proposal.drafted", `Chiffrage préparé : ${action.quote.amount} € · ${action.quote.days} j`, commentId);
     }

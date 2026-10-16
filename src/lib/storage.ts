@@ -110,14 +110,24 @@ export type FilePlacement =
   | { kind: "version"; projectId: number; livrableId: number; version: number }
   /** The cover of a deliverable: projets/<projectId>/livrables/<livrableId>/couverture/<sha256>.<ext> */
   | { kind: "cover"; projectId: number; livrableId: number }
+  /** A capture attached to a request (an e-mail, a message): projets/<projectId>/livrables/<livrableId>/demandes/<sha256>.<ext> */
+  | { kind: "request"; projectId: number; livrableId: number }
   /** A file that reached the server without its place (older pages): divers/<sha256>.<ext> */
   | { kind: "other" };
+
+/** The place a page asks for (upload routes): its kind and numeric ids, or null when malformed. */
+export function readPlacement(kind: unknown, projectId: number | null, livrableId: number | null, version: number | null): FilePlacement | null {
+  if (projectId === null || livrableId === null) return null;
+  if (kind === "cover" || kind === "request") return { kind, projectId, livrableId };
+  return kind === "version" && version !== null ? { kind: "version", projectId, livrableId, version } : null;
+}
 
 function pathOf(placement: FilePlacement, sha256: string, extension: string) {
   const name = `${sha256}.${extension}`;
   if (placement.kind === "other") return `divers/${name}`;
   const livrable = `projets/${placement.projectId}/livrables/${placement.livrableId}`;
-  return placement.kind === "version" ? `${livrable}/v${placement.version}/${name}` : `${livrable}/couverture/${name}`;
+  if (placement.kind === "version") return `${livrable}/v${placement.version}/${name}`;
+  return placement.kind === "cover" ? `${livrable}/couverture/${name}` : `${livrable}/demandes/${name}`;
 }
 
 /** Stores a file in the agency's container and records it; returns its id and address. */

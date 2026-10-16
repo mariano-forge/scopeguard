@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Eye, History, MessageSquare, Plus, Share2 } from "lucide-react";
-import type { ProposalStage } from "./CanvasComments";
+import type { ProposalStage, Qualification } from "./CanvasComments";
 import { ResizeHandle } from "./ResizeHandle";
 import { kindLabels, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
 import { Hint } from "@/components/hint";
@@ -262,7 +262,7 @@ export function EditorInspector({
   onRequote: (commentId: number) => void;
   proposalSummary: (comment: ThreadComment) => React.ReactNode;
   /** Opens the "new request" form, already qualified (no comment first). */
-  onAddRequest?: (decision: "Inclus" | "Hors périmètre") => void;
+  onAddRequest?: (decision: Qualification) => void;
   onShare: () => void;
   onPreview: () => void;
   width: number;
@@ -285,8 +285,8 @@ export function EditorInspector({
             </Button>
           </Hint>
           {onAddRequest && (
-            <Hint label="Une demande déjà qualifiée : incluse ou hors scope">
-              <Button className="requests-add" onClick={() => onAddRequest(tab === "outside" ? "Hors périmètre" : "Inclus")}>
+            <Hint label="Une demande reçue ailleurs (e-mail, appel, réunion…) ou portant sur tout le livrable">
+              <Button className="requests-add" onClick={() => onAddRequest(tab === "outside" ? "Hors périmètre" : tab === "correction" ? "Inclus" : "À qualifier")}>
                 <Plus /> Demande
               </Button>
             </Hint>

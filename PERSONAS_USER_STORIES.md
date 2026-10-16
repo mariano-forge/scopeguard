@@ -905,6 +905,21 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - L'aperçu est en lecture seule et l'indique ; aucune action n'y est enregistrée.
 - Un membre d'une autre agence n'a pas d'aperçu.
 
+#### US-050 : saisir une demande reçue ailleurs
+
+**En tant que** chef de projet,  
+**je veux** enregistrer dans Kora une demande que le client a faite par e-mail, au téléphone, en réunion ou sur Slack,  
+**afin que** toutes les demandes finissent dans le même registre, d'où qu'elles viennent.
+
+**Critères d'acceptation**
+
+- « + Demande » crée une demande « À clarifier », « Inclus » ou « Hors scope », pour une demande reçue ailleurs ou portant sur tout le livrable (une zone qu'on ne peut pas pointer).
+- La source est facultative : E-mail, Appel, Réunion, Slack, Figma ou Autre, avec la date de la demande d'origine.
+- L'agence peut coller le texte du client (l'extrait) et joindre une capture (image collée dans l'extrait ou choisie) ; les deux sont indiqués « Visible par le client ».
+- La demande affiche « Demande reçue par e-mail le 14/10/2026, saisie par Alice Martin », avec l'extrait et la capture, chez l'agence comme chez le client.
+- Le serveur n'accepte qu'un canal connu, une date valide, un extrait de 5 000 caractères au plus, et une image importée par l'agence elle-même.
+- La preuve reprend la source, l'extrait et l'empreinte SHA-256 de la capture.
+
 #### US-049 : attribuer un rôle aux personnes invitées
 
 **En tant que** chef de projet,  
@@ -1110,6 +1125,7 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-047 envoi vers Jira ou Notion | ⬜ | |
 | US-048 annoter un site web en ligne | ⬜ | |
 | US-049 rôles des personnes invitées | ✅ | Décideur et contributeur, contrôlés par le serveur |
+| US-050 saisir une demande reçue ailleurs | ✅ | Source, date, extrait et capture ; visibles par le client et dans la preuve |
 
 **Avant les premiers pilotes**, il reste à :
 

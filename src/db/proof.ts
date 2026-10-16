@@ -9,6 +9,7 @@ import type { Db } from "./client";
 import { organizations, users } from "./auth-schema";
 import { auditEvents, clients, commentProposals, comments, deliverables, files, projects, proposalVersions, storedFiles } from "./schema";
 import { deciderEventTypes } from "@/lib/clientRoles";
+import { sourceLine, type RequestSource } from "@/lib/requestSource";
 
 type Data = Record<string, unknown>;
 
@@ -119,8 +120,16 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
   const last = (type: string, commentId?: number) =>
     [...events].reverse().find((event) => event.type === type && (commentId === undefined || event.commentId === commentId)) ?? null;
 
+  // Captures joined to requests entered by the agency: their fingerprint goes in the proof.
+  const sourceOf = (data: Data) => (data.source && typeof data.source === "object" ? (data.source as RequestSource) : null);
+  const captureIds = requestRows.map((row) => sourceOf(row.data as Data)?.capture?.split("/").at(-1)).filter((id): id is string => Boolean(id));
+  const captures = captureIds.length
+    ? await db.select({ id: storedFiles.id, sha256: storedFiles.sha256 }).from(storedFiles).where(and(eq(storedFiles.organizationId, org), inArray(storedFiles.id, captureIds)))
+    : [];
+
   const requests = requestRows.map((row) => {
     const data = row.data as Data;
+    const source = sourceOf(data);
     const proposal = proposals.find((candidate) => candidate.commentId === row.id);
     return {
       id: row.id,
@@ -131,6 +140,13 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
       qualification: text(data.decision),
       title: text(data.title),
       createdAt: typeof data.createdAt === "number" ? new Date(data.createdAt).toISOString() : null,
+      source: source
+        ? {
+            line: sourceLine(source, text(data.author)),
+            excerpt: source.excerpt ?? null,
+            captureSha256: captures.find((capture) => capture.id === source.capture?.split("/").at(-1))?.sha256 ?? null,
+          }
+        : null,
       quotes: quotes
         .filter((quote) => quote.commentId === row.id)
         .map((quote) => {
