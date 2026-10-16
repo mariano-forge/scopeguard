@@ -1012,6 +1012,21 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - Si l'élément a disparu, le commentaire est signalé « élément introuvable » au lieu d'être perdu.
 - Les commentaires rejoignent le panneau « Demandes » et le même parcours de qualification.
 
+#### Décisions et pistes notées (16 octobre 2026)
+
+Discutées avec le porteur du produit ; à reprendre telles quelles :
+
+- **Validation avec réserves** *(à voir avec le designer)* : la fenêtre de validation liste les demandes « Inclus » encore ouvertes ; la version est « validée avec réserves » et la preuve les nomme. Les devis en attente restent bloquants, les « À clarifier » sont abandonnées (déjà fait).
+- **Demande offerte** (US-046) : en attente du designer.
+- **Qualifier en lot** : sélectionner plusieurs demandes et les qualifier d'un coup.
+- **Devis groupé** : un devis couvrant plusieurs demandes, accepté ou refusé en entier ; le client retire ce qu'il ne veut pas par une contre-proposition (pas d'acceptation partielle).
+- **Alignement « demande »** : abandonner la distinction par le champ `kind` ; la qualification et la présence d'un repère suffisent.
+- **Bouton « J'ai terminé mes retours »** côté client (US-010) : reporté, utile surtout pour compter les tournées de révision (US-045).
+- **Lien copié sans invité** : seul un avertissement dans « Partager la revue » (fait). Écarté : ouvrir le lien à tout porteur. Écarté pour l'instant : autoriser un domaine entier.
+- **Annotation de site web** (US-048) : un script Kora sur le site de recette, limité aux domaines déclarés ; vérification par le même code e-mail ; retours dans le même panneau ; une version = une tournée de revue déclarée par l'agence (« V3 en ligne ») ; la preuve repose sur des captures, pas sur le site en direct ; « élément introuvable » si l'élément a disparu. Difficultés : la connexion depuis un autre domaine (cookies tiers), les sites protégés. Écartés : proxy ou iframe, extension de navigateur.
+- **Jira / Notion** (US-047) : aucune licence requise ; jeton API pour les pilotes (chiffré en base, jamais renvoyé à la page), OAuth ensuite.
+- **E-mails groupés** : un e-mail par action pour l'instant ; un récapitulatif seulement si les pilotes s'en plaignent.
+
 ## User stories à reporter
 
 Ces stories sont pertinentes mais ne doivent pas entrer dans le premier parcours :

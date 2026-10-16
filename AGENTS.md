@@ -53,6 +53,8 @@ Pour les tests :
 - Une version n'est partagée avec un client que par un geste de l'agence (`ReshareDialog`, « Partager la revue ») ; ne la partage jamais automatiquement à l'import, et ne révèle pas au client une version qui ne lui est pas partagée.
 - Le client ne reçoit que `readReviewState` (`src/db/reviewAccess.ts`) : la version partagée, sans les invités des autres ni aucun champ interne de l'agence. Toute donnée nouvelle envoyée au client passe par ce filtre. Une demande hors scope de l'agence ne lui apparaît qu'une fois un devis envoyé (`visibleToClient`), un devis en brouillon jamais, et ses actions sur une demande qu'il ne voit pas répondent 404.
 - L'auteur d'un message se lit avec `sideOf()` (`src/lib/authors.ts`), jamais avec les initiales.
+- Une adresse e-mail n'est jamais montrée en entier à qui n'a pas prouvé qu'elle est la sienne : un lien personnel de revue ou d'invitation d'agence l'affiche masquée (`maskEmail`, `src/lib/maskEmail.ts`), et le code se demande par l'identifiant de l'invitation (`requestedEmail`, `src/db/reviewAuth.ts`).
+- Seul le décideur valide, et jamais avec un devis en attente : la validation est refusée tant qu'un devis envoyé attend la décision du client ; les demandes « À clarifier » restantes sont abandonnées en validant, et l'événement de validation les nomme.
 
 **Preuve et journal**
 - `audit_events` est en ajout seul : jamais d'`UPDATE` ni de `DELETE`. Ne supprime ni ne désactive le trigger. Toute nouvelle colonne s'ajoute au trigger dans une migration.
@@ -76,7 +78,8 @@ Pour les tests :
 - Une route d'action passe par `agencyActionResponse` (`src/lib/agencyActionRoute.ts`) ou `reviewActionResponse` (`src/lib/reviewViewer.ts`) : session, limite de débit, réserves des rôles, et réponse avec l'état à jour, que la page applique sans le relire. Côté navigateur, elle s'appelle par `agencyAction` ou `reviewAction`, jamais par un `fetch` à part.
 - Une page n'envoie jamais l'état : elle envoie l'action, et l'état renvoyé par le serveur remplace ce qu'elle affiche. Un affichage provisoire du geste (la page client le fait) ne doit jamais être réécrit au serveur.
 - Une route publique qui envoie des e-mails ou crée des données a sa limite de débit (`withinLimit`, `src/db/requestLimits.ts`). Une route hors du filtre de `src/proxy.ts` (`/api/files`) vérifie elle-même `crossSiteWrite`.
-- Les e-mails passent par `sendMail` et `renderMail` (`src/lib/mail.ts`, `src/lib/mailTemplates.ts`), en HTML et en texte, avec un « Répondre à » vers une vraie personne.
+- Les e-mails passent par `sendMail` et `renderMail` (`src/lib/mail.ts`, `src/lib/mailTemplates.ts`), en HTML et en texte, avec un « Répondre à » vers une vraie personne. Destinataires et liens : `src/db/mailTargets.ts` (propriétaire et administrateurs côté agence, **décideurs** seulement côté client). Un e-mail lié à une action part **après** son enregistrement et ne la fait jamais échouer (`src/db/reviewMails.ts`).
+- Une demande saisie par l'agence peut porter sa source (`src/lib/requestSource.ts` : canal, date, extrait, capture), visible par le client et reprise dans la preuve. Une capture est une image importée par l'agence elle-même (emplacement `request`, `readPlacement` dans `src/lib/storage.ts`), que le client n'ouvre que s'il voit la demande.
 - Dans les tests, prépare les données avec `seedState` (`tests/e2e/helpers.ts`, écriture directe dans la base de test), et teste les règles par les routes.
 
 ## Secrets, environnements et services réels
@@ -110,6 +113,12 @@ Pour les tests :
 - Ne pousse pas, ne force pas (`--force`), ne réécris pas l'historique et ne fusionne pas sans demande explicite de l'utilisateur.
 - Avant de commiter, relis `git status` et `git diff --cached` : aucun secret, rien de `test-results/` ni de `.env*`.
 
+## Vocabulaire
+
+- Une **demande** est tout retour du livrable, posé par un clic (avec un repère) ou par « + Demande » (sans repère : reçue ailleurs, ou sur tout le livrable). Les **commentaires** sont les réponses dans son fil. Le champ `kind` (`remark` / `request`) est un vestige : la qualification fait foi.
+- Qualifications : « À clarifier » (valeur `À qualifier`), « Inclus » (`Inclus`, prévu au devis), « Hors scope » (`Hors périmètre`, ajout à chiffrer). L'ancienne valeur `À traiter` en base se lit « À clarifier ». La page « À traiter » (`/a-traiter`) est autre chose : les décisions en attente de l'agence sur tous les projets.
+- Rôles d'agence : propriétaire, administrateur, membre. Rôles du client sur une revue : décideur, contributeur.
+
 ## Pièges connus
 
 - **Édition de fichiers par script** : n'ouvre jamais un fichier en écriture avant de l'avoir lu (en Python, `open(p, "w")` le vide aussitôt). Après une modification par script, vérifie `git diff --stat` : un fichier qui perd presque toutes ses lignes a été vidé, restaure-le depuis git.
@@ -117,6 +126,8 @@ Pour les tests :
 - **Livrables de test** : un livrable créé par `seedState` doit avoir les champs d'un vrai (`importedAt`, `type`, `version`…), sinon la page plante sur des données qu'aucun utilisateur ne produit.
 - **Sélecteurs** : beaucoup de boutons existent deux fois (bulle du fil et panneau latéral). Limite la recherche à la zone visée (`getByRole("dialog", …)`, une ligne du panneau).
 - **Services réels** : la base en ligne, Azure et Resend servent des agences réelles ; aucune commande ne les touche sans demande explicite.
+- **Base locale copiée de la base en ligne** : elle contient de vraies adresses de clients. Avant tout essai d'invitation, de relance ou de devis en local, `MAIL_TRANSPORT=console` dans `.env.local`, sinon les e-mails partent vraiment. Les fichiers restent sur l'Azure en ligne : `STORAGE_TARGET=remote` pour les voir, mais tout import local y irait aussi.
+- **Aide `upload` des tests** : elle déduit le type du fichier de son extension (`.pdf`, `.png`) ; une capture d'un autre type est refusée par le serveur, à raison.
 
 ## Compte rendu
 
