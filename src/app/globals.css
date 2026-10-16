@@ -1737,34 +1737,6 @@ button {
   padding: 7px;
 }
 
-.blocking-list {
-  display: grid;
-  gap: 8px;
-  max-height: 170px;
-  overflow: auto;
-  margin-bottom: 18px;
-}
-.blocking-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--status-high-bg);
-  color: var(--status-high-text);
-  padding: 9px 10px;
-  font-size: var(--t-caption-size);
-  line-height: 1.4;
-}
-.blocking-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--status-high-text);
-  margin-top: 4px;
-  flex-shrink: 0;
-}
-
 .approval-actions .changes-button,
 .proof-header {
   display: grid;

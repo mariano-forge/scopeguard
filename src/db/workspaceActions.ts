@@ -5,7 +5,7 @@
 
 import { and, eq, inArray } from "drizzle-orm";
 import type { Entity, ListChange, SharedState, StateChanges } from "@/lib/sharedState";
-import { displayedNow, id, noChanges, text, trail, type Data } from "./actions";
+import { id, noChanges, text, trail, type Data } from "./actions";
 import type { Db } from "./client";
 import { clients, deliverables, projects, storedFiles } from "./schema";
 import { readState } from "./state";
@@ -30,7 +30,6 @@ export type WorkspaceAction =
   | { type: "livrable.rename"; livrableId: number; name: string }
   | { type: "livrable.move"; livrableId: number; projectId: number }
   | { type: "livrable.delete"; livrableId: number }
-  | { type: "version.approve"; deliverableId: number }
   | { type: "link.auto-expire"; deliverableId: number; autoExpire: boolean }
   | { type: "trash.restore"; itemId: number }
   | { type: "trash.purge"; itemId?: number }
@@ -102,8 +101,6 @@ export function readWorkspaceAction(type: WorkspaceAction["type"], body: Data, p
     }
     case "livrable.delete":
       return deliverableId ? { type, livrableId: deliverableId } : null;
-    case "version.approve":
-      return deliverableId ? { type, deliverableId } : null;
     case "link.auto-expire":
       return deliverableId && typeof body.autoExpire === "boolean" ? { type, deliverableId, autoExpire: body.autoExpire } : null;
     case "trash.restore":
@@ -318,16 +315,6 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
       const taken = takeRecords(state, changes, new Set(versions.map((record) => record.id)));
       putInTrash(changes, "livrable", String(versions[0].name), origin, { ...taken, clients: [], projects: [] });
       break;
-    }
-    case "version.approve": {
-      const record = records.find((candidate) => candidate.id === action.deliverableId);
-      if (!record) return refused("Livrable introuvable.", 404);
-      if (record.reviewStatus === "approved") return refused("Cette version est déjà validée.");
-      upsert(changes, "deliverables", [{ ...record, status: "Approuvée", locked: true, reviewStatus: "approved", approvedAt: displayedNow() }]);
-      const approval = trail(actor, record.id);
-      approval.add("review.approved", "Validation client confirmée");
-      approval.into(changes);
-      return { changes, id: record.id };
     }
     case "link.auto-expire": {
       const record = records.find((candidate) => candidate.id === action.deliverableId);

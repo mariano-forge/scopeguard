@@ -62,6 +62,17 @@ test("removing an invitation cuts that address only; reopening keeps the reason"
   expect((await sql<{ review_status: string }>("select review_status from deliverables where organization_id = $1 and id = 1", [org]))[0].review_status).toBe("changes-requested");
 });
 
+test("only the client approves a version: the agency, even its owner, has no way to", async () => {
+  const { alice, org, act } = await agency();
+  // No such route: the address falls to the app's pages (HTML), nothing is written.
+  const approval = await act(alice, "1/approval", "POST");
+  expect(approval.response.headers.get("content-type")).not.toContain("application/json");
+  expect((await call("/api/deliverables/1", { method: "PATCH", person: alice, body: { name: "maquette.png", reviewStatus: "approved", status: "Approuvée", locked: true } })).status).toBe(200);
+  expect((await call("/api/state", { method: "PATCH", person: alice, body: { changes: { lists: { deliverables: { upsert: [{ id: 1, reviewStatus: "approved" }], remove: [] } }, maps: {}, settings: { upsert: {}, remove: [] } } } })).status).toBe(405);
+  const [version] = await sql<{ review_status: string | null; locked: boolean; status: string }>("select review_status, locked, data->>'status' as status from deliverables where organization_id = $1 and id = 1", [org]);
+  expect(version).toEqual({ review_status: null, locked: false, status: "En attente client" });
+});
+
 test("another agency's versions are out of reach", async () => {
   const { act } = await agency();
   const mallory = await signUp("Mallory Autre");

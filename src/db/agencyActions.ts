@@ -63,7 +63,7 @@ export type ActionParams = { commentId?: string; replyId?: string; email?: strin
 
 const workspaceTypes = new Set<string>([
   "space.create", "space.rename", "space.delete", "project.create", "project.rename", "project.move", "project.delete",
-  "livrable.create", "version.import", "livrable.rename", "livrable.move", "livrable.delete", "version.approve",
+  "livrable.create", "version.import", "livrable.rename", "livrable.move", "livrable.delete",
   "link.auto-expire", "trash.restore", "trash.purge", "trash.purge-expired",
 ]);
 const isWorkspace = (action: AgencyAction): action is WorkspaceAction => workspaceTypes.has(action.type);

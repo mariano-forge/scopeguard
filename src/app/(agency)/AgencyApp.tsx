@@ -449,7 +449,6 @@ export function AgencyApp() {
   const [linkCopied, setLinkCopied] = useState(false);
   const [changesOpen, setChangesOpen] = useState(false);
   const [changesMessage, setChangesMessage] = useState("");
-  const [approvalOpen, setApprovalOpen] = useState(false);
   const [proofOpen, setProofOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
@@ -1193,24 +1192,6 @@ export function AgencyApp() {
   /** What still needs the agency: every comment still to clarify (not yet a correction or hors scope). */
   function needsQualification(comment: Comment) {
     return requestKind(comment) === "comment";
-  }
-
-  function approveVersion() {
-    const blockingComments = comments.filter(
-      (comment) => needsQualification(comment),
-    );
-
-    if (blockingComments.length > 0) {
-      setApprovalOpen(true);
-      return;
-    }
-
-    confirmApproval();
-  }
-
-  /** Records the client's approval of the open version, which locks it. */
-  function confirmApproval() {
-    void agencyAction(`deliverables/${currentDeliverable.id}/approval`, "POST");
   }
 
   function requestChanges(event: React.FormEvent<HTMLFormElement>) {
@@ -2291,46 +2272,6 @@ export function AgencyApp() {
                 )}
               </>
             )}
-          </Modal>
-
-          <Modal
-            open={approvalOpen}
-            onClose={() => setApprovalOpen(false)}
-            role="alertdialog"
-            title="Approuver cette version ?"
-            description={`${comments.filter((comment) => needsQualification(comment)).length} demande(s) n’ont pas encore été qualifiée(s). L’approbation verrouillera cette version.`}
-            footer={
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setApprovalOpen(false);
-                    setInspectorTab("comment");
-                  }}
-                >
-                  Revenir aux retours
-                </Button>
-                <Button
-                  onClick={() => {
-                    setApprovalOpen(false);
-                    confirmApproval();
-                  }}
-                >
-                  Approuver quand même
-                </Button>
-              </>
-            }
-          >
-            <div className="blocking-list">
-              {comments
-                .filter((comment) => needsQualification(comment))
-                .map((comment) => (
-                  <div className="blocking-item" key={comment.id}>
-                    <span className="blocking-dot" />
-                    <span>{comment.message}</span>
-                  </div>
-                ))}
-            </div>
           </Modal>
 
           {/* Built only when a deliverable is open: its body reads the current version. */}

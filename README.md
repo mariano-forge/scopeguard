@@ -258,7 +258,7 @@ La page du client écrit une action à la fois, chacune sur sa route (`src/db/re
 | `POST changes-request` | Demander des modifications |
 | `POST approval` | Valider la version, ce qui la verrouille |
 
-L'agence suit le même chemin pour toutes ses écritures (`src/db/agencyActions.ts`, `src/db/workspaceActions.ts`) : le serveur signe chaque message avec le membre, refuse toute écriture sur une version validée ou remplacée et sur une demande dont le devis est tranché, et applique aux membres les réserves de `src/db/agencyPermissions.ts`. `/api/state` est en lecture seule : les pages lisent l'état et le relisent après chaque action.
+Seul le client valide une version, depuis sa page : l'agence n'a aucune route pour le faire. L'agence suit le même chemin pour toutes ses écritures (`src/db/agencyActions.ts`, `src/db/workspaceActions.ts`) : le serveur signe chaque message avec le membre, refuse toute écriture sur une version validée ou remplacée et sur une demande dont le devis est tranché, et applique aux membres les réserves de `src/db/agencyPermissions.ts`. `/api/state` est en lecture seule : les pages lisent l'état et le relisent après chaque action.
 
 | Route (`/api/comments…`) | Action de l'agence |
 | --- | --- |
@@ -277,7 +277,6 @@ L'agence suit le même chemin pour toutes ses écritures (`src/db/agencyActions.
 | `DELETE /api/deliverables/:id/review-link/invites/:email` | Retirer une invitation, ce qui coupe l'accès de cette adresse |
 | `POST /api/deliverables/:id/reopen` | Rouvrir la validation, avec la raison dans le journal |
 | `PATCH /api/deliverables/:id/review-link` | Expiration du lien après 7 jours, ou jamais (`autoExpire`) |
-| `POST /api/deliverables/:id/approval` | Enregistrer la validation du client, ce qui verrouille la version |
 | `POST /api/spaces`, `PATCH`, `DELETE /api/spaces/:id` | Créer, renommer, supprimer un espace (suppression : administrateurs) |
 | `POST /api/projects`, `PATCH`, `DELETE /api/projects/:id` | Créer, renommer (`name`), déplacer (`clientId`), supprimer un projet (suppression : administrateurs) |
 | `POST /api/deliverables` | Nouveau livrable, ses fichiers importés au préalable |
