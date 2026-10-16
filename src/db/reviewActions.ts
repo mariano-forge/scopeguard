@@ -7,7 +7,7 @@ import { and, eq } from "drizzle-orm";
 import type { ListChange, StateChanges } from "@/lib/sharedState";
 import { displayedNow, freeCommentId, id, movedComment, noChanges, percent, readArea, readPoint, text, number, type Area, type Data } from "./actions";
 import type { Db } from "./client";
-import { clientSeesComment, sanitizeReviewChanges, type ReviewAccess } from "./reviewAccess";
+import { clientSeesComment, sanitizeReviewChanges, visibleToClient, type ReviewAccess } from "./reviewAccess";
 import { reviewProfileName } from "./reviewAuth";
 import { mailClientDecision } from "./reviewMails";
 import { commentProposals, comments } from "./schema";
@@ -96,14 +96,14 @@ async function quotesAwaitingClient(db: Db, access: ReviewAccess) {
   return rows.filter((row) => (!row.decision || row.decision === "none") && !(row.adaptation as Data | null)?.decision).length;
 }
 
-/** Messages of the version's remarks still to clarify (not qualified as to do nor out of scope), oldest first. */
+/** Messages of the version's remarks still to clarify that the client sees (their own), oldest first. */
 async function remarksToClarify(db: Db, access: ReviewAccess) {
   const rows = await db
     .select({ id: comments.id, decision: comments.decision, data: comments.data })
     .from(comments)
     .where(and(eq(comments.organizationId, access.organizationId), eq(comments.deliverableId, access.deliverableId)));
   return rows
-    .filter((row) => row.decision !== "Inclus" && row.decision !== "Hors périmètre")
+    .filter((row) => row.decision !== "Inclus" && row.decision !== "Hors périmètre" && visibleToClient(row.data as Data, []))
     .sort((left, right) => left.id - right.id)
     .map((row) => String((row.data as Data).message ?? "").trim())
     .filter(Boolean);

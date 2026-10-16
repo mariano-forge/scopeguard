@@ -6420,6 +6420,11 @@ button.rail-logo .lucide {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.request-internal {
+  margin: 8px 0 0;
+  font-size: var(--t-caption-size);
+  color: var(--graphite);
+}
 /* Where a request entered by the agency came from: channel, the client's words, a capture. */
 .request-source {
   display: grid;

@@ -18,8 +18,11 @@ async function review() {
         upsert: [
           { id: 10, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Témoignages", decision: "Hors périmètre", kind: "request", title: "Témoignages", location: "", time: "t" },
           { id: 11, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Carte", decision: "Hors périmètre", kind: "request", title: "Carte", location: "", time: "t" },
-          { id: 12, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Note de l’agence", decision: "À qualifier", kind: "remark", location: "", time: "t", position: { x: 5, y: 5 }, replies: [{ id: 1, from: "agency", message: "Précision" }] },
+          { id: 12, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Note de l’agence", decision: "Inclus", kind: "request", title: "Note de l’agence", location: "", time: "t", position: { x: 5, y: 5 }, replies: [{ id: 1, from: "agency", message: "Précision" }] },
           { id: 13, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Brouillon", decision: "Hors périmètre", kind: "request", title: "Brouillon", location: "", time: "t" },
+          // 14: a pin of the agency, no status chosen: internal. 15: the client's own, still to clarify.
+          { id: 14, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Note interne", decision: "À qualifier", kind: "remark", location: "", time: "t" },
+          { id: 15, deliverableId: 1, author: "Claire Dubois", initials: "CD", from: "client", message: "Question du client", decision: "À qualifier", kind: "remark", location: "", time: "t" },
           { id: 20, deliverableId: 2, author: "Alice Martin", initials: "AM", from: "agency", message: "Autre version", decision: "À qualifier", kind: "remark", location: "", time: "t" },
         ],
         remove: [],
@@ -127,9 +130,9 @@ test("the version: changes requested, approved once its quotes are decided; afte
   expect((await act("approval", "POST")).status).toBe(200);
   const [version] = await sql<{ review_status: string; locked: boolean }>("select review_status, locked from deliverables where organization_id = $1 and id = 1", [org]);
   expect(version).toEqual({ review_status: "approved", locked: true });
-  // Its remark still to clarify (12) is named as given up, from the database, not from the page.
+  // The client's remark still to clarify (15) is named as given up; the agency's pin (14), never shown to the client, is not.
   const [approval] = await sql<{ description: string }>("select data->>'description' as description from audit_events where organization_id = $1 and type = 'deliverable.approved'", [org]);
-  expect(approval.description).toBe("Version 1 approuvée par le client ; remarque abandonnée : « Note de l’agence »");
+  expect(approval.description).toBe("Version 1 approuvée par le client ; remarque abandonnée : « Question du client »");
 
   expect((await act("approval", "POST")).status).toBe(409);
   expect((await act("changes-request", "POST", { message: "Finalement non" })).status).toBe(409);

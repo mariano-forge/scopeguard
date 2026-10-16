@@ -114,7 +114,7 @@ test("a client never sees who else is invited, nor their personal links", async 
   expect(JSON.stringify(acted.json)).not.toContain(other);
 });
 
-test("the client sees what is addressed to them: no unquoted out-of-scope request, never a draft quote", async () => {
+test("the client sees what is addressed to them: no agency pin without a status, no unquoted out-of-scope request, never a draft quote", async () => {
   const { alice, org, token, client } = await reviewWithQuote();
   const quote = (id: number, commentId: number, status: string, amount: number) => ({ id, version: 1, commentId, description: "Devis", amount, deadline: 2, status, createdAt: "x" });
   const request = (id: number, from: "agency" | "client", decision: string, title: string) => ({ id, deliverableId: 1, author: "x", initials: "XX", from, message: title, title, decision, kind: "request", location: "", time: "t" });
@@ -127,6 +127,7 @@ test("the client sees what is addressed to them: no unquoted out-of-scope reques
           request(32, "client", "Hors périmètre", "Ajout demandé par le client"),
           request(33, "agency", "Hors périmètre", "Carte interactive"),
           request(34, "agency", "À qualifier", "Quelle couleur ?"),
+          { id: 35, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Repère de l’agence", decision: "À qualifier", kind: "remark", location: "Page 1", page: 1, position: { x: 40, y: 40 }, time: "t" },
         ],
         remove: [],
       },
@@ -140,11 +141,13 @@ test("the client sees what is addressed to them: no unquoted out-of-scope reques
 
   const answer = await call(`/api/review/${token}`, { person: client });
   const state = answer.json.state as { comments: { id: number }[]; proposalStates: Record<string, string>; proposalVersions: Record<string, { id: number }[]> };
+  // 34: « + Demande » with « À clarifier » chosen, shown. 35: a pin of the agency, no status chosen, internal.
   expect(state.comments.map((comment) => comment.id).sort()).toEqual([10, 30, 32, 33, 34]);
   expect(state.proposalStates).toEqual({ "10": "sent" });
   expect(state.proposalVersions["33"].map((entry) => entry.id)).toEqual([330]);
   const raw = JSON.stringify(answer.json);
-  for (const secret of ["Section blog cachée", "4321", "9876"]) expect(raw).not.toContain(secret);
+  for (const secret of ["Section blog cachée", "4321", "9876", "Repère de l’agence"]) expect(raw).not.toContain(secret);
+  expect((await clientAction(client, token, "comments/35/replies", "POST", { message: "Vu ?" })).status).toBe(404);
 
   // A request the client does not see cannot be reached through the API either.
   expect((await clientAction(client, token, "comments/31/replies", "POST", { message: "Je l’ai trouvée" })).status).toBe(404);

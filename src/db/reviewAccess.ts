@@ -56,12 +56,17 @@ const publicLink = (link: Data) => {
 };
 
 /**
- * What the client sees of a version: every request but the agency's out-of-scope ones never quoted to
- * them (a quote sent at least once; a draft stays internal). Their own requests always show.
+ * What the client sees of a version: their own requests always; of the agency's, those whose status it
+ * chose. A pin the agency drops on the deliverable has none until qualified: it stays internal. A request
+ * from « + Demande » is created with a chosen status and a title, even « À clarifier »: it shows.
+ * « Hors scope » shows once a quote was sent (a draft stays internal).
  */
 export function visibleToClient(comment: Data, quotes: unknown) {
-  if (byClient(comment) || comment.decision !== "Hors périmètre") return true;
-  return Array.isArray(quotes) && quotes.some((quote) => isObject(quote) && quote.status !== "draft");
+  if (byClient(comment)) return true;
+  if (comment.decision === "Hors périmètre") return Array.isArray(quotes) && quotes.some((quote) => isObject(quote) && quote.status !== "draft");
+  if (comment.decision === "Inclus") return true;
+  // Still to clarify: shown only when the agency chose that status (« + Demande », always titled).
+  return typeof comment.title === "string" && comment.title.trim() !== "";
 }
 
 /** Whether a request of the shared version is one the client may see, and so act on. */

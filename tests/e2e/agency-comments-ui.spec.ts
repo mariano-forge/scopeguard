@@ -46,6 +46,8 @@ test("a member comments, replies, edits and deletes in the editor; each write is
   const [created] = await agencyComments(org);
   expect(created.data).toMatchObject({ author: "Alice Martin", initials: "AM", from: "agency", decision: "À qualifier", deliverableId: 1, page: 1 });
   await expect.poll(async () => (await events(org, "comment.created")).map((event) => event.recorded_by)).toEqual([userId]);
+  // A pin of the agency, no status chosen: the client does not see it yet, and the bubble says so.
+  await expect(page.getByRole("note").filter({ hasText: "Non visible par le client tant que vous ne l’avez pas qualifiée" })).toBeVisible();
 
   await page.getByRole("textbox", { name: "Répondre" }).fill("Version mobile aussi");
   await page.getByRole("button", { name: "Envoyer la réponse" }).click();
@@ -79,6 +81,8 @@ test("a member comments, replies, edits and deletes in the editor; each write is
 test("a member qualifies a client remark as out of scope, with a draft quote", async ({ browser }) => {
   const { org, page, errors, writes } = await editor(browser);
   await page.locator('[data-pin="30"]').click();
+  // The client's own remark: they see it already.
+  await expect(page.getByRole("note").filter({ hasText: "Non visible par le client" })).toHaveCount(0);
   await page.getByRole("button", { name: "Créer une demande" }).click();
   // The two qualifications, named for what they mean against the quote.
   await expect(page.getByRole("radio", { name: /^Inclus/ })).toContainText("Prévu au devis");
