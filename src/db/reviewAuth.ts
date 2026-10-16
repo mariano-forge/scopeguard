@@ -274,7 +274,8 @@ export async function requestReviewAccess(db: Db, access: ReviewAccess, email: s
     org,
     {
       lists: {
-        notifications: { upsert: [{ id, message: `${email} demande l'accès à la revue de « ${name} »`, time: "À l'instant" }], remove: [] },
+        // The bell opens the version with « Partager la revue », where the request is answered.
+        notifications: { upsert: [{ id, message: `${email} demande l'accès à la revue de « ${name} »`, time: "À l'instant", deliverableId: access.deliverableId, open: "share" }], remove: [] },
         auditEvents: {
           upsert: [{ id, type: "review.access-requested", actor: email, description: `Demande d'accès de ${email}`, timestamp: now(), deliverableId: access.deliverableId }],
           remove: [],
@@ -427,7 +428,7 @@ export async function remindReview(db: Db, org: string, linkKey: string, user: C
           upsert: [{ id: sentAt, type: "review.reminded", actor: user.name, description: `Relance envoyée à ${recipients}`, timestamp: now(), deliverableId: row.deliverableId }],
           remove: [],
         },
-        notifications: { upsert: [{ id: sentAt, message: `Relance envoyée à ${recipients}`, time: "À l'instant" }], remove: [] },
+        notifications: { upsert: [{ id: sentAt, message: `Relance envoyée à ${recipients}`, time: "À l'instant", deliverableId: row.deliverableId }], remove: [] },
       },
       maps: { reviewLinks: { upsert: { [linkKey]: updated }, remove: [] } },
       settings: { upsert: {}, remove: [] },

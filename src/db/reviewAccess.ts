@@ -261,7 +261,14 @@ export async function sanitizeReviewChanges(
     : new Set<number>();
   const fresh = notes
     .filter((note) => !known.has(note.id))
-    .map((note) => ({ id: note.id, message: shortText(note.message, 500) ?? "", time: shortText(note.time, 40) ?? "" }));
+    .map((note) => ({
+      id: note.id,
+      message: shortText(note.message, 500) ?? "",
+      time: shortText(note.time, 40) ?? "",
+      // Where the agency's bell leads: this version, and the request when it is one of its own.
+      deliverableId: access.deliverableId,
+      ...(typeof note.commentId === "number" && before.has(note.commentId) ? { commentId: note.commentId } : {}),
+    }));
   if (fresh.length) lists.notifications = { upsert: fresh, remove: [] };
 
   const sanitized: StateChanges = { lists, maps, settings: { upsert: {}, remove: [] } };

@@ -81,7 +81,8 @@ function decisionTrail(changes: StateChanges, type: string, description: string,
   const stamp = Date.now() * 1000 + 500;
   const timestamp = displayedNow();
   changes.lists.auditEvents = { upsert: [{ id: stamp, type, description, timestamp, ...(commentId ? { commentId } : {}) }] as ListChange["upsert"], remove: [] };
-  changes.lists.notifications = { upsert: [{ id: stamp + 1, message: notification, time: timestamp }] as ListChange["upsert"], remove: [] };
+  // The request it is about, so the agency's bell opens it (the version is set by the client rules).
+  changes.lists.notifications = { upsert: [{ id: stamp + 1, message: notification, time: timestamp, ...(commentId ? { commentId } : {}) }] as ListChange["upsert"], remove: [] };
 }
 
 /** Changes for the action, from the stored records; the comment id it creates or touches. */

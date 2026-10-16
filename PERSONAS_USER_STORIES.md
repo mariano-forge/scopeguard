@@ -881,6 +881,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 
 - Depuis l'écran de vérification, la personne saisit son adresse et un message facultatif.
 - L'écran du code explique qu'un code n'arrive qu'aux adresses invitées et propose « Demander l'accès à l'agence ».
+- Dans la cloche de l'agence, la notification de la demande ouvre le livrable avec « Partager la revue », sur la demande ; les autres activités (décision sur un devis, validation, relance) ouvrent aussi ce qu'elles concernent.
 - Le propriétaire et les administrateurs reçoivent un e-mail (message de la personne, lien vers le livrable, « Répondre à » vers elle) ; l'agence reçoit aussi une notification et voit la demande dans « Partager la revue », avec « Accepter » et « Refuser ».
 - Accepter invite l'adresse : elle reçoit son lien personnel.
 - Une adresse n'a qu'une demande en attente par lien, un lien n'en accumule pas plus de 20, et une même adresse IP n'en envoie pas plus de 10 par heure.

@@ -260,6 +260,8 @@ La page du client écrit une action à la fois, chacune sur sa route (`src/db/re
 | `POST changes-request` | Demander des modifications |
 | `POST approval` | Valider la version, ce qui la verrouille |
 
+Dans la cloche, chaque activité ouvre ce qu'elle concerne : une décision du client ouvre la demande, une demande d'accès ouvre « Partager la revue » sur le livrable, une relance ouvre la version (`notificationHref`, `src/app/(agency)/routes.ts`). Les notifications plus anciennes, ou dont le livrable a disparu, restent du simple texte.
+
 Seul le client valide une version, depuis sa page : l'agence n'a aucune route pour le faire. L'agence suit le même chemin pour toutes ses écritures (`src/db/agencyActions.ts`, `src/db/workspaceActions.ts`) : le serveur signe chaque message avec le membre, refuse toute écriture sur une version validée ou remplacée et sur une demande dont le devis est tranché, et applique aux membres les réserves de `src/db/agencyPermissions.ts`. `/api/state` est en lecture seule : les pages lisent l'état et le relisent après chaque action.
 
 | Route (`/api/comments…`) | Action de l'agence |

@@ -39,7 +39,7 @@ import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
 import { todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { HomeSidebar, ProjectSidebar, type ClientFeedback, type PanelMode, type SidebarLivrable, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
-import { href, hrefForRecord, livrableIdOf, parseAgencyPath, versionsOfLivrable } from "./routes";
+import { href, hrefForRecord, livrableIdOf, notificationHref, parseAgencyPath, versionsOfLivrable } from "./routes";
 import { MAX_FILE_BYTES, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
 import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialog";
 import {
@@ -206,6 +206,10 @@ type Notification = {
   id: number;
   message: string;
   time: string;
+  /** What it is about, so the bell opens it (src/app/(agency)/routes.ts notificationHref). */
+  deliverableId?: number;
+  commentId?: number;
+  open?: "share";
 };
 type AuditEvent = {
   id: number;
@@ -863,6 +867,14 @@ export function AgencyApp() {
     if (openThreadId !== null) markSeen([openThreadId, ...openReplyIds.split(",").filter(Boolean).map(Number)]);
   }, [openThreadId, openReplyIds]);
 
+  // ?partage=1 (from the bell, an access request): « Partager la revue » is open on the version until
+  // closed, which drops the parameter. Derived from the address: no effect needed.
+  const shareFromBell = searchParams.get("partage") === "1" && view.kind === "deliverable";
+  function closeShare() {
+    setShareOpen(false);
+    if (shareFromBell) router.replace(pathname, { scroll: false });
+  }
+
   // ?demande=ID (from "À traiter"): select that comment once, then drop the param so clicks work normally.
   useEffect(() => {
     if (focusedCommentId === null || !activeComments.some((comment) => comment.id === focusedCommentId)) return;
@@ -1441,6 +1453,10 @@ export function AgencyApp() {
       });
   }
   // Notifications: every unread client message, newest first, plus what the client asked on whole versions.
+  /** The bell's "Activité": each notification with the page it is about, when there is one. */
+  const commentIdSet = new Set(comments.map((comment) => comment.id));
+  const bellNotifications = notifications.map((notification) => ({ ...notification, href: notificationHref(notification, deliverables, commentIdSet) }));
+
   const clientFeedback: ClientFeedback[] = [
     ...deliverables.flatMap((record) => {
       const latest = versionsOfLivrable(livrableIdOf(record, deliverables), deliverables)[0];
@@ -1846,7 +1862,7 @@ export function AgencyApp() {
           onPanel={showPanel}
           canvasHref={href.deliverable(selectedProject.id, livrableRootId)}
           onNavigate={(target) => router.push(target)}
-          notifications={notifications}
+          notifications={bellNotifications}
           feedback={clientFeedback}
           onMarkAllRead={markAllRead}
           livrables={projectLivrables}
@@ -1858,7 +1874,7 @@ export function AgencyApp() {
           view={view}
           clients={clients}
           favorites={sidebarFavorites}
-          notifications={notifications}
+          notifications={bellNotifications}
           feedback={clientFeedback}
           onMarkAllRead={markAllRead}
           onSearch={() => setPaletteOpen(true)}
@@ -2511,8 +2527,8 @@ export function AgencyApp() {
           </Modal>
 
           <Modal
-            open={shareOpen}
-            onClose={() => setShareOpen(false)}
+            open={shareOpen || shareFromBell}
+            onClose={closeShare}
             title="Partager la revue"
             description="Le client pourra consulter la version actuelle et déposer ses retours depuis ce lien."
             footer={
@@ -2525,7 +2541,7 @@ export function AgencyApp() {
                     title={canManage ? undefined : "Réservé aux administrateurs de l’agence"}
                     onClick={() => {
                       if (!adminOnly()) return;
-                      setShareOpen(false);
+                      closeShare();
                       void agencyAction(`deliverables/${reviewLink.deliverableId ?? currentDeliverable.id}/review-link`, "DELETE").then((result) => result && toast("Lien de revue révoqué"));
                     }}
                   >
