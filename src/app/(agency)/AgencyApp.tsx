@@ -73,6 +73,7 @@ import { uploadFile as sendFile, type UploadPlacement } from "@/lib/upload";
 import { agencyAction } from "@/lib/agencyActions";
 import type { ClientRole } from "@/lib/clientRoles";
 import { InviteList, roleOptions, type Invite } from "./InviteList";
+import { previousPeople, ReshareDialog, type ReshareChoice } from "./ReshareDialog";
 import { Select } from "@/components/Select";
 import { loadSharedState, refreshSharedState, subscribeSharedState } from "@/lib/stateSync";
 
@@ -461,6 +462,8 @@ export function AgencyApp() {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   /** Share dialog: e-mail addresses being typed for a manual invitation. */
   const [inviteDraft, setInviteDraft] = useState("");
+  /** "Partager la V03 ?" with the people of the previous version (ReshareDialog). */
+  const [reshare, setReshare] = useState<{ deliverableId: number; version: number; previousVersion: number; people: Invite[] } | null>(null);
   /** Role given to the addresses invited from "Partager la revue" (src/lib/clientRoles.ts). */
   const [inviteRole, setInviteRole] = useState<ClientRole>("decider");
   const [inviteError, setInviteError] = useState("");
@@ -1077,6 +1080,9 @@ export function AgencyApp() {
         : await agencyAction("deliverables", "POST", { id, projectId: selectedProjectId, name: file.name, type, size: file.size, fileData });
     setPendingImport(null);
     if (!result?.id) return;
+    // A new version is shared by choice, with one click: the people of the previous one are proposed.
+    const previous = mode === "version" && activeDeliverable ? previousPeople(activeDeliverable, nextVersion, deliverables, reviewLinks) : null;
+    if (previous) setReshare({ deliverableId: result.id, version: nextVersion, previousVersion: previous.version, people: previous.people });
     const imported = { id: result.id, projectId: selectedProjectId, name: mode === "version" ? activeDeliverable?.name ?? file.name : file.name, version: nextVersion };
     router.push(hrefForRecord(imported, [imported, ...deliverables]));
   }
@@ -1400,6 +1406,7 @@ export function AgencyApp() {
     if (!reviewLink?.active) return;
     await navigator.clipboard.writeText(getReviewUrl());
     setLinkCopied(true);
+    if (!reviewLink.invites?.length) toast.warning("Lien copié, mais personne n’est invité : seules les adresses invitées peuvent l’ouvrir.");
   }
 
   // Deliverable status = its latest version: what needs the agency first, then what waits on the client.
@@ -1510,6 +1517,8 @@ export function AgencyApp() {
     const recordHref = hrefForRecord(record, deliverables);
     if (record.reviewStatus === "changes-requested")
       todoItems.push({ key: `changes-${record.id}`, kind: "changes-requested", title: "Modifications demandées par le client", context, meta: "Préparez une nouvelle version", href: recordHref });
+    if (record.reviewStatus !== "approved" && record.status !== "Approuvée" && !reviewLinks[`${record.id}:${record.version}`]?.invites?.length)
+      todoItems.push({ key: `unshared-${record.id}`, kind: "unshared", title: "Version partagée avec personne", context, meta: "Le client ne la voit pas encore", href: recordHref });
     for (const comment of comments.filter((candidate) => candidate.deliverableId === record.id)) {
       const commentHref = `${recordHref}?demande=${comment.id}`;
       const adaptation = adaptationRequests[comment.id];
@@ -2000,6 +2009,21 @@ export function AgencyApp() {
                       )}
                     </div>
                   )}
+                  {/* A reminder until the latest version is shared with someone. */}
+                  {!isReadOnlyVersion && latestVersionRecord?.id === currentDeliverable.id && !reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]?.invites?.length && (
+                    <div className="canvas-banner" role="status">
+                      <span className="canvas-banner-icon" aria-hidden="true">
+                        <Share2 />
+                      </span>
+                      <span className="canvas-banner-text">
+                        <b>La V{String(currentDeliverable.version).padStart(2, "0")} n’est partagée avec personne</b>
+                        <small>Le client ne la voit pas encore.</small>
+                      </span>
+                      <Button size="sm" onClick={shareCurrentVersion}>
+                        Partager
+                      </Button>
+                    </div>
+                  )}
                   {deliverableError && (
                     <div className="canvas-error" role="alert">
                       {deliverableError}
@@ -2100,6 +2124,16 @@ export function AgencyApp() {
           </>
         )}
           <NewRequestDialog initial={newRequestKind} onClose={() => setNewRequestKind(null)} onCreate={addRequest} />
+          {reshare && (
+            <ReshareDialog
+              key={reshare.deliverableId}
+              version={`V${String(reshare.version).padStart(2, "0")}`}
+              previousVersion={`V${String(reshare.previousVersion).padStart(2, "0")}`}
+              people={reshare.people}
+              onShare={shareNewVersion}
+              onLater={() => setReshare(null)}
+            />
+          )}
           {/* Sent proposal: status, history and the next step (adaptation, new version). */}
           {(() => {
             const id = proposalCommentId ?? 0;
@@ -2573,6 +2607,25 @@ export function AgencyApp() {
                 >
                   <Input id="share-url" readOnly value={getReviewUrl()} onFocus={(event) => event.target.select()} />
                 </Field>
+                {/* A copied link opens to invited addresses only (src/db/reviewAuth.ts): said before it is sent. */}
+                {!(reviewLink.invites?.length) && (
+                  <p role="note" className="rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-sm text-[var(--status-medium-text)]">
+                    <b>Personne n’est encore invité.</b> Ce lien ne s’ouvre qu’aux adresses invitées ci-dessous : invitez d’abord votre client, sinon il ne recevra pas de code.
+                    {currentDeliverable && previousPeople(currentDeliverable, currentDeliverable.version, deliverables, reviewLinks) && (
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="h-auto px-0"
+                        onClick={() => {
+                          closeShare();
+                          shareCurrentVersion();
+                        }}
+                      >
+                        Reprendre les personnes de la version précédente
+                      </Button>
+                    )}
+                  </p>
+                )}
                 <Field id="share-invite" label="Inviter par e-mail" hint="Plusieurs adresses : séparez-les par une virgule. Un décideur peut valider la version et accepter les devis ; un contributeur commente seulement.">
                   <div className="flex gap-2">
                     <Input
@@ -2866,6 +2919,31 @@ export function AgencyApp() {
     if (!reviewLink) return;
     await navigator.clipboard.writeText(`${getReviewUrl()}${invite.id ? `?invitation=${invite.id}` : ""}`);
     toast(`Lien de ${invite.email} copié`);
+  }
+
+  /** Shares a version with the people chosen in "Partager la V03 ?", each with their role, by a "new version" mail. */
+  async function shareNewVersion(choice: ReshareChoice) {
+    if (!reshare) return;
+    const answer = await agencyAction(`deliverables/${reshare.deliverableId}/review-link`, "POST");
+    if (!answer?.link) return;
+    const linkKey = `${reshare.deliverableId}:${reshare.version}`;
+    for (const role of ["decider", "contributor"] as const) {
+      const emails = choice.filter((person) => person.role === role).map((person) => person.email);
+      if (emails.length && !(await callReviewAccess("invite", { linkKey, emails, role, newVersion: true }))) {
+        toast.error("Le partage n’a pas abouti. Réessayez depuis « Partager la revue ».");
+        return;
+      }
+    }
+    toast(`V${String(reshare.version).padStart(2, "0")} partagée avec ${choice.length > 1 ? `${choice.length} personnes` : "1 personne"}`);
+    setReshare(null);
+  }
+
+  /** The version open in the editor, shared with the people of its previous version, or the share dialog when there were none. */
+  function shareCurrentVersion() {
+    const previous = currentDeliverable ? previousPeople(currentDeliverable, currentDeliverable.version, deliverables, reviewLinks) : null;
+    if (previous && currentDeliverable)
+      setReshare({ deliverableId: currentDeliverable.id, version: currentDeliverable.version, previousVersion: previous.version, people: previous.people });
+    else openShareDialog();
   }
 
   function changeInviteRole(email: string, role: ClientRole) {

@@ -1,4 +1,4 @@
-// Agency: POST /api/review-access/invite { linkKey, emails, role? } -> invites the addresses (role:
+// Agency: POST /api/review-access/invite { linkKey, emails, role?, newVersion? } -> invites the addresses (role:
 // "decider" by default, or "contributor"; src/lib/clientRoles.ts) and mails each
 // its personal link. Returns { link, notSent } (addresses whose mail could not be sent).
 
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   if (typeof body.linkKey !== "string" || !emails.length || !role) return Response.json({ error: "Requête invalide" }, { status: 400 });
 
   try {
-    const result = await inviteToReview(getDb(), user.organizationId, body.linkKey, emails, user, requestOrigin(request), role);
+    const result = await inviteToReview(getDb(), user.organizationId, body.linkKey, emails, user, requestOrigin(request), role, body.newVersion === true);
     if (!result) return Response.json({ error: "Lien de revue introuvable ou révoqué" }, { status: 404 });
     return Response.json(result);
   } catch (error) {

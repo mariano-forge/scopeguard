@@ -245,6 +245,9 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 **Critères d'acceptation**
 
 - Une nouvelle version ne remplace jamais l'ancienne.
+- Elle n'est jamais partagée automatiquement : après l'import, « Partager la V03 ? » propose les personnes invitées sur la version précédente, cochées avec leur rôle (modifiable) ; « Partager » leur envoie un e-mail « Nouvelle version », « Plus tard » la laisse à l'agence.
+- Tant qu'une dernière version n'est partagée avec personne, l'éditeur l'indique (« La V03 n'est partagée avec personne », avec « Partager ») et « À traiter » la liste.
+- Le client sur une version remplacée voit « Vous consultez une ancienne version » et « Voir la V03 », sans nouveau code, seulement si cette version lui a été partagée ; sinon, seulement « Lecture seule · Cette version n'est plus en revue ».
 - Les commentaires sont liés à une version précise.
 - La version précédente reste consultable par l'agence.
 - Une version approuvée est verrouillée.
@@ -415,6 +418,9 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 - L'identité, la date et la version sont enregistrées (adresse e-mail vérifiée, heure du serveur).
 - La version approuvée devient verrouillée : le serveur refuse ensuite toute écriture du client sur cette version, et une approbation ne peut pas être annulée par le client.
 - **Seul le client approuve une version** : l'agence, même son propriétaire, n'a aucun moyen de le faire à sa place.
+- Une version ne se valide pas tant qu'un devis envoyé attend la décision du client : la fenêtre de validation liste ces devis, à accepter ou refuser un par un, et le serveur refuse la validation sinon. Aucun devis n'est refusé implicitement.
+- Les remarques encore « À clarifier » ne bloquent pas la validation : la fenêtre prévient qu'en validant, le client y renonce, les liste, et le bouton devient « Valider et renoncer à ces remarques ». L'événement de validation les nomme dans le journal et la preuve.
+- *À venir* : la validation « avec réserves », qui liste les corrections « À traiter » encore ouvertes et les inscrit dans la preuve.
 - L'agence reçoit une notification.
 - L'agence peut rouvrir la validation d'une version (« Rouvrir la validation ») en expliquant pourquoi ; la raison est inscrite au journal.
 

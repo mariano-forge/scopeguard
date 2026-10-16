@@ -9,7 +9,7 @@ import { displayedNow, freeCommentId, id, movedComment, noChanges, percent, read
 import type { Db } from "./client";
 import { sanitizeReviewChanges, type ReviewAccess } from "./reviewAccess";
 import { reviewProfileName } from "./reviewAuth";
-import { comments } from "./schema";
+import { commentProposals, comments } from "./schema";
 import { applyChanges, type Writer } from "./state";
 
 export type ReviewAction =
@@ -85,6 +85,29 @@ function decisionTrail(changes: StateChanges, type: string, description: string,
   changes.lists.notifications = { upsert: [{ id: stamp + 1, message: notification, time: timestamp, ...(commentId ? { commentId } : {}) }] as ListChange["upsert"], remove: [] };
 }
 
+/** Quotes sent on the shared version that the client has not decided (nor the agency closed by refusing a counter-proposal). */
+async function quotesAwaitingClient(db: Db, access: ReviewAccess) {
+  const rows = await db
+    .select({ decision: commentProposals.decision, adaptation: commentProposals.adaptation })
+    .from(commentProposals)
+    .innerJoin(comments, and(eq(comments.organizationId, commentProposals.organizationId), eq(comments.id, commentProposals.commentId)))
+    .where(and(eq(commentProposals.organizationId, access.organizationId), eq(comments.deliverableId, access.deliverableId), eq(commentProposals.state, "sent")));
+  return rows.filter((row) => (!row.decision || row.decision === "none") && !(row.adaptation as Data | null)?.decision).length;
+}
+
+/** Messages of the version's remarks still to clarify (not qualified as to do nor out of scope), oldest first. */
+async function remarksToClarify(db: Db, access: ReviewAccess) {
+  const rows = await db
+    .select({ id: comments.id, decision: comments.decision, data: comments.data })
+    .from(comments)
+    .where(and(eq(comments.organizationId, access.organizationId), eq(comments.deliverableId, access.deliverableId)));
+  return rows
+    .filter((row) => row.decision !== "Inclus" && row.decision !== "Hors périmètre")
+    .sort((left, right) => left.id - right.id)
+    .map((row) => String((row.data as Data).message ?? "").trim())
+    .filter(Boolean);
+}
+
 /** Changes for the action, from the stored records; the comment id it creates or touches. */
 async function changesFor(db: Db, access: ReviewAccess, action: ReviewAction): Promise<{ changes: StateChanges; id?: number } | ReviewActionResult> {
   const org = access.organizationId;
@@ -117,8 +140,20 @@ async function changesFor(db: Db, access: ReviewAccess, action: ReviewAction): P
   }
 
   if (action.type === "version.approve") {
+    // A validated version is locked: a quote still waiting for the client would stay undecided for good.
+    const waiting = await quotesAwaitingClient(db, access);
+    if (waiting) return refused(`${waiting} proposition${waiting > 1 ? "s attendent" : " attend"} votre décision : acceptez-la ou refusez-la avant de valider la version.`);
     changes.lists.deliverables = { upsert: [{ id: access.deliverableId, reviewStatus: "approved", approvedAt: displayedNow() }], remove: [] };
-    decisionTrail(changes, "deliverable.approved", `Version ${access.version} approuvée par le client`, `Le client a approuvé la version ${access.version}`);
+    // Remarks still to clarify are given up by validating (the page says so); the trail names them.
+    const givenUp = await remarksToClarify(db, access);
+    const quoted = givenUp.slice(0, 10).map((message) => `« ${message.length > 80 ? `${message.slice(0, 79)}…` : message} »`);
+    const more = givenUp.length > 10 ? ` et ${givenUp.length - 10} autre${givenUp.length > 11 ? "s" : ""}` : "";
+    decisionTrail(
+      changes,
+      "deliverable.approved",
+      `Version ${access.version} approuvée par le client${givenUp.length ? ` ; remarque${givenUp.length > 1 ? "s" : ""} abandonnée${givenUp.length > 1 ? "s" : ""} : ${quoted.join(", ")}${more}` : ""}`,
+      `Le client a approuvé la version ${access.version}${givenUp.length ? ` (${givenUp.length} remarque${givenUp.length > 1 ? "s" : ""} à clarifier abandonnée${givenUp.length > 1 ? "s" : ""})` : ""}`,
+    );
     return { changes };
   }
   if (action.type === "version.request-changes") {

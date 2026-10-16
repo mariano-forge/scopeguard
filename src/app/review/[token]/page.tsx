@@ -4,7 +4,7 @@ import { formatProposalAmount, formatProposalDeadline, parseNumericAmount, parse
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
-import { Check, Clock, Lock, PenLine } from "lucide-react";
+import { ArrowRight, Check, Clock, Lock, PenLine } from "lucide-react";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { Composer, ThreadPopover, requestKind, type Area, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
 import { RequestPanel, type InspectorTab } from "@/app/(agency)/editor/EditorInspector";
@@ -139,6 +139,8 @@ export default function ClientReviewPage() {
     deliverable: string;
     /** On this link: a decider approves and decides quotes, a contributor comments (src/lib/clientRoles.ts). */
     role: ClientRole | null;
+    /** A later version shared with this client (src/db/reviewAuth.ts newerSharedVersion); none otherwise. */
+    newerVersion?: { version: number; href: string } | null;
   } | null>(null);
   const viewerMode = viewer?.mode;
   const contributor = viewerMode === "client" && viewer?.role === "contributor";
@@ -626,6 +628,13 @@ export default function ClientReviewPage() {
   const sharedComments = comments.filter(
     (comment) => (comment.deliverableId ?? comments[0]?.deliverableId ?? sharedDeliverableId) === sharedDeliverableId,
   );
+  // Quotes still waiting for this client: decided before validating, since the version then locks
+  // (the server refuses the validation otherwise, src/db/reviewActions.ts).
+  const quotesToDecide = sharedComments.filter(
+    (comment) => proposalStates[comment.id] === "sent" && (proposalDecisions[comment.id] ?? "none") === "none" && !adaptationRequests[comment.id]?.decision,
+  );
+  // Remarks still to clarify: validating gives them up, which the dialog says and the server records.
+  const remarksToClarify = sharedComments.filter((comment) => comment.decision !== "Inclus" && comment.decision !== "Hors périmètre");
   // Canvas threads: corrections and remarks (older "À traiter" counts as to clarify).
   const canvasComments: (ThreadComment & { page?: number; sourceId?: number })[] = sharedComments.map((comment) => ({
     ...comment,
@@ -683,14 +692,19 @@ export default function ClientReviewPage() {
     );
   }
 
-  const versionLabel = `V${String(deliverable.version).padStart(2, "0")}`;
+  const versionName = (version: number) => `V${String(version).padStart(2, "0")}`;
+  const versionLabel = versionName(deliverable.version);
+  const newerVersion = viewer?.newerVersion ?? null;
   const reviewState =
     reviewStatus === "approved"
       ? { tone: "approved", icon: <Check />, label: "Validée", hint: approvedAt ? `Validée le ${approvedAt}` : "Version validée" }
       : reviewStatus === "changes-requested"
         ? { tone: "changes", icon: <PenLine />, label: "Modifications demandées", hint: "En attente d’une nouvelle version de l’agence" }
         : deliverable.status === "Remplacée"
-          ? { tone: "replaced", icon: <Lock />, label: "Remplacée", hint: "Une version plus récente existe" }
+          ? // A version still in preparation at the agency stays unknown to the client.
+            newerVersion
+            ? { tone: "replaced", icon: <Lock />, label: "Ancienne version", hint: `La ${versionName(newerVersion.version)} vous a été partagée` }
+            : { tone: "replaced", icon: <Lock />, label: "Fermée", hint: "Cette version n’est plus en revue" }
           : { tone: "pending", icon: <Clock />, label: "À valider", hint: "En attente de votre validation" };
   const canValidate = !isReadOnlyVersion() && reviewStatus === "pending" && !contributor;
   /** Where the client's decision on a proposal stands. */
@@ -771,14 +785,31 @@ export default function ClientReviewPage() {
           canMove={(comment) => sideOf(comment) === "client" && requestKind(comment) === "comment"}
           onMovePin={moveComment}
           overlay={
-            isReadOnlyVersion() ? (
+            newerVersion ? (
+              <div className="canvas-banner" role="status">
+                <span className="canvas-banner-icon" aria-hidden="true">
+                  <Lock />
+                </span>
+                <span className="canvas-banner-text">
+                  <b>Vous consultez une ancienne version</b>
+                  <small>
+                    {reviewStatus === "approved" ? "Vous avez validé cette version. " : ""}La {versionName(newerVersion.version)} vous a été partagée.
+                  </small>
+                </span>
+                <Button asChild size="sm">
+                  <a href={newerVersion.href}>
+                    Voir la {versionName(newerVersion.version)} <ArrowRight />
+                  </a>
+                </Button>
+              </div>
+            ) : isReadOnlyVersion() ? (
               <div className="canvas-banner" role="status">
                 <span className="canvas-banner-icon" aria-hidden="true">
                   <Lock />
                 </span>
                 <span className="canvas-banner-text">
                   <b>Lecture seule</b>
-                  <small>{reviewStatus === "approved" ? "Vous avez validé cette version" : "Une version plus récente existe"}</small>
+                  <small>{reviewStatus === "approved" ? "Vous avez validé cette version" : "Cette version n’est plus en revue"}</small>
                 </span>
               </div>
             ) : null
@@ -998,16 +1029,62 @@ export default function ClientReviewPage() {
         onClose={() => setApprovalOpen(false)}
         role="alertdialog"
         title="Valider cette version ?"
-        description="L’agence en est informée et la version passe en lecture seule."
+        description={
+          quotesToDecide.length
+            ? "Avant de valider, décidez de chaque proposition en attente : une fois validée, la version est verrouillée."
+            : "L’agence en est informée et la version passe en lecture seule."
+        }
         footer={
           <>
             <Button variant="outline" onClick={() => setApprovalOpen(false)}>
               Annuler
             </Button>
-            <Button onClick={confirmApproval}>Confirmer la validation</Button>
+            <Button onClick={confirmApproval} disabled={quotesToDecide.length > 0}>
+              {remarksToClarify.length ? "Valider et renoncer à ces remarques" : "Confirmer la validation"}
+            </Button>
           </>
         }
-      />
+      >
+        {quotesToDecide.length > 0 && (
+          <ul className="grid gap-2" aria-label="Propositions en attente de votre décision">
+            {quotesToDecide.map((comment) => {
+              const proposal = activeProposalFor(comment.id);
+              return (
+                <li key={comment.id} className="grid gap-2 rounded-[var(--r-field)] border border-[var(--border)] px-3 py-2 text-sm">
+                  <span className="grid gap-0.5">
+                    <b className="font-medium">{comment.title ?? comment.message}</b>
+                    <span className="text-muted-foreground">
+                      {formatProposalAmount(proposal?.amount)} HT · {formatProposalDeadline(proposal?.deadline)}
+                    </span>
+                  </span>
+                  <span className="flex justify-end gap-2">
+                    <Button size="sm" variant="outline" aria-label={`Refuser « ${comment.title ?? comment.message} »`} onClick={() => decideProposal(comment.id, "refused")}>
+                      Refuser
+                    </Button>
+                    <Button size="sm" aria-label={`Accepter « ${comment.title ?? comment.message} »`} onClick={() => decideProposal(comment.id, "accepted")}>
+                      Accepter
+                    </Button>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {remarksToClarify.length > 0 && (
+          <div className="grid gap-2 text-sm">
+            <p role="note" className="rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-[var(--status-medium-text)]">
+              <b>Certaines remarques n’ont pas encore été clarifiées avec l’agence.</b> En validant, vous y renoncez : elles ne seront pas traitées dans cette version.
+            </p>
+            <ul className="grid gap-1 text-muted-foreground" aria-label="Remarques auxquelles vous renoncez">
+              {remarksToClarify.map((comment) => (
+                <li key={comment.id} className="truncate">
+                  « {comment.message} »
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </Modal>
     </main>
   );
 }

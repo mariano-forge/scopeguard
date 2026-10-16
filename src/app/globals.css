@@ -2721,6 +2721,10 @@ button {
   background: var(--status-high-bg);
   color: var(--status-high-text);
 }
+.todo-unshared {
+  background: var(--status-medium-bg);
+  color: var(--status-medium-text);
+}
 .todo-adaptation {
   background: var(--status-scope-bg);
   color: var(--status-scope-text);
