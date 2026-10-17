@@ -17,6 +17,9 @@ const sitePage = (token: string, title = "Bienvenue chez Northwind") => `<!docty
   <script src="${baseURL}/kora-toolbar.js" data-review="${token}" defer></script>
 </body></html>`;
 
+/** The « Lien » deliverable whose address is the staging site. */
+const siteDeliverable = (url: string) => ({ id: 1, projectId: 1, name: "Site de recette", type: "Link", url, version: 1, status: "En attente client", importedAt: "17/10/2026 10:00", locked: false });
+
 /** An agency whose shared version is the staging site `site`, with a decider invited. */
 async function siteReview() {
   const alice = await signUp("Alice Martin");
@@ -26,7 +29,7 @@ async function siteReview() {
     lists: {
       clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
       projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },
-      deliverables: { upsert: [{ id: 1, projectId: 1, name: "Site de recette", type: "Link", url: `${site}/`, version: 1, status: "En attente client", importedAt: "17/10/2026 10:00", locked: false }], remove: [] },
+      deliverables: { upsert: [siteDeliverable(`${site}/`)], remove: [] },
     },
     maps: { reviewLinks: { upsert: { "1:1": { token, active: true, expiresAt: "01/01/2099", autoExpire: true, deliverableId: 1, version: 1 } }, remove: [] } },
   });
@@ -106,8 +109,8 @@ test("the client verifies in Kora's panel on the staging site and places a reque
   expect(errors).toEqual([]);
 });
 
-test("the panel opens on the deliverable's own site only: another site, or a page lying about its origin, gets nothing", async ({ browser }) => {
-  const { token } = await siteReview();
+test("the panel opens on the deliverable's own site only, in https: another site, a site in http, or a page lying about its origin, gets nothing", async ({ browser }) => {
+  const { alice, token } = await siteReview();
 
   // The panel's address names its parent; the proxy lets only that origin frame it…
   const framed = await call(`/review/${token}/site?parent=${encodeURIComponent(site)}`);
@@ -123,6 +126,12 @@ test("the panel opens on the deliverable's own site only: another site, or a pag
   const elsewhere = await call(`/review/${token}/site?parent=${encodeURIComponent("https://autre.test")}`);
   expect(String(elsewhere.json)).toContain("ne s’ouvre que sur le site de la revue");
   expect(String(elsewhere.json)).not.toContain("Recevoir un code");
+
+  // A staging site in http (but on this computer): a page anyone on the way could rewrite frames nothing.
+  await seedState(alice, { lists: { deliverables: { upsert: [siteDeliverable("http://recette.northwind.test/")], remove: [] } } });
+  const unsecured = await call(`/review/${token}/site?parent=${encodeURIComponent("http://recette.northwind.test")}`);
+  expect(String(unsecured.json)).toContain("ne s’ouvre que sur le site de la revue");
+  await seedState(alice, { lists: { deliverables: { upsert: [siteDeliverable(`${site}/`)], remove: [] } } });
 
   // The toolbar copied onto another site: the panel refuses to open there.
   const other = await siteVisitor(browser, token, "https://autre.test");

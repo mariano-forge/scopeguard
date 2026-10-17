@@ -57,8 +57,9 @@ Pour les tests :
 - Seul le décideur valide, et jamais avec un devis en attente : la validation est refusée tant qu'un devis envoyé attend la décision du client ; les demandes « À clarifier » restantes sont abandonnées en validant, et l'événement de validation les nomme.
 
 **Revue d'un site de recette** (`public/kora-toolbar.js`, `src/app/review/[token]/site/`, `src/lib/siteReview.ts`)
-- La seule page de Kora qui s'affiche dans un cadre est `/review/:token/site`, et seulement sur le site du livrable : `frame-ancestors` vient de `?parent` (`src/proxy.ts`), et la page ne montre rien si ce n'est pas l'origine du livrable (`reviewedSiteOrigin`). N'ouvre aucun autre cadre, ne retire pas `X-Frame-Options: DENY` ailleurs.
+- La seule page de Kora qui s'affiche dans un cadre est `/review/:token/site`, et seulement sur le site du livrable, en `https` (sauf `localhost`, `securedSite`) : `frame-ancestors` vient de `?parent` (`src/proxy.ts`), et la page ne montre rien si ce n'est pas l'origine du livrable (`reviewedSiteOrigin`). N'ouvre aucun autre cadre, ne retire pas `X-Frame-Options: DENY` ailleurs.
 - Le site de l'agence ne reçoit jamais le texte d'une demande : seulement `SitePin` (numéro, élément, position). Tout message entre le site et le panneau a son type dans `src/lib/siteReview.ts`, et chaque côté vérifie l'origine et la fenêtre de l'expéditeur ; jamais `postMessage(…, "*")`.
+- Depuis le site, on commente, on annote, on répond et (pour l'agence) on qualifie. Les décisions financières (devis : envoi, acceptation, refus, contre-proposition) et la validation de la version se prennent **sur une page Kora**, jamais dans le cadre : une page que l'agence contrôle pourrait y piéger un clic, et la preuve perdrait sa neutralité.
 - La session du panneau est `siteSessionCookie`, `SameSite=None` toujours avec `Partitioned` ; la session de la page de revue reste `SameSite=Lax`.
 
 **Preuve et journal**

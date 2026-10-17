@@ -44,8 +44,20 @@ export function originOf(value: unknown) {
   }
 }
 
-/** The one origin whose pages may frame the panel: the site of a « Lien » deliverable. */
-export const siteOriginOf = (deliverable: { type?: unknown; url?: unknown } | undefined) => (deliverable?.type === "Link" ? originOf(deliverable.url) : null);
+/** This computer, where a site in http is a developer's, not one anyone on the way could rewrite. */
+const loopback = (origin: string) => ["localhost", "127.0.0.1", "[::1]"].includes(new URL(origin).hostname);
+
+/**
+ * Whether the panel may open on this site: https only, but on this computer. A page in http can be
+ * rewritten on its way (public Wi-Fi), and the rewritten page would frame Kora and talk to it.
+ */
+export const securedSite = (origin: string) => origin.startsWith("https://") || loopback(origin);
+
+/** The one origin whose pages may frame the panel: the site of a « Lien » deliverable, in https. */
+export function siteOriginOf(deliverable: { type?: unknown; url?: unknown } | undefined) {
+  const origin = deliverable?.type === "Link" ? originOf(deliverable.url) : null;
+  return origin && securedSite(origin) ? origin : null;
+}
 
 /** The page's origin as the panel's address names it (?parent=…), only when it is an origin and nothing more. */
 export function parentOrigin(value: string | null) {

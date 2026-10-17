@@ -6,8 +6,17 @@
 import { Field } from "@/components/modal";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { originOf, securedSite } from "@/lib/siteReview";
 
 export function SiteToolbarSnippet({ token, siteUrl }: { token: string; siteUrl: string }) {
+  // The panel only opens on a site in https (src/lib/siteReview.ts): said here rather than failing there.
+  const origin = originOf(siteUrl);
+  if (!origin || !securedSite(origin))
+    return (
+      <p role="note" className="rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-sm text-[var(--status-medium-text)]">
+        <b>Barre Kora indisponible :</b> le site de recette doit être en <code>https://</code> pour que le client y commente. Changez l’adresse du livrable.
+      </p>
+    );
   const snippet = `<script src="${window.location.origin}/kora-toolbar.js" data-review="${token}" defer></script>`;
   const clientUrl = (() => {
     try {

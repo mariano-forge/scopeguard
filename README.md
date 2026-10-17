@@ -322,7 +322,8 @@ Pour un livrable « Lien », dont l'adresse est le site de recette, « Partager 
 - Le client s'y vérifie par le même code e-mail. Sa session est un cookie partitionné (`kora_review_site_session`, `SameSite=None; Partitioned`), que le navigateur ne garde que pour ce site.
 - « Poser une demande » ou la touche `C` : le client clique sur un élément, écrit, envoie. La demande passe par `POST comments` avec sa place (`site` : page, élément, position dans l'élément, largeur d'écran, `src/lib/siteReview.ts`), puis suit le parcours habituel côté agence.
 - Le site ne reçoit que de quoi dessiner les épingles (numéro, élément, position), jamais le texte des demandes, qui reste dans le cadre. Une épingle dont l'élément a disparu est signalée « élément introuvable ».
-- Les devis et la validation restent sur la page de revue, ouverte depuis le panneau.
+- Le site de recette doit être en `https` (sauf `localhost` en développement) : une page en `http` peut être modifiée en chemin. Sinon, « Partager la revue » le dit au lieu de donner le script.
+- Les devis et la validation restent sur la page de revue, ouverte depuis le panneau : une page que l'agence contrôle ne doit pas pouvoir piéger un clic sur une décision.
 
 Limites de l'essai : testé dans Chrome seulement (Safari et Firefox à vérifier à la main) ; pas encore de capture ; le jeton du script change à chaque version ; le site de l'agence doit accepter le script et le cadre de Kora s'il a sa propre politique de sécurité ; la session du site n'ouvre pas la page de revue, où le client se vérifie à nouveau.
 

@@ -1016,7 +1016,8 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 
 **Critères d'acceptation**
 
-- Le panneau Kora ne s'affiche que dans une page du domaine du livrable ; ailleurs, il ne montre rien.
+- Le panneau Kora ne s'affiche que dans une page du domaine du livrable, en `https` ; ailleurs, il ne montre rien.
+- Depuis le site : demandes, annotations, réponses, et qualification par l'agence. Les devis (envoi, acceptation, refus, contre-proposition) et la validation de la version se font dans Kora, que le panneau ouvre sans redemander de code.
 - Le client se vérifie avec le même code par e-mail que pour les autres livrables ; sa session sur le site est propre à ce site.
 - Une demande est rattachée à la page, à l'élément visé, à sa position dans l'élément et à la largeur d'écran ; une capture est conservée *(pas encore : prochaine étape)*.
 - Le site de l'agence ne reçoit jamais le texte des demandes : seulement de quoi placer les épingles (numéro, élément, position). Le texte reste dans le cadre Kora.
@@ -1038,6 +1039,7 @@ Discutées avec le porteur du produit ; à reprendre telles quelles :
 - **Bouton « J'ai terminé mes retours »** côté client (US-010) : reporté, utile surtout pour compter les tournées de révision (US-045).
 - **Lien copié sans invité** : seul un avertissement dans « Partager la revue » (fait). Écarté : ouvrir le lien à tout porteur. Écarté pour l'instant : autoriser un domaine entier.
 - **Annotation de site web** (US-048) : un script Kora sur le site de recette, limité aux domaines déclarés ; vérification par le même code e-mail ; retours dans le même panneau ; une version = une tournée de revue déclarée par l'agence (« V3 en ligne ») ; la preuve repose sur des captures, pas sur le site en direct ; « élément introuvable » si l'élément a disparu. Difficultés : la connexion depuis un autre domaine (cookies tiers), les sites protégés. Écartés : afficher le site dans Kora (relais ou cadre), extension de navigateur. *Précisé le 17 octobre : modèle de la barre Vercel ; c'est le panneau Kora qui s'affiche dans un cadre sur le site, limité à son domaine, avec une session propre à ce site.*
+- **Décisions depuis le site de recette** *(17 octobre)* : pour l'instant, on y commente, annote, répond et qualifie ; les décisions financières et la validation restent dans Kora (clic piégé possible dans un cadre sur une page de l'agence, et la preuve doit rester neutre). Évolution notée : tout dans la barre, chaque décision confirmée dans une petite fenêtre Kora (comme 3-D Secure). À revoir selon la friction constatée chez les premiers testeurs.
 - **Jira / Notion** (US-047) : aucune licence requise ; jeton API pour les pilotes (chiffré en base, jamais renvoyé à la page), OAuth ensuite.
 - **E-mails groupés** : un e-mail par action pour l'instant ; un récapitulatif seulement si les pilotes s'en plaignent.
 
