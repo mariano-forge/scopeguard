@@ -606,3 +606,61 @@ test("« Partager la revue » of a « Lien » gives the line with the fixed key 
   await expect(page.getByLabel("Lien du site pour le client")).toHaveValue(`${site}/?kora`);
   expect(errors).toEqual([]);
 });
+
+// ——— The board of a « Lien » in Kora ———
+
+test("in Kora, a « Lien » shows its requests page by page with their captures, for the agency and the client", async ({ browser }) => {
+  const { alice, token, email } = await siteReview();
+  const shot = (await upload(alice, png, "capture.png", { kind: "request", projectId: 1, livrableId: 1 })).json.href!;
+  const at = (url: string, selector: string) => ({ url, selector, x: 10, y: 10, viewport: 1400, capture: shot });
+  await seedState(alice, {
+    lists: {
+      comments: {
+        upsert: [
+          { id: 80, deliverableId: 1, author: "Claire Dubois", initials: "CD", from: "client", message: "Le titre est trop long", decision: "À qualifier", kind: "remark", location: "/", time: "t", site: at("/", "#titre") },
+          { id: 81, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Bouton vert", title: "Bouton vert", decision: "Inclus", kind: "request", location: "/", time: "t", site: at("/", "button") },
+          { id: 82, deliverableId: 1, author: "Claire Dubois", initials: "CD", from: "client", message: "Ajouter un plan d’accès", decision: "À qualifier", kind: "remark", location: "/contact", time: "t", site: at("/contact", "form") },
+          // Internal: a pin of the agency without a status, never shown to the client.
+          { id: 83, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Vérifier les marges", decision: "À qualifier", kind: "remark", internalNote: true, location: "/contact", time: "t", site: at("/contact", "h1") },
+        ],
+        remove: [],
+      },
+    },
+  });
+
+  // The agency: every request, page by page, each card opening its thread.
+  const agency = await newPerson(browser);
+  await signInPage(agency.page, alice.email);
+  await agency.page.goto("/projets/1/livrables/1");
+  const board = agency.page.getByRole("region", { name: "Tableau de recette" });
+  await expect(board.getByRole("heading", { name: "recette.northwind.test" })).toBeVisible();
+  await expect(board.getByRole("region", { name: "Page /", exact: true }).getByRole("button")).toHaveCount(2);
+  await expect(board.getByRole("region", { name: "Page /contact" }).getByRole("button")).toHaveCount(2);
+  await expect(board.getByRole("link", { name: "Ouvrir le site" })).toHaveAttribute("href", `${site}/?kora`);
+  await board.getByRole("button", { name: "Commentaire #82" }).click();
+  await expect(agency.page.getByRole("dialog", { name: "Commentaire #82" })).toContainText("Ajouter un plan d’accès");
+  expect(agency.errors).toEqual([]);
+
+  // The client: what they may see only.
+  const client = await verifiedClient(token, email);
+  const { page, errors } = await newPerson(browser);
+  const [name, value] = client.cookie.split(";")[0].split("=");
+  await page.context().addCookies([{ name, value, url: baseURL }]);
+  await page.goto(`/review/${token}`);
+  const clientBoard = page.getByRole("region", { name: "Tableau de recette" });
+  await expect(clientBoard.getByRole("region", { name: "Page /contact" }).getByRole("button")).toHaveCount(1);
+  await expect(clientBoard.getByText("Vérifier les marges")).toHaveCount(0);
+  // The capture of a request they see opens for them (/api/files).
+  const card = clientBoard.getByRole("button", { name: "Commentaire #82" }).locator("img");
+  await expect.poll(() => card.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  expect(errors).toEqual([]);
+});
+
+test("a « Lien » without requests says how they come", async ({ browser }) => {
+  const { alice } = await siteReview();
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1/livrables/1");
+  await expect(page.getByRole("region", { name: "Tableau de recette" }).getByText("Aucune demande sur le site pour l’instant.")).toBeVisible();
+  expect(errors).toEqual([]);
+});
