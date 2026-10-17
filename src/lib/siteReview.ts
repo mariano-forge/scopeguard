@@ -92,8 +92,21 @@ export const siteAgencyCookie = "kora_agency_site_session";
  */
 export const siteAgencyActions: ReadonlySet<string> = new Set(["comment.create", "comment.edit", "comment.delete", "comment.qualify", "reply.create", "reply.edit", "reply.delete"]);
 
-/** What a pin on the site needs, and nothing of the request's text. `internal`: the client does not see it (agency only). */
-export type SitePin = { id: number; number: number; selector: string; x: number; y: number; internal?: boolean };
+/**
+ * What a pin on the site needs to look like Kora's (src/app/(agency)/editor/CanvasComments.tsx CanvasPin):
+ * its place, its status, its author's initials and side, and Kora's label (« Demande incluse »). Never the
+ * request's text, amount or author's name and address: the site's other scripts can read what it receives.
+ */
+export type SitePin = {
+  id: number;
+  selector: string;
+  x: number;
+  y: number;
+  kind: "comment" | "correction" | "outside";
+  initials: string;
+  agency: boolean;
+  label: string;
+};
 
 /** Messages between the toolbar (on the site) and the panel (in the frame), both checking the sender. */
 export type ToolbarMessage =

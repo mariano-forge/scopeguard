@@ -7,7 +7,7 @@ import type { SiteAnchor } from "@/lib/siteReview";
 
 export function SiteCapture({ site }: { site: SiteAnchor }) {
   return (
-    <figure className="grid gap-1">
+    <figure className="site-capture grid gap-1">
       {site.capture && (
         <a className="block overflow-hidden rounded-[var(--r-field)] border border-[var(--border)]" href={site.capture} target="_blank" rel="noopener">
           {/* A plain image: a file of the agency's storage behind /api/files (Kora has no next/image endpoint). */}

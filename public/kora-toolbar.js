@@ -8,7 +8,8 @@
 //
 // This script runs in the agency's page, next to its other scripts: it never receives what the
 // client writes, only where to draw the pins. Every message is checked (origin and window).
-// Colours copy src/theme/tokens.css: this page cannot read Kora's tokens.
+// Colours copy src/theme/tokens.css, and pins copy Kora's (globals.css .canvas-pin): this page cannot
+// read Kora's styles. A change of Kora's pins is made here too.
 (() => {
   const script = document.currentScript;
   if (!script || window.__koraToolbar) return;
@@ -34,7 +35,17 @@
     }
   else if (!remembered()) return;
 
-  const colors = { action: "#30a8ff", ink: "#111111", paper: "#ffffff", border: "#ddd9d1", focus: "#0079d1", graphite: "#4c4c48" };
+  const colors = {
+    action: "#30a8ff",
+    ink: "#111111",
+    paper: "#ffffff",
+    border: "#ddd9d1",
+    focus: "#0079d1",
+    resolvedBg: "#ddf4e4",
+    resolvedText: "#0a5933",
+    scopeBg: "#eae3ff",
+    scopeText: "#4e31a6",
+  };
   const host = document.createElement("div");
   host.setAttribute("data-kora-toolbar", "");
   host.style.cssText = "position:absolute;top:0;left:0;width:0;height:0;z-index:2147483646;";
@@ -48,13 +59,20 @@
         border-left: 1px solid ${colors.border}; box-shadow: -8px 0 24px rgb(0 0 0 / .12); }
       .panel.open { display: block; }
       .panel iframe { width: 100%; height: 100%; border: 0; }
-      .close { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 999px; border: 1px solid ${colors.border};
-        background: ${colors.paper}; color: ${colors.ink}; }
+      /* Outside the panel, on its left edge: Kora's panel keeps its whole header. */
+      .close { position: absolute; top: 12px; left: -40px; width: 32px; height: 32px; border-radius: 999px; border: 1px solid ${colors.border};
+        background: ${colors.paper}; color: ${colors.ink}; box-shadow: 0 2px 8px rgb(0 0 0 / .15); }
       .highlight { position: fixed; pointer-events: none; outline: 2px solid ${colors.action}; background: rgb(48 168 255 / .12); display: none; }
-      .pin { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 999px; border: 2px solid ${colors.paper};
-        background: ${colors.action}; color: ${colors.ink}; box-shadow: 0 2px 8px rgb(0 0 0 / .25); }
-      .pin.internal { background: ${colors.paper}; color: ${colors.graphite}; border: 2px dashed ${colors.graphite}; }
-      .pin.flash { outline: 3px solid ${colors.focus}; }
+      /* Kora's pins (globals.css .canvas-pin): a tag pointing at its spot, by status. */
+      .pin { position: absolute; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 2px solid ${colors.paper};
+        border-radius: 8px 8px 8px 0; box-shadow: 0 2px 8px rgb(17 17 17 / .22); font: 700 11px/1 system-ui, sans-serif;
+        transform: translateY(-100%); transform-origin: bottom left; transition: transform .12s ease-out; background: ${colors.paper}; color: ${colors.ink}; }
+      .pin:hover { transform: translateY(-100%) scale(1.1); }
+      .pin.is-comment.is-agency { background: ${colors.ink}; color: ${colors.paper}; }
+      .pin.is-correction { background: ${colors.resolvedBg}; color: ${colors.resolvedText}; }
+      .pin.is-outside { background: ${colors.scopeBg}; color: ${colors.scopeText}; }
+      .pin svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .pin.flash { outline: 2px solid ${colors.focus}; outline-offset: 1px; }
       button:focus-visible { outline: 3px solid ${colors.focus}; outline-offset: 2px; }
     </style>
     <div class="pins"></div>
@@ -230,6 +248,27 @@
 
   // ——— Pins ———
 
+  // Lucide's ClipboardCheck (« Inclus ») and BadgeEuro (« Hors scope »), as Kora's pins show them.
+  const icons = {
+    correction: [["rect", { width: "8", height: "4", x: "8", y: "2", rx: "1", ry: "1" }], ["path", { d: "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" }], ["path", { d: "m9 14 2 2 4-4" }]],
+    outside: [
+      ["path", { d: "M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" }],
+      ["path", { d: "M7 12h5" }],
+      ["path", { d: "M15 9.4a4 4 0 1 0 0 5.2" }],
+    ],
+  };
+  function icon(kind) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    for (const [tag, attributes] of icons[kind] || []) {
+      const shape = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      for (const [name, value] of Object.entries(attributes)) shape.setAttribute(name, value);
+      svg.append(shape);
+    }
+    return svg;
+  }
+
   let pins = [];
   /** What was last drawn and reported: pins are redrawn (and keyboard focus lost) only when they move. */
   let drawn = "";
@@ -258,11 +297,12 @@
     for (const pin of placed) {
       const button = document.createElement("button");
       button.type = "button";
-      // An agency pin the client does not see (only drawn for the agency).
-      button.className = pin.internal ? "pin internal" : "pin";
+      button.className = `pin is-${pin.kind}${pin.agency ? " is-agency" : ""}`;
       button.dataset.id = String(pin.id);
-      button.textContent = String(pin.number);
-      button.setAttribute("aria-label", pin.internal ? `Remarque interne ${pin.number}` : `Demande ${pin.number}`);
+      // As in Kora: the author's initials on a comment, the status's icon on a request.
+      if (pin.kind === "comment") button.textContent = String(pin.initials || "").slice(0, 3);
+      else button.append(icon(pin.kind));
+      button.setAttribute("aria-label", `${pin.label} #${pin.id}`);
       button.style.left = `${pin.left}px`;
       button.style.top = `${pin.top}px`;
       button.addEventListener("click", () => (open(true), tell({ type: "kora:open", id: pin.id })));

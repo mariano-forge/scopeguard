@@ -7832,3 +7832,26 @@ body.is-resizing {
   background-position: calc(-330px * 20 / 590) calc(-240px * 20 / 590);
   mix-blend-mode: multiply;
 }
+
+/* Kora's panel on the staging site (src/app/review/[token]/site): the « Demandes » panel in a frame,
+   a request's thread shown in it rather than as a bubble over a canvas. */
+.site-panel {
+  min-height: 100vh;
+  border-left: 0;
+}
+.site-thread {
+  display: grid;
+  gap: var(--s-2);
+  padding: 0 var(--s-3) var(--s-3);
+}
+.site-thread .thread {
+  position: static;
+  width: auto;
+  max-height: none;
+  transform: none;
+  box-shadow: none;
+}
+/* The capture of a request placed on the staging site, in a request's thread (src/components/SiteCapture.tsx). */
+.thread .site-capture {
+  margin: var(--s-2) var(--s-4) 0;
+}

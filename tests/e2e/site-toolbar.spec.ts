@@ -75,7 +75,7 @@ async function verifyInPanel(page: Page, email: string) {
   await panel.getByRole("button", { name: "Accéder à la revue" }).click();
   await panel.getByLabel("Nom complet").fill("Claire Dubois");
   await panel.getByRole("button", { name: "Accéder à la revue" }).click();
-  await expect(panel.getByRole("heading", { name: "Demandes de cette page" })).toBeVisible();
+  await expect(panel.getByRole("heading", { name: "Demandes", exact: true })).toBeVisible();
 }
 
 const siteRequests = (org: string) => sql<{ id: string; data: Record<string, unknown> }>("select id, data from comments where organization_id = $1 and data ? 'site' order by id", [org]);
@@ -136,15 +136,16 @@ test("the client verifies in Kora's panel on the staging site and places a reque
   const shot = panel.getByRole("img", { name: "Capture de la page / au moment de la demande" });
   await expect(shot).toBeVisible();
   await expect.poll(() => shot.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
-  await expect(page.getByRole("button", { name: "Demande 1" })).toBeVisible();
-  // The site's page holds the pin's number and place, never the text.
+  // On the site, Kora's pin: a comment shows its author's initials.
+  const pin = page.getByRole("button", { name: `Commentaire #${created.id}` });
+  await expect(pin).toHaveText("CD");
+  // The site's page holds the pin's place, status and initials, never the text.
   expect(await siteMarkup(page)).not.toContain(message);
 
   // Back on the site later: the pin is there, and the session holds on this site.
   await page.reload();
-  await expect(page.getByRole("button", { name: "Demande 1" })).toBeVisible();
-  await page.getByRole("button", { name: "Demande 1" }).click();
-  await expect(panel.getByRole("button", { name: new RegExp(message) })).toBeVisible();
+  await page.getByRole("button", { name: `Commentaire #${created.id}` }).click();
+  await expect(panel.getByRole("dialog", { name: `Commentaire #${created.id}` })).toContainText(message);
   await expect(panel.getByRole("button", { name: "Recevoir un code" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -212,9 +213,14 @@ test("the site shows the pins the client may see, and says when an element is go
   await page.goto(`${site}/?kora`);
   await verifyInPanel(page, email);
 
-  await expect(page.getByRole("button", { name: /^Demande \d+$/ })).toHaveCount(1);
-  await expect(panel.getByRole("listitem")).toHaveCount(2);
-  await expect(panel.getByRole("listitem").filter({ hasText: "Bannière" }).getByText("Élément introuvable sur la page")).toBeVisible();
+  // Only the pin the client sees, on an element the page has: Kora's « Inclus » tag.
+  await expect(page.getByRole("button", { name: /#\d+$/ })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Demande incluse #20" }).locator("svg")).toBeVisible();
+  // In the panel, Kora's « Demandes »: both included requests under « Inclus ».
+  await panel.getByRole("tab", { name: /^Inclus/ }).click();
+  await expect(panel.getByRole("tabpanel").getByRole("button")).toHaveCount(2);
+  await panel.getByRole("button", { name: "Demande incluse #22" }).click();
+  await expect(panel.getByText("Élément introuvable sur la page")).toBeVisible();
   await expect(panel.getByText("Penser à la marge interne")).toHaveCount(0);
   expect(await siteMarkup(page)).not.toContain("marge interne");
 
@@ -268,10 +274,12 @@ test("an agency member is recognised in the panel by a Kora window, then annotat
   await closed;
   await expect(panel.getByText("Agence : Alice Martin")).toBeVisible();
 
-  // The agency sees its internal pin too, drawn apart, marked « Interne » in the panel.
-  await expect(page.getByRole("button", { name: "Demande 1" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Remarque interne 2" })).toBeVisible();
-  await expect(panel.getByRole("listitem").filter({ hasText: "Revoir l’interligne" }).getByText("Interne")).toBeVisible();
+  // The agency sees its internal pin too, Kora's dark one, said internal in its thread as in Kora.
+  await expect(page.getByRole("button", { name: "Commentaire #30" })).not.toHaveClass(/is-agency/);
+  await expect(page.getByRole("button", { name: "Commentaire #31" })).toHaveClass(/is-agency/);
+  await panel.getByRole("button", { name: "Commentaire #31" }).click();
+  await expect(panel.getByRole("note").filter({ hasText: "Non visible par le client tant que vous ne l’avez pas qualifiée" })).toBeVisible();
+  await panel.getByRole("button", { name: "Demandes", exact: true }).click();
 
   // A remark of its own on the site: an internal pin, as in Kora.
   await panel.getByRole("button", { name: "Poser une remarque" }).click();
@@ -283,11 +291,12 @@ test("an agency member is recognised in the panel by a Kora window, then annotat
     .toMatchObject({ from: "agency", author: "Alice Martin", internalNote: true, location: "/", decision: "À qualifier", site: { url: "/", selector: "#titre" } });
 
   // The client's request, qualified from the site.
-  await panel.getByRole("button", { name: /Le titre est trop long/ }).click();
-  await panel.getByRole("button", { name: /^Qualification de la demande 1/ }).click();
-  await panel.getByRole("option", { name: "Inclus" }).click();
-  await panel.getByLabel("Titre").fill("Raccourcir le titre");
-  await panel.getByRole("button", { name: "Qualifier" }).click();
+  await panel.getByRole("button", { name: "Demandes", exact: true }).click();
+  await panel.getByRole("tabpanel").getByRole("button", { name: "Commentaire #30" }).click();
+  await panel.getByRole("button", { name: "Créer une demande" }).click();
+  await panel.getByRole("radio", { name: /^Inclus/ }).click();
+  await panel.getByLabel("Titre de la demande").fill("Raccourcir le titre");
+  await panel.getByRole("button", { name: "Créer la demande" }).click();
   await expect
     .poll(async () => (await sql<{ decision: string; title: string }>("select decision, data->>'title' as title from comments where organization_id = $1 and id = 30", [org]))[0])
     .toEqual({ decision: "Inclus", title: "Raccourcir le titre" });
