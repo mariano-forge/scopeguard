@@ -1019,7 +1019,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - Le panneau Kora ne s'affiche que dans une page du domaine du livrable, en `https` ; ailleurs, il ne montre rien.
 - Depuis le site : demandes, annotations, réponses, et qualification par l'agence. Les devis (envoi, acceptation, refus, contre-proposition) et la validation de la version se font dans Kora, que le panneau ouvre sans redemander de code.
 - Le client se vérifie avec le même code par e-mail que pour les autres livrables ; sa session sur le site est propre à ce site.
-- Une demande est rattachée à la page, à l'élément visé, à sa position dans l'élément et à la largeur d'écran ; la capture de la fenêtre au moment du clic est conservée, montrée avec la demande et reprise dans la preuve.
+- Une demande est rattachée à la page, à l'élément visé, à sa position dans l'élément et à la largeur d'écran ; la capture de la fenêtre au moment du clic, annotée (cadre de l'élément, point du clic), est conservée, montrée avec la demande et reprise dans la preuve.
 - Le site de l'agence ne reçoit jamais le texte des demandes : seulement de quoi placer les épingles (numéro, élément, position). Le texte reste dans le cadre Kora.
 - Les épingles affichées sur le site sont celles que le client voit sur sa page de revue (`readReviewState`) : jamais un pin interne de l'agence ni un devis en brouillon.
 - Si l'élément a disparu, la demande est signalée « élément introuvable » dans le panneau au lieu d'être perdue.

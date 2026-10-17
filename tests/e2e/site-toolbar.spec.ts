@@ -83,7 +83,7 @@ const siteRequests = (org: string) => sql<{ id: string; data: Record<string, unk
 const siteMarkup = (page: Page) => page.evaluate(() => document.documentElement.outerHTML + (document.querySelector("[data-kora-toolbar]")?.shadowRoot?.innerHTML ?? ""));
 
 test("the client verifies in Kora's panel on the staging site and places a request on an element", async ({ browser }) => {
-  const { org, token, email } = await siteReview();
+  const { alice, org, token, email } = await siteReview();
   const { page, errors, panel } = await siteVisitor(browser, token);
 
   // Without ?kora the toolbar stays hidden: a visitor of the site sees nothing of Kora.
@@ -111,6 +111,27 @@ test("the client verifies in Kora's panel on the staging site and places a reque
   const [stored] = await sql<{ uploaded_by: string; mime_type: string; path: string }>("select uploaded_by, mime_type, path from stored_files where organization_id = $1 and id = $2", [org, fileId]);
   expect(stored).toMatchObject({ uploaded_by: `client:${email}`, mime_type: "image/jpeg" });
   expect(stored.path).toMatch(/^projets\/1\/livrables\/1\/demandes\//);
+  // …annotated: at the click, the image holds Kora's point (#30a8ff), not the page's white.
+  const view = (created.data.site as { view: { x: number; y: number } }).view;
+  const bytes = Buffer.from(await (await fetch(`${baseURL}${(created.data.site as { capture: string }).capture}`, { headers: { cookie: alice.cookie } })).arrayBuffer());
+  const colourAt = (point: { x: number; y: number }) =>
+    page.evaluate(
+      async ({ data, x, y }) => {
+        const image = new Image();
+        image.src = data;
+        await image.decode();
+        const canvas = Object.assign(document.createElement("canvas"), { width: image.width, height: image.height });
+        const context = canvas.getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        return [...context.getImageData(Math.round((image.width * x) / 100), Math.round((image.height * y) / 100), 1, 1).data.slice(0, 3)];
+      },
+      { data: `data:image/jpeg;base64,${bytes.toString("base64")}`, ...point },
+    );
+  const [red, , blue] = await colourAt(view);
+  expect(blue).toBeGreaterThan(200);
+  expect(red).toBeLessThan(140);
+  // Far from it, the page as it is (white).
+  expect((await colourAt({ x: 98, y: 98 }))[0]).toBeGreaterThan(200);
   // …and shown in the panel's thread, read through the panel's session.
   const shot = panel.getByRole("img", { name: "Capture de la page / au moment de la demande" });
   await expect(shot).toBeVisible();

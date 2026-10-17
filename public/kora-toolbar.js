@@ -132,7 +132,8 @@
     const pick = ++picks;
     anchor.view = { x: clamp((event.clientX / window.innerWidth) * 100), y: clamp((event.clientY / window.innerHeight) * 100) };
     tell({ type: "kora:pick", pick, anchor, label: labelOf(element) });
-    captureWindow().then(
+    // What the visitor pointed at, drawn on the capture: the element's frame and the click.
+    captureWindow({ left: box.left, top: box.top, width: box.width, height: box.height, x: event.clientX, y: event.clientY }).then(
       (blob) => tell({ type: "kora:capture", pick, blob }),
       () => tell({ type: "kora:capture", pick, blob: null }),
     );
@@ -166,10 +167,12 @@
 
   /**
    * The window as the visitor sees it, without the toolbar: the page redrawn by modern-screenshot,
-   * cut to the window. A copy, close to the screen but not a photograph of it: images of other sites
-   * that refuse to be read come out blank.
+   * cut to the window, with what was pointed at drawn on it (`mark`: the element's box and the click,
+   * in window coordinates). The image stands on its own wherever it is opened, and the proof keeps the
+   * fingerprint of this annotated one. A copy, close to the screen but not a photograph of it: images
+   * of other sites that refuse to be read come out blank.
    */
-  async function captureWindow() {
+  async function captureWindow(mark) {
     const { domToCanvas } = await loadLibrary();
     const page = document.documentElement;
     const box = page.getBoundingClientRect();
@@ -181,6 +184,21 @@
     context.fillStyle = colors.paper;
     context.fillRect(0, 0, shot.width, shot.height);
     context.drawImage(drawn, box.left, box.top);
+    // The element's frame, a few pixels around it so that its edges stay visible, then the click:
+    // thick enough to be seen once the capture is shrunk in a thread.
+    const gap = 4;
+    context.fillStyle = "rgb(48 168 255 / 0.12)";
+    context.fillRect(mark.left - gap, mark.top - gap, mark.width + 2 * gap, mark.height + 2 * gap);
+    context.lineWidth = 4;
+    context.strokeStyle = colors.action;
+    context.strokeRect(mark.left - gap, mark.top - gap, mark.width + 2 * gap, mark.height + 2 * gap);
+    context.beginPath();
+    context.arc(mark.x, mark.y, 12, 0, 2 * Math.PI);
+    context.fillStyle = colors.action;
+    context.fill();
+    context.lineWidth = 3;
+    context.strokeStyle = colors.paper;
+    context.stroke();
     return new Promise((resolve, reject) => shot.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("capture"))), "image/jpeg", 0.8));
   }
   function onKey(event) {
