@@ -94,7 +94,14 @@ test("the client verifies in Kora's panel on the staging site and places a reque
   await page.goto(`${site}/?kora`);
   await verifyInPanel(page, email);
 
-  await panel.getByRole("button", { name: "Poser une demande" }).click();
+  // The floating bar's comment button: pressed while an element is chosen, Escape gives up.
+  const comment = page.getByRole("button", { name: "Commenter un élément" });
+  await comment.click();
+  await expect(comment).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("status").filter({ hasText: "Cliquez sur un élément de la page" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(comment).toHaveAttribute("aria-pressed", "false");
+  await comment.click();
   await page.getByRole("heading", { name: "Bienvenue chez Northwind" }).click({ position: { x: 20, y: 10 } });
   await expect(panel.getByText("h1 « Bienvenue chez Northwind »")).toBeVisible();
   const message = "Le titre doit tenir sur une ligne";
@@ -282,7 +289,7 @@ test("an agency member is recognised in the panel by a Kora window, then annotat
   await panel.getByRole("button", { name: "Demandes", exact: true }).click();
 
   // A remark of its own on the site: an internal pin, as in Kora.
-  await panel.getByRole("button", { name: "Poser une remarque" }).click();
+  await page.getByRole("button", { name: "Commenter un élément" }).click();
   await page.getByRole("heading", { name: "Bienvenue chez Northwind" }).click({ position: { x: 40, y: 10 } });
   await panel.getByLabel("Votre remarque").fill("Vérifier le contraste du titre");
   await panel.getByRole("button", { name: "Envoyer" }).click();

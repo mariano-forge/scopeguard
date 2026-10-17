@@ -2,7 +2,7 @@
 
 // Kora's panel on the agency's staging site, in a frame (see page.tsx). It looks like Kora's « Demandes »
 // panel because it is made of it: RequestPanel for the list, ThreadPopover for a request's thread. The
-// toolbar on the site (public/kora-toolbar.js) picks the element and draws Kora's pins; the panel verifies
+// toolbar on the site (public/kora-toolbar.js) picks the element (its comment button, or C) and draws Kora's pins; the panel verifies
 // who is there, holds the requests' text and writes them through the action routes.
 // - A client verifies by code (AccessGate) and writes through src/lib/reviewActions.ts.
 // - An agency member is recognised by a Kora window (« Je suis de l'agence », src/lib/siteAgency.ts),
@@ -11,7 +11,7 @@
 // Kora window the panel opened.
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ExternalLink, MapPin, Plus } from "lucide-react";
+import { ArrowLeft, ExternalLink, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { itemLabel, requestKind, ThreadPopover, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
 import { RequestPanel, type InspectorTab } from "@/app/(agency)/editor/EditorInspector";
@@ -87,7 +87,6 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
   const [draft, setDraft] = useState<{ pick: number; anchor: SiteAnchor; label: string; capture?: Blob | null; preview?: string } | null>(null);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [picking, setPicking] = useState(false);
   const [tab, setTab] = useState<InspectorTab>("comment");
   /** The request whose thread is open. */
   const [openId, setOpenId] = useState<number | null>(null);
@@ -130,7 +129,6 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
       const data = event.data;
       if (data.type === "kora:page" && typeof data.url === "string") setPageUrl(data.url);
       else if (data.type === "kora:pick" && data.anchor) {
-        setPicking(false);
         setOpenId(null);
         setDraft({ pick: Number(data.pick), anchor: data.anchor, label: String(data.label ?? "").slice(0, 120) });
       } else if (data.type === "kora:capture") {
@@ -244,13 +242,6 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
   const act = (path: string, method: "POST" | "PATCH" | "PUT" | "DELETE", body?: Record<string, unknown>) =>
     agency ? siteAgencyAction(path, method, body) : reviewAction(token, path, method, body);
 
-  function startPicking() {
-    closeDraft();
-    setOpenId(null);
-    setPicking(true);
-    tellSite({ type: "kora:pick-mode", on: true });
-  }
-
   function closeDraft() {
     if (draft?.preview) URL.revokeObjectURL(draft.preview);
     setDraft(null);
@@ -285,11 +276,6 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
             {pageUrl ?? "…"}
           </small>
         </div>
-        {!closed && (
-          <Button type="button" size="sm" onClick={startPicking} disabled={picking} aria-label={agency ? "Poser une remarque" : "Poser une demande"}>
-            <Plus /> {agency ? "Remarque" : "Demande"}
-          </Button>
-        )}
       </header>
 
       {client && (pendingQuotes > 0 || (toValidate && viewer.role === "decider")) && (
@@ -303,13 +289,15 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
         </div>
       )}
 
-      {picking && (
-        <p role="status" className="mx-4 mb-3 rounded-[var(--r-field)] bg-[var(--status-low-bg)] px-3 py-2 text-sm text-[var(--status-low-text)]">
-          Cliquez sur un élément de la page. Échap pour annuler.
+      {draft && closed ? (
+        // The version is validated or replaced: nothing more is written on it.
+        <p role="status" className="mx-4 mb-3 rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-sm text-[var(--status-medium-text)]">
+          Cette version est close : plus aucune demande n’y est possible.{" "}
+          <button type="button" className="underline" onClick={closeDraft}>
+            Fermer
+          </button>
         </p>
-      )}
-
-      {draft ? (
+      ) : draft ? (
         <form className="manual-comment" onSubmit={send}>
           <p className="text-xs text-[var(--graphite)]">
             Sur : <b className="text-[var(--ink)]">{draft.label || draft.anchor.selector}</b>
@@ -389,6 +377,7 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
           }}
           adding={false}
           onAddingChange={() => undefined}
+          emptyHint="Aucune demande sur cette page. Cliquez sur la bulle en bas de l’écran, puis sur un élément du site."
         />
       )}
 

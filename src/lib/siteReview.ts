@@ -121,4 +121,4 @@ export type ToolbarMessage =
 export type TicketMessage = { type: "kora:agency-ticket"; ticket: string };
 /** Between the panel and the review tab it opened, without a second code (src/lib/siteHandoff.ts). */
 export type HandoffMessage = { type: "kora:handoff-ready" } | { type: "kora:handoff-ticket"; ticket: string };
-export type PanelMessage = { type: "kora:ready" } | { type: "kora:pins"; pins: SitePin[] } | { type: "kora:pick-mode"; on: boolean } | { type: "kora:focus"; id: number };
+export type PanelMessage = { type: "kora:ready" } | { type: "kora:pins"; pins: SitePin[] } | { type: "kora:focus"; id: number };

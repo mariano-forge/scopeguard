@@ -4,7 +4,7 @@
 //
 // and sends its client the site's address with ?kora. The toolbar then shows on that device: a button
 // opens Kora's panel (/review/<token>/site, in a frame on Kora's origin), where the client verifies their
-// address by code and writes; « Poser une demande » or the C key picks an element of the page.
+// address by code and writes; the bar's comment button (or the C key) picks an element of the page.
 //
 // This script runs in the agency's page, next to its other scripts: it never receives what the
 // client writes, only where to draw the pins. Every message is checked (origin and window).
@@ -53,8 +53,19 @@
   root.innerHTML = `
     <style>
       button { font: 600 13px/1 system-ui, sans-serif; cursor: pointer; }
-      .launcher { position: fixed; right: 16px; bottom: 16px; padding: 10px 14px; border-radius: 999px; border: 1px solid ${colors.border};
-        background: ${colors.ink}; color: ${colors.paper}; box-shadow: 0 4px 16px rgb(0 0 0 / .2); }
+      /* The floating bar: comment an element, open the panel (as Vercel's toolbar). */
+      .bar { position: fixed; right: 16px; bottom: 16px; display: flex; align-items: center; padding: 4px; gap: 2px; border-radius: 999px;
+        border: 1px solid ${colors.border}; background: ${colors.ink}; box-shadow: 0 4px 16px rgb(0 0 0 / .2); }
+      .bar button { display: grid; place-items: center; height: 34px; min-width: 34px; padding: 0 12px; border: 0; border-radius: 999px;
+        background: transparent; color: ${colors.paper}; }
+      .bar button:hover, .bar button[aria-pressed="true"] { background: rgb(255 255 255 / .16); }
+      .bar svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      .bar .sep { width: 1px; height: 20px; background: rgb(255 255 255 / .25); }
+      .hint { position: fixed; right: 16px; bottom: 64px; display: none; padding: 8px 12px; border-radius: 8px; background: ${colors.ink};
+        color: ${colors.paper}; font: 500 13px/1.3 system-ui, sans-serif; box-shadow: 0 4px 16px rgb(0 0 0 / .2); }
+      .hint.on { display: block; }
+      /* The panel open, the bar and its hint move to its left: never under it. */
+      .bar.beside, .hint.beside { right: calc(min(380px, 100vw) + 16px); }
       .panel { position: fixed; top: 0; right: 0; width: min(380px, 100vw); height: 100vh; display: none; background: ${colors.paper};
         border-left: 1px solid ${colors.border}; box-shadow: -8px 0 24px rgb(0 0 0 / .12); }
       .panel.open { display: block; }
@@ -77,7 +88,12 @@
     </style>
     <div class="pins"></div>
     <div class="highlight"></div>
-    <button class="launcher" type="button" aria-label="Ouvrir Kora">Kora</button>
+    <p class="hint" role="status">Cliquez sur un élément de la page · Échap pour annuler</p>
+    <div class="bar">
+      <button class="comment" type="button" aria-label="Commenter un élément" title="Commenter un élément (C)" aria-pressed="false"></button>
+      <span class="sep" aria-hidden="true"></span>
+      <button class="launcher" type="button" aria-label="Ouvrir Kora">Kora</button>
+    </div>
     <div class="panel" role="dialog" aria-label="Kora">
       <iframe title="Kora"></iframe>
       <button class="close" type="button" aria-label="Fermer Kora">×</button>
@@ -95,8 +111,22 @@
     url.searchParams.delete("kora");
     return url.pathname + url.search;
   };
-  const open = (on) => panel.classList.toggle("open", on);
+  const open = (on) => {
+    panel.classList.toggle("open", on);
+    for (const element of root.querySelectorAll(".bar, .hint")) element.classList.toggle("beside", panel.classList.contains("open"));
+  };
   root.querySelector(".launcher").addEventListener("click", () => open(!panel.classList.contains("open")));
+  const commentButton = root.querySelector(".comment");
+  const hint = root.querySelector(".hint");
+  // Lucide's MessageSquarePlus, Kora's « comment » icon.
+  commentButton.append(
+    svgOf([["path", { d: "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" }], ["path", { d: "M12 8v6" }], ["path", { d: "M9 11h6" }]]),
+  );
+  // Started from the button, the click that started it must not pick the button itself.
+  commentButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    picking ? stopPicking() : startPicking();
+  });
   root.querySelector(".close").addEventListener("click", () => open(false));
 
   // ——— Picking an element ———
@@ -226,6 +256,8 @@
     if (picking) return;
     picking = true;
     open(true);
+    commentButton.setAttribute("aria-pressed", "true");
+    hint.classList.add("on");
     savedCursor = document.documentElement.style.cursor;
     document.documentElement.style.cursor = "crosshair";
     document.addEventListener("mousemove", onMove, true);
@@ -234,6 +266,8 @@
   }
   function stopPicking() {
     picking = false;
+    commentButton.setAttribute("aria-pressed", "false");
+    hint.classList.remove("on");
     highlight.style.display = "none";
     document.documentElement.style.cursor = savedCursor;
     document.removeEventListener("mousemove", onMove, true);
@@ -258,10 +292,13 @@
     ],
   };
   function icon(kind) {
+    return svgOf(icons[kind] || []);
+  }
+  function svgOf(shapes) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", "0 0 24 24");
     svg.setAttribute("aria-hidden", "true");
-    for (const [tag, attributes] of icons[kind] || []) {
+    for (const [tag, attributes] of shapes) {
       const shape = document.createElementNS("http://www.w3.org/2000/svg", tag);
       for (const [name, value] of Object.entries(attributes)) shape.setAttribute(name, value);
       svg.append(shape);
@@ -322,8 +359,7 @@
     else if (data.type === "kora:pins" && Array.isArray(data.pins)) {
       pins = data.pins;
       drawPins();
-    } else if (data.type === "kora:pick-mode") data.on ? startPicking() : stopPicking();
-    else if (data.type === "kora:focus") {
+    } else if (data.type === "kora:focus") {
       const button = pinsLayer.querySelector(`[data-id="${Number(data.id)}"]`);
       if (button) {
         button.scrollIntoView({ block: "center", behavior: "smooth" });
