@@ -43,3 +43,16 @@ async function throughServer(file: File, placement: UploadPlacement, fallback: {
   if (!response?.ok || !body?.href) return { error: body?.error ?? fallback.error };
   return { href: body.href };
 }
+
+/**
+ * The capture of the window when a request is placed on the staging site, from Kora's panel there
+ * (src/lib/siteCapture.ts): small, sent through the server. Its address, or null when it failed (the
+ * request then goes without it).
+ */
+export async function uploadSiteCapture(token: string, capture: Blob) {
+  const form = new FormData();
+  form.set("file", capture, capture.type === "image/png" ? "capture.png" : "capture.jpg");
+  const response = await fetch(`/api/review/${encodeURIComponent(token)}/site/capture`, { method: "POST", body: form }).catch(() => null);
+  const body = (await response?.json().catch(() => null)) as { href?: string } | null;
+  return response?.ok && typeof body?.href === "string" ? body.href : null;
+}

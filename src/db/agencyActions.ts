@@ -5,6 +5,7 @@
 // The agency's other writes still go through /api/state; they move here one subject at a time.
 
 import { readSiteAnchor, type SiteAnchor } from "@/lib/siteReview";
+import { ownCapture } from "@/lib/siteCapture";
 import { randomUUID } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
 import { initialsOf, sideOf } from "@/lib/authors";
@@ -319,6 +320,8 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
 
     const commentId = await freeCommentId(db, org, action.type === "comment.create" ? action.id : undefined);
     const base = { id: commentId, deliverableId, ...signer, time: "À l'instant", createdAt: Date.now() };
+    // A capture of the staging site the member sent themselves (src/lib/siteCapture.ts).
+    if (action.type === "comment.create" && action.site?.capture && !(await ownCapture(db, org, action.site.capture, member.id))) return refused("Capture introuvable.", 404);
     if (action.type === "comment.create") {
       upsertComment({
         ...base,

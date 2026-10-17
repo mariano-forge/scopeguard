@@ -6,6 +6,7 @@
 import { and, eq } from "drizzle-orm";
 import type { ListChange, StateChanges } from "@/lib/sharedState";
 import { readSiteAnchor, type SiteAnchor } from "@/lib/siteReview";
+import { clientUploader, ownCapture } from "@/lib/siteCapture";
 import { displayedNow, freeCommentId, id, movedComment, noChanges, percent, readArea, readPoint, text, number, type Area, type Data } from "./actions";
 import type { Db } from "./client";
 import { clientSeesComment, sanitizeReviewChanges, visibleToClient, type ReviewAccess } from "./reviewAccess";
@@ -252,6 +253,9 @@ function kept(action: ReviewAction, sanitized: StateChanges | null, commentId: n
 export async function runReviewAction(db: Db, access: ReviewAccess, email: string, writer: Omit<Writer, "recordedBy">, action: ReviewAction): Promise<ReviewActionResult> {
   // A request the client does not see (an out-of-scope one not quoted yet) is unknown to them.
   if ("commentId" in action && !(await clientSeesComment(db, access, action.commentId))) return refused("Commentaire introuvable.", 404);
+  // A capture the client sent themselves, never another file of the agency (src/lib/siteCapture.ts).
+  if (action.type === "comment.create" && action.site?.capture && !(await ownCapture(db, access.organizationId, action.site.capture, clientUploader(email))))
+    return refused("Capture introuvable.", 404);
   const built = await changesFor(db, access, action);
   if ("ok" in built) return built;
   const commentId = action.type === "reply.create" || action.type === "reply.edit" || action.type === "reply.delete" ? action.commentId : built.id;

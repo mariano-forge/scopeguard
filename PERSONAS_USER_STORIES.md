@@ -1019,7 +1019,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - Le panneau Kora ne s'affiche que dans une page du domaine du livrable, en `https` ; ailleurs, il ne montre rien.
 - Depuis le site : demandes, annotations, réponses, et qualification par l'agence. Les devis (envoi, acceptation, refus, contre-proposition) et la validation de la version se font dans Kora, que le panneau ouvre sans redemander de code.
 - Le client se vérifie avec le même code par e-mail que pour les autres livrables ; sa session sur le site est propre à ce site.
-- Une demande est rattachée à la page, à l'élément visé, à sa position dans l'élément et à la largeur d'écran ; une capture est conservée *(pas encore : prochaine étape)*.
+- Une demande est rattachée à la page, à l'élément visé, à sa position dans l'élément et à la largeur d'écran ; la capture de la fenêtre au moment du clic est conservée, montrée avec la demande et reprise dans la preuve.
 - Le site de l'agence ne reçoit jamais le texte des demandes : seulement de quoi placer les épingles (numéro, élément, position). Le texte reste dans le cadre Kora.
 - Les épingles affichées sur le site sont celles que le client voit sur sa page de revue (`readReviewState`) : jamais un pin interne de l'agence ni un devis en brouillon.
 - Si l'élément a disparu, la demande est signalée « élément introuvable » dans le panneau au lieu d'être perdue.
@@ -1168,7 +1168,7 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-045 périmètre de référence | ⬜ | Prochaine priorité produit |
 | US-046 demande offerte | ⬜ | |
 | US-047 envoi vers Jira ou Notion | ⬜ | |
-| US-048 annoter un site web en ligne | 🟡 | Essai du 17 octobre : barre sur le site, vérification par code dans le panneau, demande posée sur un élément, épingles, « élément introuvable » ; testé dans Chrome. Site en `https` obligatoire. L'agence dans la barre (fenêtre Kora, remarques, réponses, qualification ; devis et partage refusés depuis le site). Passage vers la revue Kora sans nouveau code, avec l'appel « devis en attente ». À faire : capture, Safari et Firefox à vérifier à la main, lien `?kora` dans les e-mails, une adresse de script qui suive les nouvelles versions |
+| US-048 annoter un site web en ligne | 🟡 | Essai du 17 octobre : barre sur le site, vérification par code dans le panneau, demande posée sur un élément, épingles, « élément introuvable » ; testé dans Chrome. Site en `https` obligatoire. L'agence dans la barre (fenêtre Kora, remarques, réponses, qualification ; devis et partage refusés depuis le site). Passage vers la revue Kora sans nouveau code, avec l'appel « devis en attente ». Capture de la fenêtre au clic, dans le fil et la preuve. À faire : Safari et Firefox à vérifier à la main, lien `?kora` dans les e-mails, une adresse de script qui suive les nouvelles versions |
 | US-049 rôles des personnes invitées | ✅ | Décideur et contributeur, contrôlés par le serveur |
 | US-050 saisir une demande reçue ailleurs | ✅ | Source, date, extrait et capture ; visibles par le client et dans la preuve |
 | US-051 e-mails des devis et des décisions | ✅ | Décideurs côté client, propriétaire et administrateurs côté agence |

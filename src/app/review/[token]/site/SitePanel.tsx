@@ -18,6 +18,7 @@ import { siteAgencyAction } from "@/lib/agencyActions";
 import { reviewAction } from "@/lib/reviewActions";
 import { type HandoffMessage, type PanelMessage, type SiteAnchor, type SitePin, type TicketMessage, type ToolbarMessage } from "@/lib/siteReview";
 import { loadSharedState, subscribeSharedState } from "@/lib/stateSync";
+import { uploadSiteCapture } from "@/lib/upload";
 import { AccessGate, ProfileGate } from "../AccessGate";
 import { SiteRequest, type SiteComment } from "./SiteRequest";
 
@@ -71,7 +72,9 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
   const [{ requests, deliverableId, pendingQuotes, toValidate }, setVersion] = useState(() => versionOf(null));
   /** The page the client is on, as the toolbar reports it. */
   const [pageUrl, setPageUrl] = useState<string | null>(null);
-  const [draft, setDraft] = useState<{ anchor: SiteAnchor; label: string } | null>(null);
+  /** The request being written: where it was placed, and the capture of the window (undefined while it is made, null without). */
+  const [draft, setDraft] = useState<{ pick: number; anchor: SiteAnchor; label: string; capture?: Blob | null; preview?: string } | null>(null);
+  const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
   const [picking, setPicking] = useState(false);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -114,7 +117,12 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
       if (data.type === "kora:page" && typeof data.url === "string") setPageUrl(data.url);
       else if (data.type === "kora:pick" && data.anchor) {
         setPicking(false);
-        setDraft({ anchor: data.anchor, label: String(data.label ?? "").slice(0, 120) });
+        setDraft({ pick: Number(data.pick), anchor: data.anchor, label: String(data.label ?? "").slice(0, 120) });
+      } else if (data.type === "kora:capture") {
+        // A JPEG or PNG of a few megabytes at most (the server checks it again, src/lib/siteCapture.ts).
+        const blob = data.blob instanceof Blob && /^image\/(jpeg|png)$/.test(data.blob.type) && data.blob.size <= 3 * 1024 * 1024 ? data.blob : null;
+        const preview = blob ? URL.createObjectURL(blob) : undefined;
+        setDraft((current) => (current && current.pick === Number(data.pick) ? { ...current, capture: blob, preview } : current));
       } else if (data.type === "kora:open" && typeof data.id === "number") setOpenId(data.id);
       else if (data.type === "kora:missing" && Array.isArray(data.ids)) setMissing(data.ids.filter((id): id is number => typeof id === "number"));
     }
@@ -216,19 +224,28 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
   if (!client && !agency) return <main className="p-6 text-sm text-[var(--graphite)]">Ce panneau est réservé aux personnes invitées sur la revue.</main>;
 
   function startPicking() {
-    setDraft(null);
+    closeDraft();
     setPicking(true);
     tellSite({ type: "kora:pick-mode", on: true });
   }
 
+  function closeDraft() {
+    if (draft?.preview) URL.revokeObjectURL(draft.preview);
+    setDraft(null);
+  }
+
   async function send(event: React.FormEvent) {
     event.preventDefault();
-    if (!draft || !message.trim()) return;
-    const body = { message: message.trim(), location: draft.anchor.url, site: draft.anchor };
+    if (!draft || !message.trim() || sending) return;
+    setSending(true);
+    // The capture goes first: the request names it (a request without one if it could not be sent).
+    const capture = draft.capture ? await uploadSiteCapture(token, draft.capture) : null;
+    setSending(false);
+    const body = { message: message.trim(), location: draft.anchor.url, site: { ...draft.anchor, ...(capture ? { capture } : {}) } };
     // The agency's remark stays internal until qualified, as a pin in Kora.
     const created = agency ? await siteAgencyAction("comments", "POST", { ...body, deliverableId }) : await reviewAction(token, "comments", "POST", body);
     if (!created) return;
-    setDraft(null);
+    closeDraft();
     setMessage("");
     if (typeof created.id === "number") setOpenId(created.id);
   }
@@ -268,13 +285,21 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
           <p className="text-xs text-[var(--graphite)]">
             Sur : <b className="text-[var(--ink)]">{draft.label || draft.anchor.selector}</b>
           </p>
+          {draft.capture === undefined ? (
+            <p className="text-xs text-[var(--graphite)]">Capture de la page en cours…</p>
+          ) : draft.preview ? (
+            // A plain image of the capture just made (a blob: address of this page).
+            <span role="img" aria-label="Capture de la page" className="block aspect-video rounded-[var(--r-field)] border border-[var(--border)] bg-cover bg-top" style={{ backgroundImage: `url(${draft.preview})` }} />
+          ) : (
+            <p className="text-xs text-[var(--graphite)]">La capture n’a pas pu être faite : la demande partira sans.</p>
+          )}
           <Label htmlFor="site-request">{agency ? "Votre remarque (interne jusqu’à sa qualification)" : "Votre demande"}</Label>
           <Textarea id="site-request" autoFocus maxLength={5000} value={message} onChange={(event) => setMessage(event.target.value)} />
           <div className="flex gap-2">
-            <Button type="submit" disabled={!message.trim()}>
+            <Button type="submit" disabled={!message.trim() || draft.capture === undefined || sending}>
               Envoyer
             </Button>
-            <Button type="button" variant="outline" onClick={() => setDraft(null)}>
+            <Button type="button" variant="outline" onClick={closeDraft}>
               Annuler
             </Button>
           </div>

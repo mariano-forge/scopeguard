@@ -17,7 +17,14 @@ export type SiteAnchor = {
   y: number;
   /** Width of the window, in CSS pixels: the same page can differ on a phone. */
   viewport: number;
+  /** The click on the capture of the window, in % of it. */
+  view?: { x: number; y: number };
+  /** The capture of the window at the click (/api/files/<id>), sent by whoever placed the request. */
+  capture?: string;
 };
+
+/** The address of a stored file, as the capture of a request names it. */
+export const captureHref = (value: unknown) => (typeof value === "string" && /^\/api\/files\/[0-9a-f-]{36}$/.test(value) ? value : undefined);
 
 const percent = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? value : undefined);
 
@@ -30,7 +37,17 @@ export function readSiteAnchor(value: unknown): SiteAnchor | undefined {
   const [left, top] = [percent(x), percent(y)];
   if (left === undefined || top === undefined) return undefined;
   if (typeof viewport !== "number" || !Number.isInteger(viewport) || viewport < 1 || viewport > 10_000) return undefined;
-  return { url, selector, x: left, y: top, viewport };
+  const { view, capture } = value as Record<string, unknown>;
+  const point = view && typeof view === "object" ? { x: percent((view as Record<string, unknown>).x), y: percent((view as Record<string, unknown>).y) } : null;
+  return {
+    url,
+    selector,
+    x: left,
+    y: top,
+    viewport,
+    ...(point?.x !== undefined && point.y !== undefined ? { view: { x: point.x, y: point.y } } : {}),
+    ...(captureHref(capture) ? { capture: captureHref(capture) } : {}),
+  };
 }
 
 /** "https://recette.agence.fr" of an http(s) address; null for anything else. */
@@ -81,7 +98,10 @@ export type SitePin = { id: number; number: number; selector: string; x: number;
 /** Messages between the toolbar (on the site) and the panel (in the frame), both checking the sender. */
 export type ToolbarMessage =
   | { type: "kora:page"; url: string }
-  | { type: "kora:pick"; anchor: SiteAnchor; label: string }
+  /** `pick` numbers the click: its capture follows in a kora:capture of the same number. */
+  | { type: "kora:pick"; pick: number; anchor: SiteAnchor; label: string }
+  /** The capture of the window at the click; null when it could not be made. */
+  | { type: "kora:capture"; pick: number; blob: Blob | null }
   | { type: "kora:open"; id: number }
   | { type: "kora:missing"; ids: number[] };
 /** From the Kora window that recognised an agency member, to the panel that opened it (same origin). */

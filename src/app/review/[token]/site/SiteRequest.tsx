@@ -13,6 +13,7 @@ import { Select } from "@/components/Select";
 import { requestKind, requestText, statusLabels, statusTones, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
 import { sideOf } from "@/lib/authors";
 import type { SiteAnchor } from "@/lib/siteReview";
+import { SiteCapture } from "@/components/SiteCapture";
 
 type Reply = { id: number; from?: string; initials?: string; author?: string; message: string };
 export type SiteComment = Pick<ThreadComment, "decision" | "title" | "message"> & {
@@ -93,6 +94,7 @@ export function SiteRequest({
       </button>
       {open && (
         <div className="mt-3 grid gap-2 border-t border-[var(--border)] pt-3">
+          {request.site && <SiteCapture site={request.site} />}
           {request.title && <p>{request.message}</p>}
           {(request.replies ?? []).map((item) => (
             <p key={item.id} className="rounded-[var(--r-field)] bg-[var(--canvas)] px-2 py-1">

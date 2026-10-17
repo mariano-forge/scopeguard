@@ -5,9 +5,19 @@
 
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { baseURL } from "../../playwright.config";
-import { addColleague, call, clientAction, createAgency, headers, newIp, newPerson, seedState, signUp, sql, unique, verifiedClient, waitForCode, type Member, type Person } from "./helpers";
+import { addColleague, call, clientAction, makePdf, upload, createAgency, headers, newIp, newPerson, seedState, signUp, sql, unique, verifiedClient, waitForCode, type Member, type Person } from "./helpers";
 
 const site = "https://recette.northwind.test";
+/** A 1×1 PNG, built here so the tests need no file on disk. */
+const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+
+/** Sends a capture as the panel does (POST …/site/capture). */
+async function sendCapture(person: Partial<Person>, token: string, content: Buffer, type = "image/png") {
+  const form = new FormData();
+  form.set("file", new Blob([new Uint8Array(content)], { type }), "capture.png");
+  const response = await fetch(`${baseURL}/api/review/${token}/site/capture`, { method: "POST", headers: { origin: baseURL, cookie: person.cookie ?? "", "x-forwarded-for": person.ip ?? newIp() }, body: form });
+  return { status: response.status, json: (await response.json().catch(() => ({}))) as { href?: string; error?: string } };
+}
 
 const sitePage = (token: string, title = "Bienvenue chez Northwind") => `<!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><title>Recette</title></head>
@@ -95,7 +105,16 @@ test("the client verifies in Kora's panel on the staging site and places a reque
   await expect.poll(async () => (await siteRequests(org)).length).toBe(1);
   const [created] = await siteRequests(org);
   expect(created.data).toMatchObject({ from: "client", authorEmail: email, author: "Claire Dubois", message, location: "/", decision: "À qualifier" });
-  expect(created.data.site).toMatchObject({ url: "/", selector: "#titre", viewport: 1400 });
+  expect(created.data.site).toMatchObject({ url: "/", selector: "#titre", viewport: 1400, capture: expect.stringMatching(/^\/api\/files\/[0-9a-f-]{36}$/) });
+  // The capture of the window, sent by the client themselves, stored as an image of the agency…
+  const fileId = String((created.data.site as Record<string, unknown>).capture).split("/").pop();
+  const [stored] = await sql<{ uploaded_by: string; mime_type: string; path: string }>("select uploaded_by, mime_type, path from stored_files where organization_id = $1 and id = $2", [org, fileId]);
+  expect(stored).toMatchObject({ uploaded_by: `client:${email}`, mime_type: "image/jpeg" });
+  expect(stored.path).toMatch(/^projets\/1\/livrables\/1\/demandes\//);
+  // …and shown in the panel's thread, read through the panel's session.
+  const shot = panel.getByRole("img", { name: "Capture de la page / au moment de la demande" });
+  await expect(shot).toBeVisible();
+  await expect.poll(() => shot.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   await expect(page.getByRole("button", { name: "Demande 1" })).toBeVisible();
   // The site's page holds the pin's number and place, never the text.
   expect(await siteMarkup(page)).not.toContain(message);
@@ -357,4 +376,51 @@ test("the review page's ticket is given to a verified client only, opens its own
   // …until the agency removes the invitation.
   expect((await call(`/api/deliverables/1/review-link/invites/${encodeURIComponent(email)}`, { method: "DELETE", person: alice })).status).toBe(200);
   expect((await call(`/api/review/${token}/site/handoff/open`, { body: { ticket } })).status).toBe(400);
+});
+
+// ——— The capture of the window ———
+
+test("a request names only a capture its author sent, as an image; the client sees it with the request, and the proof keeps its fingerprint", async () => {
+  const { alice, org, token, email } = await siteReview();
+  const anchor = { url: "/", selector: "#titre", x: 10, y: 10, viewport: 1400, view: { x: 20, y: 5 } };
+  // Nobody verified: no capture.
+  expect((await sendCapture({}, token, png)).status).toBe(401);
+  const client = await verifiedClient(token, email);
+  // Not an image, whatever the type it claims: refused.
+  expect((await sendCapture(client, token, makePdf("pas une image"))).status).toBe(400);
+
+  const sent = await sendCapture(client, token, png);
+  expect(sent.status).toBe(200);
+  const own = sent.json.href!;
+  // A file of the agency (an internal capture), or another client's capture: never named by this client.
+  const agencyFile = (await upload(alice, png, "interne.png", { kind: "request", projectId: 1, livrableId: 1 })).json.href!;
+  const other = `${unique("marc")}@client.test`;
+  await call("/api/review-access/invite", { person: alice, body: { linkKey: "1:1", emails: [other] } });
+  const otherCapture = (await sendCapture(await verifiedClient(token, other, "Marc Petit"), token, png)).json.href!;
+  for (const capture of [agencyFile, otherCapture]) {
+    const refused = await clientAction(client, token, "comments", "POST", { message: "Avec un fichier d’autrui", site: { ...anchor, capture } });
+    expect(refused.status).toBe(404);
+  }
+  expect(await sql("select 1 from comments where organization_id = $1 and data->>'message' = 'Avec un fichier d’autrui'", [org])).toHaveLength(0);
+  // The client's file stays closed while no request of theirs shows it.
+  const readAs = (person: Partial<Person>, href: string) => fetch(`${baseURL}${href}`, { headers: { cookie: person.cookie ?? "", "x-forwarded-for": newIp() }, redirect: "manual" }).then((response) => response.status);
+  expect(await readAs(client, agencyFile)).toBe(404);
+
+  const created = await clientAction(client, token, "comments", "POST", { message: "Le titre est trop long", site: { ...anchor, capture: own } });
+  expect(created.status).toBe(200);
+  expect(await readAs(client, own)).toBe(302);
+  expect(await readAs({}, own)).toBe(404);
+  const proof = (await call("/api/proof/1", { person: alice })).json as { requests: { message: string; site: { url: string; viewport: number; captureSha256: string | null } | null }[] };
+  const [fingerprint] = await sql<{ sha256: string }>("select sha256 from stored_files where organization_id = $1 and id = $2", [org, own.split("/").pop()]);
+  expect(proof.requests.find((request) => request.message === "Le titre est trop long")?.site).toEqual({ url: "/", viewport: 1400, captureSha256: fingerprint.sha256 });
+});
+
+test("the capture library served to the toolbar is the installed one", async () => {
+  const { readFileSync } = await import("node:fs");
+  const served = await fetch(`${baseURL}/vendor/modern-screenshot-4.7.0.js`);
+  expect(served.status).toBe(200);
+  expect(served.headers.get("content-type")).toMatch(/javascript/);
+  // A copy of node_modules (public/vendor), its browser build: updating the package means copying it again, under its new version.
+  expect(Buffer.from(await served.arrayBuffer()).equals(readFileSync("node_modules/modern-screenshot/dist/index.js"))).toBe(true);
+  expect(JSON.parse(readFileSync("node_modules/modern-screenshot/package.json", "utf8")).version).toBe("4.7.0");
 });

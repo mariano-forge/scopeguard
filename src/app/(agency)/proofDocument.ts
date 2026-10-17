@@ -55,10 +55,14 @@ export function proofHtml(proof: Proof) {
           const source = request.source
             ? `<p class="note">${escapeHtml(request.source.line)}${request.source.excerpt ? ` : « ${escapeHtml(request.source.excerpt)} »` : ""}${request.source.captureSha256 ? `<small>Capture jointe · SHA-256 ${escapeHtml(request.source.captureSha256)}</small>` : ""}</p>`
             : "";
+          // Placed on the staging site: the page and screen, and the fingerprint of the capture of what was seen.
+          const site = request.site
+            ? `<p class="note">Posée sur le site de recette : ${escapeHtml(request.site.url)} · écran de ${request.site.viewport} px${request.site.captureSha256 ? `<small>Capture de la page · SHA-256 ${escapeHtml(request.site.captureSha256)}</small>` : ""}</p>`
+            : "";
           const adaptation = request.adaptation?.message
             ? `<p class="note">Adaptation demandée par le client : « ${escapeHtml(request.adaptation.message)} »${request.adaptation.decision ? ` · ${request.adaptation.decision === "accepted" ? "acceptée" : "refusée"} par l’agence` : ""}</p>`
             : "";
-          return `<li><div class="row"><b>Demande ${index + 1}${request.title ? ` · ${escapeHtml(request.title)}` : ""}</b><span class="tag">${escapeHtml(qualificationLabels[request.qualification] ?? request.qualification)}</span></div><p>« ${escapeHtml(request.message)} »</p><small>${escapeHtml(request.author)}${request.location ? ` · ${escapeHtml(request.location)}` : ""} · réf. ${request.id}</small>${source}${quotes}${adaptation}${decision}</li>`;
+          return `<li><div class="row"><b>Demande ${index + 1}${request.title ? ` · ${escapeHtml(request.title)}` : ""}</b><span class="tag">${escapeHtml(qualificationLabels[request.qualification] ?? request.qualification)}</span></div><p>« ${escapeHtml(request.message)} »</p><small>${escapeHtml(request.author)}${request.location ? ` · ${escapeHtml(request.location)}` : ""} · réf. ${request.id}</small>${source}${site}${quotes}${adaptation}${decision}</li>`;
         })
         .join("")
     : "<li>Aucune demande sur cette version.</li>";

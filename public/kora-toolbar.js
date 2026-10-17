@@ -128,7 +128,60 @@
       viewport: Math.round(window.innerWidth),
     };
     stopPicking();
-    tell({ type: "kora:pick", anchor, label: labelOf(element) });
+    // Where the click falls on the capture of the window, which follows once made.
+    const pick = ++picks;
+    anchor.view = { x: clamp((event.clientX / window.innerWidth) * 100), y: clamp((event.clientY / window.innerHeight) * 100) };
+    tell({ type: "kora:pick", pick, anchor, label: labelOf(element) });
+    captureWindow().then(
+      (blob) => tell({ type: "kora:capture", pick, blob }),
+      () => tell({ type: "kora:capture", pick, blob: null }),
+    );
+  }
+
+  // ——— Capture of the window ———
+
+  let picks = 0;
+  let library = null;
+  /**
+   * modern-screenshot, loaded from Kora at the first capture only, as a classic script like this one
+   * (a module from another origin would need a CORS preflight that static files do not answer). Its
+   * build sets window.modernScreenshot; a page with its own module loader (AMD) keeps it: no capture.
+   */
+  function loadLibrary() {
+    if (window.modernScreenshot) return Promise.resolve(window.modernScreenshot);
+    library =
+      library ||
+      new Promise((resolve, reject) => {
+        const tag = document.createElement("script");
+        tag.src = `${kora}/vendor/modern-screenshot-4.7.0.js`;
+        tag.onload = () => (window.modernScreenshot ? resolve(window.modernScreenshot) : reject(new Error("modern-screenshot")));
+        tag.onerror = () => {
+          library = null;
+          reject(new Error("modern-screenshot"));
+        };
+        document.head.append(tag);
+      });
+    return library;
+  }
+
+  /**
+   * The window as the visitor sees it, without the toolbar: the page redrawn by modern-screenshot,
+   * cut to the window. A copy, close to the screen but not a photograph of it: images of other sites
+   * that refuse to be read come out blank.
+   */
+  async function captureWindow() {
+    const { domToCanvas } = await loadLibrary();
+    const page = document.documentElement;
+    const box = page.getBoundingClientRect();
+    const drawn = await domToCanvas(page, { scale: 1, filter: (node) => node !== host, timeout: 8000 });
+    const shot = document.createElement("canvas");
+    shot.width = window.innerWidth;
+    shot.height = window.innerHeight;
+    const context = shot.getContext("2d");
+    context.fillStyle = colors.paper;
+    context.fillRect(0, 0, shot.width, shot.height);
+    context.drawImage(drawn, box.left, box.top);
+    return new Promise((resolve, reject) => shot.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("capture"))), "image/jpeg", 0.8));
   }
   function onKey(event) {
     if (event.key === "Escape") stopPicking();
