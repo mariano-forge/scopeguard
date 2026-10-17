@@ -9,8 +9,9 @@ const nextConfig: NextConfig = {
   // Kora's panel on the agency's staging site may be framed by that site only: src/proxy.ts sets its policy.
   async headers() {
     return [
-      { source: "/:path((?!review/[^/]+/site$).*)", headers: securityHeaders() },
+      { source: "/:path((?!review/[^/]+/site$|review/site/[^/]+$).*)", headers: securityHeaders() },
       { source: "/review/:token/site", headers: securityHeaders({ framed: true }) },
+      { source: "/review/site/:key", headers: securityHeaders({ framed: true }) },
     ];
   },
   // The import limit, known to the pages too (the server checks it again in /api/files).

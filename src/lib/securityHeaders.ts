@@ -62,5 +62,5 @@ export function securityHeaders({ framed = false } = {}) {
   ];
 }
 
-/** The site panel's address: /review/<token>/site. */
-export const siteFramePath = /^\/review\/[^/]+\/site$/;
+/** The site panel's addresses: /review/<token>/site, and /review/site/<key> that leads to it (src/lib/siteKey.ts). */
+export const siteFramePath = /^\/review\/([^/]+\/site|site\/[^/]+)$/;

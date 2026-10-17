@@ -311,12 +311,13 @@ Seul le client valide une version, depuis sa page : l'agence n'a aucune route po
 
 ### Revue d'un site de recette (essai, US-048)
 
-Pour un livrable « Lien », dont l'adresse est le site de recette, « Partager la revue » donne une ligne de script à placer sur le site et le lien à envoyer au client (l'adresse du site suivie de `?kora`) :
+Pour un livrable « Lien », dont l'adresse est le site de recette, « Partager la revue » donne une ligne de script à placer **une seule fois** sur le site, et le lien à envoyer au client (l'adresse du site suivie de `?kora`, aussi dans les e-mails d'invitation et de relance) :
 
 ```html
-<script src="https://<kora>/kora-toolbar.js" data-review="<jeton du lien>" defer></script>
+<script src="https://<kora>/kora-toolbar.js" data-site="<clé du livrable>" defer></script>
 ```
 
+- La clé est fixe pour le livrable, signée par Kora (`src/lib/siteKey.ts`, `GET /api/deliverables/:id/site-key`) : `/review/site/<clé>` ouvre la dernière version partagée avec un lien actif, ou dit qu'aucune ne l'est. La ligne ne change donc ni avec les versions ni avec les liens, et le jeton du lien n'apparaît plus sur le site. Une ligne plus ancienne, avec `data-review="<jeton>"`, ouvre toujours sa version.
 - Le script (`public/kora-toolbar.js`) n'affiche la barre qu'à qui a ouvert le site avec `?kora`, puis s'en souvient sur l'appareil. Il ouvre le panneau Kora (`/review/:token/site`) dans un cadre servi par Kora.
 - Le panneau ne s'affiche que sur le site du livrable : le proxy n'autorise que l'origine qu'il nomme (`frame-ancestors`), et la page vérifie que c'est celle du livrable (`reviewedSiteOrigin`). Toutes les autres pages de Kora refusent toujours d'être affichées dans un cadre.
 - Le client s'y vérifie par le même code e-mail. Sa session est un cookie partitionné (`kora_review_site_session`, `SameSite=None; Partitioned`), que le navigateur ne garde que pour ce site.
@@ -328,7 +329,7 @@ Pour un livrable « Lien », dont l'adresse est le site de recette, « Partager 
 - Le site de recette doit être en `https` (sauf `localhost` en développement) : une page en `http` peut être modifiée en chemin. Sinon, « Partager la revue » le dit au lieu de donner le script.
 - Les devis et la validation restent sur la page de revue : une page que l'agence contrôle ne doit pas pouvoir piéger un clic sur une décision. Le panneau signale ce qui attend le client (« 1 devis attend votre décision ») et ouvre la revue dans un onglet sans redemander de code : l'onglet reçoit du panneau un ticket signé (2 minutes, cette adresse et ce lien, `src/lib/siteHandoff.ts`), échangé contre la session habituelle tant que l'adresse reste invitée.
 
-Limites de l'essai : testé dans Chrome seulement (Safari et Firefox à vérifier à la main) ; le jeton du script change à chaque version ; le site de l'agence doit accepter le script et le cadre de Kora s'il a sa propre politique de sécurité ; les numéros des épingles diffèrent entre la vue de l'agence (pins internes compris) et celle du client.
+Limites de l'essai : testé dans Chrome seulement (Safari et Firefox à vérifier à la main) ; le site de l'agence doit accepter le script et le cadre de Kora s'il a sa propre politique de sécurité ; les numéros des épingles diffèrent entre la vue de l'agence (pins internes compris) et celle du client.
 
 ### Preuve de validation
 

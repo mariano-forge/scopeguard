@@ -76,6 +76,14 @@ export function siteOriginOf(deliverable: { type?: unknown; url?: unknown } | un
   return origin && securedSite(origin) ? origin : null;
 }
 
+/** The staging site's address that shows the toolbar (?kora), for a « Lien » deliverable in https; null otherwise. */
+export function siteClientUrl(deliverable: { type?: unknown; url?: unknown } | undefined) {
+  if (!siteOriginOf(deliverable)) return null;
+  const url = new URL(String(deliverable!.url));
+  url.search = url.search ? `${url.search}&kora` : "?kora";
+  return url.toString();
+}
+
 /** The page's origin as the panel's address names it (?parent=…), only when it is an origin and nothing more. */
 export function parentOrigin(value: string | null) {
   const origin = originOf(value);

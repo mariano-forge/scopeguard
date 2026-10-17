@@ -1,6 +1,6 @@
 // Kora toolbar for an agency's staging site (US-048). The agency puts on its site:
 //
-//   <script src="https://<kora>/kora-toolbar.js" data-review="<review link token>" defer></script>
+//   <script src="https://<kora>/kora-toolbar.js" data-site="<the deliverable's key>" defer></script>
 //
 // and sends its client the site's address with ?kora. The toolbar then shows on that device: a button
 // opens Kora's panel (/review/<token>/site, in a frame on Kora's origin), where the client verifies their
@@ -15,9 +15,12 @@
   const script = document.currentScript;
   if (!script || window.__koraToolbar) return;
   window.__koraToolbar = true;
+  // data-site: the deliverable's fixed key, which opens its latest shared version (src/lib/siteKey.ts);
+  // data-review: a version's link token, as the first script lines had.
+  const siteKey = script.dataset.site;
   const token = script.dataset.review;
   const kora = new URL(script.src).origin;
-  if (!token) return;
+  if (!siteKey && !token) return;
 
   // Shown only on a device the client opened with ?kora (the agency's link), remembered afterwards.
   const flag = "kora-toolbar";
@@ -109,7 +112,9 @@
   const frame = root.querySelector("iframe");
   const highlight = root.querySelector(".highlight");
   const pinsLayer = root.querySelector(".pins");
-  frame.src = `${kora}/review/${encodeURIComponent(token)}/site?parent=${encodeURIComponent(location.origin)}`;
+  frame.src = siteKey
+    ? `${kora}/review/site/${encodeURIComponent(siteKey)}?parent=${encodeURIComponent(location.origin)}`
+    : `${kora}/review/${encodeURIComponent(token)}/site?parent=${encodeURIComponent(location.origin)}`;
 
   const tell = (message) => frame.contentWindow && frame.contentWindow.postMessage(message, kora);
   /** The page, as requests are filed under: path and query, without the toolbar's own ?kora. */

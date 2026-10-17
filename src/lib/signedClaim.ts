@@ -32,3 +32,29 @@ export function readClaim<T extends Record<string, unknown>>(scope: string, valu
     return null;
   }
 }
+
+/**
+ * A claim that does not expire (the staging site's key, src/lib/siteKey.ts), signed for `scope`.
+ * Read only by readPermanent: a ticket's reader refuses it (no `expires`), and this one refuses tickets.
+ */
+export function signPermanent(scope: string, claim: Record<string, unknown>) {
+  const payload = Buffer.from(JSON.stringify({ ...claim, permanent: true })).toString("base64url");
+  // "~", not ".": a key goes in an address, and src/proxy.ts skips addresses ending like a file (".abc").
+  return `${payload}~${signature(scope, payload)}`;
+}
+
+/** The claim a permanent value holds when it was signed for `scope`; null otherwise. */
+export function readPermanent<T extends Record<string, unknown>>(scope: string, value: unknown): T | null {
+  if (typeof value !== "string" || value.length > 1000) return null;
+  const [payload, given] = value.split("~");
+  if (!payload || !given) return null;
+  const expected = Buffer.from(signature(scope, payload));
+  const received = Buffer.from(given);
+  if (expected.length !== received.length || !timingSafeEqual(expected, received)) return null;
+  try {
+    const claim = JSON.parse(Buffer.from(payload, "base64url").toString()) as T & { permanent?: unknown };
+    return claim.permanent === true ? claim : null;
+  } catch {
+    return null;
+  }
+}

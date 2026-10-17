@@ -5,7 +5,7 @@
 
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { baseURL } from "../../playwright.config";
-import { addColleague, call, clientAction, makePdf, upload, createAgency, headers, newIp, newPerson, seedState, signUp, sql, unique, verifiedClient, waitForCode, type Member, type Person } from "./helpers";
+import { addColleague, call, clientAction, makePdf, upload, createAgency, headers, newIp, newPerson, seedState, signInPage, signUp, sql, unique, verifiedClient, waitForCode, waitForMail, type Member, type Person } from "./helpers";
 
 const site = "https://recette.northwind.test";
 /** A 1×1 PNG, built here so the tests need no file on disk. */
@@ -19,12 +19,13 @@ async function sendCapture(person: Partial<Person>, token: string, content: Buff
   return { status: response.status, json: (await response.json().catch(() => ({}))) as { href?: string; error?: string } };
 }
 
-const sitePage = (token: string, title = "Bienvenue chez Northwind") => `<!doctype html>
+/** The staging site's page, with the toolbar's line: `script` is its data-site (the fixed key) or data-review attribute. */
+const sitePage = (script: string, title = "Bienvenue chez Northwind") => `<!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><title>Recette</title></head>
 <body>
   <h1 id="titre">${title}</h1>
   <section><p>Nos offres</p><p>Nos tarifs</p></section>
-  <script src="${baseURL}/kora-toolbar.js" data-review="${token}" defer></script>
+  <script src="${baseURL}/kora-toolbar.js" ${script} defer></script>
 </body></html>`;
 
 /** The « Lien » deliverable whose address is the staging site. */
@@ -45,7 +46,9 @@ async function siteReview() {
   });
   const email = `${unique("claire")}@client.test`;
   await call("/api/review-access/invite", { person: alice, body: { linkKey: "1:1", emails: [email] } });
-  return { alice, org: alice.organizationId!, token, email };
+  // The line « Partager la revue » gives: the deliverable's fixed key.
+  const key = (await call("/api/deliverables/1/site-key", { person: alice })).json.key as string;
+  return { alice, org: alice.organizationId!, token, email, key, script: `data-site="${key}"` };
 }
 
 /**
@@ -59,9 +62,9 @@ async function otherSitePerson(browser: Browser) {
 }
 
 /** A visitor of the staging site, served at `origin` with the toolbar of `token`. */
-async function siteVisitor(browser: Browser, token: string, origin = site) {
+async function siteVisitor(browser: Browser, script: string, origin = site) {
   const { page, errors } = await otherSitePerson(browser);
-  await page.context().route(`${origin}/**`, (route) => route.fulfill({ contentType: "text/html; charset=utf-8", body: sitePage(token) }));
+  await page.context().route(`${origin}/**`, (route) => route.fulfill({ contentType: "text/html; charset=utf-8", body: sitePage(script) }));
   return { page, errors, panel: page.frameLocator('iframe[title="Kora"]') };
 }
 
@@ -83,8 +86,8 @@ const siteRequests = (org: string) => sql<{ id: string; data: Record<string, unk
 const siteMarkup = (page: Page) => page.evaluate(() => document.documentElement.outerHTML + (document.querySelector("[data-kora-toolbar]")?.shadowRoot?.innerHTML ?? ""));
 
 test("the client verifies in Kora's panel on the staging site and places a request on an element", async ({ browser }) => {
-  const { alice, org, token, email } = await siteReview();
-  const { page, errors, panel } = await siteVisitor(browser, token);
+  const { alice, org, email, script } = await siteReview();
+  const { page, errors, panel } = await siteVisitor(browser, script);
 
   // Without ?kora the toolbar stays hidden: a visitor of the site sees nothing of Kora.
   await page.goto(`${site}/`);
@@ -170,7 +173,7 @@ test("the client verifies in Kora's panel on the staging site and places a reque
 });
 
 test("the panel opens on the deliverable's own site only, in https: another site, a site in http, or a page lying about its origin, gets nothing", async ({ browser }) => {
-  const { alice, token } = await siteReview();
+  const { alice, token, script } = await siteReview();
 
   // The panel's address names its parent; the proxy lets only that origin frame it…
   const framed = await call(`/review/${token}/site?parent=${encodeURIComponent(site)}`);
@@ -194,7 +197,7 @@ test("the panel opens on the deliverable's own site only, in https: another site
   await seedState(alice, { lists: { deliverables: { upsert: [siteDeliverable(`${site}/`)], remove: [] } } });
 
   // The toolbar copied onto another site: the panel refuses to open there.
-  const other = await siteVisitor(browser, token, "https://autre.test");
+  const other = await siteVisitor(browser, script, "https://autre.test");
   await other.page.goto("https://autre.test/?kora");
   await other.page.getByRole("button", { name: "Ouvrir Kora" }).click();
   await expect(other.panel.getByText("ne s’ouvre que sur le site de la revue")).toBeVisible();
@@ -211,7 +214,7 @@ test("the panel opens on the deliverable's own site only, in https: another site
 });
 
 test("the site shows the pins the client may see, and says when an element is gone", async ({ browser }) => {
-  const { alice, org, token, email } = await siteReview();
+  const { alice, org, token, email, script } = await siteReview();
   const anchor = (selector: string) => ({ url: "/", selector, x: 10, y: 50, viewport: 1400 });
   await seedState(alice, {
     lists: {
@@ -228,7 +231,7 @@ test("the site shows the pins the client may see, and says when an element is go
       },
     },
   });
-  const { page, panel } = await siteVisitor(browser, token);
+  const { page, panel } = await siteVisitor(browser, script);
   await page.goto(`${site}/?kora`);
   await verifyInPanel(page, email);
 
@@ -268,7 +271,7 @@ async function siteAgencySession(member: Member, token: string): Promise<Person>
 }
 
 test("an agency member is recognised in the panel by a Kora window, then annotates and qualifies on the site", async ({ browser }) => {
-  const { alice, org, token } = await siteReview();
+  const { alice, org, script } = await siteReview();
   await seedState(alice, {
     lists: {
       comments: {
@@ -280,7 +283,7 @@ test("an agency member is recognised in the panel by a Kora window, then annotat
       },
     },
   });
-  const { page, errors, panel } = await siteVisitor(browser, token);
+  const { page, errors, panel } = await siteVisitor(browser, script);
   // Signed in to Kora in this browser, as the member would be in another tab.
   await page.context().addCookies(alice.cookie.split("; ").map((pair) => ({ name: pair.split("=")[0], value: pair.slice(pair.indexOf("=") + 1), url: baseURL })));
   await page.goto(`${site}/?kora`);
@@ -383,7 +386,7 @@ test("from the site, the agency only comments and qualifies on its version: quot
 // ——— From the site to the review page, without a second code ———
 
 test("a quote waiting on the site is decided in Kora: the review opens in a tab without a second code", async ({ browser }) => {
-  const { alice, token, email } = await siteReview();
+  const { alice, token, email, script } = await siteReview();
   await seedState(alice, {
     lists: {
       comments: {
@@ -396,7 +399,7 @@ test("a quote waiting on the site is decided in Kora: the review opens in a tab 
       proposalVersions: { upsert: { "50": [{ id: 500, version: 1, commentId: 50, description: "Page Équipe", amount: 900, deadline: 3, status: "sent", createdAt: "x" }] }, remove: [] },
     },
   });
-  const { page, errors, panel } = await siteVisitor(browser, token);
+  const { page, errors, panel } = await siteVisitor(browser, script);
   await page.goto(`${site}/?kora`);
   await verifyInPanel(page, email);
 
@@ -484,8 +487,8 @@ test("the capture library served to the toolbar is the installed one", async () 
 });
 
 test("the bar moves where the visitor drops it, stays there, and never under the panel", async ({ browser }) => {
-  const { token } = await siteReview();
-  const { page, errors } = await siteVisitor(browser, token);
+  const { script } = await siteReview();
+  const { page, errors } = await siteVisitor(browser, script);
   await page.goto(`${site}/?kora`);
   const pill = page.getByRole("button", { name: "Ouvrir Kora" });
   const start = (await pill.boundingBox())!;
@@ -519,5 +522,87 @@ test("the bar moves where the visitor drops it, stays there, and never under the
   const beside = (await page.getByRole("toolbar", { name: "Outils Kora" }).boundingBox())!;
   const panel = (await page.getByRole("dialog", { name: "Kora" }).boundingBox())!;
   expect(beside.x + beside.width).toBeLessThanOrEqual(panel.x);
+  expect(errors).toEqual([]);
+});
+
+// ——— The line pasted once: the deliverable's fixed key ———
+
+test("the script line is pasted once: its key opens the latest shared version, and says when none is", async ({ browser }) => {
+  const { alice, key, script, email } = await siteReview();
+  // Version 2 of the same deliverable, shared with the client, with a request of its own placed on the site.
+  const v2Token = unique("tok-v2");
+  await seedState(alice, {
+    lists: {
+      deliverables: { upsert: [{ ...siteDeliverable(`${site}/`), id: 2, version: 2 }], remove: [] },
+      comments: { upsert: [{ id: 70, deliverableId: 2, author: "Alice Martin", initials: "AM", from: "agency", message: "Titre V2", title: "Titre V2", decision: "Inclus", kind: "request", location: "/", time: "t", site: anchorOn("#titre") }], remove: [] },
+    },
+    maps: { reviewLinks: { upsert: { "2:2": { token: v2Token, active: true, expiresAt: "01/01/2099", autoExpire: true, deliverableId: 2, version: 2 } }, remove: [] } },
+  });
+  await call("/api/review-access/invite", { person: alice, body: { linkKey: "2:2", emails: [email] } });
+  // The same key for every version.
+  expect((await call("/api/deliverables/2/site-key", { person: alice })).json.key).toBe(key);
+
+  // The key leads to the latest shared version's panel, and the token never shows on the site.
+  const opened = await call(`/review/site/${encodeURIComponent(key)}?parent=${encodeURIComponent(site)}`);
+  expect(opened.status).toBe(307);
+  expect(opened.response.headers.get("location")).toBe(`/review/${v2Token}/site?parent=${encodeURIComponent(site)}`);
+  const { page, panel } = await siteVisitor(browser, script);
+  await page.goto(`${site}/?kora`);
+  await verifyInPanel(page, email);
+  await expect(page.getByRole("button", { name: "Demande incluse #70" })).toBeVisible();
+  expect(await page.content()).not.toContain(v2Token);
+
+  // No version shared any more: the panel says so.
+  expect((await call("/api/deliverables/2/review-link", { method: "DELETE", person: alice })).status).toBe(200);
+  expect((await call("/api/deliverables/1/review-link", { method: "DELETE", person: alice })).status).toBe(200);
+  await page.reload();
+  await page.getByRole("button", { name: "Ouvrir Kora" }).click();
+  await expect(panel.getByText("Aucune version de ce site n’est partagée pour l’instant.")).toBeVisible();
+});
+
+test("a key opens only its own site, as Kora signed it; another agency gets no key", async ({ browser }) => {
+  const { alice, key, token } = await siteReview();
+  // Framed by the deliverable's site only, like the panel it leads to.
+  const framed = await call(`/review/site/${encodeURIComponent(key)}?parent=${encodeURIComponent(site)}`);
+  expect(framed.response.headers.get("content-security-policy")).toContain(`frame-ancestors ${site}`);
+  expect(framed.response.headers.get("x-frame-options")).toBeNull();
+  const elsewhere = await call(`/review/site/${encodeURIComponent(key)}?parent=${encodeURIComponent("https://autre.test")}`);
+  expect(elsewhere.status).toBe(200);
+  expect(String(elsewhere.json)).toContain("ne s’ouvre que sur le site de la revue");
+  expect(elsewhere.response.headers.get("content-security-policy")).toContain("frame-ancestors https://autre.test");
+  // A key changed by hand: nothing.
+  const [payload, signature] = key.split("~");
+  const forged = `${Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(payload, "base64url").toString()), l: 2 })).toString("base64url")}~${signature}`;
+  const refused = await call(`/review/site/${encodeURIComponent(forged)}?parent=${encodeURIComponent(site)}`);
+  expect(refused.status).toBe(200);
+  expect(String(refused.json)).toContain("ne s’ouvre que sur le site de la revue");
+  // Another agency, or a deliverable that is not a « Lien »: no key.
+  const stranger = await signUp("Sam Dehors");
+  await createAgency(stranger, "Autre Studio");
+  expect((await call("/api/deliverables/1/site-key", { person: stranger })).status).toBe(404);
+  await seedState(alice, { lists: { deliverables: { upsert: [{ id: 3, projectId: 1, name: "maquette.png", type: "Image", version: 1, status: "En attente client", importedAt: "x", locked: false }], remove: [] } } });
+  expect((await call("/api/deliverables/3/site-key", { person: alice })).status).toBe(404);
+  // A line pasted before the key (a version's token) still opens its version.
+  const legacy = await siteVisitor(browser, `data-review="${token}"`);
+  await legacy.page.goto(`${site}/?kora`);
+  await legacy.page.getByRole("button", { name: "Ouvrir Kora" }).click();
+  await expect(legacy.panel.getByRole("button", { name: "Recevoir un code" })).toBeVisible();
+});
+
+test("the invitation of a « Lien » leads to the staging site with the toolbar, and the review page for decisions", async () => {
+  const { token, email } = await siteReview();
+  const mail = await waitForMail(email, "vous invite");
+  expect(mail.text).toContain(`Ouvrir le site de recette : ${site}/?kora`);
+  expect(mail.text).toContain(`Les devis et la validation se font sur la page de revue : ${baseURL}/review/${token}?invitation=`);
+});
+
+test("« Partager la revue » of a « Lien » gives the line with the fixed key and the client's address", async ({ browser }) => {
+  const { alice, key } = await siteReview();
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1/livrables/1");
+  await page.getByRole("button", { name: "Partager la revue" }).first().click();
+  await expect(page.getByLabel("Script de recette")).toHaveValue(`<script src="${baseURL}/kora-toolbar.js" data-site="${key}" defer></script>`);
+  await expect(page.getByLabel("Lien du site pour le client")).toHaveValue(`${site}/?kora`);
   expect(errors).toEqual([]);
 });

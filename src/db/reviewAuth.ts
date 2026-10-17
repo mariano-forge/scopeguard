@@ -26,6 +26,7 @@ import { renderMail } from "@/lib/mailTemplates";
 import { maskEmail } from "@/lib/maskEmail";
 import { agencyHref, managersOf, reviewUrl } from "./mailTargets";
 import { roleOfInvite, type ClientRole } from "@/lib/clientRoles";
+import { siteClientUrl } from "@/lib/siteReview";
 
 type Data = Record<string, unknown>;
 type Invite = { email: string; at: string; id?: string; role?: ClientRole };
@@ -173,6 +174,29 @@ async function deliverableName(db: Db, org: string, deliverableId: number) {
   return row?.name ?? "livrable";
 }
 
+/**
+ * What a mail about a « Lien » deliverable leads to: its staging site with the toolbar (?kora), where the
+ * client works; the review page stays for quotes and the validation. Null for any other deliverable.
+ */
+async function siteOfDeliverable(db: Db, org: string, deliverableId: number) {
+  const [row] = await db
+    .select({ data: deliverables.data })
+    .from(deliverables)
+    .where(and(eq(deliverables.organizationId, org), eq(deliverables.id, deliverableId)))
+    .limit(1);
+  return siteClientUrl(row?.data as Data | undefined);
+}
+
+/** The button and the line of a mail that opens a review: the staging site for a « Lien », else the review page. */
+function reviewAccessOf(site: string | null, review: string) {
+  return site
+    ? {
+        action: { label: "Ouvrir le site de recette", href: site },
+        line: `Sur le site, ouvrez « Kora » en bas à droite pour commenter. Les devis et la validation se font sur la page de revue : ${review}`,
+      }
+    : { action: { label: "Ouvrir la revue", href: review }, line: null };
+}
+
 async function linkRow(db: Db, org: string, linkKey: string) {
   const [row] = await db
     .select()
@@ -244,8 +268,10 @@ export async function inviteToReview(
   );
 
   const name = await deliverableName(db, org, row.deliverableId ?? 0);
+  const site = await siteOfDeliverable(db, org, row.deliverableId ?? 0);
   const notSent: string[] = [];
   for (const invite of added) {
+    const open = reviewAccessOf(site, reviewUrl(updated, invite.id));
     const sent = await sendMail({
       to: invite.email,
       subject: newVersion
@@ -268,8 +294,9 @@ export async function inviteToReview(
             ? `${user.name}${user.organizationName ? `, de ${user.organizationName},` : ""} vous invite à consulter ce livrable, à y laisser vos retours et à le valider.`
             : `${user.name}${user.organizationName ? `, de ${user.organizationName},` : ""} vous invite à consulter ce livrable et à y laisser vos retours. La validation et les décisions sur les devis restent à la personne désignée par l’agence.`,
           "Pour protéger la revue, un code de vérification vous sera envoyé à cette adresse à l’ouverture.",
+          ...(open.line ? [open.line] : []),
         ],
-        action: { label: "Ouvrir la revue", href: reviewUrl(updated, invite.id) },
+        action: open.action,
         footer: `Vous recevez cet e-mail parce que ${user.name} a partagé une revue avec ${invite.email} sur Kora. Répondez à cet e-mail pour lui écrire.`,
       }),
     });
@@ -442,8 +469,10 @@ export async function remindReview(db: Db, org: string, linkKey: string, user: C
     pendingQuotes ? `${pendingQuotes} proposition${pendingQuotes > 1 ? "s attendent" : " attend"} votre décision` : null,
   ].filter(Boolean);
 
+  const site = siteClientUrl(version.data as Data);
   const notSent: string[] = [];
   for (const invite of invites) {
+    const open = reviewAccessOf(site, reviewUrl(link, invite.id));
     const sent = await sendMail({
       to: invite.email,
       subject: `Rappel : « ${version.name} » attend votre retour`,
@@ -451,8 +480,8 @@ export async function remindReview(db: Db, org: string, linkKey: string, user: C
       ...renderMail({
         preheader: waiting.length ? `${waiting.join(" et ")}`.replace(/^./, (first) => first.toUpperCase()) : "Votre retour est attendu",
         heading: `« ${version.name} » attend votre retour`,
-        paragraphs: [`${user.name} vous rappelle que ${waiting.length ? waiting.join(" et ") : "votre retour est attendu"}.`],
-        action: { label: "Ouvrir la revue", href: reviewUrl(link, invite.id) },
+        paragraphs: [`${user.name} vous rappelle que ${waiting.length ? waiting.join(" et ") : "votre retour est attendu"}.`, ...(open.line ? [open.line] : [])],
+        action: open.action,
         footer: `Vous recevez ce rappel parce que ${user.name} a partagé cette revue avec ${invite.email} sur Kora. Répondez à cet e-mail pour lui écrire.`,
       }),
     });

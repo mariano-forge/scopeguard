@@ -60,6 +60,43 @@ export async function reviewedSiteOrigin(db: Db, access: ReviewAccess) {
   return siteOriginOf(row?.data as Data | undefined);
 }
 
+/** Every version of the deliverable `deliverableId` belongs to (same project and name), latest first. */
+async function versionsOf(db: Db, organizationId: string, deliverableId: number) {
+  const [record] = await db.select({ projectId: deliverables.projectId, name: deliverables.name }).from(deliverables).where(and(eq(deliverables.organizationId, organizationId), eq(deliverables.id, deliverableId))).limit(1);
+  if (!record) return [];
+  const rows = await db
+    .select({ id: deliverables.id, projectId: deliverables.projectId, version: deliverables.version, data: deliverables.data })
+    .from(deliverables)
+    .where(and(eq(deliverables.organizationId, organizationId), eq(deliverables.name, record.name)));
+  return rows.filter((row) => (row.projectId ?? 1) === (record.projectId ?? 1)).sort((left, right) => right.version - left.version);
+}
+
+/** The first version of the deliverable `deliverableId` belongs to: what names it for good (src/app/(agency)/routes.ts livrableIdOf). */
+export async function livrableIdOfVersion(db: Db, organizationId: string, deliverableId: number) {
+  const versions = await versionsOf(db, organizationId, deliverableId);
+  return versions.length ? Math.min(...versions.map((version) => version.id)) : null;
+}
+
+/**
+ * The staging site of a « Lien » deliverable (its latest version's address), and the token of its latest
+ * version shared with an active link, if any (src/lib/siteKey.ts). Null when the deliverable is gone.
+ */
+export async function latestSharedSite(db: Db, organizationId: string, livrableId: number) {
+  const versions = await versionsOf(db, organizationId, livrableId);
+  if (!versions.length) return null;
+  const site = siteOriginOf(versions[0].data as Data);
+  const links = await db
+    .select()
+    .from(reviewLinks)
+    .where(and(eq(reviewLinks.organizationId, organizationId), inArray(reviewLinks.key, versions.map((version) => `${version.id}:${version.version}`))));
+  for (const version of versions) {
+    const row = links.find((link) => link.key === `${version.id}:${version.version}`);
+    const link = row?.data as Data | undefined;
+    if (row?.active && link?.active === true && !expired(link)) return { site, token: row.token };
+  }
+  return { site, token: null };
+}
+
 /** What the client page needs of its link. */
 const publicLink = (link: Data) => {
   const shown: Data = {};
