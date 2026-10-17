@@ -1,4 +1,5 @@
-// POST /api/review/:token/access/verify { email or invitation, code } -> opens a 30-day session on this device.
+// POST /api/review/:token/access/verify { email or invitation, code, site? } -> opens a 30-day session on this device.
+// site: true from Kora's panel on the agency's staging site, whose session is kept for that site only.
 
 import { getDb } from "@/db/client";
 import { findReviewAccess } from "@/db/reviewAccess";
@@ -18,7 +19,7 @@ export async function POST(request: Request, context: RouteContext<"/api/review/
     if (!isInvited(access.link, email) || !(await checkAccessCode(db, email, code)))
       return Response.json({ error: "Code incorrect ou expiré." }, { status: 400 });
     const session = await openReviewSession(db, email, request);
-    await setReviewSessionCookie(session.token, session.expiresAt);
+    await setReviewSessionCookie(session.token, session.expiresAt, body.site === true);
     return Response.json({ ok: true });
   } catch (error) {
     return databaseFailure("api/review/access/verify", error);

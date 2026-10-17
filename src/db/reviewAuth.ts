@@ -31,6 +31,12 @@ type Data = Record<string, unknown>;
 type Invite = { email: string; at: string; id?: string; role?: ClientRole };
 
 export const reviewSessionCookie = "kora_review_session";
+/**
+ * The same session, opened in Kora's panel on the agency's staging site (src/lib/siteReview.ts). A
+ * frame from another site gets no SameSite=Lax cookie, so this one is SameSite=None and Partitioned:
+ * the browser keeps it for that site only, and never sends it when another site frames Kora.
+ */
+export const siteSessionCookie = "kora_review_site_session";
 export const reviewSessionDays = 30;
 const codeMinutes = 10;
 const codeTries = 5;

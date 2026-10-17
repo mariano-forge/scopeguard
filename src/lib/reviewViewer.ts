@@ -6,7 +6,7 @@ import { cookies } from "next/headers";
 import { getDb } from "@/db/client";
 import { findReviewAccess, readReviewState, type ReviewAccess } from "@/db/reviewAccess";
 import { readReviewAction, runReviewAction, type ReviewAction } from "@/db/reviewActions";
-import { inviteRole, isInvited, reviewSessionCookie, reviewSessionDays, reviewSessionEmail } from "@/db/reviewAuth";
+import { inviteRole, isInvited, reviewSessionCookie, reviewSessionDays, reviewSessionEmail, siteSessionCookie } from "@/db/reviewAuth";
 import { deciderActions, type ClientRole } from "./clientRoles";
 import { requestLimit, tooManyRequests, withinLimit } from "@/db/requestLimits";
 import { databaseFailure, requestOrigin } from "./api";
@@ -23,7 +23,8 @@ export async function getReviewViewer(token: string): Promise<ReviewViewer | nul
   const db = getDb();
   const access = await findReviewAccess(db, token);
   if (!access) return null;
-  const email = await reviewSessionEmail(db, (await cookies()).get(reviewSessionCookie)?.value);
+  const jar = await cookies();
+  const email = await reviewSessionEmail(db, jar.get(reviewSessionCookie)?.value ?? jar.get(siteSessionCookie)?.value);
   if (email && isInvited(access.link, email)) return { mode: "client", access, email, role: inviteRole(access.link, email) };
   // Preview: a member of the agency that owns the link, not any signed-in member.
   const user = await getCurrentUser();
@@ -31,15 +32,11 @@ export async function getReviewViewer(token: string): Promise<ReviewViewer | nul
   return { mode: "none", access, email };
 }
 
-export async function setReviewSessionCookie(token: string, expiresAt: Date) {
-  (await cookies()).set(reviewSessionCookie, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    expires: expiresAt,
-    maxAge: reviewSessionDays * 24 * 60 * 60,
-  });
+/** `site`: verified in the panel on the agency's site, which only keeps a partitioned cookie (reviewAuth.ts). */
+export async function setReviewSessionCookie(token: string, expiresAt: Date, site = false) {
+  const lifetime = { path: "/", expires: expiresAt, maxAge: reviewSessionDays * 24 * 60 * 60, httpOnly: true };
+  if (site) (await cookies()).set(siteSessionCookie, token, { ...lifetime, secure: true, sameSite: "none", partitioned: true });
+  else (await cookies()).set(reviewSessionCookie, token, { ...lifetime, secure: process.env.NODE_ENV === "production", sameSite: "lax" });
 }
 
 export const reviewNotFound = () => Response.json({ error: "Lien de revue invalide ou expiré" }, { status: 404 });

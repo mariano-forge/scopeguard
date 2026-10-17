@@ -15,6 +15,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { sameValue, type ListChange, type MapChange, type SharedState, type StateChanges } from "@/lib/sharedState";
 import { initialsOf, sideOf } from "@/lib/authors";
 import { clientFacingText, isInternalReply } from "@/lib/internalNotes";
+import { siteOriginOf } from "@/lib/siteReview";
 import type { Db } from "./client";
 import { commentProposals, comments, deliverables, notifications, proposalVersions, reviewLinks } from "./schema";
 import { readState } from "./state";
@@ -47,6 +48,16 @@ export async function findReviewAccess(db: Db, token: string): Promise<ReviewAcc
   const link = row.data as Data;
   if (link.active !== true || expired(link)) return null;
   return { organizationId: row.organizationId, key: row.key, link, deliverableId: row.deliverableId, version: row.version };
+}
+
+/** The staging site the shared version is (a « Lien » deliverable): the one origin that may frame its panel. */
+export async function reviewedSiteOrigin(db: Db, access: ReviewAccess) {
+  const [row] = await db
+    .select({ data: deliverables.data })
+    .from(deliverables)
+    .where(and(eq(deliverables.organizationId, access.organizationId), eq(deliverables.id, access.deliverableId)))
+    .limit(1);
+  return siteOriginOf(row?.data as Data | undefined);
 }
 
 /** What the client page needs of its link. */

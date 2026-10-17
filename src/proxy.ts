@@ -5,6 +5,8 @@
 import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
 import { crossSiteRefusal, crossSiteWrite } from "@/lib/api";
+import { siteFramePath, siteFramePolicy } from "@/lib/securityHeaders";
+import { parentOrigin } from "@/lib/siteReview";
 
 /** Reachable without an agency session: sign-in pages, the client review and what it loads. */
 const publicPaths = [/^\/connexion$/, /^\/reinitialiser$/, /^\/review\//, /^\/api\/auth\//, /^\/api\/review\//, /^\/api\/files\//];
@@ -13,6 +15,13 @@ export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   // Writes from another site's page are refused before anything else (Better Auth checks its own routes).
   if (pathname.startsWith("/api/") && !pathname.startsWith("/api/auth/") && crossSiteWrite(request)) return crossSiteRefusal();
+  // Kora's panel on a staging site: framed only by the page its address names. The page checks that
+  // this is the site of the shared deliverable, and shows nothing otherwise (src/lib/siteReview.ts).
+  if (siteFramePath.test(pathname)) {
+    const response = NextResponse.next();
+    response.headers.set("Content-Security-Policy", siteFramePolicy(parentOrigin(request.nextUrl.searchParams.get("parent"))));
+    return response;
+  }
   if (publicPaths.some((path) => path.test(pathname)) || getSessionCookie(request)) return NextResponse.next();
 
   if (pathname.startsWith("/api/")) return Response.json({ error: "Connexion requise" }, { status: 401 });
