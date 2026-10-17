@@ -1,9 +1,10 @@
 "use client";
+import { formatProposalAmount, formatProposalDeadline, parseNumericAmount, parseNumericDays } from "@/lib/proposalFormat";
 
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
-import { Check, Clock, Lock, PenLine } from "lucide-react";
+import { ArrowRight, Check, Clock, Lock, PenLine } from "lucide-react";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { Composer, ThreadPopover, requestKind, type Area, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
 import { RequestPanel, type InspectorTab } from "@/app/(agency)/editor/EditorInspector";
@@ -15,33 +16,13 @@ import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "@/app/(agenc
 import { Hint } from "@/components/hint";
 import { ResizeHandle } from "@/app/(agency)/editor/ResizeHandle";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
+import { loadSharedState, subscribeSharedState } from "@/lib/stateSync";
+import { reviewAction } from "@/lib/reviewActions";
+import type { ClientRole } from "@/lib/clientRoles";
+import { AccessGate, ProfileGate } from "./AccessGate";
+import { initialsOf, sideOf, type Side } from "@/lib/authors";
 
 
-/** "850", "850 €", "2 087,50 €" or 2087.5 → 2087.5 (comma or dot as decimal separator). */
-function parseNumericAmount(amount: number | string | undefined): number {
-  if (typeof amount === "number") return amount;
-  if (!amount) return 0;
-  return Number(String(amount).replace(/s/g, "").replace(",", ".").replace(/[^0-9.]/g, "")) || 0;
-}
-
-function parseNumericDays(deadline: number | string | undefined): number {
-  if (typeof deadline === "number") return deadline;
-  if (!deadline) return 0;
-  return Number(String(deadline).replace(/[^0-9]/g, "")) || 0;
-}
-
-function formatProposalAmount(amount: number | string | undefined): string {
-  const num = parseNumericAmount(amount);
-  // Cents only when there are some: 2 087 €, 2 087,50 €.
-  const cents = Number.isInteger(num) ? 0 : 2;
-  return `${num.toLocaleString("fr-FR", { minimumFractionDigits: cents, maximumFractionDigits: 2 })} €`;
-}
-
-function formatProposalDeadline(deadline: number | string | undefined): string {
-  const num = parseNumericDays(deadline);
-  if (num === 0) return "Aucun impact";
-  return `+ ${num} jour${num > 1 ? "s" : ""}`;
-}
 
 type ReviewLink = {
   token: string;
@@ -83,6 +64,8 @@ type Reply = {
   id: number;
   author: string;
   initials: string;
+  /** Who wrote it (older messages: from their initials, see src/lib/authors.ts). */
+  from?: Side;
   message: string;
   time: string;
   /** When it was written (ms); older data only has `time`. */
@@ -95,6 +78,8 @@ type ClientComment = {
   deliverableId?: number;
   author: string;
   initials: string;
+  /** Who wrote it (older messages: from their initials, see src/lib/authors.ts). */
+  from?: Side;
   time: string;
   createdAt?: number;
   message: string;
@@ -139,12 +124,29 @@ type ProposalVersion = {
 };
 type ProposalVersions = Record<number, ProposalVersion[]>;
 
-const storageKey = "scopeguard-review-state";
 
 export default function ClientReviewPage() {
   const params = useParams<{ token: string }>();
   const [loading, setLoading] = useState(true);
   const [accessState, setAccessState] = useState<"allowed" | "denied">("denied");
+  /** Who opens the link (see /api/review/[token]/access): "none" shows the e-mail verification first. */
+  const [viewer, setViewer] = useState<{
+    mode: "client" | "preview" | "none";
+    verifiedEmail: string | null;
+    /** A personal link's invitation: its address masked, the code asked by its id (never the whole address). */
+    invitation: { id: string | null; masked: string } | null;
+    /** The client's full name; null until they give it, at their first verification. */
+    name: string | null;
+    deliverable: string;
+    /** On this link: a decider approves and decides quotes, a contributor comments (src/lib/clientRoles.ts). */
+    role: ClientRole | null;
+    /** A later version shared with this client (src/db/reviewAuth.ts newerSharedVersion); none otherwise. */
+    newerVersion?: { version: number; href: string } | null;
+  } | null>(null);
+  const viewerMode = viewer?.mode;
+  const contributor = viewerMode === "client" && viewer?.role === "contributor";
+  /** Name shown on the client's own messages: the verified address (the server signs with it anyway). */
+  const clientName = viewer?.name ?? viewer?.verifiedEmail ?? "Client";
   const [reviewLink, setReviewLink] = useState<ReviewLink | null>(null);
   const [comments, setComments] = useState<ClientComment[]>([]);
   /** "Northstar · Refonte site": where the shared deliverable lives. */
@@ -181,143 +183,115 @@ export default function ClientReviewPage() {
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [changesRequestOpen, setChangesRequestOpen] = useState(false);
   const [changesRequestMessage, setChangesRequestMessage] = useState("");
-  const [stateHydrated, setStateHydrated] = useState(false);
   const [deliverable, setDeliverable] = useState<Deliverable>({
     name: "northstar-landing-v03.pdf",
     version: 3,
     status: "À valider",
   });
 
+  const [accessCheck, setAccessCheck] = useState(0);
   useEffect(() => {
-    const savedState = window.localStorage.getItem(storageKey);
-
-    if (!savedState || !params.token) {
-      setStateHydrated(true);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const parsedState = JSON.parse(savedState) as {
-        reviewLink?: ReviewLink | null;
-        reviewLinks?: ReviewLinks;
-        deliverables?: Deliverable[];
-        comments?: ClientComment[];
-        proposalStates?: ProposalStates;
-        proposalDecisions?: ProposalDecisions;
-        adaptationRequests?: AdaptationRequests;
-        reviewStatus?: "pending" | "changes-requested" | "approved";
-        approvedAt?: string | null;
-        proposalVersions?: ProposalVersions;
-        projects?: { id: number; name: string; clientId?: number }[];
-        clients?: { id: number; name: string }[];
-      };
-      const savedLinks = Object.values(parsedState.reviewLinks ?? {});
-      const savedLink =
-        savedLinks.find((link) => link.token === params.token) ??
-        (parsedState.reviewLink?.token === params.token ? parsedState.reviewLink : null);
-      const expiresAt = savedLink?.expiresAt
-        ? parseFrenchDate(savedLink.expiresAt)
-        : null;
-      const isExpired =
-        savedLink?.autoExpire !== false &&
-        expiresAt !== null &&
-        expiresAt.getTime() < Date.now();
-      const isValid = Boolean(
-        savedLink &&
-          savedLink.token === params.token &&
-          savedLink.active &&
-          !isExpired,
-      );
-
-      if (isValid) {
-        setReviewLink(savedLink ?? null);
-        setAccessState("allowed");
-        const sharedDeliverable = parsedState.deliverables?.find(
-          (candidate) =>
-            candidate.id === savedLink?.deliverableId &&
-            candidate.version === savedLink?.version,
-        ) ?? parsedState.deliverables?.[0];
-        if (sharedDeliverable) {
-          setDeliverable(sharedDeliverable);
-          const project = parsedState.projects?.find((candidate) => candidate.id === (sharedDeliverable.projectId ?? 1));
-          const client = parsedState.clients?.find((candidate) => candidate.id === (project?.clientId ?? 1));
-          setContext([client?.name, project?.name].filter(Boolean).join(" · "));
+    let cancelled = false;
+    const invitation = new URLSearchParams(window.location.search).get("invitation");
+    const query = invitation ? `?invitation=${encodeURIComponent(invitation)}` : "";
+    fetch(`/api/review/${encodeURIComponent(params.token)}/access${query}`, { cache: "no-store" })
+      .then(async (response) => {
+        if (cancelled) return;
+        if (!response.ok) {
+          setLoading(false);
+          return;
         }
-        const review = reviewStateOf(sharedDeliverable, parsedState);
-        setReviewStatus(review.status);
-        setApprovedAt(review.approvedAt);
-        if (parsedState.comments) {
-          setComments(parsedState.comments);
-        }
-        if (parsedState.proposalStates) setProposalStates(parsedState.proposalStates);
-        if (parsedState.proposalDecisions) setProposalDecisions(parsedState.proposalDecisions);
-        if (parsedState.adaptationRequests) setAdaptationRequests(parsedState.adaptationRequests);
-        if (parsedState.proposalVersions) setProposalVersions(parsedState.proposalVersions);
+        setViewer(await response.json());
+      })
+      .catch(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [params.token, accessCheck]);
+
+  useEffect(() => {
+    if (viewerMode !== "client" && viewerMode !== "preview") return;
+    let cancelled = false;
+    void loadSharedState(params.token).then((savedState) => {
+      if (cancelled) return;
+      if (!savedState || !params.token) {
+        setLoading(false);
+        return;
       }
-    } catch {
-      setAccessState("denied");
-    } finally {
-      setStateHydrated(true);
-      setLoading(false);
-    }
-  }, [params.token]);
-
-  useEffect(() => {
-    if (!stateHydrated || loading || accessState !== "allowed") return;
-
-    const savedState = window.localStorage.getItem(storageKey);
-    if (!savedState) return;
-
-    try {
-      const parsedState = JSON.parse(savedState) as Record<string, unknown>;
-      const targetId = reviewLink?.deliverableId ?? deliverable.id;
-      const targetVersion = reviewLink?.version ?? deliverable.version;
-      const sharedDeliverables = Array.isArray(parsedState.deliverables)
-        ? parsedState.deliverables.map((item) =>
-            item &&
-            typeof item === "object" &&
-            (item as Deliverable).id === targetId &&
-            (item as Deliverable).version === targetVersion
-              ? {
-                  ...(item as Record<string, unknown>),
-                  status: reviewStatus === "approved" ? "Approuvée" : (item as Record<string, unknown>).status,
-                  locked: reviewStatus === "approved",
-                  reviewStatus,
-                  approvedAt: approvedAt ?? undefined,
-                }
-              : item,
-          )
-        : parsedState.deliverables;
-
-      // Drop the legacy app-wide review status: it now lives on each version.
-      const rest = { ...parsedState };
-      delete rest.reviewStatus;
-      delete rest.approved;
-      delete rest.approvedAt;
-      const newSerialized = JSON.stringify({
-        ...rest,
-        comments,
-        proposalStates,
-        proposalDecisions,
-        adaptationRequests,
-        proposalVersions,
-        deliverables: sharedDeliverables,
-      });
-
-      if (window.localStorage.getItem(storageKey) === newSerialized) return;
-      window.localStorage.setItem(storageKey, newSerialized);
-    } catch {
-      // The access check above remains the source of truth for this view.
-    }
-  }, [comments, proposalStates, proposalDecisions, adaptationRequests, proposalVersions, reviewStatus, approvedAt, loading, accessState, deliverable.id, deliverable.version, reviewLink, stateHydrated]);
-
-  useEffect(() => {
-    function syncFromStorage(event: StorageEvent) {
-      if (event.key !== storageKey || !event.newValue) return;
 
       try {
-        const parsedState = JSON.parse(event.newValue) as {
+        const parsedState = JSON.parse(savedState) as {
+          reviewLink?: ReviewLink | null;
+          reviewLinks?: ReviewLinks;
+          deliverables?: Deliverable[];
+          comments?: ClientComment[];
+          proposalStates?: ProposalStates;
+          proposalDecisions?: ProposalDecisions;
+          adaptationRequests?: AdaptationRequests;
+          reviewStatus?: "pending" | "changes-requested" | "approved";
+          approvedAt?: string | null;
+          proposalVersions?: ProposalVersions;
+          projects?: { id: number; name: string; clientId?: number }[];
+          clients?: { id: number; name: string }[];
+        };
+        const savedLinks = Object.values(parsedState.reviewLinks ?? {});
+        const savedLink =
+          savedLinks.find((link) => link.token === params.token) ??
+          (parsedState.reviewLink?.token === params.token ? parsedState.reviewLink : null);
+        const expiresAt = savedLink?.expiresAt
+          ? parseFrenchDate(savedLink.expiresAt)
+          : null;
+        const isExpired =
+          savedLink?.autoExpire !== false &&
+          expiresAt !== null &&
+          expiresAt.getTime() < Date.now();
+        const isValid = Boolean(
+          savedLink &&
+            savedLink.token === params.token &&
+            savedLink.active &&
+            !isExpired,
+        );
+
+        if (isValid) {
+          setReviewLink(savedLink ?? null);
+          setAccessState("allowed");
+          const sharedDeliverable = parsedState.deliverables?.find(
+            (candidate) =>
+              candidate.id === savedLink?.deliverableId &&
+              candidate.version === savedLink?.version,
+          ) ?? parsedState.deliverables?.[0];
+          if (sharedDeliverable) {
+            setDeliverable(sharedDeliverable);
+            const project = parsedState.projects?.find((candidate) => candidate.id === (sharedDeliverable.projectId ?? 1));
+            const client = parsedState.clients?.find((candidate) => candidate.id === (project?.clientId ?? 1));
+            setContext([client?.name, project?.name].filter(Boolean).join(" · "));
+          }
+          const review = reviewStateOf(sharedDeliverable, parsedState);
+          setReviewStatus(review.status);
+          setApprovedAt(review.approvedAt);
+          if (parsedState.comments) {
+            setComments(parsedState.comments);
+          }
+          if (parsedState.proposalStates) setProposalStates(parsedState.proposalStates);
+          if (parsedState.proposalDecisions) setProposalDecisions(parsedState.proposalDecisions);
+          if (parsedState.adaptationRequests) setAdaptationRequests(parsedState.adaptationRequests);
+          if (parsedState.proposalVersions) setProposalVersions(parsedState.proposalVersions);
+        }
+      } catch {
+        setAccessState("denied");
+      } finally {
+        setLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [params.token, viewerMode]);
+
+  useEffect(() => {
+    function syncFromStorage(newValue: string) {
+      try {
+        const parsedState = JSON.parse(newValue) as {
           reviewLink?: ReviewLink | null;
           reviewLinks?: ReviewLinks;
           reviewStatus?: "pending" | "changes-requested" | "approved";
@@ -359,8 +333,7 @@ export default function ClientReviewPage() {
       }
     }
 
-    window.addEventListener("storage", syncFromStorage);
-    return () => window.removeEventListener("storage", syncFromStorage);
+    return subscribeSharedState(syncFromStorage);
   }, [params.token]);
 
   useEffect(() => {
@@ -397,8 +370,8 @@ export default function ClientReviewPage() {
   /** Keys of the agency's answers on a request: its replies (or the request itself if the agency wrote it), and the proposal sent. */
   function agencyKeysOf(comment: ClientComment) {
     const keys = [
-      ...(comment.initials === "AM" ? [`c${comment.id}`] : []),
-      ...(comment.replies ?? []).filter((reply) => reply.initials === "AM").map((reply) => `r${reply.id}`),
+      ...(sideOf(comment) === "agency" ? [`c${comment.id}`] : []),
+      ...(comment.replies ?? []).filter((reply) => sideOf(reply) === "agency").map((reply) => `r${reply.id}`),
     ];
     const proposal = proposalStates[comment.id] === "sent" ? activeProposalFor(comment.id) : undefined;
     if (proposal) keys.push(`p${proposal.id}`);
@@ -407,41 +380,72 @@ export default function ClientReviewPage() {
   const isUnread = (comment: ClientComment) => seen !== null && agencyKeysOf(comment).some((key) => !seen.includes(key));
 
   function isReadOnlyVersion() {
+    // The agency previewing the page only reads.
+    if (viewerMode === "preview") return true;
     return reviewStatus === "approved" || deliverable.locked || deliverable.status === "Approuvée" || deliverable.status === "Remplacée";
   }
 
   /** Publishes a comment written on the canvas, or by hand (no position) from the panel. */
   function addComment(message: string, spot: CanvasComposer | null) {
     if (isReadOnlyVersion()) return;
-    const id = Math.max(...comments.map((comment) => comment.id), 0) + 1;
-    setComments((current) => [
-      ...current,
-      {
-        id,
-        deliverableId: reviewLink?.deliverableId ?? deliverable.id,
-        author: "Claire Martin",
-        initials: "CM",
-        time: "À l'instant",
-        createdAt: Date.now(),
-        message,
-        location: spot?.target ?? "Livrable (général)",
-        decision: "À qualifier",
-        kind: "remark",
-        page: spot?.page ?? 1,
-        position: spot ? { x: spot.x, y: spot.y } : undefined,
-        area: spot?.area,
-      },
-    ]);
+    // Like the agency: the page only sees this version's comments, ids must not depend on them.
+    const id = Date.now();
+    const comment: ClientComment = {
+      id,
+      deliverableId: reviewLink?.deliverableId ?? deliverable.id,
+      author: clientName,
+      initials: initialsOf(clientName),
+      from: "client",
+      time: "À l'instant",
+      createdAt: Date.now(),
+      message,
+      location: spot?.target ?? "Livrable (général)",
+      decision: "À qualifier",
+      kind: "remark",
+      page: spot?.page ?? 1,
+      position: spot ? { x: spot.x, y: spot.y } : undefined,
+      area: spot?.area,
+    };
+    setComments((current) => [...current, comment]);
     setComposer(null);
     setSelectedCommentId(id);
     setPanelTab("comment");
     setThreadOpen(true);
+    void createComment(comment);
+  }
+
+  /** Sends a comment (new, or put back after a deletion); the server may give it another id. */
+  async function createComment(comment: ClientComment) {
+    const { id, message, location, page, position, area } = comment;
+    const replies = (comment.replies ?? []).filter((reply) => sideOf(reply) === "client").map((reply) => ({ id: reply.id, message: reply.message }));
+    const result = await reviewAction(params.token, "comments", "POST", { id, message, location, page, position, area, replies });
+    if (result?.id && result.id !== id) setSelectedCommentId((selected) => (selected === id ? result.id! : selected));
   }
 
   function replyTo(commentId: number, message: string) {
     if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
-    const reply: Reply = { id: Date.now(), author: "Claire Martin", initials: "CM", message, time: "À l'instant", createdAt: Date.now() };
+    const reply: Reply = { id: Date.now(), author: clientName, initials: initialsOf(clientName), from: "client", message, time: "À l'instant", createdAt: Date.now() };
     setComments((current) => current.map((comment) => (comment.id === commentId ? { ...comment, replies: [...(comment.replies ?? []), reply] } : comment)));
+    void reviewAction(params.token, `comments/${commentId}/replies`, "POST", { id: reply.id, message });
+  }
+
+  /** Its own comment (messageId 0) or one of its replies, rewritten. */
+  function editMessage(commentId: number, messageId: number, message: string) {
+    setComments((current) =>
+      current.map((candidate) =>
+        candidate.id !== commentId
+          ? candidate
+          : messageId === 0
+            ? { ...candidate, message, edited: true }
+            : { ...candidate, replies: candidate.replies?.map((reply) => (reply.id === messageId ? { ...reply, message, edited: true } : reply)) },
+      ),
+    );
+    void reviewAction(params.token, messageId === 0 ? `comments/${commentId}` : `comments/${commentId}/replies/${messageId}`, "PATCH", { message });
+  }
+
+  function deleteReply(commentId: number, replyId: number) {
+    setComments((current) => current.map((candidate) => (candidate.id === commentId ? { ...candidate, replies: candidate.replies?.filter((reply) => reply.id !== replyId) } : candidate)));
+    void reviewAction(params.token, `comments/${commentId}/replies/${replyId}`, "DELETE");
   }
 
   /** Opens a thread from the side list and brings its pin into view. */
@@ -460,7 +464,7 @@ export default function ClientReviewPage() {
   function deleteComment(commentId: number) {
     if (isReadOnlyVersion() || isCommercialDecisionLocked(commentId)) return;
     const target = comments.find((c) => c.id === commentId);
-    if (target?.initials !== "CM") return;
+    if (!target || sideOf(target) !== "client") return;
     setComments((current) => {
       const updated = current.filter((comment) => comment.id !== commentId);
       if (selectedCommentId === commentId) {
@@ -468,12 +472,14 @@ export default function ClientReviewPage() {
       }
       return updated;
     });
+    void reviewAction(params.token, `comments/${commentId}`, "DELETE");
     toast("Commentaire supprimé", { action: { label: "Annuler", onClick: () => restoreComment(target) } });
   }
 
   /** Double-click a pin, then click: the comment moves there (its drawn area follows). */
   function moveComment(commentId: number, page: number, x: number, y: number) {
     if (isReadOnlyVersion()) return;
+    void reviewAction(params.token, `comments/${commentId}`, "PATCH", { page, x, y });
     setComments((current) =>
       current.map((comment) => {
         if (comment.id !== commentId || !comment.position) return comment;
@@ -493,6 +499,7 @@ export default function ClientReviewPage() {
   /** Puts back a deleted comment ("Annuler" in the toast). */
   function restoreComment(removed: ClientComment) {
     setComments((current) => (current.some((comment) => comment.id === removed.id) ? current : [...current, removed].sort((a, b) => a.id - b.id)));
+    void createComment(removed);
   }
 
 
@@ -513,21 +520,7 @@ export default function ClientReviewPage() {
     setSelectedCommentId(commentId);
     setProposalVersions(nextVersions);
 
-    if (decision !== "none") {
-      const label = decision === "accepted" ? "acceptée" : "refusée";
-      notifyAgency(
-        "proposal.decision",
-        `Proposition ${label} par le client`,
-        `Le client a ${label} la proposition liée au commentaire #${commentId}`,
-        commentId,
-        undefined,
-        undefined,
-        {
-          proposalDecisions: nextDecisions,
-          proposalVersions: nextVersions,
-        },
-      );
-    }
+    if (decision !== "none") void reviewAction(params.token, `proposals/${commentId}/decision`, "POST", { decision });
   }
 
   function currentVersionsFor(commentId: number, decision: ProposalDecision) {
@@ -547,59 +540,6 @@ export default function ClientReviewPage() {
     return list.map((p) => p.status === "sent" ? { ...p, status: decision } : p);
   }
 
-  // Direct read-modify-write so the agency sees the event immediately, without waiting for the generic persist effect.
-  function notifyAgency(
-    type: string,
-    auditDescription: string,
-    notificationMessage: string,
-    commentId?: number,
-    nextReviewStatus?: "changes-requested" | "approved",
-    nextApprovedAt?: string,
-    overrides?: Record<string, unknown>,
-  ) {
-    try {
-      const raw = window.localStorage.getItem(storageKey);
-      const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-      const auditEvents = Array.isArray(parsed.auditEvents) ? parsed.auditEvents : [];
-      const notifications = Array.isArray(parsed.notifications) ? parsed.notifications : [];
-      const timestamp = new Date().toLocaleString("fr-FR");
-      window.localStorage.setItem(
-        storageKey,
-        JSON.stringify({
-          ...parsed,
-          ...(overrides ?? {}),
-          ...(nextReviewStatus && Array.isArray(parsed.deliverables)
-            ? {
-                deliverables: (parsed.deliverables as Deliverable[]).map((item) =>
-                  item.id === (reviewLink?.deliverableId ?? deliverable.id) &&
-                  item.version === (reviewLink?.version ?? deliverable.version)
-                    ? { ...item, reviewStatus: nextReviewStatus, approvedAt: nextApprovedAt }
-                    : item,
-                ),
-              }
-            : {}),
-          auditEvents: [
-            {
-              id: Date.now(),
-              type,
-              actor: "Client",
-              description: auditDescription,
-              timestamp,
-              commentId,
-            },
-            ...auditEvents,
-          ],
-          notifications: [
-            { id: Date.now() + 1, message: notificationMessage, time: timestamp },
-            ...notifications,
-          ],
-        }),
-      );
-    } catch {
-      // Ignore storage errors; the client-side state remains the source of truth for this view.
-    }
-  }
-
   function confirmApproval() {
     const approvalTimestamp = new Date().toLocaleString("fr-FR");
     setReviewStatus("approved");
@@ -610,14 +550,7 @@ export default function ClientReviewPage() {
       locked: true,
     }));
     setApprovalOpen(false);
-    notifyAgency(
-      "deliverable.approved",
-      `Version ${deliverable.version} approuvée par le client`,
-      `Le client a approuvé la version ${deliverable.version}`,
-      undefined,
-      "approved",
-      approvalTimestamp,
-    );
+    void reviewAction(params.token, "approval", "POST");
   }
 
   function submitChangesRequest(event: React.FormEvent<HTMLFormElement>) {
@@ -629,13 +562,7 @@ export default function ClientReviewPage() {
     setReviewStatus("changes-requested");
     setChangesRequestOpen(false);
     setChangesRequestMessage("");
-    notifyAgency(
-      "review.changes-requested",
-      `Le client demande des modifications : \u00ab ${message} \u00bb`,
-      "Le client demande des modifications sur cette version",
-      undefined,
-      "changes-requested",
-    );
+    void reviewAction(params.token, "changes-request", "POST", { message });
   }
 
   function activeProposalFor(commentId: number) {
@@ -666,26 +593,14 @@ export default function ClientReviewPage() {
     const message = adaptationMessage.trim();
     if (!message) return;
 
-    const nextAdaptations = {
-      ...adaptationRequests,
-      [adaptationCommentId]: {
-        message,
-        budget: adaptationBudget.trim() ? parseNumericAmount(adaptationBudget) : undefined,
-        deadline: adaptationDeadline.trim() ? parseNumericDays(adaptationDeadline) : undefined,
-        requestedAt: new Date().toLocaleString("fr-FR"),
-      },
+    const request = {
+      message,
+      budget: adaptationBudget.trim() ? parseNumericAmount(adaptationBudget) : undefined,
+      deadline: adaptationDeadline.trim() ? parseNumericDays(adaptationDeadline) : undefined,
+      requestedAt: new Date().toLocaleString("fr-FR"),
     };
-
-    setAdaptationRequests(nextAdaptations);
-    notifyAgency(
-      "proposal.adaptation-requested",
-      `Adaptation demandée par le client sur la proposition #${adaptationCommentId}`,
-      `Le client demande une adaptation de la proposition liée au commentaire #${adaptationCommentId}`,
-      adaptationCommentId,
-      undefined,
-      undefined,
-      { adaptationRequests: nextAdaptations },
-    );
+    setAdaptationRequests({ ...adaptationRequests, [adaptationCommentId]: request });
+    void reviewAction(params.token, `proposals/${adaptationCommentId}/adaptation`, "POST", { message, budget: request.budget, deadline: request.deadline });
     setAdaptationCommentId(null);
     setAdaptationMessage("");
     setAdaptationBudget("");
@@ -714,6 +629,13 @@ export default function ClientReviewPage() {
   const sharedComments = comments.filter(
     (comment) => (comment.deliverableId ?? comments[0]?.deliverableId ?? sharedDeliverableId) === sharedDeliverableId,
   );
+  // Quotes still waiting for this client: decided before validating, since the version then locks
+  // (the server refuses the validation otherwise, src/db/reviewActions.ts).
+  const quotesToDecide = sharedComments.filter(
+    (comment) => proposalStates[comment.id] === "sent" && (proposalDecisions[comment.id] ?? "none") === "none" && !adaptationRequests[comment.id]?.decision,
+  );
+  // Remarks still to clarify: validating gives them up, which the dialog says and the server records.
+  const remarksToClarify = sharedComments.filter((comment) => comment.decision !== "Inclus" && comment.decision !== "Hors périmètre");
   // Canvas threads: corrections and remarks (older "À traiter" counts as to clarify).
   const canvasComments: (ThreadComment & { page?: number; sourceId?: number })[] = sharedComments.map((comment) => ({
     ...comment,
@@ -728,6 +650,31 @@ export default function ClientReviewPage() {
   const previewAdaptationRequest = proposalPreviewCommentId === null
     ? undefined
     : adaptationRequests[proposalPreviewCommentId];
+
+  if (viewer?.mode === "none")
+    return (
+      <AccessGate
+        token={params.token}
+        deliverable={viewer.deliverable}
+        invitation={viewer.invitation}
+        verifiedEmail={viewer.verifiedEmail}
+        onVerified={() => {
+          setViewer(null);
+          setAccessCheck((count) => count + 1);
+        }}
+      />
+    );
+
+  // First verification of this address: their name, before the review.
+  if (viewer?.mode === "client" && !viewer.name && viewer.verifiedEmail)
+    return (
+      <ProfileGate
+        token={params.token}
+        deliverable={viewer.deliverable}
+        email={viewer.verifiedEmail}
+        onSaved={(name) => setViewer((current) => (current ? { ...current, name } : current))}
+      />
+    );
 
   if (loading) {
     return <main className="client-review-state">Chargement de la revue...</main>;
@@ -746,16 +693,21 @@ export default function ClientReviewPage() {
     );
   }
 
-  const versionLabel = `V${String(deliverable.version).padStart(2, "0")}`;
+  const versionName = (version: number) => `V${String(version).padStart(2, "0")}`;
+  const versionLabel = versionName(deliverable.version);
+  const newerVersion = viewer?.newerVersion ?? null;
   const reviewState =
     reviewStatus === "approved"
       ? { tone: "approved", icon: <Check />, label: "Validée", hint: approvedAt ? `Validée le ${approvedAt}` : "Version validée" }
       : reviewStatus === "changes-requested"
         ? { tone: "changes", icon: <PenLine />, label: "Modifications demandées", hint: "En attente d’une nouvelle version de l’agence" }
         : deliverable.status === "Remplacée"
-          ? { tone: "replaced", icon: <Lock />, label: "Remplacée", hint: "Une version plus récente existe" }
+          ? // A version still in preparation at the agency stays unknown to the client.
+            newerVersion
+            ? { tone: "replaced", icon: <Lock />, label: "Ancienne version", hint: `La ${versionName(newerVersion.version)} vous a été partagée` }
+            : { tone: "replaced", icon: <Lock />, label: "Fermée", hint: "Cette version n’est plus en revue" }
           : { tone: "pending", icon: <Clock />, label: "À valider", hint: "En attente de votre validation" };
-  const canValidate = !isReadOnlyVersion() && reviewStatus === "pending";
+  const canValidate = !isReadOnlyVersion() && reviewStatus === "pending" && !contributor;
   /** Where the client's decision on a proposal stands. */
   const proposalStatus = (commentId: number) => {
     const adaptation = adaptationRequests[commentId];
@@ -766,7 +718,7 @@ export default function ClientReviewPage() {
     if (adaptation) return { label: "Adaptation demandée", tone: "decision-sent" };
     return { label: "À décider", tone: "decision-sent" };
   };
-  const canDecide = (commentId: number) => !isReadOnlyVersion() && !isCommercialDecisionLocked(commentId) && !adaptationRequests[commentId];
+  const canDecide = (commentId: number) => !isReadOnlyVersion() && !contributor && !isCommercialDecisionLocked(commentId) && !adaptationRequests[commentId];
 
   return (
     <main className="client-app">
@@ -780,6 +732,8 @@ export default function ClientReviewPage() {
               <span className="truncate">{deliverable.name}</span>
             </h1>
             {context && <p className="client-topbar-context">{context}</p>}
+            {viewerMode === "preview" && <p className="client-topbar-context">Aperçu agence · lecture seule</p>}
+            {contributor && <p className="client-topbar-context">Contributeur · vos retours sont transmis, la validation revient au décideur désigné par l’agence</p>}
           </div>
         </div>
         <div className="client-topbar-actions">
@@ -829,17 +783,34 @@ export default function ClientReviewPage() {
             setComposer(null);
           }}
           transformRef={transformRef}
-          canMove={(comment) => comment.initials === "CM" && requestKind(comment) === "comment"}
+          canMove={(comment) => sideOf(comment) === "client" && requestKind(comment) === "comment"}
           onMovePin={moveComment}
           overlay={
-            isReadOnlyVersion() ? (
+            newerVersion ? (
+              <div className="canvas-banner" role="status">
+                <span className="canvas-banner-icon" aria-hidden="true">
+                  <Lock />
+                </span>
+                <span className="canvas-banner-text">
+                  <b>Vous consultez une ancienne version</b>
+                  <small>
+                    {reviewStatus === "approved" ? "Vous avez validé cette version. " : ""}La {versionName(newerVersion.version)} vous a été partagée.
+                  </small>
+                </span>
+                <Button asChild size="sm">
+                  <a href={newerVersion.href}>
+                    Voir la {versionName(newerVersion.version)} <ArrowRight />
+                  </a>
+                </Button>
+              </div>
+            ) : isReadOnlyVersion() ? (
               <div className="canvas-banner" role="status">
                 <span className="canvas-banner-icon" aria-hidden="true">
                   <Lock />
                 </span>
                 <span className="canvas-banner-text">
                   <b>Lecture seule</b>
-                  <small>{reviewStatus === "approved" ? "Vous avez validé cette version" : "Une version plus récente existe"}</small>
+                  <small>{reviewStatus === "approved" ? "Vous avez validé cette version" : "Cette version n’est plus en revue"}</small>
                 </span>
               </div>
             ) : null
@@ -854,22 +825,10 @@ export default function ClientReviewPage() {
                 locked={locked}
                 proposal={proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : undefined}
                 onReply={(message) => replyTo(comment.id, message)}
-                me="CM"
-                onEditMessage={(messageId, message) =>
-                  setComments((current) =>
-                    current.map((candidate) =>
-                      candidate.id !== comment.id
-                        ? candidate
-                        : messageId === 0
-                          ? { ...candidate, message, edited: true }
-                          : { ...candidate, replies: candidate.replies?.map((reply) => (reply.id === messageId ? { ...reply, message, edited: true } : reply)) },
-                    ),
-                  )
-                }
+                me="client"
+                onEditMessage={(messageId, message) => editMessage(comment.id, messageId, message)}
                 onDeleteMessage={(messageId) => {
-                  setComments((current) =>
-                    current.map((candidate) => (candidate.id === comment.id ? { ...candidate, replies: candidate.replies?.filter((reply) => reply.id !== messageId) } : candidate)),
-                  );
+                  deleteReply(comment.id, messageId);
                   toast("Message supprimé");
                 }}
                 onOpenProposal={
@@ -881,7 +840,7 @@ export default function ClientReviewPage() {
                     : undefined
                 }
                 onDelete={
-                  comment.initials === "CM" && requestKind(comment) === "comment" && !isReadOnlyVersion() && !locked
+                  sideOf(comment) === "client" && requestKind(comment) === "comment" && !isReadOnlyVersion() && !locked
                     ? () => {
                         deleteComment(comment.id);
                         setThreadOpen(false);
@@ -1001,6 +960,9 @@ export default function ClientReviewPage() {
               <span className={`decision-badge ${proposalStatus(proposalPreviewCommentId).tone}`}>{proposalStatus(proposalPreviewCommentId).label}</span>
               <span className="text-muted-foreground">Version {previewProposal.version} de la proposition</span>
             </p>
+            {contributor && proposalStatus(proposalPreviewCommentId).label === "À décider" && (
+              <p className="text-sm text-muted-foreground">Seul le décideur désigné par l’agence peut accepter ou refuser cette proposition.</p>
+            )}
             {!canCounter(proposalPreviewCommentId) && canDecide(proposalPreviewCommentId) && (
               <p className="text-sm text-muted-foreground">L’agence ne propose pas de contre-proposition sur ce devis : un refus est définitif.</p>
             )}
@@ -1068,16 +1030,62 @@ export default function ClientReviewPage() {
         onClose={() => setApprovalOpen(false)}
         role="alertdialog"
         title="Valider cette version ?"
-        description="L’agence en est informée et la version passe en lecture seule."
+        description={
+          quotesToDecide.length
+            ? "Avant de valider, décidez de chaque proposition en attente : une fois validée, la version est verrouillée."
+            : "L’agence en est informée et la version passe en lecture seule."
+        }
         footer={
           <>
             <Button variant="outline" onClick={() => setApprovalOpen(false)}>
               Annuler
             </Button>
-            <Button onClick={confirmApproval}>Confirmer la validation</Button>
+            <Button onClick={confirmApproval} disabled={quotesToDecide.length > 0}>
+              {remarksToClarify.length ? "Valider et renoncer à ces remarques" : "Confirmer la validation"}
+            </Button>
           </>
         }
-      />
+      >
+        {quotesToDecide.length > 0 && (
+          <ul className="grid gap-2" aria-label="Propositions en attente de votre décision">
+            {quotesToDecide.map((comment) => {
+              const proposal = activeProposalFor(comment.id);
+              return (
+                <li key={comment.id} className="grid gap-2 rounded-[var(--r-field)] border border-[var(--border)] px-3 py-2 text-sm">
+                  <span className="grid gap-0.5">
+                    <b className="font-medium">{comment.title ?? comment.message}</b>
+                    <span className="text-muted-foreground">
+                      {formatProposalAmount(proposal?.amount)} HT · {formatProposalDeadline(proposal?.deadline)}
+                    </span>
+                  </span>
+                  <span className="flex justify-end gap-2">
+                    <Button size="sm" variant="outline" aria-label={`Refuser « ${comment.title ?? comment.message} »`} onClick={() => decideProposal(comment.id, "refused")}>
+                      Refuser
+                    </Button>
+                    <Button size="sm" aria-label={`Accepter « ${comment.title ?? comment.message} »`} onClick={() => decideProposal(comment.id, "accepted")}>
+                      Accepter
+                    </Button>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {remarksToClarify.length > 0 && (
+          <div className="grid gap-2 text-sm">
+            <p role="note" className="rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-[var(--status-medium-text)]">
+              <b>Certaines remarques n’ont pas encore été clarifiées avec l’agence.</b> En validant, vous y renoncez : elles ne seront pas traitées dans cette version.
+            </p>
+            <ul className="grid gap-1 text-muted-foreground" aria-label="Remarques auxquelles vous renoncez">
+              {remarksToClarify.map((comment) => (
+                <li key={comment.id} className="truncate">
+                  « {comment.message} »
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </Modal>
     </main>
   );
 }

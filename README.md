@@ -1,6 +1,8 @@
-# ScopeGuard
+# Kora (nom de code ScopeGuard)
 
 > Le portail de validation client qui transforme les demandes hors perimetre en decisions facturees.
+
+> **État du produit.** Kora est en ligne pour des pilotes (Vercel à Francfort, Supabase, Azure, Resend). Les sections qui suivent décrivent le positionnement et le MVP visé ; l'état réel de chaque fonctionnalité est suivi dans [PERSONAS_USER_STORIES.md](PERSONAS_USER_STORIES.md#suivi-de-réalisation). La pile et la sécurité sont décrites dans [TECHNOLOGIES.md](TECHNOLOGIES.md), les règles pour les agents IA dans [AGENTS.md](AGENTS.md).
 
 ScopeGuard est un SaaS destine aux agences web, studios de design et consultants creatifs. Il centralise les retours clients sur des livrables visuels et aide les equipes a transformer chaque demande en une decision claire : incluse dans le perimetre, modification mineure, ou prestation supplementaire a chiffrer.
 
@@ -98,23 +100,23 @@ Le MVP doit permettre de tester ce positionnement avec un flux complet, sans con
 - Espaces de travail par agence.
 - Projets associes a un client.
 - Import de PDF et d'images.
-- Ajout d'une capture de page web depuis une URL.
+- Ajout d'une capture de page web depuis une URL *(à faire : l'URL est enregistrée, sans capture)*.
 - Versions de livrables avec statut clair : brouillon, en revue, modifications demandees, approuve.
 
 ### Revue client
 
 - Liens partageables et proteges.
 - Commentaires positionnes sur un point precis du document.
-- Fils de discussion et resolution de commentaires.
-- Boutons explicites `Demander des modifications` et `Approuver la version`.
+- Fils de discussion et resolution de commentaires *(la resolution est a faire)*.
+- Boutons explicites `Demander des modifications` *(regle serveur faite, bouton a ajouter cote client)* et `Approuver la version`.
 - Relances par e-mail pour les validations en attente.
 
 ### Controle du perimetre
 
-- Qualification de chaque demande : `incluse`, `modification mineure`, `hors perimetre`, `a clarifier`.
-- Justification interne facultative pour l'equipe.
+- Qualification de chaque demande : `incluse`, `modification mineure`, `hors perimetre`, `a clarifier` *(realise : « Inclus », « Hors scope » et « À clarifier »)*.
+- Justification interne facultative pour l'equipe *(a faire)*.
 - Conversion d'un commentaire en proposition complementaire.
-- Proposition comprenant description, prix, impact planning et date d'expiration.
+- Proposition comprenant description, prix, impact planning et date d'expiration *(la date d'expiration est a faire)*.
 - Acceptation ou refus explicite par le client.
 
 ### Tracabilite
@@ -193,3 +195,121 @@ Le produit doit demontrer un effet concret sur le flux commercial des agences.
 A terme, ScopeGuard doit devenir la source de verite des decisions client sur les projets au forfait : le lieu ou une demande est contextualisee, arbitree, chiffree, acceptee et rattachee a une livraison.
 
 Le produit ne remplace pas un outil de gestion de projet, un CRM ou une solution comptable. Il les relie au moment le plus fragile de la relation agence-client : celui ou une remarque apparemment simple peut se transformer en travail gratuit.
+
+## Lancer le prototype en local
+
+Les données sont enregistrées dans PostgreSQL. Le fichier `.env.local` choisit la base avec `DATABASE_TARGET` : `local` (Postgres dans Docker) ou `remote` (Supabase, puis Azure).
+
+```bash
+cp .env.example .env.local   # puis renseigner BETTER_AUTH_SECRET (et DATABASE_URL_REMOTE si besoin)
+npm install
+npm run db:up                # Postgres et Azurite (émulateur Azure Storage) dans Docker
+npm run db:migrate           # crée les tables sur la base choisie par DATABASE_TARGET
+npm run dev
+npm run test:e2e             # la suite de tests : base de test kora_test recréée, e-mails écrits dans un fichier
+```
+
+- Base en ligne (Supabase) : `DATABASE_URL_REMOTE` = chaîne « Session pooler » (Connect › Session pooler), puis `DATABASE_TARGET=remote npm run db:migrate`. Toutes les tables ont la sécurité par ligne activée sans règle : l'API REST publique de Supabase n'y voit rien, l'application (propriétaire des tables) n'est pas concernée. Désactivez aussi l'API de données (Project Settings › Data API). Les variables `NEXT_PUBLIC_SUPABASE_*` ne servent pas.
+- `npm run db:generate` : crée une migration après une modification de `src/db/schema.ts`.
+- `npm run db:studio` : explore les données.
+- Le journal d'audit (`audit_events`) est en ajout seul : la base refuse toute modification ou suppression d'un événement.
+
+### Déploiement
+
+L'application tourne sur Vercel, dans la région de Francfort (`fra1`, fixée par [vercel.json](vercel.json)), à côté de la base Supabase : une base éloignée multiplie la latence de chaque action. À chaque déploiement :
+
+1. **Migrations d'abord.** Si le déploiement ajoute des fichiers dans `drizzle/`, appliquez-les sur la base en ligne **avant** de déployer le code : `DATABASE_TARGET=remote npm run db:migrate`.
+2. **Variables d'environnement** (Vercel › Settings › Environment Variables), voir [.env.example](.env.example) : `DATABASE_TARGET=remote`, `DATABASE_URL_REMOTE` (pooler Supabase de Francfort), `DATABASE_SSL_CA` (le texte PEM du certificat), `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` (l'adresse publique), `TRUSTED_PROXY_HOPS=1`, `STORAGE_TARGET=remote` et les `STORAGE_*_REMOTE`, `RESEND_API_KEY`, `MAIL_FROM`. Jamais `MAIL_TRANSPORT` en ligne.
+3. **E-mails** : le domaine d'envoi doit avoir SPF, DKIM et un enregistrement DMARC, sans quoi les codes d'accès arrivent en spam.
+4. **Après le déploiement**, un onglet resté ouvert sur l'ancienne version doit être rechargé.
+
+### Fichiers importés
+
+Les fichiers vont dans Azure Blob Storage (`src/lib/storage.ts`), choisi par `STORAGE_TARGET` comme la base : `local` (Azurite, dans Docker) ou `remote` (compte Azure). Chaque agence a son propre conteneur privé, enregistré dans `agency_storage` avec son compte, pour pouvoir lui donner plus tard un compte à part. Dans le conteneur, les fichiers suivent l'organisation de l'agence :
+
+```
+agence-<agence>/projets/<id>/livrables/<id>/v<version>/<sha256>.<ext>
+agence-<agence>/projets/<id>/livrables/<id>/couverture/<sha256>.<ext>
+```
+
+Le fichier est nommé par son empreinte SHA-256 : une version ne peut pas changer de contenu sans changer de nom. Les chemins utilisent les identifiants, pas les noms, et ne bougent pas si l'on renomme ou déplace un projet (la base fait foi). Les pages n'accèdent jamais au stockage : `/api/files/<id>` vérifie que la personne est membre de l'agence, ou client vérifié invité sur une revue qui montre ce fichier, puis redirige vers une adresse en lecture seule valable 5 minutes. La taille maximale d'un import est `MAX_UPLOAD_MB` (50 par défaut).
+
+L'import ne passe pas par l'application (dont l'hébergeur limite la taille des requêtes, 4,5 Mo sur Vercel) : la page calcule l'empreinte du fichier et demande une autorisation (`POST /api/files/upload`), qui vérifie session, place, taille et limite de débit. Elle reçoit une adresse d'écriture valable 15 minutes, qui ne permet que de créer ce fichier-là (ni le lire, ni en remplacer un autre), et un jeton signé par le serveur. Elle envoie le fichier à Azure, puis demande sa validation (`POST /api/files/complete`) : le serveur relit le fichier dans le stockage et recalcule lui-même l'empreinte ; s'il ne correspond pas à celui annoncé, il est supprimé et refusé (`src/lib/upload.ts`, `prepareUpload` et `completeUpload` dans `src/lib/storage.ts`). Sur une page sans Web Crypto (ni HTTPS, ni localhost), l'import repasse par `POST /api/files`.
+
+- Le compte Azure reçoit une règle CORS (toutes origines, GET, HEAD et PUT) : le lecteur PDF suit la redirection avec une origine « null », et la page envoie les fichiers directement. Sans adresse signée, rien n'est lisible ni modifiable.
+- pdf.js est chargé dans sa version « legacy » (`next.config.ts`) : la version moderne exige des navigateurs très récents.
+- Les fichiers importés avant ce changement (table `files` de Postgres) ne sont plus servis : réimportez-les si besoin.
+
+### Connexion
+
+L'espace agence demande un compte (`/connexion`) : e-mail et mot de passe, ou Google si `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` sont renseignés. L'adresse est confirmée par un lien envoyé par e-mail avant la première connexion (les comptes créés avant cette règle sont considérés comme confirmés, migration `0008`).
+
+Chaque compte travaille dans une agence. Après l'inscription, la personne crée la sienne (`/bienvenue`) et en devient propriétaire, ou rejoint celle qui l'a invitée. Le propriétaire et les administrateurs invitent leurs collègues depuis le menu du compte, « Équipe » : l'invité reçoit un lien `/invitation/:id` qu'il ne peut accepter qu'avec l'adresse invitée. Le lien ne montre que le nom de l'agence et l'adresse masquée : l'invité saisit lui-même son adresse. Toutes les données sont rangées par agence (`organization_id` dans chaque clé primaire) et le serveur filtre chaque requête sur l'agence du membre ; retirer quelqu'un de l'équipe lui coupe l'accès immédiatement.
+
+| Rôle | Peut faire |
+| --- | --- |
+| Membre | Tout le travail de production : voir, commenter, importer des versions, qualifier une demande, préparer un devis en brouillon, partager une revue, restaurer depuis la corbeille |
+| Administrateur | En plus : envoyer un devis, répondre à une contre-proposition, révoquer un lien client, supprimer un espace ou un projet, vider la corbeille, gérer l'équipe |
+| Propriétaire | En plus : supprimer l'agence, nommer un autre propriétaire |
+
+Le serveur refuse ces actions à un membre (`src/db/agencyPermissions.ts`), l'interface les affiche grisées avec la raison.
+
+Le client n'a ni compte ni mot de passe. L'agence l'invite par e-mail depuis « Partager la revue » ; il reçoit un lien personnel, qui ne contient qu'un identifiant aléatoire et montre son adresse masquée (`c•••••@client.fr`) : celui qui détient le lien n'apprend pas l'adresse, et le code est demandé par l'identifiant de l'invitation, puis envoyé à l'adresse invitée; sinon, rien ne lui révèle qu'elle existe. Tant que personne n'est invité, « Partager la revue » prévient que le lien copié ne s'ouvrira pour personne. Avec le lien copié-collé, seule une adresse invitée reçoit un code ; les autres peuvent demander l'accès (l'écran du code le leur indique). Le propriétaire et les administrateurs de l'agence sont prévenus par e-mail, avec un lien vers le livrable, et acceptent ou refusent depuis « Partager la revue ». Une même adresse IP ne peut pas envoyer plus de 10 demandes par heure. Retirer une invitation coupe l'accès immédiatement. Le lien ne donne accès qu'à la version partagée, et le serveur n'accepte du client que ses propres commentaires, ses décisions sur les propositions envoyées et la validation, signés de son adresse vérifiée (voir `src/db/reviewAuth.ts` et `src/db/reviewAccess.ts`).
+
+Chaque invité a un rôle sur la revue (`src/lib/clientRoles.ts`). Un **décideur** valide la version, demande des modifications, accepte ou refuse les devis et fait des contre-propositions. Un **contributeur** consulte, commente et répond. L'agence choisit le rôle en invitant (décideur par défaut) et peut le changer dans « Partager la revue » ; une demande d'accès acceptée donne le rôle de contributeur. Le serveur refuse les décisions d'un contributeur, les relances ne partent qu'aux décideurs, et la page du client ne reçoit jamais la liste des autres invités.
+
+« + Demande » sert aux demandes reçues ailleurs (e-mail, appel, réunion, Slack, Figma) ou portant sur tout le livrable. Leur source (canal, date, extrait collé, capture) est visible par le client, qui voit ainsi qu'il s'agit de sa propre demande, et figure dans la preuve avec l'empreinte de la capture (`src/lib/requestSource.ts`). La capture est une image importée par l'agence (`projets/<id>/livrables/<id>/demandes/`), que le client n'ouvre que s'il voit la demande.
+
+Le client voit ses propres demandes, et celles de l'agence dont elle a choisi le statut : « Inclus », « À clarifier » créée par « + Demande », et « Hors scope » une fois un devis envoyé. Un pin posé par l'agence sur le rendu, sans statut choisi, reste interne tant qu'elle ne l'a pas qualifié ; sa bulle l'indique. Sa qualification propose les mêmes trois choix que « + Demande » : « À clarifier » avec un titre le rend visible au client. Ce que l'agence a écrit pour elle-même reste interne : le texte du pin et les réponses écrites avant que le client voie la demande. Le client, comme la preuve, lit le titre et la description, puis les échanges qui suivent (`src/lib/internalNotes.ts`) ; l'éditeur marque ces messages « Interne ». Un devis en brouillon ne quitte jamais le serveur, pas même dans les données reçues par la page. Une demande cachée est introuvable pour le client, y compris par l'API (`visibleToClient`, `src/db/reviewAccess.ts`).
+
+La page du client écrit une action à la fois, chacune sur sa route (`src/db/reviewActions.ts`). Le serveur construit la modification à partir de ce qu'il a en base, la passe par les règles du client, puis l'applique en une transaction, avec son événement d'audit et, pour une décision, la notification de l'agence. Une action que les règles refusent est refusée en entier (409).
+
+| Route (`/api/review/:token/…`) | Action |
+| --- | --- |
+| `POST comments` | Commentaire sur la version |
+| `PATCH comments/:id` | Modifier son commentaire (`message`) ou déplacer son repère (`page`, `x`, `y`) |
+| `DELETE comments/:id` | Supprimer son commentaire, tant que l'agence ne l'a pas qualifié |
+| `POST comments/:id/replies` | Répondre dans un fil de la version |
+| `PATCH`, `DELETE comments/:id/replies/:replyId` | Modifier ou supprimer sa réponse |
+| `POST proposals/:id/decision` | Accepter ou refuser un devis envoyé, une seule fois |
+| `POST proposals/:id/adaptation` | Demander une adaptation, si l'agence l'a permise |
+| `POST changes-request` | Demander des modifications |
+| `POST approval` | Valider la version, ce qui la verrouille ; refusé tant qu'un devis envoyé attend la décision du client (la fenêtre de validation les liste, à accepter ou refuser). Les remarques encore « À clarifier » sont abandonnées en validant : la fenêtre le dit et les liste, le journal les nomme |
+
+Dans la cloche, chaque activité ouvre ce qu'elle concerne : une décision du client ouvre la demande, une demande d'accès ouvre « Partager la revue » sur le livrable, une relance ouvre la version (`notificationHref`, `src/app/(agency)/routes.ts`). Les notifications plus anciennes, ou dont le livrable a disparu, restent du simple texte.
+
+Seul le client valide une version, depuis sa page : l'agence n'a aucune route pour le faire. L'agence suit le même chemin pour toutes ses écritures (`src/db/agencyActions.ts`, `src/db/workspaceActions.ts`) : le serveur signe chaque message avec le membre, refuse toute écriture sur une version validée ou remplacée et sur une demande dont le devis est tranché, et applique aux membres les réserves de `src/db/agencyPermissions.ts`. `/api/state` est en lecture seule : les pages lisent l'état et le relisent après chaque action.
+
+| Route (`/api/comments…`) | Action de l'agence |
+| --- | --- |
+| `POST /api/comments` | Commentaire (`deliverableId`, `message`…), demande saisie par l'agence (`request` : « À clarifier », « Inclus » ou « Hors scope », avec sa source facultative : canal, date, extrait, capture), ou commentaire remis après sa suppression (`restore`) |
+| `PATCH /api/comments/:id` | Modifier un message de l'agence (`message`) ou déplacer un repère (`page`, `x`, `y`) |
+| `DELETE /api/comments/:id` | Supprimer un commentaire de l'agence |
+| `PUT /api/comments/:id/qualification` | « Inclus », « Hors scope » avec un chiffrage en brouillon, « À clarifier » avec un titre (visible du client), ou retour « À clarifier » sans titre |
+| `POST /api/comments/:id/replies` | Répondre |
+| `PATCH`, `DELETE /api/comments/:id/replies/:replyId` | Modifier ou supprimer une réponse de l'agence |
+| `POST /api/comments/:id/proposal` | Envoyer un premier devis écrit dans la fenêtre de proposition (administrateurs) |
+| `POST /api/comments/:id/proposal/send` | Envoyer le devis en brouillon (administrateurs) |
+| `POST /api/comments/:id/proposal/versions` | Nouvelle version : envoyée à la place du devis en attente (`send: true`, administrateurs), ou rechiffrage après un refus, en brouillon (`send: false`) |
+| `POST /api/comments/:id/adaptation/decision` | Accepter ou refuser la contre-proposition du client (administrateurs) |
+| `POST /api/deliverables/:id/review-link` | Lien client de la version : l'actif, ou un nouveau au jeton tiré par le serveur |
+| `DELETE /api/deliverables/:id/review-link` | Révoquer le lien (administrateurs) |
+| `DELETE /api/deliverables/:id/review-link/invites/:email` | Retirer une invitation, ce qui coupe l'accès de cette adresse |
+| `POST /api/deliverables/:id/reopen` | Rouvrir la validation, avec la raison dans le journal |
+| `PATCH /api/deliverables/:id/review-link` | Expiration du lien après 7 jours, ou jamais (`autoExpire`) |
+| `POST /api/spaces`, `PATCH`, `DELETE /api/spaces/:id` | Créer, renommer, supprimer un espace (suppression : administrateurs) |
+| `POST /api/projects`, `PATCH`, `DELETE /api/projects/:id` | Créer, renommer (`name`), déplacer (`clientId`), supprimer un projet (suppression : administrateurs) |
+| `POST /api/deliverables` | Nouveau livrable, ses fichiers importés au préalable |
+| `POST /api/deliverables/:id/versions` | Nouvelle version : les précédentes sont figées |
+| `PATCH`, `DELETE /api/deliverables/:id` | Renommer (`name`), déplacer (`projectId`) ou mettre à la corbeille toutes les versions d'un livrable |
+| `POST /api/trash/:id/restore` | Restaurer un élément de la corbeille |
+| `DELETE /api/trash/:id`, `DELETE /api/trash`, `DELETE /api/trash/expired` | Supprimer définitivement un élément, tout, ou ce qui a plus de 30 jours (administrateurs) |
+
+- E-mails de devis et de décisions (`src/db/reviewMails.ts`) : un devis envoyé, ou la réponse à une contre-proposition, part par e-mail aux **décideurs** du client, avec leur lien personnel (« Répondre à » : l'administrateur qui l'a envoyé). Chaque décision du client (devis accepté ou refusé, contre-proposition, validation, demande de modifications) part au **propriétaire et à tous les administrateurs** de l'agence, avec un lien vers la demande (« Répondre à » : le client). Ni les membres ni les contributeurs ne les reçoivent. Un e-mail qui échoue est journalisé et n'annule jamais l'action.
+- E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (domaine vérifié dans Resend, avec SPF, DKIM et DMARC). Chaque e-mail part en HTML avec sa version texte, et avec un « Répondre à » vers le membre de l'agence concerné (ou `MAIL_REPLY_TO`) : l'adresse d'envoi n'a pas de boîte. `MAIL_TRANSPORT=console` n'envoie jamais rien et affiche les e-mails dans la console, même avec une clé Resend (tests, démonstrations). Sans clé, en développement, ils s'affichent dans la console ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
+
+### Preuve de validation
+
+« Synthèse & export » produit, depuis la base et non depuis la page, la preuve d'une version : empreinte SHA-256 du fichier validé, chaque demande avec sa qualification et ses devis, chaque décision avec l'identité constatée par le serveur (membre de l'agence ou adresse e-mail vérifiée du client), l'heure du serveur et l'adresse IP, puis le journal complet de la version et l'empreinte du récapitulatif (`src/db/proof.ts`). Le journal est en ajout seul, IP et navigateur compris.
+
+- L'IP est lue dans `x-forwarded-for` : en ligne, renseignez `TRUSTED_PROXY_HOPS` (1 derrière Azure Front Door ou Vercel) pour ne garder que l'adresse ajoutée par le proxy ; sans proxy déclaré, l'adresse est marquée « non vérifiée », car un visiteur peut envoyer son propre en-tête.

@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Clock, MessageSquareText, PenLine, Repeat } from "lucide-react";
+import { ArrowRight, Clock, MessageSquareText, PenLine, Repeat, Share2 } from "lucide-react";
 
-export type TodoKind = "changes-requested" | "adaptation" | "to-qualify" | "awaiting-client";
+export type TodoKind = "changes-requested" | "unshared" | "adaptation" | "to-qualify" | "awaiting-client";
 
 export type TodoItem = {
   key: string;
@@ -17,11 +17,12 @@ export type TodoItem = {
 };
 
 /** Agency actions first; "awaiting-client" is the list of things to chase. */
-export const todoOrder: TodoKind[] = ["changes-requested", "adaptation", "to-qualify", "awaiting-client"];
+export const todoOrder: TodoKind[] = ["changes-requested", "unshared", "adaptation", "to-qualify", "awaiting-client"];
 export const isAgencyAction = (item: TodoItem) => item.kind !== "awaiting-client";
 
 const icons = {
   "changes-requested": PenLine,
+  unshared: Share2,
   adaptation: Repeat,
   "to-qualify": MessageSquareText,
   "awaiting-client": Clock,

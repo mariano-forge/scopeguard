@@ -2,17 +2,18 @@
 
 import { useState } from "react";
 import { Eye, History, MessageSquare, Plus, Share2 } from "lucide-react";
-import type { ProposalStage } from "./CanvasComments";
+import type { ProposalStage, Qualification } from "./CanvasComments";
 import { ResizeHandle } from "./ResizeHandle";
-import { kindLabels, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
+import { itemLabel, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
 import { Hint } from "@/components/hint";
 import { Button } from "@/components/ui/button";
+import { sideOf } from "@/lib/authors";
 
 export type InspectorTab = RequestKind;
 
 const tabs: { kind: RequestKind; label: string; empty: string }[] = [
   { kind: "comment", label: "À clarifier", empty: "Aucun commentaire. Cliquez sur le livrable pour en ajouter un." },
-  { kind: "correction", label: "À traiter", empty: "Aucune demande à traiter. Créez-en une avec « + Demande » ou depuis un commentaire." },
+  { kind: "correction", label: "Inclus", empty: "Aucune demande incluse. Créez-en une avec « + Demande » ou depuis un commentaire." },
   { kind: "outside", label: "Hors scope", empty: "Aucune demande hors scope. Créez-en une avec « + Demande » ou depuis un commentaire." },
 ];
 
@@ -31,11 +32,11 @@ export function threadsToMarkdown(title: string, comments: ThreadComment[]) {
       )
       .join("\n")}\n\n`;
   };
-  return `# ${title}\n\n${section("correction", "À traiter")}${section("outside", "Hors scope")}${section("comment", "À clarifier")}`.trim() + "\n";
+  return `# ${title}\n\n${section("correction", "Inclus")}${section("outside", "Hors scope")}${section("comment", "À clarifier")}`.trim() + "\n";
 }
 
 /**
- * Requests of a version in three tabs (À clarifier · À traiter · Hors scope), with a manual comment form.
+ * Requests of a version in three tabs (À clarifier · Inclus · Hors scope), with a manual comment form.
  * Used by the agency inspector and by the client page.
  */
 export function RequestPanel({
@@ -145,10 +146,10 @@ export function RequestPanel({
                   <button
                     className={`thread-row ${comment.id === selectedId ? "is-selected" : ""}`}
                     aria-current={comment.id === selectedId ? "true" : undefined}
-                    aria-label={`${kindLabels[kind]} #${comment.id}`}
+                    aria-label={`${itemLabel(comment)} #${comment.id}`}
                     onClick={() => onFocus(comment.id)}
                   >
-                    <span className={`thread-avatar ${comment.initials === "AM" ? "is-agency" : "is-client"}`} aria-hidden="true">
+                    <span className={`thread-avatar ${sideOf(comment) === "agency" ? "is-agency" : "is-client"}`} aria-hidden="true">
                       {comment.initials}
                     </span>
                     <span className="thread-row-body">
@@ -261,7 +262,7 @@ export function EditorInspector({
   onRequote: (commentId: number) => void;
   proposalSummary: (comment: ThreadComment) => React.ReactNode;
   /** Opens the "new request" form, already qualified (no comment first). */
-  onAddRequest?: (decision: "Inclus" | "Hors périmètre") => void;
+  onAddRequest?: (decision: Qualification) => void;
   onShare: () => void;
   onPreview: () => void;
   width: number;
@@ -284,8 +285,8 @@ export function EditorInspector({
             </Button>
           </Hint>
           {onAddRequest && (
-            <Hint label="Une demande déjà qualifiée : à traiter ou hors scope">
-              <Button className="requests-add" onClick={() => onAddRequest(tab === "outside" ? "Hors périmètre" : "Inclus")}>
+            <Hint label="Une demande reçue ailleurs (e-mail, appel, réunion…) ou portant sur tout le livrable">
+              <Button className="requests-add" onClick={() => onAddRequest(tab === "outside" ? "Hors périmètre" : tab === "correction" ? "Inclus" : "À qualifier")}>
                 <Plus /> Demande
               </Button>
             </Hint>

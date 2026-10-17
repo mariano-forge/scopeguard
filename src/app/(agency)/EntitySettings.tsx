@@ -31,6 +31,7 @@ export function EntitySettings({
   deleteImpact,
   onRename,
   onDelete,
+  deleteLocked = false,
   moveTargets,
   currentTargetId,
   onMove,
@@ -41,6 +42,8 @@ export function EntitySettings({
   deleteImpact: string;
   onRename: (name: string) => void;
   onDelete: () => void;
+  /** Members cannot delete a space or a project: the entry stays, greyed, with the reason. */
+  deleteLocked?: boolean;
   /** Projects only: the spaces it can move to. */
   moveTargets?: Target[];
   currentTargetId?: number;
@@ -69,8 +72,12 @@ export function EntitySettings({
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onSelect={() => setDialog("delete")}>
-            <Trash2 /> Supprimer {label}
+          <DropdownMenuItem variant="destructive" disabled={deleteLocked} onSelect={() => setDialog("delete")}>
+            <Trash2 />
+            <span className="grid">
+              Supprimer {label}
+              {deleteLocked && <small className="text-xs font-normal">Réservé aux administrateurs de l’agence</small>}
+            </span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

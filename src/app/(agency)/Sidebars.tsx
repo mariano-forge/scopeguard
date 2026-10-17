@@ -29,8 +29,10 @@ import { Hint } from "@/components/hint";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { timeLabel, useNow } from "./editor/CanvasComments";
+import { AccountMenu } from "./CurrentUser";
 
-type Notification = { id: number; message: string };
+/** `href`: the page it is about (src/app/(agency)/routes.ts notificationHref); none for older ones. */
+type Notification = { id: number; message: string; href?: string };
 type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId?: number };
 
@@ -115,9 +117,18 @@ function Notifications({
                 <p className="notification-section">Activité</p>
                 <ul className="grid gap-2 px-4 pb-3">
                   {notifications.slice(0, 5).map((notification) => (
-                    <li className="notification-item" key={notification.id}>
-                      <span className="notification-dot" />
-                      <span>{notification.message}</span>
+                    <li key={notification.id}>
+                      {notification.href ? (
+                        <Link className="notification-item is-link" href={notification.href} onClick={() => setOpen(false)}>
+                          <span className="notification-dot" />
+                          <span>{notification.message}</span>
+                        </Link>
+                      ) : (
+                        <span className="notification-item">
+                          <span className="notification-dot" />
+                          <span>{notification.message}</span>
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -162,10 +173,7 @@ export function HomeSidebar({
   return (
     <aside className="sidebar home-sidebar" aria-label="Navigation">
       <div className="sidebar-account">
-        <span className="account">
-          <span className="avatar dark-avatar">AM</span>
-          <b>Alex Morgan</b>
-        </span>
+        <AccountMenu />
         <Notifications notifications={notifications} feedback={feedback} onMarkAllRead={onMarkAllRead} />
       </div>
       <button className="sidebar-search" onClick={onSearch}>
@@ -369,9 +377,7 @@ export function ProjectSidebar({
         />
         <span className="rail-spacer" />
         <Notifications notifications={notifications} feedback={feedback} onMarkAllRead={onMarkAllRead} compact />
-        <span className="avatar dark-avatar rail-avatar" aria-label="Alex Morgan">
-          AM
-        </span>
+        <AccountMenu compact />
       </nav>
 
       {panel && (

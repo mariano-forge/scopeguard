@@ -804,6 +804,16 @@ button {
   border-top: 1px solid var(--border);
   padding: 10px 0 2px;
 }
+/* An activity the bell can open: same line, with a hover and a keyboard focus. */
+.notification-item.is-link {
+  color: inherit;
+  text-decoration: none;
+  border-radius: 4px;
+}
+.notification-item.is-link:hover,
+.notification-item.is-link:focus-visible {
+  color: var(--action-text);
+}
 .notification-dot {
   width: 6px;
   height: 6px;
@@ -1735,34 +1745,6 @@ button {
   font-size: var(--t-caption-size);
   font-weight: 600;
   padding: 7px;
-}
-
-.blocking-list {
-  display: grid;
-  gap: 8px;
-  max-height: 170px;
-  overflow: auto;
-  margin-bottom: 18px;
-}
-.blocking-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--status-high-bg);
-  color: var(--status-high-text);
-  padding: 9px 10px;
-  font-size: var(--t-caption-size);
-  line-height: 1.4;
-}
-.blocking-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--status-high-text);
-  margin-top: 4px;
-  flex-shrink: 0;
 }
 
 .approval-actions .changes-button,
@@ -2739,6 +2721,10 @@ button {
   background: var(--status-high-bg);
   color: var(--status-high-text);
 }
+.todo-unshared {
+  background: var(--status-medium-bg);
+  color: var(--status-medium-text);
+}
 .todo-adaptation {
   background: var(--status-scope-bg);
   color: var(--status-scope-text);
@@ -3019,6 +3005,22 @@ button {
   gap: var(--s-2);
   min-width: 0;
   font-size: var(--t-ui-size);
+}
+/* Account menu triggers (avatar and name are buttons) */
+button.account {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+button.rail-avatar {
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
 }
 .account b {
   overflow: hidden;
@@ -6417,6 +6419,44 @@ button.rail-logo .lucide {
   color: var(--ink);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.thread-internal {
+  color: var(--graphite);
+  font-style: italic;
+}
+.request-internal {
+  margin: 8px 0 0;
+  font-size: var(--t-caption-size);
+  color: var(--graphite);
+}
+/* Where a request entered by the agency came from: channel, the client's words, a capture. */
+.request-source {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--border);
+  font-size: var(--t-caption-size);
+  color: var(--graphite);
+}
+.request-source-line {
+  margin: 0;
+}
+.request-source-excerpt {
+  margin: 0;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 9rem;
+  overflow: auto;
+}
+.request-source-capture span {
+  display: block;
+  width: 100%;
+  height: 7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--paper) no-repeat left top / contain;
 }
 .request-body .thread-proposal {
   margin: 0;

@@ -4,18 +4,21 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, BadgeEuro, ChevronDown, ClipboardCheck, Pencil, Tag, Trash2, Undo2, X } from "lucide-react";
 import { Hint } from "@/components/hint";
 import { Button } from "@/components/ui/button";
+import { sideOf, type Side } from "@/lib/authors";
+import { isInternalNote, isInternalReply } from "@/lib/internalNotes";
+import { sourceLine, type RequestSource } from "@/lib/requestSource";
 
 /**
  * One request, three states:
  * - "À qualifier" → Commentaire (to clarify): written on the canvas or by hand;
- * - "Inclus"      → À traiter: qualified as part of the scope (work to do);
+ * - "Inclus"      → Inclus: part of the scope sold (work to do);
  * - "Hors périmètre" → Hors scope: qualified as an addition, leads to a proposal.
  * Included and out-of-scope requests only come from qualifying a comment.
  */
 export type Qualification = "À qualifier" | "Inclus" | "Hors périmètre";
 export type RequestKind = "comment" | "correction" | "outside";
 
-type ThreadReply = { id: number; author: string; initials: string; message: string; time: string; createdAt?: number; edited?: boolean };
+type ThreadReply = { id: number; author: string; initials: string; message: string; time: string; createdAt?: number; edited?: boolean; from?: Side; internal?: boolean };
 
 /** Current time, refreshed every 15 s (for "il y a 5 min"). */
 export function useNow() {
@@ -50,6 +53,8 @@ export type ThreadComment = {
   edited?: boolean;
   author: string;
   initials: string;
+  /** Who wrote it (older comments: from their initials, see src/lib/authors.ts). */
+  from?: Side;
   time: string;
   /** When it was written (ms); older data only has `time`. */
   createdAt?: number;
@@ -62,17 +67,43 @@ export type ThreadComment = {
   decision: Qualification;
   kind?: "remark" | "request";
   sourceId?: number;
+  /** Where a request entered by the agency came from (src/lib/requestSource.ts). */
+  source?: RequestSource;
+  /** A pin of the agency: its own words stay internal (src/lib/internalNotes.ts). */
+  internalNote?: boolean;
   position?: { x: number; y: number };
   area?: Area;
   replies?: ThreadReply[];
 };
 
+/** A request's origin: the channel and day, the client's words and their capture (both shown to the client). */
+export function RequestSourceNote({ source, enteredBy }: { source: RequestSource; enteredBy: string }) {
+  return (
+    <aside className="request-source" aria-label="Source de la demande">
+      <p className="request-source-line">{sourceLine(source, enteredBy)}</p>
+      {source.excerpt && <blockquote className="request-source-excerpt">{source.excerpt}</blockquote>}
+      {source.capture && (
+        <a className="request-source-capture" href={source.capture} target="_blank" rel="noopener" aria-label="Ouvrir la capture">
+          <span role="img" aria-label="Capture jointe à la demande" style={{ backgroundImage: `url(${source.capture})` }} />
+        </a>
+      )}
+    </aside>
+  );
+}
+
 export const requestKind = (comment: Pick<ThreadComment, "decision">): RequestKind =>
   comment.decision === "Inclus" ? "correction" : comment.decision === "Hors périmètre" ? "outside" : "comment";
 export const isQualified = (comment: Pick<ThreadComment, "decision">) => requestKind(comment) !== "comment";
-export const kindLabels: Record<RequestKind, string> = { comment: "Commentaire", correction: "Demande à traiter", outside: "Demande hors scope" };
+export const kindLabels: Record<RequestKind, string> = { comment: "Commentaire", correction: "Demande incluse", outside: "Demande hors scope" };
+/**
+ * A pin is a comment until qualified; then a request, with a title. A request back « À clarifier » keeps
+ * its title and stays a request (to clarify), not a comment again.
+ */
+export const isTitledRequest = (comment: Pick<ThreadComment, "decision" | "title">) => requestKind(comment) !== "comment" || Boolean(comment.title?.trim());
+export const itemLabel = (comment: Pick<ThreadComment, "decision" | "title">) =>
+  requestKind(comment) === "comment" && comment.title?.trim() ? "Demande à clarifier" : kindLabels[requestKind(comment)];
 /** Short status shown on badges. */
-export const statusLabels: Record<RequestKind, string> = { comment: "À clarifier", correction: "À traiter", outside: "Hors scope" };
+export const statusLabels: Record<RequestKind, string> = { comment: "À clarifier", correction: "Inclus", outside: "Hors scope" };
 export const statusTones: Record<RequestKind, string> = { comment: "decision-pending", correction: "decision-included", outside: "decision-outside" };
 /** What a request asks, in one line: its title once qualified, else the comment. */
 export const requestText = (comment: Pick<ThreadComment, "title" | "message">) => comment.title ?? comment.message;
@@ -124,7 +155,7 @@ export function CommentPin({
     <button
       type="button"
       data-pin={comment.id}
-      className={`canvas-pin is-${kind} ${active ? "is-active" : ""} ${moving ? "is-moving" : ""} ${comment.initials === "AM" ? "is-agency" : "is-client"}`}
+      className={`canvas-pin is-${kind} ${active ? "is-active" : ""} ${moving ? "is-moving" : ""} ${sideOf(comment) === "agency" ? "is-agency" : "is-client"}`}
       style={{ left: `${comment.position?.x ?? 50}%`, top: `${comment.position?.y ?? 50}%` }}
       onClick={(event) => {
         event.stopPropagation();
@@ -135,7 +166,7 @@ export function CommentPin({
         onMove?.();
       }}
       title={onMove ? "Glisser pour déplacer" : undefined}
-      aria-label={`${kindLabels[kind]} #${comment.id} : ${requestText(comment)}`}
+      aria-label={`${itemLabel(comment)} #${comment.id} : ${requestText(comment)}`}
       aria-expanded={active}
     >
       {kind === "correction" ? <ClipboardCheck aria-hidden="true" /> : kind === "outside" ? <BadgeEuro aria-hidden="true" /> : <span>{comment.initials}</span>}
@@ -148,12 +179,15 @@ function ThreadMessage({
   message,
   now,
   editable,
+  internal,
   onEdit,
   onDelete,
 }: {
   message: ThreadReply;
   now: number;
   editable: boolean;
+  /** Written for the agency only: the client does not see it (src/lib/internalNotes.ts). */
+  internal?: boolean;
   onEdit?: (message: string) => void;
   onDelete?: () => void;
 }) {
@@ -165,7 +199,7 @@ function ThreadMessage({
     setEditing(false);
   };
   return (
-    <div className={`thread-message ${message.initials === "AM" ? "is-agency" : "is-client"}`}>
+    <div className={`thread-message ${sideOf(message) === "agency" ? "is-agency" : "is-client"}`}>
       <span className="thread-avatar" aria-hidden="true">
         {message.initials}
       </span>
@@ -173,6 +207,7 @@ function ThreadMessage({
         <p className="thread-meta">
           <b>{message.author}</b> {timeLabel(message, now) && <small>{timeLabel(message, now)}</small>}
           {message.edited && <small>· modifié</small>}
+          {internal && <small className="thread-internal">· Interne, non visible par le client</small>}
         </p>
         {editing ? (
           <form
@@ -238,10 +273,11 @@ function ThreadMessage({
   );
 }
 
-/** À traiter / Hors scope switch. */
-export function ScopeChoice({ value, onChange }: { value: Qualification; onChange: (value: Qualification) => void }) {
+/** Inclus / Hors scope switch; `clarify` adds « À clarifier », for a request still to discuss with the client. */
+export function ScopeChoice({ value, onChange, clarify }: { value: Qualification; onChange: (value: Qualification) => void; clarify?: boolean }) {
   const options: { value: Qualification; label: string; hint: string }[] = [
-    { value: "Inclus", label: "À traiter", hint: "Dans le scope prévu" },
+    ...(clarify ? [{ value: "À qualifier" as const, label: "À clarifier", hint: "À préciser avec le client" }] : []),
+    { value: "Inclus", label: "Inclus", hint: "Prévu au devis" },
     { value: "Hors périmètre", label: "Hors scope", hint: "Ajout à chiffrer" },
   ];
   return (
@@ -312,14 +348,16 @@ export function ThreadPopover({
   onOpenProposal?: () => void;
   onDelete?: () => void;
   onClose: () => void;
-  /** Initials of the reader: their own messages can be edited or deleted while the discussion is open. */
-  me?: string;
+  /** The side this page writes for (agency or client): its messages can be edited or deleted while the discussion is open. */
+  me?: Side;
   /** Edits a message (0 = the comment itself). */
   onEditMessage?: (messageId: number, message: string) => void;
   /** Deletes a reply (the comment itself is deleted with onDelete). */
   onDeleteMessage?: (messageId: number) => void;
 }) {
   const kind = requestKind(comment);
+  /** A request (qualified, or back to clarify with its title) rather than a comment. */
+  const asRequest = isTitledRequest(comment);
   const [draft, setDraft] = useState("");
   const [qualifying, setQualifying] = useState(Boolean(startQuoting));
   // A new request starts empty (placeholders guide it); an existing one keeps its wording.
@@ -328,7 +366,7 @@ export function ThreadPopover({
   const now = useNow();
   // The discussion is open on a comment, folded on a qualified request (it is closed anyway).
   const [showDiscussion, setShowDiscussion] = useState(kind === "comment");
-  const [decision, setDecision] = useState<Qualification>(kind === "outside" ? "Hors périmètre" : "Inclus");
+  const [decision, setDecision] = useState<Qualification>(kind === "outside" ? "Hors périmètre" : asRequest && kind === "comment" ? "À qualifier" : "Inclus");
   const [quoteOn, setQuoteOn] = useState(Boolean(quote) || Boolean(startQuoting));
   const [amount, setAmount] = useState(quote ? String(quote.amount) : "");
   const [days, setDays] = useState(quote ? String(quote.days) : "");
@@ -345,14 +383,17 @@ export function ThreadPopover({
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [comment.replies?.length]);
 
-  const messages = [{ id: 0, author: comment.author, initials: comment.initials, message: comment.message, time: comment.time, createdAt: comment.createdAt, edited: comment.edited }, ...(comment.replies ?? [])];
+  const messages = [
+    { id: 0, author: comment.author, initials: comment.initials, from: comment.from, message: comment.message, time: comment.time, createdAt: comment.createdAt, edited: comment.edited },
+    ...(comment.replies ?? []),
+  ];
   return (
     <div
       ref={bubbleRef}
       className={`thread is-${kind} ${qualifying ? "is-qualifying" : ""} ${placement}`}
       style={{ left: `${x}%`, top: `${y}%` }}
       role="dialog"
-      aria-label={`${kindLabels[kind]} #${comment.id}`}
+      aria-label={`${itemLabel(comment)} #${comment.id}`}
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
@@ -361,11 +402,11 @@ export function ThreadPopover({
     >
       <header className="thread-header">
         <span className="thread-title">
-          {kind === "comment" ? "Commentaire" : "Demande"} n°{comment.id}
+          {asRequest ? "Demande" : "Commentaire"} n°{comment.id}
         </span>
         <span className="thread-header-actions">
-          {kind === "comment" && onQualify && canWrite && !qualifying && (
-            <Hint label="Créer une demande (à traiter ou hors scope)">
+          {!asRequest && onQualify && canWrite && !qualifying && (
+            <Hint label="Créer une demande (incluse ou hors scope)">
               <Button variant="outline" size="icon-sm" className="thread-create" onClick={() => setQualifying(true)} aria-label="Créer une demande">
                 <Tag />
               </Button>
@@ -407,7 +448,7 @@ export function ThreadPopover({
             <span className="scope-field-label" id={`scope-${comment.id}`}>
               Qualifier la demande
             </span>
-            <ScopeChoice value={decision} onChange={setDecision} />
+            <ScopeChoice value={decision} onChange={setDecision} clarify />
           </div>
           <label>
             Titre de la demande
@@ -449,17 +490,17 @@ export function ThreadPopover({
               Annuler
             </button>
             <button type="submit" className="primary-button" disabled={!title.trim() || !quoteReady}>
-              {kind === "comment" ? "Créer la demande" : "Enregistrer"}
+              {asRequest ? "Enregistrer" : "Créer la demande"}
             </button>
           </div>
         </form>
       ) : (
         <>
-          {kind !== "comment" && (
+          {asRequest && (
             <div className="request-body">
               <p className={`request-kind is-${kind}`}>
                 <i className={`kind-square is-${kind}`} aria-hidden="true" />
-                {kind === "outside" ? "Hors scope · ajout à chiffrer" : "À traiter · dans le scope"}
+                {kind === "outside" ? "Hors scope · ajout à chiffrer" : kind === "correction" ? "Inclus · prévu au devis" : "À clarifier · à préciser avec le client"}
               </p>
               <p className="request-title">{requestText(comment)}</p>
               {comment.description && <p className="request-description">{comment.description}</p>}
@@ -503,18 +544,27 @@ export function ThreadPopover({
                       <Tag aria-hidden="true" /> Modifier
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className="thread-link"
-                    onClick={() => onQualify({ title: comment.title ?? "", description: comment.description ?? "", decision: "À qualifier" })}
-                  >
-                    <Undo2 aria-hidden="true" /> Remettre à clarifier
-                  </button>
+                  {kind !== "comment" && (
+                    <button
+                      type="button"
+                      className="thread-link"
+                      onClick={() => onQualify({ title: comment.title ?? "", description: comment.description ?? "", decision: "À qualifier" })}
+                    >
+                      <Undo2 aria-hidden="true" /> Remettre à clarifier
+                    </button>
+                  )}
                 </div>
               )}
             </div>
           )}
 
+          {/* A pin of the agency, no status chosen yet, is internal (src/db/reviewAccess.ts visibleToClient). */}
+          {me === "agency" && kind === "comment" && sideOf(comment) === "agency" && !comment.title?.trim() && (
+            <p className="request-internal" role="note">
+              Non visible par le client tant que vous ne l’avez pas qualifiée.
+            </p>
+          )}
+          {comment.source && <RequestSourceNote source={comment.source} enteredBy={comment.author} />}
           {kind !== "comment" && (
             <button type="button" className="discussion-toggle" aria-expanded={showDiscussion} onClick={() => setShowDiscussion((open) => !open)}>
               Discussion · {messages.length} message{messages.length > 1 ? "s" : ""}
@@ -529,7 +579,9 @@ export function ThreadPopover({
                 message={message}
                 now={now}
                 // Own messages, while the discussion is open.
-                editable={Boolean(me) && message.initials === me && kind === "comment" && canWrite}
+                editable={Boolean(me) && sideOf(message) === me && kind === "comment" && canWrite}
+                // Once the request shows to the client, what was written for the agency only is labelled.
+                internal={me === "agency" && asRequest && (message.id === 0 ? isInternalNote(comment) : isInternalReply(comment, message))}
                 onEdit={onEditMessage ? (text) => onEditMessage(message.id, text) : undefined}
                 onDelete={message.id === 0 ? onDelete : onDeleteMessage ? () => onDeleteMessage(message.id) : undefined}
               />
