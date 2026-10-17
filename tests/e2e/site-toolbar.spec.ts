@@ -369,6 +369,15 @@ test("from the site, the agency only comments and qualifies on its version: quot
   expect((await call("/api/comments/40/replies", { person: bobPanel, body: { message: "Vu" } })).status).toBe(200);
   expect((await call("/api/auth/organization/remove-member", { person: alice, body: { memberIdOrEmail: bob.email, organizationId: alice.organizationId } })).status).toBe(200);
   expect((await call("/api/comments/40/replies", { person: bobPanel, body: { message: "Encore" } })).status).toBe(401);
+
+  // The link revoked: the panel's session stops at once too, routes and files alike.
+  const capture = (await upload(alice, png, "capture.png", { kind: "request", projectId: 1, livrableId: 1 })).json.href!;
+  const readFile = () => fetch(`${baseURL}${capture}`, { headers: { cookie: panel.cookie, "x-forwarded-for": newIp() }, redirect: "manual" }).then((response) => response.status);
+  expect(await readFile()).toBe(302);
+  expect((await call("/api/comments/40/replies", { person: panel, body: { message: "Avant" } })).status).toBe(200);
+  expect((await call("/api/deliverables/1/review-link", { method: "DELETE", person: alice })).status).toBe(200);
+  expect((await call("/api/comments/40/replies", { person: panel, body: { message: "Après" } })).status).toBe(401);
+  expect(await readFile()).toBe(404);
 });
 
 // ——— From the site to the review page, without a second code ———

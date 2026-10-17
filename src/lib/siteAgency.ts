@@ -6,8 +6,8 @@
 // 2. The panel exchanges it for its own session: a partitioned cookie, kept for the staging site only,
 //    for 12 hours, bound to the member, the agency and the shared version.
 //
-// Both are signed, not stored: membership is read again on every request, so someone removed from the
-// agency loses the panel at once. From the panel, the member only does what siteAgencyActions lists:
+// Both are signed, not stored: membership and the link are read again on every request, so someone
+// removed from the agency, or a link revoked or expired, closes the panel at once. From the panel, the member only does what siteAgencyActions lists:
 // decisions on quotes and the validation stay on Kora's pages (AGENTS.md).
 
 import "server-only";
@@ -15,8 +15,9 @@ import { and, eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { getDb } from "@/db/client";
 import { members, users } from "@/db/auth-schema";
+import { reviewLinks } from "@/db/schema";
 import type { AgencyMember } from "@/db/agencyActions";
-import type { ReviewAccess } from "@/db/reviewAccess";
+import { expired, type ReviewAccess } from "@/db/reviewAccess";
 import { readClaim, signClaim } from "./signedClaim";
 import { siteAgencyCookie } from "./siteReview";
 
@@ -43,6 +44,20 @@ async function memberOf(userId: string, organizationId: string): Promise<AgencyM
   return row ? { id: userId, name: row.name, organizationId, role: row.role } : null;
 }
 
+/**
+ * Whether the link the panel was opened on is still active, unexpired and on the same version: a
+ * revoked or expired link closes the panel's session at once, as it does the client's.
+ */
+async function linkStillOpen(claim: Claim) {
+  const [row] = await getDb()
+    .select({ active: reviewLinks.active, deliverableId: reviewLinks.deliverableId, data: reviewLinks.data })
+    .from(reviewLinks)
+    .where(and(eq(reviewLinks.organizationId, claim.organizationId), eq(reviewLinks.key, claim.linkKey)))
+    .limit(1);
+  const link = row?.data as Record<string, unknown> | undefined;
+  return Boolean(row?.active && link?.active === true && !expired(link) && row.deliverableId === claim.deliverableId);
+}
+
 /** Exchanges a ticket of this link for the panel's session. False when it is not one, or its member left. */
 export async function openSiteAgencySession(ticket: unknown, access: ReviewAccess) {
   const claim = readClaim<Claim>(ticketScope, ticket);
@@ -62,7 +77,7 @@ export async function openSiteAgencySession(ticket: unknown, access: ReviewAcces
 /** The member using the panel, and the version it was opened on; null without a valid session. */
 export async function siteAgencyMember(): Promise<{ member: AgencyMember; deliverableId: number; linkKey: string } | null> {
   const claim = readClaim<Claim>(sessionScope, (await cookies()).get(siteAgencyCookie)?.value);
-  if (!claim) return null;
+  if (!claim || !(await linkStillOpen(claim))) return null;
   const member = await memberOf(claim.userId, claim.organizationId);
   return member ? { member, deliverableId: claim.deliverableId, linkKey: claim.linkKey } : null;
 }
