@@ -302,3 +302,59 @@ test("from the site, the agency only comments and qualifies on its version: quot
   expect((await call("/api/auth/organization/remove-member", { person: alice, body: { memberIdOrEmail: bob.email, organizationId: alice.organizationId } })).status).toBe(200);
   expect((await call("/api/comments/40/replies", { person: bobPanel, body: { message: "Encore" } })).status).toBe(401);
 });
+
+// ——— From the site to the review page, without a second code ———
+
+test("a quote waiting on the site is decided in Kora: the review opens in a tab without a second code", async ({ browser }) => {
+  const { alice, token, email } = await siteReview();
+  await seedState(alice, {
+    lists: {
+      comments: {
+        upsert: [{ id: 50, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Une page Équipe", title: "Page Équipe", decision: "Hors périmètre", kind: "request", location: "/", time: "t", site: anchorOn("#titre") }],
+        remove: [],
+      },
+    },
+    maps: {
+      proposalStates: { upsert: { "50": "sent" }, remove: [] },
+      proposalVersions: { upsert: { "50": [{ id: 500, version: 1, commentId: 50, description: "Page Équipe", amount: 900, deadline: 3, status: "sent", createdAt: "x" }] }, remove: [] },
+    },
+  });
+  const { page, errors, panel } = await siteVisitor(browser, token);
+  await page.goto(`${site}/?kora`);
+  await verifyInPanel(page, email);
+
+  const waiting = panel.getByRole("status").filter({ hasText: "1 devis attend votre décision." });
+  await expect(waiting).toBeVisible();
+  const opened = page.context().waitForEvent("page");
+  await waiting.getByRole("button", { name: "Ouvrir dans Kora" }).click();
+  const review = await opened;
+  await review.waitForURL(`${baseURL}/review/${token}`);
+  // The usual review, opened by the panel's session: no code asked again.
+  await expect(review.getByRole("button", { name: "Valider cette version" })).toBeVisible();
+  await expect(review.getByRole("button", { name: "Recevoir un code" })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("the review page's ticket is given to a verified client only, opens its own link only, and stops with the invitation", async () => {
+  const { alice, token, email } = await siteReview();
+  const otherToken = unique("tok-other");
+  await seedState(alice, { maps: { reviewLinks: { upsert: { "2:1": { token: otherToken, active: true, expiresAt: "01/01/2099", autoExpire: true, deliverableId: 2, version: 1 } }, remove: [] } } });
+
+  // Nobody verified, or the agency's panel session: no ticket.
+  expect((await call(`/api/review/${token}/site/handoff`, { body: {} })).status).toBe(401);
+  expect((await call(`/api/review/${token}/site/handoff`, { person: await siteAgencySession(alice, token), body: {} })).status).toBe(401);
+
+  const client = await verifiedClient(token, email);
+  const ticket = (await call(`/api/review/${token}/site/handoff`, { person: client, body: {} })).json.ticket as string;
+  expect(ticket).toBeTruthy();
+  // Another link, a forged ticket: refused.
+  expect((await call(`/api/review/${otherToken}/site/handoff/open`, { body: { ticket } })).status).toBe(400);
+  expect((await call(`/api/review/${token}/site/handoff/open`, { body: { ticket: `${ticket.slice(0, -2)}xx` } })).status).toBe(400);
+  // The right one opens the usual session…
+  const opened = await call(`/api/review/${token}/site/handoff/open`, { body: { ticket } });
+  expect(opened.status).toBe(200);
+  expect(opened.response.headers.getSetCookie().some((cookie) => cookie.startsWith("kora_review_session=") && /SameSite=Lax/i.test(cookie))).toBe(true);
+  // …until the agency removes the invitation.
+  expect((await call(`/api/deliverables/1/review-link/invites/${encodeURIComponent(email)}`, { method: "DELETE", person: alice })).status).toBe(200);
+  expect((await call(`/api/review/${token}/site/handoff/open`, { body: { ticket } })).status).toBe(400);
+});

@@ -72,7 +72,7 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 
 | Technologie | Version | Rôle |
 | --- | --- | --- |
-| **Playwright Test** | 1.63 | 88 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier. Couvre la connexion, les agences et leurs rôles, chaque geste de l'agence et du client dans l'interface et par l'API (refus compris), l'accès client et ses rôles, les fichiers, la preuve, les relances et les notifications. |
+| **Playwright Test** | 1.63 | 90 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier. Couvre la connexion, les agences et leurs rôles, chaque geste de l'agence et du client dans l'interface et par l'API (refus compris), l'accès client et ses rôles, les fichiers, la preuve, les relances et les notifications. |
 | **ESLint** | 9.39 | Analyse du code, avec la configuration de Next.js. |
 | **Prettier** | 3.9 | Mise en forme. |
 

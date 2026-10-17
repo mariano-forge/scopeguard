@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { siteAgencyAction } from "@/lib/agencyActions";
 import { reviewAction } from "@/lib/reviewActions";
-import { type PanelMessage, type SiteAnchor, type SitePin, type TicketMessage, type ToolbarMessage } from "@/lib/siteReview";
+import { type HandoffMessage, type PanelMessage, type SiteAnchor, type SitePin, type TicketMessage, type ToolbarMessage } from "@/lib/siteReview";
 import { loadSharedState, subscribeSharedState } from "@/lib/stateSync";
 import { AccessGate, ProfileGate } from "../AccessGate";
 import { SiteRequest, type SiteComment } from "./SiteRequest";
@@ -28,22 +28,47 @@ type Viewer = {
   name: string | null;
   deliverable: string;
   agency: { name: string; href: string } | null;
+  role: "decider" | "contributor" | null;
 };
 
-/** The requests placed on the site, in the order they were posted: their number on the pins. */
-function siteRequestsOf(serialized: string | null): { requests: SiteComment[]; deliverableId: number | null } {
+type VersionView = {
+  requests: SiteComment[];
+  deliverableId: number | null;
+  /** Sent quotes waiting for the client's decision (not answered, no counter-proposal pending). */
+  pendingQuotes: number;
+  /** The version is not validated yet. */
+  toValidate: boolean;
+};
+
+/** The requests placed on the site, in the order they were posted (their number on the pins), and what waits. */
+function versionOf(serialized: string | null): VersionView {
   try {
-    const state = JSON.parse(serialized ?? "null") as { comments?: SiteComment[]; deliverables?: { id: number }[] } | null;
-    return { requests: (state?.comments ?? []).filter((comment) => comment.site).sort((left, right) => left.id - right.id), deliverableId: state?.deliverables?.[0]?.id ?? null };
+    const state = JSON.parse(serialized ?? "null") as {
+      comments?: SiteComment[];
+      deliverables?: { id: number; reviewStatus?: string; status?: string }[];
+      proposalStates?: Record<string, unknown>;
+      proposalDecisions?: Record<string, unknown>;
+      adaptationRequests?: Record<string, unknown>;
+    } | null;
+    const record = state?.deliverables?.[0];
+    const pendingQuotes = Object.entries(state?.proposalStates ?? {}).filter(
+      ([key, value]) => value === "sent" && !["accepted", "refused"].includes(String(state?.proposalDecisions?.[key])) && !state?.adaptationRequests?.[key],
+    ).length;
+    return {
+      requests: (state?.comments ?? []).filter((comment) => comment.site).sort((left, right) => left.id - right.id),
+      deliverableId: record?.id ?? null,
+      pendingQuotes,
+      toValidate: Boolean(record) && record?.reviewStatus !== "approved" && record?.status !== "Approuvée",
+    };
   } catch {
-    return { requests: [], deliverableId: null };
+    return { requests: [], deliverableId: null, pendingQuotes: 0, toValidate: false };
   }
 }
 
 export function SitePanel({ token, parent }: { token: string; parent: string }) {
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [accessCheck, setAccessCheck] = useState(0);
-  const [{ requests, deliverableId }, setVersion] = useState(() => siteRequestsOf(null));
+  const [{ requests, deliverableId, pendingQuotes, toValidate }, setVersion] = useState(() => versionOf(null));
   /** The page the client is on, as the toolbar reports it. */
   const [pageUrl, setPageUrl] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ anchor: SiteAnchor; label: string } | null>(null);
@@ -54,6 +79,8 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
   const [agencyError, setAgencyError] = useState("");
   /** The « Je suis de l'agence » window: the only one whose ticket the panel takes. */
   const agencyWindow = useRef<Window | null>(null);
+  /** The review tab opened from the panel, and the ticket it will be handed (src/lib/siteHandoff.ts). */
+  const reviewTab = useRef<{ tab: Window; ticket: Promise<string | null> } | null>(null);
   const client = viewer?.mode === "client" && Boolean(viewer.name);
   const agency = viewer?.mode === "agency";
 
@@ -72,8 +99,8 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
   useEffect(() => {
     if (!client && !agency) return;
     let cancelled = false;
-    void loadSharedState(token).then((serialized) => !cancelled && setVersion(siteRequestsOf(serialized)));
-    const unsubscribe = subscribeSharedState((serialized) => setVersion(siteRequestsOf(serialized)));
+    void loadSharedState(token).then((serialized) => !cancelled && setVersion(versionOf(serialized)));
+    const unsubscribe = subscribeSharedState((serialized) => setVersion(versionOf(serialized)));
     return () => {
       cancelled = true;
       unsubscribe();
@@ -115,6 +142,29 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
   }, [token]);
+
+  // The review tab is ready: it gets its ticket, from this window only.
+  useEffect(() => {
+    async function receive(event: MessageEvent<HandoffMessage>) {
+      const opened = reviewTab.current;
+      if (event.origin !== window.location.origin || !opened || event.source !== opened.tab || event.data?.type !== "kora:handoff-ready") return;
+      reviewTab.current = null;
+      const ticket = await opened.ticket;
+      if (ticket) opened.tab.postMessage({ type: "kora:handoff-ticket", ticket } satisfies HandoffMessage, window.location.origin);
+    }
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, []);
+
+  /** Quotes and the validation are decided on the review page, opened in a tab without a second code. */
+  function openReview() {
+    const tab = window.open(`/review/${encodeURIComponent(token)}/site/ouvrir`, "_blank");
+    if (!tab) return;
+    const ticket = fetch(`/api/review/${encodeURIComponent(token)}/site/handoff`, { method: "POST" })
+      .then(async (response) => (response.ok ? ((await response.json()) as { ticket?: string }).ticket ?? null : null))
+      .catch(() => null);
+    reviewTab.current = { tab, ticket };
+  }
 
   const onPage = requests.filter((request) => request.site?.url === pageUrl);
   const numberOf = (id: number) => requests.findIndex((request) => request.id === id) + 1;
@@ -199,6 +249,20 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
         <p className="truncate text-xs text-[var(--graphite)]">{pageUrl ?? "…"}</p>
       </header>
 
+      {client && (pendingQuotes > 0 || (toValidate && viewer.role === "decider")) && (
+        <div role="status" className="grid gap-2 rounded-[var(--r-panel)] bg-[var(--status-medium-bg)] p-3 text-[var(--status-medium-text)]">
+          <p>
+            {pendingQuotes > 0
+              ? `${pendingQuotes} devis ${pendingQuotes > 1 ? "attendent" : "attend"} votre décision.`
+              : "La version attend votre validation."}{" "}
+            Les décisions se prennent dans Kora.
+          </p>
+          <Button type="button" variant="outline" onClick={openReview}>
+            Ouvrir dans Kora <ExternalLink />
+          </Button>
+        </div>
+      )}
+
       {draft ? (
         <form className="grid gap-2 rounded-[var(--r-panel)] border border-[var(--border)] p-3" onSubmit={send}>
           <p className="text-xs text-[var(--graphite)]">
@@ -242,14 +306,15 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
       {!onPage.length && !draft && <p className="text-[var(--graphite)]">Aucune demande sur cette page pour l’instant.</p>}
 
       {/* Quotes and the validation stay on Kora's pages, where no page of the site can frame them. */}
-      <a
-        className="mt-auto flex items-center gap-1 text-[var(--action-text)] underline-offset-2 hover:underline"
-        href={agency ? (viewer.agency?.href ?? "/") : `/review/${encodeURIComponent(token)}`}
-        target="_blank"
-        rel="noopener"
-      >
-        {agency ? "Devis et partage : ouvrir dans Kora" : "Devis et validation : ouvrir la revue complète"} <ExternalLink className="size-3" />
-      </a>
+      {agency ? (
+        <a className="mt-auto flex items-center gap-1 text-[var(--action-text)] underline-offset-2 hover:underline" href={viewer.agency?.href ?? "/"} target="_blank" rel="noopener">
+          Devis et partage : ouvrir dans Kora <ExternalLink className="size-3" />
+        </a>
+      ) : (
+        <Button type="button" variant="link" className="mt-auto h-auto justify-start px-0" onClick={openReview}>
+          Devis et validation : ouvrir la revue dans Kora <ExternalLink className="size-3" />
+        </Button>
+      )}
     </main>
   );
 }
