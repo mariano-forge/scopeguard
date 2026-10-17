@@ -34,7 +34,7 @@
     }
   else if (!remembered()) return;
 
-  const colors = { action: "#30a8ff", ink: "#111111", paper: "#ffffff", border: "#ddd9d1", focus: "#0079d1" };
+  const colors = { action: "#30a8ff", ink: "#111111", paper: "#ffffff", border: "#ddd9d1", focus: "#0079d1", graphite: "#4c4c48" };
   const host = document.createElement("div");
   host.setAttribute("data-kora-toolbar", "");
   host.style.cssText = "position:absolute;top:0;left:0;width:0;height:0;z-index:2147483646;";
@@ -53,6 +53,7 @@
       .highlight { position: fixed; pointer-events: none; outline: 2px solid ${colors.action}; background: rgb(48 168 255 / .12); display: none; }
       .pin { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 999px; border: 2px solid ${colors.paper};
         background: ${colors.action}; color: ${colors.ink}; box-shadow: 0 2px 8px rgb(0 0 0 / .25); }
+      .pin.internal { background: ${colors.paper}; color: ${colors.graphite}; border: 2px dashed ${colors.graphite}; }
       .pin.flash { outline: 3px solid ${colors.focus}; }
       button:focus-visible { outline: 3px solid ${colors.focus}; outline-offset: 2px; }
     </style>
@@ -186,10 +187,11 @@
     for (const pin of placed) {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "pin";
+      // An agency pin the client does not see (only drawn for the agency).
+      button.className = pin.internal ? "pin internal" : "pin";
       button.dataset.id = String(pin.id);
       button.textContent = String(pin.number);
-      button.setAttribute("aria-label", `Demande ${pin.number}`);
+      button.setAttribute("aria-label", pin.internal ? `Remarque interne ${pin.number}` : `Demande ${pin.number}`);
       button.style.left = `${pin.left}px`;
       button.style.top = `${pin.top}px`;
       button.addEventListener("click", () => (open(true), tell({ type: "kora:open", id: pin.id })));

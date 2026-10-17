@@ -4,6 +4,7 @@
 // member's role (reservedActions) and applied in one transaction with its audit events.
 // The agency's other writes still go through /api/state; they move here one subject at a time.
 
+import { readSiteAnchor, type SiteAnchor } from "@/lib/siteReview";
 import { randomUUID } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
 import { initialsOf, sideOf } from "@/lib/authors";
@@ -42,7 +43,7 @@ type Quote = { amount: number; days: number; counter: boolean };
 
 export type AgencyAction =
   | WorkspaceAction
-  | { type: "comment.create"; deliverableId: number; id?: number; message: string; location?: string; page?: number; position?: { x: number; y: number }; area?: Area }
+  | { type: "comment.create"; deliverableId: number; id?: number; message: string; location?: string; page?: number; position?: { x: number; y: number }; area?: Area; site?: SiteAnchor }
   | { type: "request.create"; deliverableId: number; decision: Qualification; title: string; description?: string; quote?: Quote; source?: RequestSource }
   | { type: "comment.restore"; comment: Data }
   | { type: "comment.edit"; commentId: number; message: string }
@@ -97,7 +98,7 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
       const deliverableId = id(body.deliverableId);
       const point = readPoint(body.position);
       return deliverableId && message
-        ? { type, deliverableId, id: id(body.id), message, location: text(body.location, 200), page: id(body.page), position: point, area: point ? readArea(body.area) : undefined }
+        ? { type, deliverableId, id: id(body.id), message, location: text(body.location, 200), page: id(body.page), position: point, area: point ? readArea(body.area) : undefined, site: readSiteAnchor(body.site) }
         : null;
     }
     case "request.create": {
@@ -330,6 +331,8 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
         page: action.page ?? 1,
         ...(action.position ? { position: action.position } : {}),
         ...(action.area ? { area: action.area } : {}),
+        // Placed on the staging site, from Kora's panel there (src/lib/siteReview.ts).
+        ...(action.site ? { site: action.site, location: action.location ?? action.site.url } : {}),
       });
       log.add("comment.created", "Commentaire agence ajouté", commentId);
     } else {

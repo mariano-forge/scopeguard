@@ -11,10 +11,14 @@ import { deciderActions, type ClientRole } from "./clientRoles";
 import { requestLimit, tooManyRequests, withinLimit } from "@/db/requestLimits";
 import { databaseFailure, requestOrigin } from "./api";
 import { getCurrentUser, isMemberOf } from "./session";
+import { siteAgencyMember } from "./siteAgency";
+import type { AgencyMember } from "@/db/agencyActions";
 
 export type ReviewViewer =
   | { mode: "client"; access: ReviewAccess; email: string; role: ClientRole }
   | { mode: "preview"; access: ReviewAccess; email: null }
+  /** A member of the agency in the panel on the staging site, opened on this version (src/lib/siteAgency.ts). */
+  | { mode: "agency"; access: ReviewAccess; email: null; member: AgencyMember }
   /** `email`: verified on this device, but not invited to this link. */
   | { mode: "none"; access: ReviewAccess; email: string | null };
 
@@ -29,6 +33,8 @@ export async function getReviewViewer(token: string): Promise<ReviewViewer | nul
   // Preview: a member of the agency that owns the link, not any signed-in member.
   const user = await getCurrentUser();
   if (user && (await isMemberOf(user.id, access.organizationId))) return { mode: "preview", access, email: null };
+  const site = await siteAgencyMember();
+  if (site && site.linkKey === access.key && site.member.organizationId === access.organizationId) return { mode: "agency", access, email: null, member: site.member };
   return { mode: "none", access, email };
 }
 
@@ -68,7 +74,7 @@ export async function reviewActionResponse(
   try {
     const viewer = await getReviewViewer(token);
     if (!viewer) return reviewNotFound();
-    if (viewer.mode === "preview") return Response.json({ error: "Aperçu agence : lecture seule" }, { status: 403 });
+    if (viewer.mode === "preview" || viewer.mode === "agency") return Response.json({ error: "Aperçu agence : lecture seule" }, { status: 403 });
     if (viewer.mode === "none") return Response.json({ error: "Vérification de votre adresse requise" }, { status: 401 });
     if (deciderActions.has(type) && viewer.role !== "decider")
       return Response.json({ error: "Seul un décideur désigné par l’agence peut prendre cette décision.", code: "DECIDER_ONLY" }, { status: 403 });

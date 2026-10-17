@@ -6,7 +6,7 @@ import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
 import { crossSiteRefusal, crossSiteWrite } from "@/lib/api";
 import { siteFramePath, siteFramePolicy } from "@/lib/securityHeaders";
-import { parentOrigin } from "@/lib/siteReview";
+import { parentOrigin, siteAgencyCookie } from "@/lib/siteReview";
 
 /** Reachable without an agency session: sign-in pages, the client review and what it loads. */
 const publicPaths = [/^\/connexion$/, /^\/reinitialiser$/, /^\/review\//, /^\/api\/auth\//, /^\/api\/review\//, /^\/api\/files\//];
@@ -23,6 +23,9 @@ export function proxy(request: NextRequest) {
     return response;
   }
   if (publicPaths.some((path) => path.test(pathname)) || getSessionCookie(request)) return NextResponse.next();
+  // An agency member in the panel on the staging site writes through the agency's routes, which only
+  // open some actions to that session (src/lib/agencyActionRoute.ts).
+  if (pathname.startsWith("/api/") && request.cookies.has(siteAgencyCookie)) return NextResponse.next();
 
   if (pathname.startsWith("/api/")) return Response.json({ error: "Connexion requise" }, { status: 401 });
   const signIn = new URL("/connexion", request.url);

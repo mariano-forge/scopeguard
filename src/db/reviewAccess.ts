@@ -137,6 +137,36 @@ export async function readReviewState(db: Db, access: ReviewAccess) {
   return { revision, state: filtered };
 }
 
+/**
+ * What an agency member sees in the panel on the staging site: every request of the shared version,
+ * its own internal pins included, each marked with whether the client sees it. Nothing of the other
+ * versions, projects or invitations: the panel only needs this version's requests.
+ */
+export async function readSiteAgencyState(db: Db, access: ReviewAccess) {
+  const { revision, state } = await readState(db, access.organizationId);
+  if (!state) return { revision, state: null };
+  const record = state.deliverables?.find((item) => item.id === access.deliverableId && item.version === access.version);
+  const quotesOf = (id: number) => (state.proposalVersions ?? {})[String(id)];
+  const versionComments = (state.comments ?? [])
+    .filter((comment) => comment.deliverableId === access.deliverableId)
+    .map((comment) => ({ ...comment, clientSees: visibleToClient(comment, quotesOf(comment.id)) }));
+  const filtered: SharedState = {
+    clients: [],
+    projects: [],
+    deliverables: record ? [record] : [],
+    comments: versionComments,
+    notifications: [],
+    auditEvents: [],
+    reviewLinks: { [access.key]: publicLink(access.link) },
+    proposalStates: {},
+    proposalDecisions: {},
+    adaptationRequests: {},
+    proposalVersions: {},
+    reviewLink: null,
+  };
+  return { revision, state: filtered };
+}
+
 /** Replies of `before` kept as they were, except the client's own, which may change or go. */
 function repliesAllowed(before: Reply[], after: Reply[]) {
   const afterById = new Map(after.map((reply) => [reply.id, reply]));

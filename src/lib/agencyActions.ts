@@ -15,3 +15,17 @@ export function agencyAction(path: string, method: Method, body?: Record<string,
     return true;
   });
 }
+
+/**
+ * The same actions from Kora's panel on the staging site (src/lib/siteAgency.ts), a frame: a refusal
+ * is said in the panel rather than by leaving the page. Only some actions are open there (KORA_ONLY).
+ */
+export function siteAgencyAction(path: string, method: Method, body?: Record<string, unknown>) {
+  return actionRequest(`/api/${path}`, method, body, ({ status, code, error }) => {
+    // The panel's session ended (12 hours, or removed from the agency): it asks again.
+    if (status === 401) window.location.reload();
+    else if (status === 403 && (code === "KORA_ONLY" || code === "ADMIN_ONLY")) toast.error(error ?? "Cette action se fait dans Kora.");
+    else return false;
+    return true;
+  });
+}

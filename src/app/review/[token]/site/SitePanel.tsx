@@ -1,40 +1,49 @@
 "use client";
 
 // Kora's panel on the agency's staging site, in a frame (see page.tsx). The toolbar on the site
-// (public/kora-toolbar.js) picks the element and draws the pins; the panel verifies the client, holds
-// the requests' text and writes them through the client's action routes (src/lib/reviewActions.ts).
-// Every message is checked: from the site's origin and from the window that framed the panel only.
+// (public/kora-toolbar.js) picks the element and draws the pins; the panel verifies who is there,
+// holds the requests' text and writes them through the action routes.
+// - A client verifies by code (AccessGate) and writes through src/lib/reviewActions.ts.
+// - An agency member is recognised by a Kora window (« Je suis de l'agence », src/lib/siteAgency.ts),
+//   then comments, replies and qualifies through src/lib/agencyActions.ts; quotes are done in Kora.
+// Every message is checked: from the site's origin and the window that framed the panel, or from the
+// Kora window the panel opened.
 
-import { useEffect, useState } from "react";
-import { Crosshair, ExternalLink, MapPin } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Crosshair, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { requestKind, requestText, statusLabels, statusTones, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
-import { sideOf } from "@/lib/authors";
+import { siteAgencyAction } from "@/lib/agencyActions";
 import { reviewAction } from "@/lib/reviewActions";
-import { type PanelMessage, type SiteAnchor, type SitePin, type ToolbarMessage } from "@/lib/siteReview";
+import { type PanelMessage, type SiteAnchor, type SitePin, type TicketMessage, type ToolbarMessage } from "@/lib/siteReview";
 import { loadSharedState, subscribeSharedState } from "@/lib/stateSync";
 import { AccessGate, ProfileGate } from "../AccessGate";
+import { SiteRequest, type SiteComment } from "./SiteRequest";
 
-type Viewer = { mode: "client" | "preview" | "none"; verifiedEmail: string | null; invitation: { id: string | null; masked: string } | null; name: string | null; deliverable: string };
-type Reply = { id: number; from?: string; initials?: string; author?: string; message: string };
-type SiteComment = Pick<ThreadComment, "decision" | "title" | "message"> & { id: number; from?: string; initials?: string; author?: string; site?: SiteAnchor; replies?: Reply[] };
+type Viewer = {
+  mode: "client" | "preview" | "agency" | "none";
+  verifiedEmail: string | null;
+  invitation: { id: string | null; masked: string } | null;
+  name: string | null;
+  deliverable: string;
+  agency: { name: string; href: string } | null;
+};
 
 /** The requests placed on the site, in the order they were posted: their number on the pins. */
-function siteRequestsOf(serialized: string | null): SiteComment[] {
+function siteRequestsOf(serialized: string | null): { requests: SiteComment[]; deliverableId: number | null } {
   try {
-    const state = JSON.parse(serialized ?? "null") as { comments?: SiteComment[] } | null;
-    return (state?.comments ?? []).filter((comment) => comment.site).sort((left, right) => left.id - right.id);
+    const state = JSON.parse(serialized ?? "null") as { comments?: SiteComment[]; deliverables?: { id: number }[] } | null;
+    return { requests: (state?.comments ?? []).filter((comment) => comment.site).sort((left, right) => left.id - right.id), deliverableId: state?.deliverables?.[0]?.id ?? null };
   } catch {
-    return [];
+    return { requests: [], deliverableId: null };
   }
 }
 
 export function SitePanel({ token, parent }: { token: string; parent: string }) {
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [accessCheck, setAccessCheck] = useState(0);
-  const [requests, setRequests] = useState<SiteComment[]>([]);
+  const [{ requests, deliverableId }, setVersion] = useState(() => siteRequestsOf(null));
   /** The page the client is on, as the toolbar reports it. */
   const [pageUrl, setPageUrl] = useState<string | null>(null);
   const [draft, setDraft] = useState<{ anchor: SiteAnchor; label: string } | null>(null);
@@ -42,15 +51,17 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
   const [picking, setPicking] = useState(false);
   const [openId, setOpenId] = useState<number | null>(null);
   const [missing, setMissing] = useState<number[]>([]);
-  const [replyText, setReplyText] = useState("");
+  const [agencyError, setAgencyError] = useState("");
+  /** The « Je suis de l'agence » window: the only one whose ticket the panel takes. */
+  const agencyWindow = useRef<Window | null>(null);
   const client = viewer?.mode === "client" && Boolean(viewer.name);
+  const agency = viewer?.mode === "agency";
 
   const tellSite = (data: PanelMessage) => window.parent.postMessage(data, parent);
 
   useEffect(() => {
     let cancelled = false;
-    const invitation = new URLSearchParams(window.location.search).get("invitation");
-    fetch(`/api/review/${encodeURIComponent(token)}/access${invitation ? `?invitation=${encodeURIComponent(invitation)}` : ""}`, { cache: "no-store" })
+    fetch(`/api/review/${encodeURIComponent(token)}/access`, { cache: "no-store" })
       .then(async (response) => !cancelled && response.ok && setViewer(await response.json()))
       .catch(() => undefined);
     return () => {
@@ -59,15 +70,15 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
   }, [token, accessCheck]);
 
   useEffect(() => {
-    if (!client) return;
+    if (!client && !agency) return;
     let cancelled = false;
-    void loadSharedState(token).then((serialized) => !cancelled && setRequests(siteRequestsOf(serialized)));
-    const unsubscribe = subscribeSharedState((serialized) => setRequests(siteRequestsOf(serialized)));
+    void loadSharedState(token).then((serialized) => !cancelled && setVersion(siteRequestsOf(serialized)));
+    const unsubscribe = subscribeSharedState((serialized) => setVersion(siteRequestsOf(serialized)));
     return () => {
       cancelled = true;
       unsubscribe();
     };
-  }, [client, token]);
+  }, [client, agency, token]);
 
   useEffect(() => {
     function receive(event: MessageEvent<ToolbarMessage>) {
@@ -86,34 +97,73 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
     return () => window.removeEventListener("message", receive);
   }, [parent]);
 
+  // The ticket of the Kora window, exchanged for the panel's agency session.
+  useEffect(() => {
+    async function receive(event: MessageEvent<TicketMessage>) {
+      if (event.origin !== window.location.origin || !agencyWindow.current || event.source !== agencyWindow.current) return;
+      if (event.data?.type !== "kora:agency-ticket" || typeof event.data.ticket !== "string") return;
+      agencyWindow.current = null;
+      const response = await fetch(`/api/review/${encodeURIComponent(token)}/site/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticket: event.data.ticket }),
+      }).catch(() => null);
+      if (!response?.ok) return setAgencyError("La reconnaissance n’a pas abouti. Réessayez.");
+      setViewer(null);
+      setAccessCheck((count) => count + 1);
+    }
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [token]);
+
   const onPage = requests.filter((request) => request.site?.url === pageUrl);
   const numberOf = (id: number) => requests.findIndex((request) => request.id === id) + 1;
 
   // The site draws the pins of its page: their number and place, never their text.
-  const pins: SitePin[] = onPage.map((request) => ({ id: request.id, number: numberOf(request.id), selector: request.site!.selector, x: request.site!.x, y: request.site!.y }));
+  const pins: SitePin[] = onPage.map((request) => ({
+    id: request.id,
+    number: numberOf(request.id),
+    selector: request.site!.selector,
+    x: request.site!.x,
+    y: request.site!.y,
+    ...(request.clientSees === false ? { internal: true } : {}),
+  }));
   const pinsKey = JSON.stringify(pins);
   useEffect(() => {
     window.parent.postMessage({ type: "kora:pins", pins: JSON.parse(pinsKey) as SitePin[] } satisfies PanelMessage, parent);
   }, [pinsKey, parent]);
 
+  function openAgencyWindow() {
+    setAgencyError("");
+    agencyWindow.current = window.open(`/review/${encodeURIComponent(token)}/site/agence`, "kora-agence", "popup,width=460,height=600");
+  }
+
   if (!viewer) return <main className="p-6 text-sm text-[var(--graphite)]">Chargement…</main>;
-  if (viewer.mode === "none")
+  if (viewer.mode === "none" || viewer.mode === "preview")
     return (
-      <AccessGate
-        token={token}
-        deliverable={viewer.deliverable}
-        invitation={viewer.invitation}
-        verifiedEmail={viewer.verifiedEmail}
-        site
-        onVerified={() => {
-          setViewer(null);
-          setAccessCheck((count) => count + 1);
-        }}
-      />
+      <div>
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 pt-3 text-sm">
+          {agencyError && <span role="alert" className="text-[var(--status-high-text)]">{agencyError}</span>}
+          <Button type="button" variant="link" size="sm" onClick={openAgencyWindow}>
+            Je suis de l’agence
+          </Button>
+        </div>
+        <AccessGate
+          token={token}
+          deliverable={viewer.deliverable}
+          invitation={viewer.invitation}
+          verifiedEmail={viewer.verifiedEmail}
+          site
+          onVerified={() => {
+            setViewer(null);
+            setAccessCheck((count) => count + 1);
+          }}
+        />
+      </div>
     );
   if (viewer.mode === "client" && !viewer.name && viewer.verifiedEmail)
     return <ProfileGate token={token} deliverable={viewer.deliverable} email={viewer.verifiedEmail} onSaved={(name) => setViewer({ ...viewer, name })} />;
-  if (!client) return <main className="p-6 text-sm text-[var(--graphite)]">Ce panneau est réservé aux personnes invitées sur la revue.</main>;
+  if (!client && !agency) return <main className="p-6 text-sm text-[var(--graphite)]">Ce panneau est réservé aux personnes invitées sur la revue.</main>;
 
   function startPicking() {
     setDraft(null);
@@ -124,23 +174,27 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
   async function send(event: React.FormEvent) {
     event.preventDefault();
     if (!draft || !message.trim()) return;
-    const created = await reviewAction(token, "comments", "POST", { message: message.trim(), location: draft.anchor.url, site: draft.anchor });
+    const body = { message: message.trim(), location: draft.anchor.url, site: draft.anchor };
+    // The agency's remark stays internal until qualified, as a pin in Kora.
+    const created = agency ? await siteAgencyAction("comments", "POST", { ...body, deliverableId }) : await reviewAction(token, "comments", "POST", body);
     if (!created) return;
     setDraft(null);
     setMessage("");
     if (typeof created.id === "number") setOpenId(created.id);
   }
 
-  async function reply(event: React.FormEvent, commentId: number) {
-    event.preventDefault();
-    if (!replyText.trim()) return;
-    if (await reviewAction(token, `comments/${commentId}/replies`, "POST", { message: replyText.trim() })) setReplyText("");
-  }
+  const reply = async (commentId: number, text: string) =>
+    Boolean(agency ? await siteAgencyAction(`comments/${commentId}/replies`, "POST", { message: text }) : await reviewAction(token, `comments/${commentId}/replies`, "POST", { message: text }));
+  const qualify = async (commentId: number, decision: SiteComment["decision"], title: string) =>
+    Boolean(await siteAgencyAction(`comments/${commentId}/qualification`, "PUT", { decision, ...(title ? { title } : {}) }));
 
   return (
     <main className="flex min-h-screen flex-col gap-4 bg-[var(--paper)] p-4 text-sm text-[var(--ink)]">
       <header className="grid gap-1">
-        <p className="text-xs font-semibold tracking-wide text-[var(--graphite)] uppercase">Revue · {viewer.deliverable}</p>
+        <p className="text-xs font-semibold tracking-wide text-[var(--graphite)] uppercase">
+          Revue · {viewer.deliverable}
+          {agency && viewer.agency ? ` · Agence : ${viewer.agency.name}` : ""}
+        </p>
         <h1 className="font-heading text-base font-bold">Demandes de cette page</h1>
         <p className="truncate text-xs text-[var(--graphite)]">{pageUrl ?? "…"}</p>
       </header>
@@ -150,7 +204,7 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
           <p className="text-xs text-[var(--graphite)]">
             Sur : <b className="text-[var(--ink)]">{draft.label || draft.anchor.selector}</b>
           </p>
-          <Label htmlFor="site-request">Votre demande</Label>
+          <Label htmlFor="site-request">{agency ? "Votre remarque (interne jusqu’à sa qualification)" : "Votre demande"}</Label>
           <Textarea id="site-request" autoFocus maxLength={5000} value={message} onChange={(event) => setMessage(event.target.value)} />
           <div className="flex gap-2">
             <Button type="submit" disabled={!message.trim()}>
@@ -163,54 +217,38 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
         </form>
       ) : (
         <Button type="button" onClick={startPicking} disabled={picking}>
-          <Crosshair /> {picking ? "Cliquez sur un élément de la page…" : "Poser une demande"}
+          <Crosshair /> {picking ? "Cliquez sur un élément de la page…" : agency ? "Poser une remarque" : "Poser une demande"}
         </Button>
       )}
 
       <ol className="grid gap-2" aria-label="Demandes de cette page">
-        {onPage.map((request) => {
-          const kind = requestKind(request);
-          const open = openId === request.id;
-          return (
-            <li key={request.id} className="rounded-[var(--r-panel)] border border-[var(--border)] p-3">
-              <button type="button" className="flex w-full items-start gap-2 text-left" aria-expanded={open} onClick={() => (setOpenId(open ? null : request.id), tellSite({ type: "kora:focus", id: request.id }))}>
-                <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[var(--action-fill)] text-xs font-bold text-[var(--ink)]">{numberOf(request.id)}</span>
-                <span className="grid min-w-0 gap-1">
-                  <span className="font-medium">{requestText(request)}</span>
-                  <span className={`decision-badge ${statusTones[kind]} w-fit`}>{statusLabels[kind]}</span>
-                  {missing.includes(request.id) && (
-                    <span className="flex items-center gap-1 text-xs text-[var(--status-high-text)]">
-                      <MapPin className="size-3" /> Élément introuvable sur la page
-                    </span>
-                  )}
-                </span>
-              </button>
-              {open && (
-                <div className="mt-3 grid gap-2 border-t border-[var(--border)] pt-3">
-                  {request.title && <p>{request.message}</p>}
-                  {(request.replies ?? []).map((item) => (
-                    <p key={item.id} className="rounded-[var(--r-field)] bg-[var(--canvas)] px-2 py-1">
-                      <b>{sideOf(item) === "agency" ? (item.author ?? "Agence") : (item.author ?? "Vous")}</b> : {item.message}
-                    </p>
-                  ))}
-                  <form className="grid gap-2" onSubmit={(event) => void reply(event, request.id)}>
-                    <Label htmlFor={`reply-${request.id}`}>Répondre</Label>
-                    <Textarea id={`reply-${request.id}`} maxLength={5000} value={replyText} onChange={(event) => setReplyText(event.target.value)} />
-                    <Button type="submit" variant="outline" disabled={!replyText.trim()}>
-                      Répondre
-                    </Button>
-                  </form>
-                </div>
-              )}
-            </li>
-          );
-        })}
+        {onPage.map((request) => (
+          <SiteRequest
+            key={request.id}
+            request={request}
+            number={numberOf(request.id)}
+            open={openId === request.id}
+            missing={missing.includes(request.id)}
+            agency={agency}
+            onToggle={() => {
+              setOpenId(openId === request.id ? null : request.id);
+              tellSite({ type: "kora:focus", id: request.id });
+            }}
+            onReply={(text) => reply(request.id, text)}
+            onQualify={(decision, title) => qualify(request.id, decision, title)}
+          />
+        ))}
       </ol>
       {!onPage.length && !draft && <p className="text-[var(--graphite)]">Aucune demande sur cette page pour l’instant.</p>}
 
-      {/* Quotes and the validation stay on the review page, where the decider sees everything. */}
-      <a className="mt-auto flex items-center gap-1 text-[var(--action-text)] underline-offset-2 hover:underline" href={`/review/${encodeURIComponent(token)}`} target="_blank" rel="noopener">
-        Devis et validation : ouvrir la revue complète <ExternalLink className="size-3" />
+      {/* Quotes and the validation stay on Kora's pages, where no page of the site can frame them. */}
+      <a
+        className="mt-auto flex items-center gap-1 text-[var(--action-text)] underline-offset-2 hover:underline"
+        href={agency ? (viewer.agency?.href ?? "/") : `/review/${encodeURIComponent(token)}`}
+        target="_blank"
+        rel="noopener"
+      >
+        {agency ? "Devis et partage : ouvrir dans Kora" : "Devis et validation : ouvrir la revue complète"} <ExternalLink className="size-3" />
       </a>
     </main>
   );

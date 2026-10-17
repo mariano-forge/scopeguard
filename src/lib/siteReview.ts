@@ -65,8 +65,18 @@ export function parentOrigin(value: string | null) {
   return origin && origin === value ? origin : null;
 }
 
-/** What a pin on the site needs, and nothing of the request's text. */
-export type SitePin = { id: number; number: number; selector: string; x: number; y: number };
+/** The panel's agency session (src/lib/siteAgency.ts); named here for src/proxy.ts, which reads no database. */
+export const siteAgencyCookie = "kora_agency_site_session";
+
+/**
+ * What an agency member may do from the panel on the staging site: comment, reply, qualify. Sending a
+ * quote, answering a counter-proposal, reopening or sharing are done on Kora's pages, where no page of
+ * the agency's site can lay a hidden button over them (AGENTS.md). Checked by the server.
+ */
+export const siteAgencyActions: ReadonlySet<string> = new Set(["comment.create", "comment.edit", "comment.delete", "comment.qualify", "reply.create", "reply.edit", "reply.delete"]);
+
+/** What a pin on the site needs, and nothing of the request's text. `internal`: the client does not see it (agency only). */
+export type SitePin = { id: number; number: number; selector: string; x: number; y: number; internal?: boolean };
 
 /** Messages between the toolbar (on the site) and the panel (in the frame), both checking the sender. */
 export type ToolbarMessage =
@@ -74,4 +84,6 @@ export type ToolbarMessage =
   | { type: "kora:pick"; anchor: SiteAnchor; label: string }
   | { type: "kora:open"; id: number }
   | { type: "kora:missing"; ids: number[] };
+/** From the Kora window that recognised an agency member, to the panel that opened it (same origin). */
+export type TicketMessage = { type: "kora:agency-ticket"; ticket: string };
 export type PanelMessage = { type: "kora:ready" } | { type: "kora:pins"; pins: SitePin[] } | { type: "kora:pick-mode"; on: boolean } | { type: "kora:focus"; id: number };

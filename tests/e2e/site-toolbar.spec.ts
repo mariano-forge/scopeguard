@@ -5,7 +5,7 @@
 
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { baseURL } from "../../playwright.config";
-import { call, clientAction, createAgency, newPerson, seedState, signUp, sql, unique, verifiedClient, waitForCode } from "./helpers";
+import { addColleague, call, clientAction, createAgency, headers, newIp, newPerson, seedState, signUp, sql, unique, verifiedClient, waitForCode, type Member, type Person } from "./helpers";
 
 const site = "https://recette.northwind.test";
 
@@ -186,4 +186,119 @@ test("the site shows the pins the client may see, and says when an element is go
   expect(sent.status).toBe(200);
   const [stored] = await sql<{ data: Record<string, unknown> }>("select data from comments where organization_id = $1 and data->>'message' = 'Ailleurs'", [org]);
   expect(stored.data.site).toBeUndefined();
+});
+
+// ——— The agency in the panel ———
+
+const anchorOn = (selector: string) => ({ url: "/", selector, x: 10, y: 50, viewport: 1400 });
+
+/** The panel's agency session of `member`, through the ticket of the Kora window, as a cookie. */
+async function siteAgencySession(member: Member, token: string): Promise<Person> {
+  const ticket = await call(`/api/review/${token}/site/ticket`, { person: member, body: {} });
+  expect(ticket.status).toBe(200);
+  const ip = newIp();
+  const opened = await fetch(`${baseURL}/api/review/${token}/site/session`, { method: "POST", headers: headers({ ip }), body: JSON.stringify({ ticket: ticket.json.ticket }) });
+  expect(opened.status).toBe(200);
+  return { cookie: opened.headers.getSetCookie().map((cookie) => cookie.split(";")[0]).join("; "), ip };
+}
+
+test("an agency member is recognised in the panel by a Kora window, then annotates and qualifies on the site", async ({ browser }) => {
+  const { alice, org, token } = await siteReview();
+  await seedState(alice, {
+    lists: {
+      comments: {
+        upsert: [
+          { id: 30, deliverableId: 1, author: "Claire Dubois", initials: "CD", from: "client", authorEmail: "claire@client.test", message: "Le titre est trop long", decision: "À qualifier", kind: "remark", location: "/", time: "t", site: anchorOn("#titre") },
+          { id: 31, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Revoir l’interligne", decision: "À qualifier", kind: "remark", internalNote: true, location: "/", time: "t", site: anchorOn("section > p:nth-of-type(1)") },
+        ],
+        remove: [],
+      },
+    },
+  });
+  const { page, errors, panel } = await siteVisitor(browser, token);
+  // Signed in to Kora in this browser, as the member would be in another tab.
+  await page.context().addCookies(alice.cookie.split("; ").map((pair) => ({ name: pair.split("=")[0], value: pair.slice(pair.indexOf("=") + 1), url: baseURL })));
+  await page.goto(`${site}/?kora`);
+  await page.getByRole("button", { name: "Ouvrir Kora" }).click();
+  const popup = page.waitForEvent("popup");
+  await panel.getByRole("button", { name: "Je suis de l’agence" }).click();
+  const window = await popup;
+  const closed = window.waitForEvent("close");
+  await window.getByRole("button", { name: "Continuer en tant que Alice Martin" }).click();
+  await closed;
+  await expect(panel.getByText("Agence : Alice Martin")).toBeVisible();
+
+  // The agency sees its internal pin too, drawn apart, marked « Interne » in the panel.
+  await expect(page.getByRole("button", { name: "Demande 1" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remarque interne 2" })).toBeVisible();
+  await expect(panel.getByRole("listitem").filter({ hasText: "Revoir l’interligne" }).getByText("Interne")).toBeVisible();
+
+  // A remark of its own on the site: an internal pin, as in Kora.
+  await panel.getByRole("button", { name: "Poser une remarque" }).click();
+  await page.getByRole("heading", { name: "Bienvenue chez Northwind" }).click({ position: { x: 40, y: 10 } });
+  await panel.getByLabel("Votre remarque").fill("Vérifier le contraste du titre");
+  await panel.getByRole("button", { name: "Envoyer" }).click();
+  await expect
+    .poll(async () => (await sql<{ data: Record<string, unknown> }>("select data from comments where organization_id = $1 and data->>'message' = 'Vérifier le contraste du titre'", [org]))[0]?.data)
+    .toMatchObject({ from: "agency", author: "Alice Martin", internalNote: true, location: "/", decision: "À qualifier", site: { url: "/", selector: "#titre" } });
+
+  // The client's request, qualified from the site.
+  await panel.getByRole("button", { name: /Le titre est trop long/ }).click();
+  await panel.getByRole("button", { name: /^Qualification de la demande 1/ }).click();
+  await panel.getByRole("option", { name: "Inclus" }).click();
+  await panel.getByLabel("Titre").fill("Raccourcir le titre");
+  await panel.getByRole("button", { name: "Qualifier" }).click();
+  await expect
+    .poll(async () => (await sql<{ decision: string; title: string }>("select decision, data->>'title' as title from comments where organization_id = $1 and id = 30", [org]))[0])
+    .toEqual({ decision: "Inclus", title: "Raccourcir le titre" });
+  expect(errors).toEqual([]);
+});
+
+test("from the site, the agency only comments and qualifies on its version: quotes, other versions and Kora's state answer no", async () => {
+  const { alice, token } = await siteReview();
+  const otherToken = unique("tok-other");
+  await seedState(alice, {
+    lists: {
+      deliverables: { upsert: [{ id: 2, projectId: 1, name: "Maquette", type: "Image", version: 1, status: "En attente client", importedAt: "17/10/2026 10:00", locked: false }], remove: [] },
+      comments: {
+        upsert: [
+          { id: 40, deliverableId: 1, author: "Claire Dubois", initials: "CD", from: "client", message: "Ajouter une page Équipe", decision: "Hors périmètre", kind: "request", title: "Page Équipe", location: "/", time: "t", site: anchorOn("#titre") },
+          { id: 41, deliverableId: 2, author: "Claire Dubois", initials: "CD", from: "client", message: "Autre livrable", decision: "À qualifier", kind: "remark", location: "", time: "t" },
+        ],
+        remove: [],
+      },
+    },
+    maps: { reviewLinks: { upsert: { "2:1": { token: otherToken, active: true, expiresAt: "01/01/2099", autoExpire: true, deliverableId: 2, version: 1 } }, remove: [] } },
+  });
+  const panel = await siteAgencySession(alice, token);
+
+  // Allowed: a reply on its version.
+  expect((await call("/api/comments/40/replies", { person: panel, body: { message: "On regarde" } })).status).toBe(200);
+  // Refused: a quote is sent from Kora only…
+  const quote = await call("/api/comments/40/proposal", { person: panel, body: { description: "Page Équipe", amount: 900, deadline: 3 } });
+  expect(quote.status).toBe(403);
+  expect(quote.json.code).toBe("KORA_ONLY");
+  // …as is sharing; and a request of another version is unknown from this panel.
+  expect((await call("/api/deliverables/1/review-link", { person: panel, body: {} })).json.code).toBe("KORA_ONLY");
+  expect((await call("/api/comments/41/qualification", { method: "PUT", person: panel, body: { decision: "Inclus", title: "Autre" } })).status).toBe(404);
+  // The panel's session is not a Kora session: the agency's whole state stays closed.
+  expect((await call("/api/state", { person: panel })).status).toBe(401);
+  // Nothing was written by the refusals.
+  expect(await sql("select 1 from comment_proposals where organization_id = $1", [alice.organizationId])).toHaveLength(0);
+  expect((await sql<{ decision: string }>("select decision from comments where organization_id = $1 and id = 41", [alice.organizationId]))[0].decision).toBe("À qualifier");
+
+  // A ticket opens only its own link, only for a member, only as signed.
+  const ticket = (await call(`/api/review/${token}/site/ticket`, { person: alice, body: {} })).json.ticket as string;
+  expect((await call(`/api/review/${otherToken}/site/session`, { body: { ticket } })).status).toBe(400);
+  expect((await call(`/api/review/${token}/site/session`, { body: { ticket: `${ticket.slice(0, -2)}xx` } })).status).toBe(400);
+  const stranger = await signUp("Sam Dehors");
+  await createAgency(stranger, "Autre Studio");
+  expect((await call(`/api/review/${token}/site/ticket`, { person: stranger, body: {} })).status).toBe(404);
+
+  // Removed from the agency: the panel's session stops at once.
+  const bob = await addColleague(alice, "Bob Durand", "member");
+  const bobPanel = await siteAgencySession(bob, token);
+  expect((await call("/api/comments/40/replies", { person: bobPanel, body: { message: "Vu" } })).status).toBe(200);
+  expect((await call("/api/auth/organization/remove-member", { person: alice, body: { memberIdOrEmail: bob.email, organizationId: alice.organizationId } })).status).toBe(200);
+  expect((await call("/api/comments/40/replies", { person: bobPanel, body: { message: "Encore" } })).status).toBe(401);
 });
