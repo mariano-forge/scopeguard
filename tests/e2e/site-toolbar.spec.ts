@@ -92,16 +92,21 @@ test("the client verifies in Kora's panel on the staging site and places a reque
   await expect(page.getByRole("button", { name: "Ouvrir Kora" })).toHaveCount(0);
 
   await page.goto(`${site}/?kora`);
+  // Folded, the bar is the « Kora » pill alone; opening Kora unfolds its tools.
+  await expect(page.getByRole("button", { name: "Commenter" })).toBeHidden();
   await verifyInPanel(page, email);
 
-  // The floating bar's comment button: pressed while an element is chosen, Escape gives up.
-  const comment = page.getByRole("button", { name: "Commenter un élément" });
+  // Kora's two tools on the floating bar: « Naviguer » by default, « Commenter » until Escape (or V).
+  const browse = page.getByRole("button", { name: "Naviguer" });
+  const comment = page.getByRole("button", { name: "Commenter" });
+  await expect(browse).toHaveAttribute("aria-pressed", "true");
   await comment.click();
   await expect(comment).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("status").filter({ hasText: "Cliquez sur un élément de la page" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(comment).toHaveAttribute("aria-pressed", "false");
-  await comment.click();
+  await expect(browse).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("c");
+  await expect(comment).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("heading", { name: "Bienvenue chez Northwind" }).click({ position: { x: 20, y: 10 } });
   await expect(panel.getByText("h1 « Bienvenue chez Northwind »")).toBeVisible();
   const message = "Le titre doit tenir sur une ligne";
@@ -110,6 +115,8 @@ test("the client verifies in Kora's panel on the staging site and places a reque
 
   // Stored as a request of the client, signed by the server, with where it was placed.
   await expect.poll(async () => (await siteRequests(org)).length).toBe(1);
+  // The tool stays « Commenter » after a request, as on Kora's canvas.
+  await expect(comment).toHaveAttribute("aria-pressed", "true");
   const [created] = await siteRequests(org);
   expect(created.data).toMatchObject({ from: "client", authorEmail: email, author: "Claire Dubois", message, location: "/", decision: "À qualifier" });
   expect(created.data.site).toMatchObject({ url: "/", selector: "#titre", viewport: 1400, capture: expect.stringMatching(/^\/api\/files\/[0-9a-f-]{36}$/) });
@@ -154,6 +161,11 @@ test("the client verifies in Kora's panel on the staging site and places a reque
   await page.getByRole("button", { name: `Commentaire #${created.id}` }).click();
   await expect(panel.getByRole("dialog", { name: `Commentaire #${created.id}` })).toContainText(message);
   await expect(panel.getByRole("button", { name: "Recevoir un code" })).toHaveCount(0);
+  // « Réduire Kora » folds everything back into the pill.
+  await page.getByRole("button", { name: "Réduire Kora" }).click();
+  await expect(page.getByRole("dialog", { name: "Kora" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Commenter" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Ouvrir Kora" })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -289,7 +301,7 @@ test("an agency member is recognised in the panel by a Kora window, then annotat
   await panel.getByRole("button", { name: "Demandes", exact: true }).click();
 
   // A remark of its own on the site: an internal pin, as in Kora.
-  await page.getByRole("button", { name: "Commenter un élément" }).click();
+  await page.getByRole("button", { name: "Commenter" }).click();
   await page.getByRole("heading", { name: "Bienvenue chez Northwind" }).click({ position: { x: 40, y: 10 } });
   await panel.getByLabel("Votre remarque").fill("Vérifier le contraste du titre");
   await panel.getByRole("button", { name: "Envoyer" }).click();

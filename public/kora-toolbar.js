@@ -4,7 +4,8 @@
 //
 // and sends its client the site's address with ?kora. The toolbar then shows on that device: a button
 // opens Kora's panel (/review/<token>/site, in a frame on Kora's origin), where the client verifies their
-// address by code and writes; the bar's comment button (or the C key) picks an element of the page.
+// address by code and writes. As on Kora's canvas, the bar has two tools: « Naviguer » (V, the site works
+// as usual) and « Commenter » (C, every click on an element opens a request, until « Naviguer » or Escape).
 //
 // This script runs in the agency's page, next to its other scripts: it never receives what the
 // client writes, only where to draw the pins. Every message is checked (origin and window).
@@ -56,6 +57,10 @@
       /* The floating bar: comment an element, open the panel (as Vercel's toolbar). */
       .bar { position: fixed; right: 16px; bottom: 16px; display: flex; align-items: center; padding: 4px; gap: 2px; border-radius: 999px;
         border: 1px solid ${colors.border}; background: ${colors.ink}; box-shadow: 0 4px 16px rgb(0 0 0 / .2); }
+      /* Folded, the bar is the « Kora » pill alone; Kora open, it unfolds with the tools. */
+      .tools { display: flex; align-items: center; gap: 2px; max-width: 0; overflow: hidden; opacity: 0; visibility: hidden;
+        transition: max-width .2s ease-out, opacity .2s ease-out, visibility .2s; }
+      .bar.expanded .tools { max-width: 120px; opacity: 1; visibility: visible; }
       .bar button { display: grid; place-items: center; height: 34px; min-width: 34px; padding: 0 12px; border: 0; border-radius: 999px;
         background: transparent; color: ${colors.paper}; }
       .bar button:hover, .bar button[aria-pressed="true"] { background: rgb(255 255 255 / .16); }
@@ -88,11 +93,14 @@
     </style>
     <div class="pins"></div>
     <div class="highlight"></div>
-    <p class="hint" role="status">Cliquez sur un élément de la page · Échap pour annuler</p>
-    <div class="bar">
-      <button class="comment" type="button" aria-label="Commenter un élément" title="Commenter un élément (C)" aria-pressed="false"></button>
-      <span class="sep" aria-hidden="true"></span>
-      <button class="launcher" type="button" aria-label="Ouvrir Kora">Kora</button>
+    <p class="hint" role="status">Cliquez sur un élément de la page · V ou Échap pour naviguer</p>
+    <div class="bar" role="toolbar" aria-label="Outils Kora">
+      <span class="tools">
+        <button class="tool" data-tool="move" type="button" aria-label="Naviguer" title="Naviguer · V" aria-pressed="true"></button>
+        <button class="tool" data-tool="remark" type="button" aria-label="Commenter" title="Commenter : cliquez sur un élément · C" aria-pressed="false"></button>
+        <span class="sep" aria-hidden="true"></span>
+      </span>
+      <button class="launcher" type="button" aria-label="Ouvrir Kora" aria-expanded="false">Kora</button>
     </div>
     <div class="panel" role="dialog" aria-label="Kora">
       <iframe title="Kora"></iframe>
@@ -111,27 +119,35 @@
     url.searchParams.delete("kora");
     return url.pathname + url.search;
   };
+  const bar = root.querySelector(".bar");
+  const launcher = root.querySelector(".launcher");
+  /** Kora open: the panel, and the bar unfolded with its tools; closed: the « Kora » pill alone, browsing. */
   const open = (on) => {
     panel.classList.toggle("open", on);
-    for (const element of root.querySelectorAll(".bar, .hint")) element.classList.toggle("beside", panel.classList.contains("open"));
+    bar.classList.toggle("expanded", on);
+    for (const element of root.querySelectorAll(".bar, .hint")) element.classList.toggle("beside", on);
+    launcher.setAttribute("aria-expanded", String(on));
+    launcher.setAttribute("aria-label", on ? "Réduire Kora" : "Ouvrir Kora");
+    if (!on) setTool("move");
   };
-  root.querySelector(".launcher").addEventListener("click", () => open(!panel.classList.contains("open")));
-  const commentButton = root.querySelector(".comment");
+  launcher.addEventListener("click", () => open(!panel.classList.contains("open")));
   const hint = root.querySelector(".hint");
-  // Lucide's MessageSquarePlus, Kora's « comment » icon.
-  commentButton.append(
-    svgOf([["path", { d: "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" }], ["path", { d: "M12 8v6" }], ["path", { d: "M9 11h6" }]]),
-  );
-  // Started from the button, the click that started it must not pick the button itself.
-  commentButton.addEventListener("click", (event) => {
-    event.stopPropagation();
-    picking ? stopPicking() : startPicking();
-  });
+  // Kora's canvas tools (src/app/(agency)/editor/ReviewCanvas.tsx): Lucide's MousePointer2 and MessageCirclePlus.
+  const toolIcons = {
+    move: [["path", { d: "M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" }]],
+    remark: [["path", { d: "M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719" }], ["path", { d: "M8 12h8" }], ["path", { d: "M12 8v8" }]],
+  };
+  const toolButtons = [...root.querySelectorAll(".tool")];
+  for (const button of toolButtons) {
+    button.append(svgOf(toolIcons[button.dataset.tool]));
+    button.addEventListener("click", () => setTool(button.dataset.tool));
+  }
   root.querySelector(".close").addEventListener("click", () => open(false));
 
   // ——— Picking an element ———
 
-  let picking = false;
+  /** The tool in use, as on Kora's canvas: "move" (the site works as usual) or "remark" (each click comments). */
+  let tool = "move";
   let savedCursor = "";
   const own = (target) => target === host || host.contains(target);
   function selectorOf(element) {
@@ -175,7 +191,9 @@
       y: clamp(((event.clientY - box.top) / (box.height || 1)) * 100),
       viewport: Math.round(window.innerWidth),
     };
-    stopPicking();
+    // The tool stays: the next click comments again, as on Kora's canvas. The frame of the hovered
+    // element is not part of the capture.
+    highlight.style.display = "none";
     // Where the click falls on the capture of the window, which follows once made.
     const pick = ++picks;
     anchor.view = { x: clamp((event.clientX / window.innerWidth) * 100), y: clamp((event.clientY / window.innerHeight) * 100) };
@@ -250,34 +268,30 @@
     return new Promise((resolve, reject) => shot.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("capture"))), "image/jpeg", 0.8));
   }
   function onKey(event) {
-    if (event.key === "Escape") stopPicking();
+    if (event.key === "Escape") setTool("move");
   }
-  function startPicking() {
-    if (picking) return;
-    picking = true;
-    open(true);
-    commentButton.setAttribute("aria-pressed", "true");
-    hint.classList.add("on");
-    savedCursor = document.documentElement.style.cursor;
-    document.documentElement.style.cursor = "crosshair";
-    document.addEventListener("mousemove", onMove, true);
-    document.addEventListener("click", onPick, true);
-    document.addEventListener("keydown", onKey, true);
-  }
-  function stopPicking() {
-    picking = false;
-    commentButton.setAttribute("aria-pressed", "false");
-    hint.classList.remove("on");
+  /** Switches tools: « Commenter » opens the panel and turns every click into a request, until « Naviguer ». */
+  function setTool(next) {
+    if (next === tool || !toolIcons[next]) return;
+    tool = next;
+    const commenting = tool === "remark";
+    for (const button of toolButtons) button.setAttribute("aria-pressed", String(button.dataset.tool === tool));
+    hint.classList.toggle("on", commenting);
     highlight.style.display = "none";
-    document.documentElement.style.cursor = savedCursor;
-    document.removeEventListener("mousemove", onMove, true);
-    document.removeEventListener("click", onPick, true);
-    document.removeEventListener("keydown", onKey, true);
+    const listen = commenting ? document.addEventListener : document.removeEventListener;
+    for (const [type, handler] of [["mousemove", onMove], ["click", onPick], ["keydown", onKey]]) listen.call(document, type, handler, true);
+    if (commenting) {
+      savedCursor = document.documentElement.style.cursor;
+      document.documentElement.style.cursor = "crosshair";
+      open(true);
+    } else document.documentElement.style.cursor = savedCursor;
   }
-  // C, as on Vercel's toolbar, unless the visitor is typing.
+  // C and V, as on Kora's canvas, unless the visitor is typing.
   document.addEventListener("keydown", (event) => {
     const typing = event.target instanceof HTMLElement && (event.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName));
-    if (event.key.toLowerCase() === "c" && !event.ctrlKey && !event.metaKey && !event.altKey && !typing) startPicking();
+    if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key.toLowerCase() === "c") setTool("remark");
+    else if (event.key.toLowerCase() === "v") setTool("move");
   });
 
   // ——— Pins ———
