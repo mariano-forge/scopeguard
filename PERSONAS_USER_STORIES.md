@@ -1011,7 +1011,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 1. Le livrable est de type « Lien » : son adresse est le site de recette, et son domaine le seul où la barre s'ouvre.
 2. L'agence colle une ligne de script sur le site. La barre ne s'affiche qu'à qui l'active (lien `?kora` reçu de l'agence, puis mémorisé sur l'appareil) : un visiteur du site ne voit rien.
 3. Le client ouvre le panneau Kora, affiché dans un cadre servi par Kora : il se vérifie par le même code e-mail, sans compte.
-4. Une pastille « Kora » en bas à droite, qui se déplie à l'ouverture avec les outils du canevas de Kora : « Naviguer » (`V`) ou « Commenter » (`C`) ; en « Commenter », il clique sur un élément, écrit sa demande, l'envoie. Les épingles de la page réapparaissent sur le site avec leur fil.
+4. Une pastille « Kora », en bas à droite et déplaçable, qui se déplie à l'ouverture avec les outils du canevas de Kora : « Naviguer » (`V`) ou « Commenter » (`C`) ; en « Commenter », il clique sur un élément, écrit sa demande, l'envoie. Les épingles de la page réapparaissent sur le site avec leur fil.
 5. L'agence qualifie dans son panneau « Demandes », comme aujourd'hui. Les devis et la validation se font sur la page de revue Kora, ouverte depuis le panneau.
 
 **Critères d'acceptation**

@@ -473,3 +473,42 @@ test("the capture library served to the toolbar is the installed one", async () 
   expect(Buffer.from(await served.arrayBuffer()).equals(readFileSync("node_modules/modern-screenshot/dist/index.js"))).toBe(true);
   expect(JSON.parse(readFileSync("node_modules/modern-screenshot/package.json", "utf8")).version).toBe("4.7.0");
 });
+
+test("the bar moves where the visitor drops it, stays there, and never under the panel", async ({ browser }) => {
+  const { token } = await siteReview();
+  const { page, errors } = await siteVisitor(browser, token);
+  await page.goto(`${site}/?kora`);
+  const pill = page.getByRole("button", { name: "Ouvrir Kora" });
+  const start = (await pill.boundingBox())!;
+
+  // A drag moves the bar, without opening Kora.
+  await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(start.x - 300, start.y - 200, { steps: 8 });
+  await page.mouse.up();
+  const moved = (await pill.boundingBox())!;
+  expect(Math.round(start.x - moved.x)).toBeGreaterThan(250);
+  expect(Math.round(start.y - moved.y)).toBeGreaterThan(150);
+  await expect(page.getByRole("dialog", { name: "Kora" })).toBeHidden();
+
+  // Remembered on this device: still there at the next visit.
+  await page.reload();
+  const again = (await page.getByRole("button", { name: "Ouvrir Kora" }).boundingBox())!;
+  expect(Math.abs(again.x - moved.x)).toBeLessThan(2);
+  expect(Math.abs(again.y - moved.y)).toBeLessThan(2);
+
+  // A click still opens Kora. Dropped where the panel opens, the bar steps to its left.
+  await page.getByRole("button", { name: "Ouvrir Kora" }).click();
+  await expect(page.getByRole("dialog", { name: "Kora" })).toBeVisible();
+  await page.getByRole("button", { name: "Réduire Kora" }).click();
+  const folded = (await page.getByRole("button", { name: "Ouvrir Kora" }).boundingBox())!;
+  await page.mouse.move(folded.x + folded.width / 2, folded.y + folded.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(1380, folded.y + folded.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await page.getByRole("button", { name: "Ouvrir Kora" }).click();
+  const beside = (await page.getByRole("toolbar", { name: "Outils Kora" }).boundingBox())!;
+  const panel = (await page.getByRole("dialog", { name: "Kora" }).boundingBox())!;
+  expect(beside.x + beside.width).toBeLessThanOrEqual(panel.x);
+  expect(errors).toEqual([]);
+});

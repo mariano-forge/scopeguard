@@ -55,7 +55,8 @@
     <style>
       button { font: 600 13px/1 system-ui, sans-serif; cursor: pointer; }
       /* The floating bar: comment an element, open the panel (as Vercel's toolbar). */
-      .bar { position: fixed; right: 16px; bottom: 16px; display: flex; align-items: center; padding: 4px; gap: 2px; border-radius: 999px;
+      /* Placed by layout(): where the visitor dropped it (bottom right by default), never under the panel. */
+      .bar { position: fixed; right: 16px; bottom: 16px; touch-action: none; display: flex; align-items: center; padding: 4px; gap: 2px; border-radius: 999px;
         border: 1px solid ${colors.border}; background: ${colors.ink}; box-shadow: 0 4px 16px rgb(0 0 0 / .2); }
       /* Folded, the bar is the « Kora » pill alone; Kora open, it unfolds with the tools. */
       .tools { display: flex; align-items: center; gap: 2px; max-width: 0; overflow: hidden; opacity: 0; visibility: hidden;
@@ -69,8 +70,6 @@
       .hint { position: fixed; right: 16px; bottom: 64px; display: none; padding: 8px 12px; border-radius: 8px; background: ${colors.ink};
         color: ${colors.paper}; font: 500 13px/1.3 system-ui, sans-serif; box-shadow: 0 4px 16px rgb(0 0 0 / .2); }
       .hint.on { display: block; }
-      /* The panel open, the bar and its hint move to its left: never under it. */
-      .bar.beside, .hint.beside { right: calc(min(380px, 100vw) + 16px); }
       .panel { position: fixed; top: 0; right: 0; width: min(380px, 100vw); height: 100vh; display: none; background: ${colors.paper};
         border-left: 1px solid ${colors.border}; box-shadow: -8px 0 24px rgb(0 0 0 / .12); }
       .panel.open { display: block; }
@@ -100,7 +99,7 @@
         <button class="tool" data-tool="remark" type="button" aria-label="Commenter" title="Commenter : cliquez sur un élément · C" aria-pressed="false"></button>
         <span class="sep" aria-hidden="true"></span>
       </span>
-      <button class="launcher" type="button" aria-label="Ouvrir Kora" aria-expanded="false">Kora</button>
+      <button class="launcher" type="button" aria-label="Ouvrir Kora" aria-expanded="false" title="Glisser pour déplacer">Kora</button>
     </div>
     <div class="panel" role="dialog" aria-label="Kora">
       <iframe title="Kora"></iframe>
@@ -125,7 +124,7 @@
   const open = (on) => {
     panel.classList.toggle("open", on);
     bar.classList.toggle("expanded", on);
-    for (const element of root.querySelectorAll(".bar, .hint")) element.classList.toggle("beside", on);
+    layout();
     launcher.setAttribute("aria-expanded", String(on));
     launcher.setAttribute("aria-label", on ? "Réduire Kora" : "Ouvrir Kora");
     if (!on) setTool("move");
@@ -392,7 +391,86 @@
     }
     drawPins();
   }, 1000);
-  window.addEventListener("resize", drawPins);
+  window.addEventListener("resize", () => (drawPins(), layout()));
+
+  // ——— Moving the bar ———
+
+  // Where the visitor dropped the bar, from the window's bottom right corner (it unfolds to the left),
+  // remembered on this device for this site.
+  const placeKey = "kora-toolbar-place";
+  const margin = 8;
+  let place = { right: 16, bottom: 16 };
+  try {
+    const saved = JSON.parse(localStorage.getItem(placeKey) || "null");
+    if (saved && Number.isFinite(saved.right) && Number.isFinite(saved.bottom)) place = { right: saved.right, bottom: saved.bottom };
+  } catch {
+    // No storage (private mode): the bar starts bottom right.
+  }
+  /** Puts the bar where it was dropped, inside the window, and left of the open panel; its hint above it. */
+  function layout() {
+    const width = bar.offsetWidth;
+    const height = bar.offsetHeight;
+    let right = Math.min(Math.max(place.right, margin), Math.max(margin, window.innerWidth - width - margin));
+    const bottom = Math.min(Math.max(place.bottom, margin), Math.max(margin, window.innerHeight - height - margin));
+    const panelWidth = Math.min(380, window.innerWidth);
+    if (panel.classList.contains("open") && right < panelWidth + 16) right = panelWidth + 16;
+    Object.assign(bar.style, { right: `${right}px`, bottom: `${bottom}px` });
+    Object.assign(hint.style, { right: `${right}px`, bottom: `${bottom + height + 8}px` });
+  }
+  // Unfolding changes its width: placed again once done.
+  bar.addEventListener("transitionend", layout);
+
+  // A press that moves more than a few pixels drags the bar; otherwise it is a click on its button. The
+  // window follows the pointer while it is down (the bar is small: the pointer leaves it at once).
+  let drag = null;
+  let dragged = false;
+  function follow(event) {
+    if (!drag || event.pointerId !== drag.pointer) return;
+    // Released where the window does not see it (over Kora's panel): the drag ends there.
+    if (event.buttons === 0) return drop(event);
+    const [dx, dy] = [event.clientX - drag.x, event.clientY - drag.y];
+    if (!drag.moving && Math.hypot(dx, dy) < 5) return;
+    drag.moving = true;
+    bar.style.cursor = "grabbing";
+    place = { right: drag.right - dx, bottom: drag.bottom - dy };
+    layout();
+  }
+  function drop(event) {
+    if (!drag || event.pointerId !== drag.pointer) return;
+    window.removeEventListener("pointermove", follow, true);
+    window.removeEventListener("pointerup", drop, true);
+    window.removeEventListener("pointercancel", drop, true);
+    if (drag.moving) {
+      dragged = true;
+      bar.style.cursor = "";
+      try {
+        localStorage.setItem(placeKey, JSON.stringify(place));
+      } catch {
+        // Not remembered: the bar goes back bottom right at the next visit.
+      }
+    }
+    drag = null;
+  }
+  bar.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    const box = bar.getBoundingClientRect();
+    drag = { x: event.clientX, y: event.clientY, right: window.innerWidth - box.right, bottom: window.innerHeight - box.bottom, moving: false, pointer: event.pointerId };
+    window.addEventListener("pointermove", follow, true);
+    window.addEventListener("pointerup", drop, true);
+    window.addEventListener("pointercancel", drop, true);
+  });
+  // The click that ends a drag is not a click on the button under the pointer.
+  bar.addEventListener(
+    "click",
+    (event) => {
+      if (!dragged) return;
+      dragged = false;
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    true,
+  );
 
   document.body.append(host);
+  layout();
 })();
