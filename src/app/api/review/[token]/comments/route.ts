@@ -1,5 +1,6 @@
-// Client: POST /api/review/:token/comments { message, location?, page?, position?, area?, id? } -> { id }
-// A remark on the shared version, signed by the server (src/db/reviewActions.ts).
+// Client: POST /api/review/:token/comments { message, location?, page?, position?, area?, site?, id? } -> { id }
+// A remark on the shared version, signed by the server (src/db/reviewActions.ts). `site`: where it was
+// placed on the agency's staging site (src/lib/siteReview.ts).
 
 import { reviewActionResponse } from "@/lib/reviewViewer";
 

@@ -3,6 +3,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, BadgeEuro, ChevronDown, ClipboardCheck, Pencil, Tag, Trash2, Undo2, X } from "lucide-react";
 import { Hint } from "@/components/hint";
+import { SiteCapture } from "@/components/SiteCapture";
+import type { SiteAnchor } from "@/lib/siteReview";
 import { Button } from "@/components/ui/button";
 import { sideOf, type Side } from "@/lib/authors";
 import { isInternalNote, isInternalReply } from "@/lib/internalNotes";
@@ -71,6 +73,8 @@ export type ThreadComment = {
   source?: RequestSource;
   /** A pin of the agency: its own words stay internal (src/lib/internalNotes.ts). */
   internalNote?: boolean;
+  /** Placed on the staging site, with the capture of the window (src/lib/siteReview.ts). */
+  site?: SiteAnchor;
   position?: { x: number; y: number };
   area?: Area;
   replies?: ThreadReply[];
@@ -565,6 +569,7 @@ export function ThreadPopover({
             </p>
           )}
           {comment.source && <RequestSourceNote source={comment.source} enteredBy={comment.author} />}
+          {comment.site && <SiteCapture site={comment.site} />}
           {kind !== "comment" && (
             <button type="button" className="discussion-toggle" aria-expanded={showDiscussion} onClick={() => setShowDiscussion((open) => !open)}>
               Discussion · {messages.length} message{messages.length > 1 ? "s" : ""}

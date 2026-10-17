@@ -2,6 +2,7 @@
 // the file's fingerprint, every request with its qualification and quotes, and each decision with
 // who made it, the server's time and the request's origin. The audit trail it reads is append-only.
 
+import type { SiteAnchor } from "@/lib/siteReview";
 import "server-only";
 import { createHash } from "node:crypto";
 import { and, asc, eq, inArray, or } from "drizzle-orm";
@@ -121,9 +122,14 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
   const last = (type: string, commentId?: number) =>
     [...events].reverse().find((event) => event.type === type && (commentId === undefined || event.commentId === commentId)) ?? null;
 
-  // Captures joined to requests entered by the agency: their fingerprint goes in the proof.
+  // Captures joined to requests entered by the agency, or taken on the staging site: their fingerprint goes in the proof.
+  const siteOf = (data: Data) => (data.site && typeof data.site === "object" ? (data.site as SiteAnchor) : null);
   const sourceOf = (data: Data) => (data.source && typeof data.source === "object" ? (data.source as RequestSource) : null);
-  const captureIds = requestRows.map((row) => sourceOf(row.data as Data)?.capture?.split("/").at(-1)).filter((id): id is string => Boolean(id));
+  const captureIds = requestRows
+    .flatMap((row) => [sourceOf(row.data as Data)?.capture, siteOf(row.data as Data)?.capture])
+    .map((href) => href?.split("/").at(-1))
+    .filter((id): id is string => Boolean(id));
+  const fingerprintOf = (href: string | undefined) => captures.find((capture) => capture.id === href?.split("/").at(-1))?.sha256 ?? null;
   const captures = captureIds.length
     ? await db.select({ id: storedFiles.id, sha256: storedFiles.sha256 }).from(storedFiles).where(and(eq(storedFiles.organizationId, org), inArray(storedFiles.id, captureIds)))
     : [];
@@ -146,9 +152,11 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
         ? {
             line: sourceLine(source, text(data.author)),
             excerpt: source.excerpt ?? null,
-            captureSha256: captures.find((capture) => capture.id === source.capture?.split("/").at(-1))?.sha256 ?? null,
+            captureSha256: fingerprintOf(source.capture),
           }
         : null,
+      // Placed on the staging site: the page, the screen width and the capture of what was seen.
+      site: siteOf(data) ? { url: siteOf(data)!.url, viewport: siteOf(data)!.viewport, captureSha256: fingerprintOf(siteOf(data)!.capture) } : null,
       quotes: quotes
         .filter((quote) => quote.commentId === row.id)
         .map((quote) => {

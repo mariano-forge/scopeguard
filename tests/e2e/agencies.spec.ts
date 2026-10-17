@@ -50,6 +50,8 @@ test("a colleague joins from the invitation mail; the wrong account cannot; remo
   expect((await call("/api/auth/organization/accept-invitation", { person: intruder, body: { invitationId } })).status).toBe(403);
   const { page: intruderPage } = await newPerson(browser);
   await signInPage(intruderPage, intruder.email);
+  // Without an agency, the sign-in ends on /bienvenue: opening the link before would cross that redirect.
+  await intruderPage.waitForURL("**/bienvenue");
   await intruderPage.goto(invitation!);
   await expect(intruderPage.getByRole("heading", { name: "Ce n’est pas le bon compte" })).toBeVisible();
   await expect(intruderPage.getByText(`c${"•".repeat(8)}@agence.test`)).toBeVisible();

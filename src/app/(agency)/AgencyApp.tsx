@@ -73,6 +73,7 @@ import { uploadFile as sendFile, type UploadPlacement } from "@/lib/upload";
 import { agencyAction } from "@/lib/agencyActions";
 import type { ClientRole } from "@/lib/clientRoles";
 import { InviteList, roleOptions, type Invite } from "./InviteList";
+import { SiteToolbarSnippet } from "./SiteToolbarSnippet";
 import { previousPeople, ReshareDialog, type ReshareChoice } from "./ReshareDialog";
 import { Select } from "@/components/Select";
 import { loadSharedState, refreshSharedState, subscribeSharedState } from "@/lib/stateSync";
@@ -2634,6 +2635,7 @@ export function AgencyApp() {
                 >
                   <Input id="share-url" readOnly value={getReviewUrl()} onFocus={(event) => event.target.select()} />
                 </Field>
+                {currentDeliverable?.type === "Link" && currentDeliverable.url && <SiteToolbarSnippet deliverableId={currentDeliverable.id} siteUrl={currentDeliverable.url} />}
                 {/* A copied link opens to invited addresses only (src/db/reviewAuth.ts): said before it is sent. */}
                 {!(reviewLink.invites?.length) && (
                   <p role="note" className="rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-sm text-[var(--status-medium-text)]">

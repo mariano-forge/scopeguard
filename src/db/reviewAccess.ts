@@ -15,6 +15,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { sameValue, type ListChange, type MapChange, type SharedState, type StateChanges } from "@/lib/sharedState";
 import { initialsOf, sideOf } from "@/lib/authors";
 import { clientFacingText, isInternalReply } from "@/lib/internalNotes";
+import { siteOriginOf } from "@/lib/siteReview";
 import type { Db } from "./client";
 import { commentProposals, comments, deliverables, notifications, proposalVersions, reviewLinks } from "./schema";
 import { readState } from "./state";
@@ -47,6 +48,53 @@ export async function findReviewAccess(db: Db, token: string): Promise<ReviewAcc
   const link = row.data as Data;
   if (link.active !== true || expired(link)) return null;
   return { organizationId: row.organizationId, key: row.key, link, deliverableId: row.deliverableId, version: row.version };
+}
+
+/** The staging site the shared version is (a « Lien » deliverable): the one origin that may frame its panel. */
+export async function reviewedSiteOrigin(db: Db, access: ReviewAccess) {
+  const [row] = await db
+    .select({ data: deliverables.data })
+    .from(deliverables)
+    .where(and(eq(deliverables.organizationId, access.organizationId), eq(deliverables.id, access.deliverableId)))
+    .limit(1);
+  return siteOriginOf(row?.data as Data | undefined);
+}
+
+/** Every version of the deliverable `deliverableId` belongs to (same project and name), latest first. */
+async function versionsOf(db: Db, organizationId: string, deliverableId: number) {
+  const [record] = await db.select({ projectId: deliverables.projectId, name: deliverables.name }).from(deliverables).where(and(eq(deliverables.organizationId, organizationId), eq(deliverables.id, deliverableId))).limit(1);
+  if (!record) return [];
+  const rows = await db
+    .select({ id: deliverables.id, projectId: deliverables.projectId, version: deliverables.version, data: deliverables.data })
+    .from(deliverables)
+    .where(and(eq(deliverables.organizationId, organizationId), eq(deliverables.name, record.name)));
+  return rows.filter((row) => (row.projectId ?? 1) === (record.projectId ?? 1)).sort((left, right) => right.version - left.version);
+}
+
+/** The first version of the deliverable `deliverableId` belongs to: what names it for good (src/app/(agency)/routes.ts livrableIdOf). */
+export async function livrableIdOfVersion(db: Db, organizationId: string, deliverableId: number) {
+  const versions = await versionsOf(db, organizationId, deliverableId);
+  return versions.length ? Math.min(...versions.map((version) => version.id)) : null;
+}
+
+/**
+ * The staging site of a « Lien » deliverable (its latest version's address), and the token of its latest
+ * version shared with an active link, if any (src/lib/siteKey.ts). Null when the deliverable is gone.
+ */
+export async function latestSharedSite(db: Db, organizationId: string, livrableId: number) {
+  const versions = await versionsOf(db, organizationId, livrableId);
+  if (!versions.length) return null;
+  const site = siteOriginOf(versions[0].data as Data);
+  const links = await db
+    .select()
+    .from(reviewLinks)
+    .where(and(eq(reviewLinks.organizationId, organizationId), inArray(reviewLinks.key, versions.map((version) => `${version.id}:${version.version}`))));
+  for (const version of versions) {
+    const row = links.find((link) => link.key === `${version.id}:${version.version}`);
+    const link = row?.data as Data | undefined;
+    if (row?.active && link?.active === true && !expired(link)) return { site, token: row.token };
+  }
+  return { site, token: null };
 }
 
 /** What the client page needs of its link. */
@@ -121,6 +169,36 @@ export async function readReviewState(db: Db, access: ReviewAccess) {
     proposalDecisions: only(state.proposalDecisions),
     adaptationRequests: only(state.adaptationRequests),
     proposalVersions: sentQuotes,
+    reviewLink: null,
+  };
+  return { revision, state: filtered };
+}
+
+/**
+ * What an agency member sees in the panel on the staging site: every request of the shared version,
+ * its own internal pins included, each marked with whether the client sees it. Nothing of the other
+ * versions, projects or invitations: the panel only needs this version's requests.
+ */
+export async function readSiteAgencyState(db: Db, access: ReviewAccess) {
+  const { revision, state } = await readState(db, access.organizationId);
+  if (!state) return { revision, state: null };
+  const record = state.deliverables?.find((item) => item.id === access.deliverableId && item.version === access.version);
+  const quotesOf = (id: number) => (state.proposalVersions ?? {})[String(id)];
+  const versionComments = (state.comments ?? [])
+    .filter((comment) => comment.deliverableId === access.deliverableId)
+    .map((comment) => ({ ...comment, clientSees: visibleToClient(comment, quotesOf(comment.id)) }));
+  const filtered: SharedState = {
+    clients: [],
+    projects: [],
+    deliverables: record ? [record] : [],
+    comments: versionComments,
+    notifications: [],
+    auditEvents: [],
+    reviewLinks: { [access.key]: publicLink(access.link) },
+    proposalStates: {},
+    proposalDecisions: {},
+    adaptationRequests: {},
+    proposalVersions: {},
     reviewLink: null,
   };
   return { revision, state: filtered };

@@ -7832,3 +7832,143 @@ body.is-resizing {
   background-position: calc(-330px * 20 / 590) calc(-240px * 20 / 590);
   mix-blend-mode: multiply;
 }
+
+/* Kora's panel on the staging site (src/app/review/[token]/site): the « Demandes » panel in a frame,
+   a request's thread shown in it rather than as a bubble over a canvas. */
+.site-panel {
+  min-height: 100vh;
+  border-left: 0;
+}
+.site-thread {
+  display: grid;
+  gap: var(--s-2);
+  padding: 0 var(--s-3) var(--s-3);
+}
+.site-thread .thread {
+  position: static;
+  width: auto;
+  max-height: none;
+  transform: none;
+  box-shadow: none;
+}
+/* The capture of a request placed on the staging site, in a request's thread (src/components/SiteCapture.tsx). */
+.thread .site-capture {
+  margin: var(--s-2) var(--s-4) 0;
+}
+
+/* The review canvas of a « Lien » deliverable (src/app/(agency)/editor/SiteBoard.tsx): the requests of the
+   staging site, page by page, with their captures; the open request's thread beside them. */
+.site-board-panel {
+  overflow: auto;
+}
+.site-board {
+  display: grid;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-6);
+}
+.site-board-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.site-board-header h2 {
+  font: 700 18px/1.3 var(--font-display);
+}
+.site-board-body {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-4);
+}
+.site-board-pages {
+  display: grid;
+  flex: 1;
+  gap: var(--s-6);
+  min-width: 0;
+}
+.site-board-page h3 {
+  margin-bottom: var(--s-2);
+  font: 600 14px/1.4 var(--font-ui);
+}
+.site-board-page h3 small {
+  color: var(--graphite);
+  font-weight: 400;
+}
+.site-board-grid {
+  display: grid;
+  /* Cards keep a thumbnail's size, the open thread beside them or not. */
+  grid-template-columns: repeat(auto-fill, minmax(200px, 260px));
+  gap: var(--s-3);
+}
+.site-card {
+  display: grid;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  background: var(--paper);
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow var(--d-fast, 0.12s) var(--ease-out, ease-out);
+}
+.site-card:hover {
+  box-shadow: 0 4px 16px rgba(17, 17, 17, 0.1);
+}
+.site-card.is-selected,
+.site-card:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 1px;
+}
+.site-card-shot {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  object-position: top;
+  border-bottom: 1px solid var(--border);
+  background: var(--canvas);
+}
+.site-card-shot.is-empty {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--s-1);
+  color: var(--graphite);
+}
+.site-card-shot.is-empty small {
+  max-width: 90%;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.site-card-body {
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+}
+.site-card-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-weight: 500;
+}
+.site-card-body small {
+  color: var(--graphite);
+}
+.site-board-thread {
+  position: sticky;
+  top: var(--s-4);
+  flex: 0 0 340px;
+  padding: 0;
+}
+.site-board-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-3);
+  max-width: 520px;
+  margin: var(--s-8) auto;
+  color: var(--graphite);
+  text-align: center;
+}

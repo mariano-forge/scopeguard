@@ -19,6 +19,7 @@ export function AccessGate({
   deliverable,
   invitation,
   verifiedEmail,
+  site = false,
   onVerified,
 }: {
   token: string;
@@ -27,6 +28,8 @@ export function AccessGate({
   invitation: { id: string | null; masked: string } | null;
   /** Verified on this device, but not invited to this link. */
   verifiedEmail: string | null;
+  /** In Kora's panel on the agency's staging site: the session is opened for that site (src/db/reviewAuth.ts). */
+  site?: boolean;
   onVerified: () => void;
 }) {
   const [step, setStep] = useState<Step>(verifiedEmail ? "request" : "email");
@@ -49,7 +52,7 @@ export function AccessGate({
     return () => clearTimeout(timer);
   }, [resendIn]);
 
-  async function post(path: string, body: Record<string, string>) {
+  async function post(path: string, body: Record<string, string | boolean>) {
     setPending(true);
     setError("");
     try {
@@ -77,7 +80,7 @@ export function AccessGate({
 
   async function verify(event: React.FormEvent) {
     event.preventDefault();
-    if (await post("/verify", { ...target(), code })) onVerified();
+    if (await post("/verify", { ...target(), code, ...(site ? { site } : {}) })) onVerified();
   }
 
   async function requestAccess(event: React.FormEvent) {
