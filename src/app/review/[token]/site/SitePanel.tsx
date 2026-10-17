@@ -150,6 +150,8 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
     async function receive(event: MessageEvent<TicketMessage>) {
       if (event.origin !== window.location.origin || !agencyWindow.current || event.source !== agencyWindow.current) return;
       if (event.data?.type !== "kora:agency-ticket" || typeof event.data.ticket !== "string") return;
+      // The window waits for the panel to have the ticket before it goes (AgencyHandoff).
+      agencyWindow.current.close();
       agencyWindow.current = null;
       const response = await fetch(`/api/review/${encodeURIComponent(token)}/site/session`, {
         method: "POST",
