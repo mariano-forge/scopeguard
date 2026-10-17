@@ -5,6 +5,8 @@
 
 import { and, eq } from "drizzle-orm";
 import type { ListChange, StateChanges } from "@/lib/sharedState";
+import { readSiteAnchor, type SiteAnchor } from "@/lib/siteReview";
+import { clientUploader, ownCapture } from "@/lib/siteCapture";
 import { displayedNow, freeCommentId, id, movedComment, noChanges, percent, readArea, readPoint, text, number, type Area, type Data } from "./actions";
 import type { Db } from "./client";
 import { clientSeesComment, sanitizeReviewChanges, visibleToClient, type ReviewAccess } from "./reviewAccess";
@@ -14,7 +16,7 @@ import { commentProposals, comments } from "./schema";
 import { applyChanges, type Writer } from "./state";
 
 export type ReviewAction =
-  | { type: "comment.create"; id?: number; message: string; location?: string; page?: number; position?: { x: number; y: number }; area?: Area; replies?: { id?: number; message: string }[] }
+  | { type: "comment.create"; id?: number; message: string; location?: string; page?: number; position?: { x: number; y: number }; area?: Area; site?: SiteAnchor; replies?: { id?: number; message: string }[] }
   | { type: "comment.edit"; commentId: number; message: string }
   | { type: "comment.move"; commentId: number; page: number; x: number; y: number }
   | { type: "comment.delete"; commentId: number }
@@ -47,7 +49,7 @@ export function readReviewAction(type: ReviewAction["type"], body: Data, params:
             return replyText ? [{ id: id((reply as Data).id), message: replyText }] : [];
           })
         : undefined;
-      return { type, id: id(body.id), message, location: text(body.location, 200), page: id(body.page), position: point, area: point ? readArea(body.area) : undefined, replies };
+      return { type, id: id(body.id), message, location: text(body.location, 200), page: id(body.page), position: point, area: point ? readArea(body.area) : undefined, site: readSiteAnchor(body.site), replies };
     }
     case "comment.edit":
       return commentId && message ? { type, commentId, message } : null;
@@ -133,6 +135,8 @@ async function changesFor(db: Db, access: ReviewAccess, action: ReviewAction): P
       page: action.page ?? 1,
       ...(action.position ? { position: action.position } : {}),
       ...(action.area ? { area: action.area } : {}),
+      // Placed on the agency's staging site (src/lib/siteReview.ts): the page it is on names it.
+      ...(action.site ? { site: action.site, location: action.location ?? action.site.url } : {}),
       ...(action.replies?.length
         ? { replies: action.replies.map((reply, index) => ({ id: reply.id ?? now + index + 1, from: "client", message: reply.message, time: "À l'instant", createdAt: now })) }
         : {}),
@@ -249,6 +253,9 @@ function kept(action: ReviewAction, sanitized: StateChanges | null, commentId: n
 export async function runReviewAction(db: Db, access: ReviewAccess, email: string, writer: Omit<Writer, "recordedBy">, action: ReviewAction): Promise<ReviewActionResult> {
   // A request the client does not see (an out-of-scope one not quoted yet) is unknown to them.
   if ("commentId" in action && !(await clientSeesComment(db, access, action.commentId))) return refused("Commentaire introuvable.", 404);
+  // A capture the client sent themselves, never another file of the agency (src/lib/siteCapture.ts).
+  if (action.type === "comment.create" && action.site?.capture && !(await ownCapture(db, access.organizationId, action.site.capture, clientUploader(email))))
+    return refused("Capture introuvable.", 404);
   const built = await changesFor(db, access, action);
   if ("ok" in built) return built;
   const commentId = action.type === "reply.create" || action.type === "reply.edit" || action.type === "reply.delete" ? action.commentId : built.id;

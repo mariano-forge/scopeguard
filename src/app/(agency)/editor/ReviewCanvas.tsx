@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import { Maximize, MessageCirclePlus, Minus, MousePointer2, Plus } from "lucide-react";
 import { DeliverableContent } from "@/components/DeliverableContent";
+import { SiteBoard } from "./SiteBoard";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { CommentPin, TargetHighlight, describeTarget, type Area, type TargetBox, type ThreadComment } from "./CanvasComments";
 import { Hint } from "@/components/hint";
@@ -337,6 +338,15 @@ export function ReviewCanvas({
     move: { icon: <MousePointer2 />, label: "", title: "Déplacer · V" },
     remark: { icon: <MessageCirclePlus />, label: "", title: "Commenter : cliquez sur un élément ou dessinez une zone · C" },
   };
+
+  // A « Lien »: its staging site is reviewed there, with the toolbar; here, the requests it got, page by page.
+  if (deliverable.type === "Link")
+    return (
+      <section className="preview-panel site-board-panel" aria-label="Tableau de recette">
+        {overlay}
+        <SiteBoard siteUrl={deliverable.url} comments={comments} selectedId={threadOpen ? selectedId : null} onOpen={onPinClick} renderThread={renderThread} />
+      </section>
+    );
 
   return (
     <section className={`preview-panel canvas tool-${tool} ${moving ? "is-moving-pin" : ""}`} ref={panelRef} aria-label="Canevas">

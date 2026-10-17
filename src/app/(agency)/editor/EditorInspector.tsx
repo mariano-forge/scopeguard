@@ -55,6 +55,7 @@ export function RequestPanel({
   adding,
   onAddingChange,
   onAddComment,
+  emptyHint,
 }: {
   comments: ThreadComment[];
   selectedId: number | null;
@@ -78,6 +79,8 @@ export function RequestPanel({
   onAddingChange: (adding: boolean) => void;
   /** Adds a comment by hand (not tied to a spot of the canvas); absent when read-only. */
   onAddComment?: (message: string) => void;
+  /** How to add a comment where the panel is used, said when there is none yet (the canvas's by default). */
+  emptyHint?: string;
 }) {
   const [draft, setDraft] = useState("");
   const now = useNow();
@@ -135,7 +138,7 @@ export function RequestPanel({
         {list.length === 0 ? (
           <div className="inspector-empty-state">
             <MessageSquare aria-hidden="true" />
-            <p>{current.empty}</p>
+            <p>{current.kind === "comment" && emptyHint ? emptyHint : current.empty}</p>
           </div>
         ) : (
           <ul>

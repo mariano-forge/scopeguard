@@ -110,6 +110,7 @@ Le MVP doit permettre de tester ce positionnement avec un flux complet, sans con
 - Fils de discussion et resolution de commentaires *(la resolution est a faire)*.
 - Boutons explicites `Demander des modifications` *(regle serveur faite, bouton a ajouter cote client)* et `Approuver la version`.
 - Relances par e-mail pour les validations en attente.
+- Revue d'un site de recette, à la manière de la barre de Vercel : le client commente directement le site *(essai, voir plus bas)*.
 
 ### Controle du perimetre
 
@@ -266,7 +267,7 @@ La page du client écrit une action à la fois, chacune sur sa route (`src/db/re
 
 | Route (`/api/review/:token/…`) | Action |
 | --- | --- |
-| `POST comments` | Commentaire sur la version |
+| `POST comments` | Commentaire sur la version, ou demande posée sur le site de recette (`site`) |
 | `PATCH comments/:id` | Modifier son commentaire (`message`) ou déplacer son repère (`page`, `x`, `y`) |
 | `DELETE comments/:id` | Supprimer son commentaire, tant que l'agence ne l'a pas qualifié |
 | `POST comments/:id/replies` | Répondre dans un fil de la version |
@@ -307,6 +308,29 @@ Seul le client valide une version, depuis sa page : l'agence n'a aucune route po
 
 - E-mails de devis et de décisions (`src/db/reviewMails.ts`) : un devis envoyé, ou la réponse à une contre-proposition, part par e-mail aux **décideurs** du client, avec leur lien personnel (« Répondre à » : l'administrateur qui l'a envoyé). Chaque décision du client (devis accepté ou refusé, contre-proposition, validation, demande de modifications) part au **propriétaire et à tous les administrateurs** de l'agence, avec un lien vers la demande (« Répondre à » : le client). Ni les membres ni les contributeurs ne les reçoivent. Un e-mail qui échoue est journalisé et n'annule jamais l'action.
 - E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (domaine vérifié dans Resend, avec SPF, DKIM et DMARC). Chaque e-mail part en HTML avec sa version texte, et avec un « Répondre à » vers le membre de l'agence concerné (ou `MAIL_REPLY_TO`) : l'adresse d'envoi n'a pas de boîte. `MAIL_TRANSPORT=console` n'envoie jamais rien et affiche les e-mails dans la console, même avec une clé Resend (tests, démonstrations). Sans clé, en développement, ils s'affichent dans la console ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
+
+### Revue d'un site de recette (essai, US-048)
+
+Pour un livrable « Lien », dont l'adresse est le site de recette, « Partager la revue » donne une ligne de script à placer **une seule fois** sur le site, et le lien à envoyer au client (l'adresse du site suivie de `?kora`, aussi dans les e-mails d'invitation et de relance) :
+
+```html
+<script src="https://<kora>/kora-toolbar.js" data-site="<clé du livrable>" defer></script>
+```
+
+- La clé est fixe pour le livrable, signée par Kora (`src/lib/siteKey.ts`, `GET /api/deliverables/:id/site-key`) : `/review/site/<clé>` ouvre la dernière version partagée avec un lien actif, ou dit qu'aucune ne l'est. La ligne ne change donc ni avec les versions ni avec les liens, et le jeton du lien n'apparaît plus sur le site. Une ligne plus ancienne, avec `data-review="<jeton>"`, ouvre toujours sa version.
+- Le script (`public/kora-toolbar.js`) n'affiche la barre qu'à qui a ouvert le site avec `?kora`, puis s'en souvient sur l'appareil. Il ouvre le panneau Kora (`/review/:token/site`) dans un cadre servi par Kora.
+- Le panneau ne s'affiche que sur le site du livrable : le proxy n'autorise que l'origine qu'il nomme (`frame-ancestors`), et la page vérifie que c'est celle du livrable (`reviewedSiteOrigin`). Toutes les autres pages de Kora refusent toujours d'être affichées dans un cadre.
+- Le client s'y vérifie par le même code e-mail. Sa session est un cookie partitionné (`kora_review_site_session`, `SameSite=None; Partitioned`), que le navigateur ne garde que pour ce site.
+- Sur le site, une pastille « Kora » en bas à droite. Un clic ouvre le panneau, qui reste épuré, et déplie la pastille avec les deux outils du canevas de Kora : « Naviguer » (`V`, par défaut : le site fonctionne normalement) et « Commenter » (`C` : chaque clic sur un élément ouvre une demande, jusqu'au retour à « Naviguer » ou Échap). « Réduire Kora » ou la croix du panneau replient tout. La pastille se déplace en la faisant glisser, reste dans l'écran et garde sa place sur l'appareil ; panneau ouvert, elle se range à sa gauche. La demande passe par `POST comments` avec sa place (`site` : page, élément, position dans l'élément, largeur d'écran, `src/lib/siteReview.ts`), puis suit le parcours habituel côté agence.
+- L'agence aussi travaille sur le site : « Je suis de l'agence » ouvre une petite fenêtre Kora, qui voit la session habituelle du membre et remet au panneau un ticket signé (2 minutes, pour ce lien). Le panneau l'échange contre sa propre session (`kora_agency_site_session`, partitionnée, 12 heures, liée au membre, à l'agence et à la version ; l'appartenance et le lien sont relus à chaque requête : un membre retiré, un lien révoqué ou expiré la ferment aussitôt). L'agence y voit toutes les épingles, ses remarques internes en pointillés, pose ses remarques, répond et qualifie. Depuis le site, ses routes n'ouvrent que ces gestes (`siteAgencyActions`) et seulement sur cette version : devis, contre-propositions et partage répondent `403 KORA_ONLY`, à faire dans Kora.
+- Au clic, la barre capture la fenêtre telle que le client la voit, sans la barre ni le panneau (`modern-screenshot`, chargé depuis Kora au premier clic). Le panneau l'envoie (`POST /api/review/:token/site/capture` : image JPEG ou PNG, 3 Mo au plus), puis la demande la nomme. La barre dessine dans l'image le cadre de l'élément visé et le point du clic : la capture se suffit à elle-même, où qu'on l'ouvre. Elle se voit dans le fil de la demande, côté agence comme côté client, et la preuve garde l'empreinte de cette image annotée. C'est une copie reconstituée, pas une photo de l'écran : une image d'un autre site qui refuse d'être lue y reste blanche. Si la capture échoue (site qui bloque les scripts de Kora, Safari capricieux), la demande part sans.
+- Le panneau a l'apparence de Kora parce qu'il en reprend les composants : le panneau « Demandes » (onglets « À clarifier », « Inclus », « Hors scope »), puis le fil de Kora pour la demande ouverte (réponses, modification, qualification par l'agence). Sur le site, les épingles sont celles de Kora : initiales de l'auteur sur un commentaire, icône et couleur du statut sur une demande.
+- Le site ne reçoit que de quoi dessiner les épingles (élément, position, statut, initiales, libellé), jamais le texte des demandes, leur montant ni l'identité complète de leur auteur, qui restent dans le cadre. Une épingle dont l'élément a disparu est signalée « élément introuvable ».
+- Le site de recette doit être en `https` (sauf `localhost` en développement) : une page en `http` peut être modifiée en chemin. Sinon, « Partager la revue » le dit au lieu de donner le script.
+- Dans Kora, un livrable « Lien » s'affiche en tableau de recette (`src/app/(agency)/editor/SiteBoard.tsx`), côté agence comme côté client : ses demandes page par page, chacune avec sa capture annotée et son statut ; un clic ouvre le fil de la demande à côté. Sans demande, la page explique comment elles arrivent. « Ouvrir le site » ouvre la recette avec la barre.
+- Les devis et la validation restent sur la page de revue : une page que l'agence contrôle ne doit pas pouvoir piéger un clic sur une décision. Le panneau signale ce qui attend le client (« 1 devis attend votre décision ») et ouvre la revue dans un onglet sans redemander de code : l'onglet reçoit du panneau un ticket signé (2 minutes, cette adresse et ce lien, `src/lib/siteHandoff.ts`), échangé contre la session habituelle tant que l'adresse reste invitée.
+
+Limites de l'essai : testé dans Chrome seulement (Safari et Firefox à vérifier à la main) ; le site de l'agence doit accepter le script et le cadre de Kora s'il a sa propre politique de sécurité ; les numéros des épingles diffèrent entre la vue de l'agence (pins internes compris) et celle du client.
 
 ### Preuve de validation
 
