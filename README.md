@@ -110,6 +110,7 @@ Le MVP doit permettre de tester ce positionnement avec un flux complet, sans con
 - Fils de discussion et resolution de commentaires *(la resolution est a faire)*.
 - Boutons explicites `Demander des modifications` *(regle serveur faite, bouton a ajouter cote client)* et `Approuver la version`.
 - Relances par e-mail pour les validations en attente.
+- Revue d'un site de recette, à la manière de la barre de Vercel : le client commente directement le site *(essai, voir plus bas)*.
 
 ### Controle du perimetre
 
@@ -266,7 +267,7 @@ La page du client écrit une action à la fois, chacune sur sa route (`src/db/re
 
 | Route (`/api/review/:token/…`) | Action |
 | --- | --- |
-| `POST comments` | Commentaire sur la version |
+| `POST comments` | Commentaire sur la version, ou demande posée sur le site de recette (`site`) |
 | `PATCH comments/:id` | Modifier son commentaire (`message`) ou déplacer son repère (`page`, `x`, `y`) |
 | `DELETE comments/:id` | Supprimer son commentaire, tant que l'agence ne l'a pas qualifié |
 | `POST comments/:id/replies` | Répondre dans un fil de la version |
@@ -307,6 +308,23 @@ Seul le client valide une version, depuis sa page : l'agence n'a aucune route po
 
 - E-mails de devis et de décisions (`src/db/reviewMails.ts`) : un devis envoyé, ou la réponse à une contre-proposition, part par e-mail aux **décideurs** du client, avec leur lien personnel (« Répondre à » : l'administrateur qui l'a envoyé). Chaque décision du client (devis accepté ou refusé, contre-proposition, validation, demande de modifications) part au **propriétaire et à tous les administrateurs** de l'agence, avec un lien vers la demande (« Répondre à » : le client). Ni les membres ni les contributeurs ne les reçoivent. Un e-mail qui échoue est journalisé et n'annule jamais l'action.
 - E-mails : renseignez `RESEND_API_KEY` et `MAIL_FROM` (domaine vérifié dans Resend, avec SPF, DKIM et DMARC). Chaque e-mail part en HTML avec sa version texte, et avec un « Répondre à » vers le membre de l'agence concerné (ou `MAIL_REPLY_TO`) : l'adresse d'envoi n'a pas de boîte. `MAIL_TRANSPORT=console` n'envoie jamais rien et affiche les e-mails dans la console, même avec une clé Resend (tests, démonstrations). Sans clé, en développement, ils s'affichent dans la console ; ailleurs, l'agence copie le lien personnel de chaque invité depuis « Partager la revue ».
+
+### Revue d'un site de recette (essai, US-048)
+
+Pour un livrable « Lien », dont l'adresse est le site de recette, « Partager la revue » donne une ligne de script à placer sur le site et le lien à envoyer au client (l'adresse du site suivie de `?kora`) :
+
+```html
+<script src="https://<kora>/kora-toolbar.js" data-review="<jeton du lien>" defer></script>
+```
+
+- Le script (`public/kora-toolbar.js`) n'affiche la barre qu'à qui a ouvert le site avec `?kora`, puis s'en souvient sur l'appareil. Il ouvre le panneau Kora (`/review/:token/site`) dans un cadre servi par Kora.
+- Le panneau ne s'affiche que sur le site du livrable : le proxy n'autorise que l'origine qu'il nomme (`frame-ancestors`), et la page vérifie que c'est celle du livrable (`reviewedSiteOrigin`). Toutes les autres pages de Kora refusent toujours d'être affichées dans un cadre.
+- Le client s'y vérifie par le même code e-mail. Sa session est un cookie partitionné (`kora_review_site_session`, `SameSite=None; Partitioned`), que le navigateur ne garde que pour ce site.
+- « Poser une demande » ou la touche `C` : le client clique sur un élément, écrit, envoie. La demande passe par `POST comments` avec sa place (`site` : page, élément, position dans l'élément, largeur d'écran, `src/lib/siteReview.ts`), puis suit le parcours habituel côté agence.
+- Le site ne reçoit que de quoi dessiner les épingles (numéro, élément, position), jamais le texte des demandes, qui reste dans le cadre. Une épingle dont l'élément a disparu est signalée « élément introuvable ».
+- Les devis et la validation restent sur la page de revue, ouverte depuis le panneau.
+
+Limites de l'essai : testé dans Chrome seulement (Safari et Firefox à vérifier à la main) ; pas encore de capture ; le jeton du script change à chaque version ; le site de l'agence doit accepter le script et le cadre de Kora s'il a sa propre politique de sécurité ; la session du site n'ouvre pas la page de revue, où le client se vérifie à nouveau.
 
 ### Preuve de validation
 

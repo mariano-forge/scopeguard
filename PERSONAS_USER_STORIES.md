@@ -1000,17 +1000,31 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 
 #### US-048 : annoter un site web en ligne
 
-**En tant que** client,  
+**En tant que** client d'une agence web,  
 **je veux** commenter directement le site de recette en naviguant de page en page,  
 **afin de** donner mes retours sur le vrai rendu.
 
+> **Modèle retenu (17 octobre 2026) :** la barre d'outils de Vercel (commentaires sur les prévisualisations), sans compte à créer pour le client. C'est le parcours des agences web : elles font valider un site de recette, rarement des images ou des PDF. Marker.io ou BugHerd envoient un retour vers le backlog ; Kora le qualifie d'abord, et seul ce qui est inclus ou payé part en production.
+
+**Comment ça marche**
+
+1. Le livrable est de type « Lien » : son adresse est le site de recette, et son domaine le seul où la barre s'ouvre.
+2. L'agence colle une ligne de script sur le site. La barre ne s'affiche qu'à qui l'active (lien `?kora` reçu de l'agence, puis mémorisé sur l'appareil) : un visiteur du site ne voit rien.
+3. Le client ouvre le panneau Kora, affiché dans un cadre servi par Kora : il se vérifie par le même code e-mail, sans compte.
+4. Mode commentaire (`C` ou bouton) : il clique sur un élément, écrit sa demande, l'envoie. Les épingles de la page réapparaissent sur le site avec leur fil.
+5. L'agence qualifie dans son panneau « Demandes », comme aujourd'hui. Les devis et la validation se font sur la page de revue Kora, ouverte depuis le panneau.
+
 **Critères d'acceptation**
 
-- L'agence ajoute un script Kora sur son site de recette ; il ne fonctionne que sur les domaines déclarés.
-- Le client se vérifie avec le même code par e-mail que pour les autres livrables.
-- Un commentaire est rattaché à la page, à l'élément visé et à la largeur d'écran ; une capture est conservée.
-- Si l'élément a disparu, le commentaire est signalé « élément introuvable » au lieu d'être perdu.
-- Les commentaires rejoignent le panneau « Demandes » et le même parcours de qualification.
+- Le panneau Kora ne s'affiche que dans une page du domaine du livrable ; ailleurs, il ne montre rien.
+- Le client se vérifie avec le même code par e-mail que pour les autres livrables ; sa session sur le site est propre à ce site.
+- Une demande est rattachée à la page, à l'élément visé, à sa position dans l'élément et à la largeur d'écran ; une capture est conservée *(pas encore : prochaine étape)*.
+- Le site de l'agence ne reçoit jamais le texte des demandes : seulement de quoi placer les épingles (numéro, élément, position). Le texte reste dans le cadre Kora.
+- Les épingles affichées sur le site sont celles que le client voit sur sa page de revue (`readReviewState`) : jamais un pin interne de l'agence ni un devis en brouillon.
+- Si l'élément a disparu, la demande est signalée « élément introuvable » dans le panneau au lieu d'être perdue.
+- Les demandes rejoignent le panneau « Demandes » et le même parcours de qualification.
+
+**Pas dans cette story** : afficher le site de l'agence dans Kora (relais ou cadre), une extension de navigateur, dessiner sur la capture, les erreurs techniques de la page, l'extension WordPress.
 
 #### Décisions et pistes notées (16 octobre 2026)
 
@@ -1023,7 +1037,7 @@ Discutées avec le porteur du produit ; à reprendre telles quelles :
 - **Alignement « demande »** : abandonner la distinction par le champ `kind` ; la qualification et la présence d'un repère suffisent.
 - **Bouton « J'ai terminé mes retours »** côté client (US-010) : reporté, utile surtout pour compter les tournées de révision (US-045).
 - **Lien copié sans invité** : seul un avertissement dans « Partager la revue » (fait). Écarté : ouvrir le lien à tout porteur. Écarté pour l'instant : autoriser un domaine entier.
-- **Annotation de site web** (US-048) : un script Kora sur le site de recette, limité aux domaines déclarés ; vérification par le même code e-mail ; retours dans le même panneau ; une version = une tournée de revue déclarée par l'agence (« V3 en ligne ») ; la preuve repose sur des captures, pas sur le site en direct ; « élément introuvable » si l'élément a disparu. Difficultés : la connexion depuis un autre domaine (cookies tiers), les sites protégés. Écartés : proxy ou iframe, extension de navigateur.
+- **Annotation de site web** (US-048) : un script Kora sur le site de recette, limité aux domaines déclarés ; vérification par le même code e-mail ; retours dans le même panneau ; une version = une tournée de revue déclarée par l'agence (« V3 en ligne ») ; la preuve repose sur des captures, pas sur le site en direct ; « élément introuvable » si l'élément a disparu. Difficultés : la connexion depuis un autre domaine (cookies tiers), les sites protégés. Écartés : afficher le site dans Kora (relais ou cadre), extension de navigateur. *Précisé le 17 octobre : modèle de la barre Vercel ; c'est le panneau Kora qui s'affiche dans un cadre sur le site, limité à son domaine, avec une session propre à ce site.*
 - **Jira / Notion** (US-047) : aucune licence requise ; jeton API pour les pilotes (chiffré en base, jamais renvoyé à la page), OAuth ensuite.
 - **E-mails groupés** : un e-mail par action pour l'instant ; un récapitulatif seulement si les pilotes s'en plaignent.
 
@@ -1069,12 +1083,12 @@ Elles répondent à des besoins réels, mais elles ne servent pas à vérifier l
 - Accès client vérifié par code *(réalisé : US-041 à US-043)*
 - US-045 : périmètre de référence
 - US-046 : demande offerte
+- US-048 : annotation d'un site web en ligne *(essai fait ; la cible des agences web)*
 - Page mobile optimisée pour le client
 
 ### Could have
 
 - US-036 : capture de page web depuis une URL
-- US-048 : annotation d'un site web en ligne
 - US-047 : envoi des demandes acceptées vers Jira ou Notion
 - US-035 : PDF multi-pages *(réalisé : pages à la suite, navigation page à page abandonnée)*
 - Stripe
@@ -1104,7 +1118,7 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 
 ## Suivi de réalisation
 
-État au 16 octobre 2026. ✅ réalisé · 🟡 partiel · ⬜ à faire · ⛔ abandonné.
+État au 17 octobre 2026. ✅ réalisé · 🟡 partiel · ⬜ à faire · ⛔ abandonné.
 
 | Story | État | Remarque |
 | --- | :-: | --- |
@@ -1152,7 +1166,7 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-045 périmètre de référence | ⬜ | Prochaine priorité produit |
 | US-046 demande offerte | ⬜ | |
 | US-047 envoi vers Jira ou Notion | ⬜ | |
-| US-048 annoter un site web en ligne | ⬜ | |
+| US-048 annoter un site web en ligne | 🟡 | Essai du 17 octobre : barre sur le site, vérification par code dans le panneau, demande posée sur un élément, épingles, « élément introuvable » ; testé dans Chrome. À faire : Safari et Firefox à vérifier à la main, capture, lien `?kora` dans les e-mails, une adresse de script qui suive les nouvelles versions |
 | US-049 rôles des personnes invitées | ✅ | Décideur et contributeur, contrôlés par le serveur |
 | US-050 saisir une demande reçue ailleurs | ✅ | Source, date, extrait et capture ; visibles par le client et dans la preuve |
 | US-051 e-mails des devis et des décisions | ✅ | Décideurs côté client, propriétaire et administrateurs côté agence |

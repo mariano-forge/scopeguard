@@ -56,6 +56,11 @@ Pour les tests :
 - Une adresse e-mail n'est jamais montrée en entier à qui n'a pas prouvé qu'elle est la sienne : un lien personnel de revue ou d'invitation d'agence l'affiche masquée (`maskEmail`, `src/lib/maskEmail.ts`), et le code se demande par l'identifiant de l'invitation (`requestedEmail`, `src/db/reviewAuth.ts`).
 - Seul le décideur valide, et jamais avec un devis en attente : la validation est refusée tant qu'un devis envoyé attend la décision du client ; les demandes « À clarifier » restantes sont abandonnées en validant, et l'événement de validation les nomme.
 
+**Revue d'un site de recette** (`public/kora-toolbar.js`, `src/app/review/[token]/site/`, `src/lib/siteReview.ts`)
+- La seule page de Kora qui s'affiche dans un cadre est `/review/:token/site`, et seulement sur le site du livrable : `frame-ancestors` vient de `?parent` (`src/proxy.ts`), et la page ne montre rien si ce n'est pas l'origine du livrable (`reviewedSiteOrigin`). N'ouvre aucun autre cadre, ne retire pas `X-Frame-Options: DENY` ailleurs.
+- Le site de l'agence ne reçoit jamais le texte d'une demande : seulement `SitePin` (numéro, élément, position). Tout message entre le site et le panneau a son type dans `src/lib/siteReview.ts`, et chaque côté vérifie l'origine et la fenêtre de l'expéditeur ; jamais `postMessage(…, "*")`.
+- La session du panneau est `siteSessionCookie`, `SameSite=None` toujours avec `Partitioned` ; la session de la page de revue reste `SameSite=Lax`.
+
 **Preuve et journal**
 - `audit_events` est en ajout seul : jamais d'`UPDATE` ni de `DELETE`. Ne supprime ni ne désactive le trigger. Toute nouvelle colonne s'ajoute au trigger dans une migration.
 - L'IP d'une requête se lit avec `requestOrigin()` (`src/lib/api.ts`), jamais directement dans `x-forwarded-for`.
@@ -127,6 +132,7 @@ Pour les tests :
 - **Sélecteurs** : beaucoup de boutons existent deux fois (bulle du fil et panneau latéral). Limite la recherche à la zone visée (`getByRole("dialog", …)`, une ligne du panneau).
 - **Services réels** : la base en ligne, Azure et Resend servent des agences réelles ; aucune commande ne les touche sans demande explicite.
 - **Base locale copiée de la base en ligne** : elle contient de vraies adresses de clients. Avant tout essai d'invitation, de relance ou de devis en local, `MAIL_TRANSPORT=console` dans `.env.local`, sinon les e-mails partent vraiment. Les fichiers restent sur l'Azure en ligne : `STORAGE_TARGET=remote` pour les voir, mais tout import local y irait aussi.
+- **Tests du site de recette** : le faux site est servi par `route.fulfill` sur une adresse `https://…test`, et sa page reçoit la permission `local-network-access` (`otherSitePerson`) : sans elle, Chrome interdit à une page publique d'appeler Kora sur `localhost`, ce qui n'arrive pas en ligne.
 - **Aide `upload` des tests** : elle déduit le type du fichier de son extension (`.pdf`, `.png`) ; une capture d'un autre type est refusée par le serveur, à raison.
 
 ## Compte rendu
