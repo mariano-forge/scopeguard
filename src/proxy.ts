@@ -8,8 +8,8 @@ import { crossSiteRefusal, crossSiteWrite } from "@/lib/api";
 import { siteFramePath, siteFramePolicy } from "@/lib/securityHeaders";
 import { parentOrigin, siteAgencyCookie } from "@/lib/siteReview";
 
-/** Reachable without an agency session: sign-in pages, the client review and what it loads. */
-const publicPaths = [/^\/connexion$/, /^\/reinitialiser$/, /^\/review\//, /^\/api\/auth\//, /^\/api\/review\//, /^\/api\/files\//];
+/** Reachable without an agency session: the landing page, sign-in pages, the client review and what they load. */
+const publicPaths = [/^\/decouvrir$/, /^\/connexion$/, /^\/reinitialiser$/, /^\/review\//, /^\/api\/auth\//, /^\/api\/review\//, /^\/api\/files\//, /^\/api\/demo$/];
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
@@ -22,7 +22,10 @@ export function proxy(request: NextRequest) {
     response.headers.set("Content-Security-Policy", siteFramePolicy(parentOrigin(request.nextUrl.searchParams.get("parent"))));
     return response;
   }
-  if (publicPaths.some((path) => path.test(pathname)) || getSessionCookie(request)) return NextResponse.next();
+  const signedIn = Boolean(getSessionCookie(request));
+  // One front door: at "/", a visitor sees the landing page and a member their home, the address unchanged.
+  if (pathname === "/" && !signedIn) return NextResponse.rewrite(new URL("/decouvrir", request.url));
+  if (publicPaths.some((path) => path.test(pathname)) || signedIn) return NextResponse.next();
   // An agency member in the panel on the staging site writes through the agency's routes, which only
   // open some actions to that session (src/lib/agencyActionRoute.ts).
   if (pathname.startsWith("/api/") && request.cookies.has(siteAgencyCookie)) return NextResponse.next();

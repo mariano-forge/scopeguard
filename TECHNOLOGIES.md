@@ -110,11 +110,12 @@ Les e-mails partent par Resend dès que `RESEND_API_KEY` et `MAIL_FROM` sont ren
 | --- | --- |
 | `src/app/(agency)/` | L'espace agence (l'application principale, l'éditeur, la barre latérale, l'équipe). |
 | `src/app/review/[token]/` | La page de revue du client et son écran de vérification. |
+| `src/app/decouvrir/` | La page d'accueil publique (ce qu'un visiteur voit à `/` ; un membre y voit l'application), avec la demande de démo (`POST /api/demo`, envoyée à `DEMO_REQUESTS_TO`). |
 | `src/app/connexion`, `bienvenue`, `invitation`, `reinitialiser` | Connexion, création de l'agence, invitation d'un collègue, nouveau mot de passe. |
 | `src/app/api/` | Les routes API. |
 | `src/db/` | Schéma, lecture de l'état (`state.ts`), actions de l'agence (`agencyActions.ts`, `workspaceActions.ts`) et du client (`reviewActions.ts`, règles dans `reviewAccess.ts`), accès client (`reviewAuth.ts`), droits (`agencyPermissions.ts`), preuve (`proof.ts`). |
 | `src/lib/` | Authentification, sessions, stockage, e-mails, rôles client (`clientRoles.ts`), lecture de l'état et envoi des actions côté navigateur (`stateSync.ts`, `actionRequest.ts`). |
-| `src/proxy.ts` | Redirection rapide vers `/connexion` sans session (l'ancien « middleware » de Next.js). |
+| `src/proxy.ts` | Sans session : `/` montre la page d'accueil publique, le reste redirige vers `/connexion` (l'ancien « middleware » de Next.js). |
 | `drizzle/` | Migrations SQL, à appliquer avant chaque déploiement qui en ajoute. |
 | `tests/e2e/` | La suite de tests. |
 
