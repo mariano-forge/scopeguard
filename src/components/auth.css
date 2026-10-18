@@ -1,0 +1,161 @@
+/* AuthShell: brand panel + form. Tokens only; motion off under prefers-reduced-motion. */
+
+.auth {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  min-height: 100vh;
+  background: var(--canvas);
+}
+.auth-brand {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--s-8);
+  padding: clamp(24px, 4vw, 48px);
+  border-right: 1px solid var(--border);
+  background: var(--paper);
+  color: var(--ink);
+  overflow: hidden;
+}
+/* Two soft halos, the action blue and the scope violet, drifting slowly behind the promise. */
+.auth-brand::before {
+  content: "";
+  position: absolute;
+  inset: -30% -20%;
+  z-index: -1;
+  background:
+    radial-gradient(closest-side at 25% 20%, color-mix(in srgb, var(--action-fill) 22%, transparent), transparent 70%),
+    radial-gradient(closest-side at 80% 85%, color-mix(in srgb, var(--status-scope-bg) 85%, transparent), transparent 70%);
+  animation: auth-glow 16s ease-in-out infinite alternate;
+}
+.auth-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  font: 700 20px var(--font-display);
+  text-decoration: none;
+}
+.auth-promise {
+  max-width: 14ch;
+  margin: 0 0 28px;
+  font: 700 clamp(30px, 3.4vw, 44px) / 1.08 var(--font-display);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+.auth-flow {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.auth-flow li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--graphite);
+  font: 500 14px var(--font-ui);
+  animation: auth-step 0.7s var(--ease-spring) both;
+}
+.auth-flow li:nth-child(1) {
+  animation-delay: 0.25s;
+}
+.auth-flow li:nth-child(2) {
+  animation-delay: 0.5s;
+}
+.auth-flow li:nth-child(3) {
+  animation-delay: 0.75s;
+}
+.auth-flow-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--action-fill);
+}
+.auth-flow-chip {
+  padding: 6px 10px;
+  border-radius: 999px;
+  font: 600 13px var(--font-ui);
+}
+.auth-flow-chip.is-scope {
+  background: var(--status-scope-bg);
+  color: var(--status-scope-text);
+}
+.auth-flow-chip.is-ok {
+  background: var(--status-resolved-bg);
+  color: var(--status-resolved-text);
+}
+.auth-brand-foot {
+  margin: 0;
+  color: var(--graphite);
+  font: 400 13px var(--font-ui);
+}
+.auth-panel {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--s-6);
+  padding: clamp(24px, 5vw, 64px) var(--s-4);
+}
+.auth-mobile-brand {
+  display: none;
+}
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  padding: clamp(24px, 3vw, 32px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  animation: auth-card-in 0.6s var(--ease-spring) both;
+}
+@keyframes auth-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes auth-step {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes auth-glow {
+  to {
+    transform: translate3d(4%, -3%, 0) rotate(5deg);
+  }
+}
+@media (max-width: 900px) {
+  .auth {
+    grid-template-columns: 1fr;
+  }
+  .auth-brand {
+    display: none;
+  }
+  .auth-mobile-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font: 700 18px var(--font-display);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-card,
+  .auth-flow li,
+  .auth-brand::before {
+    animation: none;
+  }
+}

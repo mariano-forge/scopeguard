@@ -166,6 +166,12 @@ export function SignInForm({
 
   return (
     <div className="grid gap-4">
+      <div className="grid gap-1">
+        <h1 className="font-heading text-2xl font-bold tracking-tight">{mode === "sign-up" ? "Créez votre espace." : "Bon retour."}</h1>
+        <p className="text-sm text-[var(--graphite)]">
+          {mode === "sign-up" ? "Un compte, puis votre agence : vos projets et vos clients y attendent." : "Connectez-vous à l’espace de votre agence."}
+        </p>
+      </div>
       {invitation && (
         <p className="rounded-[var(--r-field)] bg-[var(--status-low-bg)] px-3 py-2 text-sm text-[var(--status-low-text)]">
           Rejoignez <b>{invitation.organizationName}</b> : créez votre compte ou connectez-vous avec l’adresse invitée, <b>{invitation.maskedEmail}</b>.
