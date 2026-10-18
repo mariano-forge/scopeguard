@@ -50,7 +50,8 @@ export function Modal({
         if (!next) onClose();
       }}
     >
-      <DialogContent className={cn(sizes[size], "max-h-[calc(100vh-4rem)] overflow-y-auto", className)} role={role}>
+      {/* The role is only passed when asked for: `role={undefined}` would erase Radix's own role="dialog". */}
+      <DialogContent className={cn(sizes[size], "max-h-[calc(100vh-4rem)] overflow-y-auto", className)} {...(role ? { role } : {})}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description ? <DialogDescription>{description}</DialogDescription> : <DialogDescription className="sr-only">{title}</DialogDescription>}
