@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUp, BadgeEuro, ChevronDown, ClipboardCheck, Pencil, Tag, Trash2, Undo2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowUp, BadgeEuro, ClipboardCheck, Pencil, Tag, Trash2, Undo2, X } from "lucide-react";
 import { Hint } from "@/components/hint";
 import { SiteCapture } from "@/components/SiteCapture";
 import type { SiteAnchor } from "@/lib/siteReview";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { sideOf, type Side } from "@/lib/authors";
-import { isInternalNote, isInternalReply } from "@/lib/internalNotes";
 import { sourceLine, type RequestSource } from "@/lib/requestSource";
 
 /**
@@ -71,13 +72,15 @@ export type ThreadComment = {
   sourceId?: number;
   /** Where a request entered by the agency came from (src/lib/requestSource.ts). */
   source?: RequestSource;
-  /** A pin of the agency: its own words stay internal (src/lib/internalNotes.ts). */
+  /** A pin the agency dropped (its draft until qualified). */
   internalNote?: boolean;
   /** Placed on the staging site, with the capture of the window (src/lib/siteReview.ts). */
   site?: SiteAnchor;
   position?: { x: number; y: number };
   area?: Area;
   replies?: ThreadReply[];
+  /** Closed (archived) by the agency: read-only for everyone until reopened. */
+  closed?: boolean;
 };
 
 /** A request's origin: the channel and day, the client's words and their capture (both shown to the client). */
@@ -106,6 +109,12 @@ export const kindLabels: Record<RequestKind, string> = { comment: "Commentaire",
 export const isTitledRequest = (comment: Pick<ThreadComment, "decision" | "title">) => requestKind(comment) !== "comment" || Boolean(comment.title?.trim());
 export const itemLabel = (comment: Pick<ThreadComment, "decision" | "title">) =>
   requestKind(comment) === "comment" && comment.title?.trim() ? "Demande à clarifier" : kindLabels[requestKind(comment)];
+/**
+ * A pin of the agency with no status chosen yet: its draft, internal (the client never sees it,
+ * src/db/reviewAccess.ts visibleToClient). Qualifying it, « À clarifier » included, gives it a title.
+ */
+export const isAgencyDraft = (comment: Pick<ThreadComment, "decision" | "title" | "from" | "initials">) =>
+  requestKind(comment) === "comment" && !comment.title?.trim() && sideOf(comment) === "agency";
 /** Short status shown on badges. */
 export const statusLabels: Record<RequestKind, string> = { comment: "À clarifier", correction: "Inclus", outside: "Hors scope" };
 export const statusTones: Record<RequestKind, string> = { comment: "decision-pending", correction: "decision-included", outside: "decision-outside" };
@@ -145,9 +154,12 @@ export function CommentPin({
   moving,
   onOpen,
   onMove,
+  unread,
 }: {
   comment: ThreadComment;
   active: boolean;
+  /** Something of the client not read yet in its thread: a dot on the pin. */
+  unread?: boolean;
   /** Being moved (follows the pointer). */
   moving?: boolean;
   onOpen: () => void;
@@ -159,7 +171,7 @@ export function CommentPin({
     <button
       type="button"
       data-pin={comment.id}
-      className={`canvas-pin is-${kind} ${active ? "is-active" : ""} ${moving ? "is-moving" : ""} ${sideOf(comment) === "agency" ? "is-agency" : "is-client"}`}
+      className={`canvas-pin is-${kind} ${active ? "is-active" : ""} ${moving ? "is-moving" : ""} ${sideOf(comment) === "agency" ? "is-agency" : "is-client"} ${unread ? "is-unread" : ""}`}
       style={{ left: `${comment.position?.x ?? 50}%`, top: `${comment.position?.y ?? 50}%` }}
       onClick={(event) => {
         event.stopPropagation();
@@ -170,7 +182,7 @@ export function CommentPin({
         onMove?.();
       }}
       title={onMove ? "Glisser pour déplacer" : undefined}
-      aria-label={`${itemLabel(comment)} #${comment.id} : ${requestText(comment)}`}
+      aria-label={`${itemLabel(comment)} #${comment.id} : ${requestText(comment)}${unread ? " (non lu)" : ""}`}
       aria-expanded={active}
     >
       {kind === "correction" ? <ClipboardCheck aria-hidden="true" /> : kind === "outside" ? <BadgeEuro aria-hidden="true" /> : <span>{comment.initials}</span>}
@@ -183,15 +195,12 @@ function ThreadMessage({
   message,
   now,
   editable,
-  internal,
   onEdit,
   onDelete,
 }: {
   message: ThreadReply;
   now: number;
   editable: boolean;
-  /** Written for the agency only: the client does not see it (src/lib/internalNotes.ts). */
-  internal?: boolean;
   onEdit?: (message: string) => void;
   onDelete?: () => void;
 }) {
@@ -211,7 +220,6 @@ function ThreadMessage({
         <p className="thread-meta">
           <b>{message.author}</b> {timeLabel(message, now) && <small>{timeLabel(message, now)}</small>}
           {message.edited && <small>· modifié</small>}
-          {internal && <small className="thread-internal">· Interne, non visible par le client</small>}
         </p>
         {editing ? (
           <form
@@ -284,21 +292,29 @@ export function ScopeChoice({ value, onChange, clarify }: { value: Qualification
     { value: "Inclus", label: "Inclus", hint: "Prévu au devis" },
     { value: "Hors périmètre", label: "Hors scope", hint: "Ajout à chiffrer" },
   ];
+  const chosen = options.find((option) => option.value === value);
   return (
-    <div className="scope-choice" role="radiogroup" aria-label="Qualification">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          role="radio"
-          aria-checked={value === option.value}
-          className={`scope-option is-${option.value === "Inclus" ? "correction" : "outside"} ${value === option.value ? "is-selected" : ""}`}
-          onClick={() => onChange(option.value)}
-        >
-          <b>{option.label}</b>
-          <small>{option.hint}</small>
-        </button>
-      ))}
+    <div className="scope-choice-field">
+      <div className="scope-choice" role="radiogroup" aria-label="Qualification">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={value === option.value}
+            className={`scope-option is-${option.value === "Inclus" ? "correction" : option.value === "Hors périmètre" ? "outside" : "comment"} ${value === option.value ? "is-selected" : ""}`}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+            <span className="sr-only"> : {option.hint}</span>
+          </button>
+        ))}
+      </div>
+      {chosen && (
+        <p className="scope-choice-hint" aria-hidden="true">
+          {chosen.hint}
+        </p>
+      )}
     </div>
   );
 }
@@ -328,6 +344,7 @@ export function ThreadPopover({
   onSendProposal,
   onOpenProposal,
   onDelete,
+  onArchive,
   onClose,
   me,
   onEditMessage,
@@ -351,6 +368,8 @@ export function ThreadPopover({
   /** Follows a sent proposal (adaptation, new version). */
   onOpenProposal?: () => void;
   onDelete?: () => void;
+  /** Agency: closes (archives) the discussion, or reopens it. */
+  onArchive?: (closed: boolean) => void;
   onClose: () => void;
   /** The side this page writes for (agency or client): its messages can be edited or deleted while the discussion is open. */
   me?: Side;
@@ -368,20 +387,26 @@ export function ThreadPopover({
   const [title, setTitle] = useState(comment.title ?? "");
   const [description, setDescription] = useState(comment.description ?? "");
   const now = useNow();
-  // The discussion is open on a comment, folded on a qualified request (it is closed anyway).
-  const [showDiscussion, setShowDiscussion] = useState(kind === "comment");
+  // A request: its « Détail » or its « Discussion », each on the bubble's whole height. A comment: its discussion.
+  const [view, setView] = useState<"detail" | "discussion">("detail");
+  const showDetail = asRequest && view === "detail";
+  const showDiscussion = !asRequest || view === "discussion";
   const [decision, setDecision] = useState<Qualification>(kind === "outside" ? "Hors périmètre" : asRequest && kind === "comment" ? "À qualifier" : "Inclus");
   const [quoteOn, setQuoteOn] = useState(Boolean(quote) || Boolean(startQuoting));
   const [amount, setAmount] = useState(quote ? String(quote.amount) : "");
   const [days, setDays] = useState(quote ? String(quote.days) : "");
   const [counter, setCounter] = useState(quote?.counter ?? false);
   const quoteReady = !quoteOn || decision !== "Hors périmètre" || Number(amount) > 0;
+  // Sent incomplete once: each missing required field says so, in red, under it.
+  const [tried, setTried] = useState(false);
+  const titleMissing = tried && !title.trim();
+  const amountMissing = tried && !quoteReady;
   const listRef = useRef<HTMLDivElement>(null);
   // A comment added by hand has no spot: its bubble opens at the top of the page, centered.
   const x = comment.position?.x ?? 50;
   const y = comment.position?.y ?? 3;
   const [bubbleRef, placement] = useFittingSide(x, comment.position ? undefined : "is-center");
-  const canWrite = !readOnly && !locked;
+  const canWrite = !readOnly && !locked && !comment.closed;
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -394,8 +419,9 @@ export function ThreadPopover({
   return (
     <div
       ref={bubbleRef}
-      className={`thread is-${kind} ${qualifying ? "is-qualifying" : ""} ${placement}`}
-      style={{ left: `${x}%`, top: `${y}%` }}
+      // No pin (« + Demande », a remark on the whole deliverable): docked at the canvas's edge, by the panel.
+      className={`thread is-${kind} ${qualifying ? "is-qualifying" : ""} ${comment.position ? placement : "is-docked"}`}
+      style={comment.position ? { left: `${x}%`, top: `${y}%` } : undefined}
       role="dialog"
       aria-label={`${itemLabel(comment)} #${comment.id}`}
       onClick={(event) => event.stopPropagation()}
@@ -406,13 +432,21 @@ export function ThreadPopover({
     >
       <header className="thread-header">
         <span className="thread-title">
-          {asRequest ? "Demande" : "Commentaire"} n°{comment.id}
+          <b>{comment.author}</b>
+          {timeLabel(comment, now) && <small>{timeLabel(comment, now)}</small>}
         </span>
         <span className="thread-header-actions">
           {!asRequest && onQualify && canWrite && !qualifying && (
             <Hint label="Créer une demande (incluse ou hors scope)">
-              <Button variant="outline" size="icon-sm" className="thread-create" onClick={() => setQualifying(true)} aria-label="Créer une demande">
+              <Button size="icon-sm" className="thread-create" onClick={() => setQualifying(true)} aria-label="Créer une demande">
                 <Tag />
+              </Button>
+            </Hint>
+          )}
+          {onArchive && !readOnly && !qualifying && (
+            <Hint label={comment.closed ? "Rouvrir la discussion" : "Clôturer la discussion"}>
+              <Button variant="ghost" size="icon-sm" onClick={() => onArchive(!comment.closed)} aria-label={comment.closed ? "Rouvrir la discussion" : "Clôturer la discussion"}>
+                {comment.closed ? <ArchiveRestore /> : <Archive />}
               </Button>
             </Hint>
           )}
@@ -438,7 +472,7 @@ export function ThreadPopover({
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            if (!title.trim() || !quoteReady) return;
+            if (!title.trim() || !quoteReady) return setTried(true);
             onQualify?.({
               title: title.trim(),
               description: description.trim(),
@@ -455,8 +489,23 @@ export function ThreadPopover({
             <ScopeChoice value={decision} onChange={setDecision} clarify />
           </div>
           <label>
-            Titre de la demande
-            <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex. : Ajouter une section témoignages" />
+            <span>
+              Titre de la demande <span className="text-destructive" aria-hidden="true">*</span>
+            </span>
+            <input
+              autoFocus
+              required
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Ex. : Ajouter une section témoignages"
+              aria-invalid={titleMissing || undefined}
+              aria-describedby={titleMissing ? `title-error-${comment.id}` : undefined}
+            />
+            {titleMissing && (
+              <span className="field-error" id={`title-error-${comment.id}`}>
+                Ce champ est obligatoire.
+              </span>
+            )}
           </label>
           <label>
             Description
@@ -464,18 +513,35 @@ export function ThreadPopover({
           </label>
           {decision === "Hors périmètre" && (
             <div className="quote-block">
-              <label className="quote-toggle">
-                <span>
+              <div className="quote-toggle">
+                <span id={`quote-toggle-${comment.id}`}>
                   <b>Chiffrer maintenant</b>
                   <small>Pré-remplit la proposition, rien n’est envoyé au client.</small>
                 </span>
-                <input type="checkbox" role="switch" checked={quoteOn} onChange={(event) => setQuoteOn(event.target.checked)} />
-              </label>
+                <Switch checked={quoteOn} onCheckedChange={setQuoteOn} aria-labelledby={`quote-toggle-${comment.id}`} />
+              </div>
               {quoteOn && (
                 <div className="quote-fields">
                   <label>
-                    Montant HT (€)
-                    <input type="number" min="0" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="850" />
+                    <span>
+                      Montant HT (€) <span className="text-destructive" aria-hidden="true">*</span>
+                    </span>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      step="0.01"
+                      value={amount}
+                      onChange={(event) => setAmount(event.target.value)}
+                      placeholder="850"
+                      aria-invalid={amountMissing || undefined}
+                      aria-describedby={amountMissing ? `amount-error-${comment.id}` : undefined}
+                    />
+                    {amountMissing && (
+                      <span className="field-error" id={`amount-error-${comment.id}`}>
+                        Ce champ est obligatoire.
+                      </span>
+                    )}
                   </label>
                   <label>
                     Délai (jours)
@@ -493,7 +559,7 @@ export function ThreadPopover({
             <button type="button" className="ghost-button" onClick={() => setQualifying(false)}>
               Annuler
             </button>
-            <button type="submit" className="primary-button" disabled={!title.trim() || !quoteReady}>
+            <button type="submit" className="primary-button">
               {asRequest ? "Enregistrer" : "Créer la demande"}
             </button>
           </div>
@@ -501,41 +567,56 @@ export function ThreadPopover({
       ) : (
         <>
           {asRequest && (
+            <Tabs value={view} onValueChange={(next) => setView(next as "detail" | "discussion")} className="thread-tabs">
+              <TabsList aria-label="Demande" className="w-full">
+                <TabsTrigger value="detail">Détail</TabsTrigger>
+                <TabsTrigger value="discussion">
+                  Discussion <span>{messages.length}</span>
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
+          {showDetail && (
             <div className="request-body">
               <p className={`request-kind is-${kind}`}>
-                <i className={`kind-square is-${kind}`} aria-hidden="true" />
-                {kind === "outside" ? "Hors scope · ajout à chiffrer" : kind === "correction" ? "Inclus · prévu au devis" : "À clarifier · à préciser avec le client"}
+                <span className="kind-pill">{kind === "outside" ? "Hors scope" : kind === "correction" ? "Inclus" : "À clarifier"}</span>
+                {/* What the status means for the agency's work: not the client's concern. */}
+                {me !== "client" && (
+                  <span className="request-kind-hint">{kind === "outside" ? "ajout à chiffrer" : kind === "correction" ? "prévu au devis" : "à préciser avec le client"}</span>
+                )}
               </p>
               <p className="request-title">{requestText(comment)}</p>
               {comment.description && <p className="request-description">{comment.description}</p>}
+            </div>
+          )}
+          {/* What can be done, apart from what the request says (as on its card). */}
+          {showDetail && ((kind === "outside" && proposal) || (onQualify && canWrite)) && (
+            <div className="request-footer">
               {kind === "outside" && proposal && (
                 <div className="request-proposal">
                   {proposal.stage === "sent" ? (
-                    <button type="button" className="secondary-button small-button" onClick={onOpenProposal}>
+                    <Button variant="outline" size="sm" onClick={onOpenProposal}>
                       {proposal.label}
-                    </button>
+                    </Button>
                   ) : (
                     <>
-                      <button
-                        type="button"
-                        className="secondary-button small-button"
-                        disabled={!canWrite}
-                        onClick={() => {
-                          setQuoteOn(true);
-                          setQualifying(true);
-                        }}
-                      >
-                        {proposal.stage === "draft" ? "Modifier" : "Chiffrer"}
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary-button small-button"
-                        disabled={proposal.stage !== "draft" || readOnly}
-                        title={proposal.stage === "draft" ? undefined : "Chiffrez d’abord la demande"}
-                        onClick={onSendProposal}
-                      >
-                        Envoyer la proposition
-                      </button>
+                      {canWrite && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setQuoteOn(true);
+                            setQualifying(true);
+                          }}
+                        >
+                          {proposal.stage === "draft" ? "Modifier" : "Chiffrer"}
+                        </Button>
+                      )}
+                      {proposal.stage === "draft" && !readOnly && (
+                        <Button variant="outline" size="sm" onClick={onSendProposal}>
+                          Envoyer la proposition
+                        </Button>
+                      )}
                     </>
                   )}
                 </div>
@@ -562,20 +643,8 @@ export function ThreadPopover({
             </div>
           )}
 
-          {/* A pin of the agency, no status chosen yet, is internal (src/db/reviewAccess.ts visibleToClient). */}
-          {me === "agency" && kind === "comment" && sideOf(comment) === "agency" && !comment.title?.trim() && (
-            <p className="request-internal" role="note">
-              Non visible par le client tant que vous ne l’avez pas qualifiée.
-            </p>
-          )}
-          {comment.source && <RequestSourceNote source={comment.source} enteredBy={comment.author} />}
-          {comment.site && <SiteCapture site={comment.site} />}
-          {kind !== "comment" && (
-            <button type="button" className="discussion-toggle" aria-expanded={showDiscussion} onClick={() => setShowDiscussion((open) => !open)}>
-              Discussion · {messages.length} message{messages.length > 1 ? "s" : ""}
-              <ChevronDown aria-hidden="true" className={showDiscussion ? "is-open" : ""} />
-            </button>
-          )}
+          {(showDetail || !asRequest) && comment.source && <RequestSourceNote source={comment.source} enteredBy={comment.author} />}
+          {(showDetail || !asRequest) && comment.site && <SiteCapture site={comment.site} />}
           {showDiscussion && (
           <div className="thread-messages" ref={listRef}>
             {messages.map((message) => (
@@ -586,7 +655,6 @@ export function ThreadPopover({
                 // Own messages, while the discussion is open.
                 editable={Boolean(me) && sideOf(message) === me && kind === "comment" && canWrite}
                 // Once the request shows to the client, what was written for the agency only is labelled.
-                internal={me === "agency" && asRequest && (message.id === 0 ? isInternalNote(comment) : isInternalReply(comment, message))}
                 onEdit={onEditMessage ? (text) => onEditMessage(message.id, text) : undefined}
                 onDelete={message.id === 0 ? onDelete : onDeleteMessage ? () => onDeleteMessage(message.id) : undefined}
               />
@@ -595,10 +663,8 @@ export function ThreadPopover({
           )}
 
 
-          {kind !== "comment" ? (
-            <p className="thread-locked">
-              Demande qualifiée : la discussion est close.{onQualify && canWrite ? " Remettez-la à clarifier pour la rouvrir." : ""}
-            </p>
+          {!showDiscussion ? null : comment.closed ? (
+            <p className="thread-locked">Discussion close.{onArchive && !readOnly ? " Rouvrez-la pour répondre." : ""}</p>
           ) : canWrite ? (
             <form
               className="thread-reply"
@@ -607,6 +673,7 @@ export function ThreadPopover({
                 if (!draft.trim()) return;
                 onReply(draft.trim());
                 setDraft("");
+                setView("discussion");
               }}
             >
               <input autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Répondre, demander une précision…" aria-label="Répondre" />

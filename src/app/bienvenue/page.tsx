@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { pendingAgencyInvitations } from "@/lib/agencyInvitations";
 import { getCurrentUser } from "@/lib/session";
 import { CreateAgencyForm } from "./CreateAgencyForm";
+import { OnboardingSteps } from "./OnboardingSteps";
 
 export const metadata: Metadata = { title: "Bienvenue · Kora" };
 
@@ -19,6 +20,7 @@ export default async function WelcomePage() {
   return (
     <AuthShell>
       <div className="grid gap-5">
+        <OnboardingSteps current={0} />
         <div className="grid gap-1">
           <h1 className="font-heading text-lg font-bold">Bienvenue, {user.name}</h1>
           <p className="text-sm text-[var(--graphite)]">

@@ -58,7 +58,7 @@ test("after importing a version, the agency shares it with the people of the pre
   expect(errors).toEqual([]);
 });
 
-test("« Plus tard » leaves the version unshared, with a reminder in the editor and in « À traiter »", async ({ browser }) => {
+test("« Plus tard » leaves the version unshared, with a reminder in « À traiter »; « Partager la revue » offers the same choice again", async ({ browser }) => {
   const { alice, org, decider } = await sharedV1();
   const { page, errors } = await importV2(browser, alice);
   await expect(page.getByRole("heading", { name: "Partager la V02 ?" })).toBeVisible();
@@ -67,21 +67,16 @@ test("« Plus tard » leaves the version unshared, with a reminder in the editor
   expect(await invitesOf(org, `${v2.id}:2`)).toEqual([]);
   expect(mailsTo(decider).some((mail) => mail.subject.startsWith("Nouvelle version"))).toBe(false);
 
-  await expect(page.getByText("La V02 n’est partagée avec personne")).toBeVisible();
+  // No banner over the canvas any more: the reminder is in « À traiter » (the tour explains sharing,
+  // tests/e2e/product-tour.spec.ts).
+  await expect(page.getByText("La V02 n’est partagée avec personne")).toHaveCount(0);
   await page.goto("/a-traiter");
   await expect(page.getByRole("link", { name: /Version partagée avec personne.*maquette\.pdf V02/ })).toBeVisible();
   await page.getByRole("link", { name: /Version partagée avec personne.*maquette\.pdf V02/ }).click();
-  // The editor's reminder reopens the same choice.
-  await page.getByRole("button", { name: "Partager", exact: true }).click();
+  // « Partager la revue » reopens the same choice while the version is shared with no one.
+  await page.getByRole("button", { name: "Partager la revue" }).click();
   await expect(page.getByRole("heading", { name: "Partager la V02 ?" })).toBeVisible();
   await page.getByRole("button", { name: "Plus tard" }).click();
-
-  // The reminder can be closed: gone from the editor, even after a reload; « À traiter » keeps it.
-  await page.getByRole("button", { name: "Fermer ce rappel" }).click();
-  await expect(page.getByText("La V02 n’est partagée avec personne")).toHaveCount(0);
-  await page.reload();
-  await expect(page.locator("[data-page]").first()).toBeVisible();
-  await expect(page.getByText("La V02 n’est partagée avec personne")).toHaveCount(0);
   await page.goto("/a-traiter");
   await expect(page.getByRole("link", { name: /Version partagée avec personne.*maquette\.pdf V02/ })).toBeVisible();
   expect(errors).toEqual([]);

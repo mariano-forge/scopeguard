@@ -45,9 +45,8 @@
     paper: "#ffffff",
     border: "#ddd9d1",
     focus: "#0079d1",
-    resolvedBg: "#ddf4e4",
+    attention: "#ff795c",
     resolvedText: "#0a5933",
-    scopeBg: "#eae3ff",
     scopeText: "#4e31a6",
   };
   const host = document.createElement("div");
@@ -81,14 +80,15 @@
       .close { position: absolute; top: 12px; left: -40px; width: 32px; height: 32px; border-radius: 999px; border: 1px solid ${colors.border};
         background: ${colors.paper}; color: ${colors.ink}; box-shadow: 0 2px 8px rgb(0 0 0 / .15); }
       .highlight { position: fixed; pointer-events: none; outline: 2px solid ${colors.action}; background: rgb(48 168 255 / .12); display: none; }
-      /* Kora's pins (globals.css .canvas-pin): a tag pointing at its spot, by status. */
+      /* Kora's pins (globals.css .canvas-pin): a tag pointing at its spot, by status, in a solid color with a
+         white ring and a fine dark outline, readable on any page. The agency in blue, the client in coral. */
       .pin { position: absolute; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 2px solid ${colors.paper};
-        border-radius: 8px 8px 8px 0; box-shadow: 0 2px 8px rgb(17 17 17 / .22); font: 700 11px/1 system-ui, sans-serif;
-        transform: translateY(-100%); transform-origin: bottom left; transition: transform .12s ease-out; background: ${colors.paper}; color: ${colors.ink}; }
+        border-radius: 8px 8px 8px 0; box-shadow: 0 0 0 1px rgb(17 17 17 / .32), 0 3px 10px rgb(17 17 17 / .28); font: 700 11px/1 system-ui, sans-serif;
+        transform: translateY(-100%); transform-origin: bottom left; transition: transform .12s ease-out; background: ${colors.attention}; color: ${colors.ink}; }
       .pin:hover { transform: translateY(-100%) scale(1.1); }
-      .pin.is-comment.is-agency { background: ${colors.ink}; color: ${colors.paper}; }
-      .pin.is-correction { background: ${colors.resolvedBg}; color: ${colors.resolvedText}; }
-      .pin.is-outside { background: ${colors.scopeBg}; color: ${colors.scopeText}; }
+      .pin.is-comment.is-agency { background: ${colors.focus}; color: ${colors.paper}; }
+      .pin.is-correction { background: ${colors.resolvedText}; color: ${colors.paper}; }
+      .pin.is-outside { background: ${colors.scopeText}; color: ${colors.paper}; }
       .pin svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
       .pin.flash { outline: 2px solid ${colors.focus}; outline-offset: 1px; }
       button:focus-visible { outline: 3px solid ${colors.focus}; outline-offset: 2px; }

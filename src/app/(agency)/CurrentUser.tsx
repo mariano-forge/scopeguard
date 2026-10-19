@@ -2,11 +2,12 @@
 
 import { createContext, useContext, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Check, LogOut, Users } from "lucide-react";
+import { Building2, Check, LogOut, Settings, Users } from "lucide-react";
 import type { CurrentUser } from "@/lib/session";
 import { authClient } from "@/lib/auth-client";
 import { initialsOf } from "@/lib/authors";
 import { TeamDialog } from "./TeamDialog";
+import { AgencyDialog } from "./AgencyDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const CurrentUserContext = createContext<CurrentUser | null>(null);
@@ -28,6 +29,8 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
   const user = useCurrentUser();
   const router = useRouter();
   const [teamOpen, setTeamOpen] = useState(false);
+  const [agencyOpen, setAgencyOpen] = useState(false);
+  const canManage = user.role === "owner" || user.role === "admin";
 
   async function switchAgency(organizationId: string) {
     await authClient.organization.setActive({ organizationId });
@@ -56,17 +59,29 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
           </button>
         )}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side={compact ? "right" : "bottom"}>
-        <DropdownMenuLabel>
-          <span className="block">{user.name}</span>
-          <span className="block text-xs font-normal opacity-70">{user.email}</span>
-          <span className="block text-xs font-normal opacity-70">{user.organizationName}</span>
+      {/* As wide as its content, not as its trigger (the rail's avatar would make it narrow). */}
+      <DropdownMenuContent align="start" side={compact ? "right" : "bottom"} className="account-menu w-72">
+        <DropdownMenuLabel className="account-menu-head">
+          <span className="avatar dark-avatar" aria-hidden="true">
+            {initialsOf(user.name)}
+          </span>
+          <span className="min-w-0">
+            <b>{user.name}</b>
+            <small>{user.email}</small>
+          </span>
         </DropdownMenuLabel>
+        {user.organizationName && <p className="account-menu-agency">{user.organizationName}</p>}
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => setTeamOpen(true)}>
           <Users />
           Équipe
         </DropdownMenuItem>
+        {canManage && (
+          <DropdownMenuItem onSelect={() => setAgencyOpen(true)}>
+            <Settings />
+            Paramètres de l’agence
+          </DropdownMenuItem>
+        )}
         {user.organizations.length > 1 && (
           <>
             <DropdownMenuSeparator />
@@ -80,13 +95,14 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
           </>
         )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void signOut()}>
+        <DropdownMenuItem variant="destructive" onSelect={() => void signOut()}>
           <LogOut />
           Se déconnecter
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
     <TeamDialog open={teamOpen} onClose={() => setTeamOpen(false)} />
+    {agencyOpen && <AgencyDialog open onClose={() => setAgencyOpen(false)} />}
     </>
   );
 }

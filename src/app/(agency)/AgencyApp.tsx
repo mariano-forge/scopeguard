@@ -38,20 +38,26 @@ import { BrowserView, type HomeOverview } from "./BrowserView";
 import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
 import { todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
-import { HomeSidebar, ProjectSidebar, type ClientFeedback, type PanelMode, type SidebarLivrable, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
+import { HomeSidebar, Notifications, ProjectSidebar, type ClientFeedback, type PanelMode, type SidebarLivrable, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
 import { href, hrefForRecord, livrableIdOf, notificationHref, parseAgencyPath, versionsOfLivrable } from "./routes";
 import { MAX_FILE_BYTES, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
 import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialog";
+import { NewProjectDialog } from "./NewProjectDialog";
+import { MobileBar, mobileTitle } from "./MobileBar";
+import { useArrivalToast } from "./useArrivalToast";
+import { DeliverableTour } from "./DeliverableTour";
 import {
   Composer,
   ThreadPopover,
+  isAgencyDraft,
   requestKind,
   type ProposalStage,
   type Qualification,
   type Qualified,
   type Area,
   } from "./editor/CanvasComments";
-import { EditorInspector, threadsToMarkdown, type InspectorTab } from "./editor/EditorInspector";
+import { EditorInspector, inspectorTabOf, threadsToMarkdown, type InspectorTab } from "./editor/EditorInspector";
+import { outsideStatusOf, outsideStatusView } from "@/lib/outsideStatus";
 import { NewRequestDialog, type NewRequest } from "./editor/NewRequestDialog";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "./editor/ReviewCanvas";
 import { toast } from "sonner";
@@ -60,15 +66,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { AddonInput, Field, FormError, Modal, selectClassName } from "@/components/modal";
+import { AddonInput, Field, FormError, Modal } from "@/components/modal";
 import { MenuButton, type MenuEntry } from "./editor/MenuButton";
 import { RenameDialog } from "./EntitySettings";
-import { Hint } from "@/components/hint";
 import type { HomeAnalyticsData } from "./HomeAnalytics";
 import type { LivrableGroup } from "./LivrableFilter";
 import { useCurrentUser } from "./CurrentUser";
 import { sideOf, type Side } from "@/lib/authors";
 import { proofHtml } from "./proofDocument";
+import { requestsHtml } from "./requestsDocument";
 import { uploadFile as sendFile, type UploadPlacement } from "@/lib/upload";
 import { agencyAction } from "@/lib/agencyActions";
 import type { ClientRole } from "@/lib/clientRoles";
@@ -232,12 +238,12 @@ const maxTabs = 12;
 const sidebarKey = "kora-sidebar";
 /** Import date stored on a version, e.g. "14 oct. 2026, 10:32". */
 const favoritesKey = "kora-favorites";
-const unsharedClosedKey = "kora-unshared-closed";
 /** Widths of the side panels, set by dragging their edge (per browser). */
 const panelWidthsKey = "kora-panel-widths";
 /** Comments the agency has opened (per browser): the tab alert only counts the others. */
 const seenKey = "kora-seen-comments";
-const defaultWidths = { panel: 248, inspector: 340 };
+// The requests panel shows its four tabs (Brouillons · À clarifier · Inclus · Hors scope) at this width.
+const defaultWidths = { panel: 248, inspector: 384 };
 
 // A new agency starts empty: its first space, project and deliverable are created from the home page.
 const initialProjects: Project[] = [];
@@ -311,6 +317,9 @@ export function AgencyApp() {
   }
   const router = useRouter();
   const pathname = usePathname();
+  // Phones: the sidebar opens as a drawer, for the page it was opened on (leaving the page closes it).
+  const [navOpenAt, setNavOpenAt] = useState<string | null>(null);
+  const navOpen = navOpenAt === pathname;
   const view = parseAgencyPath(pathname);
   const searchParams = useSearchParams();
   const focusedCommentId = Number(searchParams.get("demande")) || null;
@@ -327,24 +336,6 @@ export function AgencyApp() {
   const lastPanelRef = useRef<PanelMode>("livrables");
   /** Starred items, "p:<projectId>" or "l:<livrableId>" (per browser for now). */
   const [favorites, setFavorites] = useState<string[]>([]);
-  /** Versions whose « partagée avec personne » banner was closed (per browser and agency; « À traiter » still lists them). */
-  const [closedUnshared, setClosedUnshared] = useState<number[]>(() => {
-    try {
-      const saved = typeof window === "undefined" ? null : window.localStorage.getItem(scoped(unsharedClosedKey));
-      return saved ? (JSON.parse(saved) as number[]).filter((id) => typeof id === "number") : [];
-    } catch {
-      return [];
-    }
-  });
-  function closeUnshared(versionId: number) {
-    const next = [...closedUnshared.filter((id) => id !== versionId), versionId].slice(-200);
-    setClosedUnshared(next);
-    try {
-      window.localStorage.setItem(scoped(unsharedClosedKey), JSON.stringify(next));
-    } catch {
-      // Closed for this visit only when storage is unavailable.
-    }
-  }
   const [trash, setTrash] = useState<TrashItem[]>([]);
   const [openTabs, setOpenTabs] = useState<{ livrableId: number; href: string }[]>([]);
 
@@ -405,10 +396,7 @@ export function AgencyApp() {
   const [proposalPreviewCommentId, setProposalPreviewCommentId] = useState<number | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
-  const [newProjectName, setNewProjectName] = useState("");
   const [newClientName, setNewClientName] = useState("");
-  const [newProjectClientId, setNewProjectClientId] = useState<number | null>(null);
-  const [projectError, setProjectError] = useState("");
   const [newClientOpen, setNewClientOpen] = useState(false);
   const [newClientEmail, setNewClientEmail] = useState("");
   const [clientError, setClientError] = useState("");
@@ -905,7 +893,7 @@ export function AgencyApp() {
     setSelectedId(focusedCommentId);
     setThreadOpen(true);
     if (quoteOnFocus) setQuotingId(focusedCommentId);
-    if (focused) setInspectorTab(requestKind(focused));
+    if (focused) setInspectorTab(inspectorTabOf(focused));
     router.replace(pathname, { scroll: false });
     // Bring its pin into view once the canvas has laid out the pages.
     window.setTimeout(() => {
@@ -930,23 +918,6 @@ export function AgencyApp() {
       description: qualified.description,
       quote: qualified.quote,
     });
-  }
-
-  function createProject(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const projectName = newProjectName.trim();
-    const projectClient = clients.find((client) => client.id === (newProjectClientId ?? selectedClientId));
-
-    if (!projectName || !projectClient) {
-      setProjectError("Renseignez le nom du projet et choisissez un espace.");
-      return;
-    }
-
-    void agencyAction("projects", "POST", { clientId: projectClient.id, name: projectName }).then((result) => result?.id && router.push(href.project(result.id)));
-    setNewProjectName("");
-    setNewProjectClientId(null);
-    setProjectError("");
-    setNewProjectOpen(false);
   }
 
   function createClient(event: React.FormEvent<HTMLFormElement>) {
@@ -1155,19 +1126,24 @@ export function AgencyApp() {
     });
     if (!result?.id) return;
     setSelectedId(result.id);
-    setInspectorTab("comment");
+    setInspectorTab("draft");
     setThreadOpen(true);
   }
 
   /** "Livrable — V03": title of copied / exported requests. */
   const exportTitle = currentDeliverable ? `${currentDeliverable.name} — V${String(currentDeliverable.version).padStart(2, "0")}` : "Demandes";
+  /** The version's requests as a printable page, saved as PDF from the browser (as the proof). */
   function exportRequests() {
-    const url = URL.createObjectURL(new Blob([threadsToMarkdown(exportTitle, activeComments)], { type: "text/markdown" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${exportTitle.replace(/[^\p{L}\p{N}]+/gu, "-")}-demandes.md`;
-    link.click();
-    URL.revokeObjectURL(url);
+    const exportWindow = window.open("", "_blank");
+    if (!exportWindow) return;
+    const statusOf = (comment: Comment) =>
+      comment.decision === "Hors périmètre"
+        ? outsideStatusView(outsideStatusOf({ state: proposalStateFor(comment.id), decision: proposalDecisionFor(comment.id), adaptation: adaptationRequests[comment.id] }), "agency").label
+        : null;
+    const parsed = new DOMParser().parseFromString(requestsHtml(exportTitle, activeComments, (comment) => statusOf(comment as Comment)), "text/html");
+    exportWindow.document.documentElement.replaceWith(exportWindow.document.importNode(parsed.documentElement, true));
+    exportWindow.focus();
+    exportWindow.print();
   }
 
   function replyTo(commentId: number, message: string) {
@@ -1188,20 +1164,6 @@ export function AgencyApp() {
     }
     setDeliverableError("");
     void confirmImport("version", { file, type });
-  }
-
-  /** A dropped / picked file becomes a new deliverable of the project. */
-  function importLivrableFile(file: File) {
-    const type = kindFromFile(file);
-    if (!type) {
-      toast("Format non pris en charge", { description: "Choisissez une image, un PDF, une vidéo ou un document." });
-      return;
-    }
-    if (file.size > MAX_FILE_BYTES) {
-      toast("Fichier trop lourd", { description: `${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).` });
-      return;
-    }
-    void confirmImport("deliverable", { file, type });
   }
 
   /** Edits one of the agency's messages (0 = the comment itself). */
@@ -1456,6 +1418,8 @@ export function AgencyApp() {
               : { kind: "none" };
   }
 
+  /** Client messages of a thread the agency has not opened yet: a dot on its pin, a count on its card. */
+  const unreadIn = (comment: Comment) => [comment, ...(comment.replies ?? [])].filter((message) => sideOf(message) === "client" && !seenIds.includes(message.id)).length;
   /** Unread messages written in the client space on one version: comments, then replies. */
   function unreadOf(recordId: number): ClientFeedback[] {
     const record = deliverables.find((candidate) => candidate.id === recordId);
@@ -1512,6 +1476,7 @@ export function AgencyApp() {
     ...deliverables.flatMap((record) => unreadOf(record.id)).sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0)),
   ];
   const markAllRead = () => markSeen(clientFeedback.filter((item) => item.kind === "message").map((item) => item.id));
+  useArrivalToast(clientFeedback, stateHydrated);
 
   const tabInfos: TabInfo[] = openTabs.flatMap((tab) => {
     const latest = versionsOfLivrable(tab.livrableId, deliverables)[0];
@@ -1858,6 +1823,14 @@ export function AgencyApp() {
 
   return (
     <div className="app-frame">
+    {newProjectOpen && (
+      <NewProjectDialog
+        spaces={clients}
+        defaultSpaceId={selectedClientId}
+        fixedSpace={view.kind === "client" ? clients.find((client) => client.id === view.clientId) : undefined}
+        onClose={() => setNewProjectOpen(false)}
+      />
+    )}
     {newDeliverableOpen && (
       <NewDeliverableDialog
         existingNamesFor={(projectId) => deliverables.filter((record) => (record.projectId ?? 1) === projectId).map((record) => record.name)}
@@ -1880,13 +1853,22 @@ export function AgencyApp() {
       onClose={closeTab}
       onOpen={() => setPaletteOpen(true)}
     />
-    <main className="app-shell">
+    <MobileBar
+      title={mobileTitle(view, {
+        space: clients.find((client) => view.kind === "client" && client.id === view.clientId)?.name,
+        project: selectedProject?.name,
+        livrable: viewVersions[0]?.name,
+      })}
+      navOpen={navOpen}
+      onNav={() => setNavOpenAt(navOpen ? null : pathname)}
+      onSearch={() => setPaletteOpen(true)}
+    />
+    <main className="app-shell" data-nav-open={navOpen || undefined}>
+      {navOpen && <div className="mobile-scrim" aria-hidden="true" onClick={() => setNavOpenAt(null)} />}
       {inProject && selectedProject ? (
         <ProjectSidebar
           panelWidth={panelWidths.panel}
           onPanelResize={(width) => resizePanel("panel", width)}
-          project={selectedProject}
-          client={clients.find((client) => client.id === (selectedProject.clientId ?? 1))}
           livrableName={viewVersions[0]?.name ?? "Livrable"}
           livrableMenu={livrableMenu}
           systemMenu={systemMenu}
@@ -1896,12 +1878,9 @@ export function AgencyApp() {
           onPanel={showPanel}
           canvasHref={href.deliverable(selectedProject.id, livrableRootId)}
           onNavigate={(target) => router.push(target)}
-          notifications={bellNotifications}
-          feedback={clientFeedback}
-          onMarkAllRead={markAllRead}
           livrables={projectLivrables}
           onImportVersion={importVersionFile}
-          onImportLivrable={importLivrableFile}
+          onNewLivrable={() => setNewDeliverableOpen(true)}
         />
       ) : (
         <HomeSidebar
@@ -1946,6 +1925,7 @@ export function AgencyApp() {
               overviewFor={overviewFor}
               livrableGroups={livrableGroups}
               favorites={favorites}
+              sharedOnce={Object.values(reviewLinks).some((link) => (link.invites?.length ?? 0) > 0)}
               onToggleFavorite={toggleFavorite}
               livrableStatus={(livrableId) => {
                 const latest = versionsOfLivrable(livrableId, deliverables)[0];
@@ -1962,13 +1942,16 @@ export function AgencyApp() {
             null
           ) : (
             <>
-          <div className="editor" style={{ gridTemplateColumns: `minmax(0, 1fr) ${panelWidths.inspector}px` }}>
+          <div className="editor" style={{ "--inspector-width": `${panelWidths.inspector}px` } as React.CSSProperties}>
+            {/* First visit of a deliverable: what each tool is for. */}
+            {!isReadOnlyVersion && <DeliverableTour />}
             {/* Same name as the deliverable card cover: the cover grows into the canvas on open. */}
             <ViewTransition name={`livrable-${livrableRootId}`} share="kora-open" default="none">
             <ReviewCanvas
               deliverable={currentDeliverable}
               comments={activeComments}
               selectedId={selectedComment?.id ?? null}
+              isUnread={(comment) => unreadIn(comment as Comment) > 0}
               threadOpen={threadOpen}
               readOnly={isReadOnlyVersion}
               tool={canvasTool}
@@ -1983,7 +1966,7 @@ export function AgencyApp() {
                 setComposer(null);
                 setSelectedId(comment.id);
                 setThreadOpen((open) => !(open && comment.id === selectedComment?.id));
-                setInspectorTab(requestKind(comment));
+                setInspectorTab(inspectorTabOf(comment));
               }}
               onBackgroundClick={() => {
                 setThreadOpen(false);
@@ -1994,7 +1977,6 @@ export function AgencyApp() {
               onMovePin={moveComment}
               toolbarExtra={
                 <>
-                <CanvasImportButton onFile={importVersionFile} disabled={!currentDeliverable} />
                 <MenuButton
                   className="tool-button"
                   label="Copier ou exporter les demandes"
@@ -2009,7 +1991,7 @@ export function AgencyApp() {
                       disabled: activeComments.length === 0,
                       onSelect: () => void navigator.clipboard?.writeText(threadsToMarkdown(exportTitle, activeComments)),
                     },
-                    { label: "Exporter (.md)", icon: <FileDown />, disabled: activeComments.length === 0, onSelect: exportRequests },
+                    { label: "Exporter en PDF", icon: <FileDown />, disabled: activeComments.length === 0, onSelect: exportRequests },
                   ]}
                 />
                 </>
@@ -2032,24 +2014,6 @@ export function AgencyApp() {
                           </Link>
                         </Button>
                       )}
-                    </div>
-                  )}
-                  {/* A reminder until the latest version is shared with someone. */}
-                  {!isReadOnlyVersion && latestVersionRecord?.id === currentDeliverable.id && !reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]?.invites?.length && !closedUnshared.includes(currentDeliverable.id) && (
-                    <div className="canvas-banner" role="status">
-                      <span className="canvas-banner-icon" aria-hidden="true">
-                        <Share2 />
-                      </span>
-                      <span className="canvas-banner-text">
-                        <b>La V{String(currentDeliverable.version).padStart(2, "0")} n’est partagée avec personne</b>
-                        <small>Le client ne la voit pas encore.</small>
-                      </span>
-                      <Button size="sm" onClick={shareCurrentVersion}>
-                        Partager
-                      </Button>
-                      <button className="thread-icon-button" onClick={() => closeUnshared(currentDeliverable.id)} aria-label="Fermer ce rappel">
-                        <X />
-                      </button>
                     </div>
                   )}
                   {deliverableError && (
@@ -2090,13 +2054,18 @@ export function AgencyApp() {
                   }
                   onOpenProposal={() => openProposal(comment.id)}
                   onDelete={
-                    sideOf(comment) === "agency" && !isReadOnlyVersion && !isDecisionLocked(comment.id)
+                    sideOf(comment) === "agency" && isAgencyDraft(comment) && !isReadOnlyVersion && !isDecisionLocked(comment.id)
                       ? () => {
                           deleteComment(comment.id);
                           setThreadOpen(false);
                         }
                       : undefined
                   }
+                  // Closed, it moves to « Commentaires · Clôturés »; the client still reads it (agencyActions.ts).
+                  onArchive={(closed) => {
+                    setInspectorTab(closed ? "closed" : inspectorTabOf({ ...comment, closed: false }));
+                    void agencyAction(`comments/${comment.id}/closure`, "PUT", { closed });
+                  }}
                   onClose={() => {
                     setThreadOpen(false);
                     setQuotingId(null);
@@ -2129,21 +2098,30 @@ export function AgencyApp() {
               onSendProposal={setConfirmSendId}
               onOpenProposal={openProposal}
               onRequote={openRequote}
+              notifications={<Notifications notifications={bellNotifications} feedback={clientFeedback} onMarkAllRead={markAllRead} compact />}
+              unread={(comment) => unreadIn(comment as Comment)}
+              outsideStatus={(comment) => outsideStatusOf({ state: proposalStateFor(comment.id), decision: proposalDecisionFor(comment.id), adaptation: adaptationRequests[comment.id] })}
               proposalSummary={(comment) => {
+                // The status is the card's tag (src/lib/outsideStatus.ts): here, what was quoted.
                 if (proposalStateFor(comment.id) === "none") return null;
                 const proposal = activeProposalFor(comment.id);
-                const status = proposalStatusOf(comment.id);
                 return (
                   <span className="client-proposal-line">
-                    <b>{formatProposalAmount(proposal?.amount)} HT</b>
-                    <span>{formatProposalDeadline(proposal?.deadline)}</span>
+                    <span className="proposal-figure">
+                      <small>Montant</small>
+                      <b>{formatProposalAmount(proposal?.amount)} HT</b>
+                    </span>
+                    <span className="proposal-figure">
+                      <small>Délai supplémentaire</small>
+                      <b>{parseNumericDays(proposal?.deadline) ? formatProposalDeadline(proposal?.deadline) : "aucun"}</b>
+                    </span>
                     {(proposalVersions[comment.id]?.length ?? 0) > 1 && <span>V{proposal?.version}</span>}
-                    <span className={`decision-badge ${status.tone}`}>{status.label}</span>
                   </span>
                 );
               }}
               onAddRequest={isReadOnlyVersion ? undefined : setNewRequestKind}
-              onShare={openShareDialog}
+              // Shared with no one yet: first the one-click offer to the previous version's people.
+              onShare={() => (currentDeliverable && reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]?.invites?.length ? openShareDialog() : shareCurrentVersion())}
               onPreview={() => void openClientPreview()}
               width={panelWidths.inspector}
               onResize={(width) => resizePanel("inspector", width)}
@@ -2478,43 +2456,6 @@ export function AgencyApp() {
                 <small>Créer un document indépendant en version 01.</small>
               </button>
             </div>
-          </Modal>
-
-          <Modal
-            open={newProjectOpen}
-            onClose={() => setNewProjectOpen(false)}
-            title="Créer un projet"
-            description={
-              view.kind === "client"
-                ? `Le projet sera créé dans l’espace ${clients.find((client) => client.id === view.clientId)?.name ?? ""}.`
-                : "Un projet regroupe les livrables d’une même mission."
-            }
-            onSubmit={createProject}
-            footer={
-              <>
-                <Button type="button" variant="outline" onClick={() => setNewProjectOpen(false)}>
-                  Annuler
-                </Button>
-                <Button type="submit">Créer le projet</Button>
-              </>
-            }
-          >
-            <Field id="new-project-name" label="Nom du projet">
-              <Input id="new-project-name" autoFocus value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} placeholder="Ex. Refonte du site vitrine" />
-            </Field>
-            {/* Inside a space the space is implied; elsewhere, pick it. */}
-            {view.kind !== "client" && (
-              <Field id="new-project-space" label="Espace">
-                <select id="new-project-space" className={selectClassName} value={newProjectClientId ?? selectedClientId} onChange={(event) => setNewProjectClientId(Number(event.target.value))}>
-                  {clients.map((client) => (
-                    <option value={client.id} key={client.id}>
-                      {client.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            )}
-            {projectError && <FormError>{projectError}</FormError>}
           </Modal>
 
           <Modal
@@ -2995,29 +2936,3 @@ export function AgencyApp() {
   }
 }
 
-/** Canvas toolbar: a file becomes the next version of this deliverable. */
-function CanvasImportButton({ onFile, disabled }: { onFile: (file: File) => void; disabled?: boolean }) {
-  const input = useRef<HTMLInputElement>(null);
-  return (
-    <>
-      <Hint label="Importer une nouvelle version" side="top">
-        <button type="button" className="tool-button" aria-label="Importer une nouvelle version" disabled={disabled} onClick={() => input.current?.click()}>
-          <Upload />
-        </button>
-      </Hint>
-      <input
-        ref={input}
-        type="file"
-        accept="application/pdf,image/*,video/*"
-        className="sr-only"
-        tabIndex={-1}
-        aria-hidden="true"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          event.target.value = "";
-          if (file) onFile(file);
-        }}
-      />
-    </>
-  );
-}

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, FolderClosed, LayoutGrid, List, MessageSquare, Pencil, Plus, RotateCcw, Share2, Star, Trash2 } from "lucide-react";
 import { DeliverableCover } from "@/components/DeliverableCover";
 import { Select } from "@/components/Select";
+import { GettingStarted } from "./GettingStarted";
 import { href, hrefForRecord, livrableIdOf, versionsOfLivrable, type AgencyView } from "./routes";
 import { TodoList, isAgencyAction, type TodoItem } from "./TodoList";
 import { StatusMark, type TabStatus } from "./TabBar";
@@ -66,6 +67,8 @@ type BrowserViewProps = {
   overviewFor: (selection: number[] | null) => HomeOverview;
   livrableGroups: LivrableGroup[];
   favorites: string[];
+  /** A version was already shared with someone of a client (« Bien démarrer »). */
+  sharedOnce: boolean;
   error?: string;
   onNewClient: () => void;
   onNewProject: () => void;
@@ -237,6 +240,7 @@ export function BrowserView({
   overviewFor,
   livrableGroups,
   favorites,
+  sharedOnce,
   error,
   onNewClient,
   onNewProject,
@@ -784,6 +788,18 @@ export function BrowserView({
       overviewFor={overviewFor}
       livrableGroups={livrableGroups}
       onNewProject={onNewProject}
+      gettingStarted={
+        <GettingStarted
+          spaces={clients.length}
+          projects={projects.length}
+          deliverables={deliverables.length}
+          shared={sharedOnce}
+          firstDeliverableHref={deliverables[0] ? hrefForRecord(deliverables[0], deliverables) : undefined}
+          onNewClient={onNewClient}
+          onNewProject={onNewProject}
+          onNewDeliverable={onNewDeliverable}
+        />
+      }
     />
   );
 }
@@ -812,10 +828,13 @@ function HomePage({
   overviewFor,
   livrableGroups,
   onNewProject,
+  gettingStarted,
 }: {
   overviewFor: (selection: number[] | null) => HomeOverview;
   livrableGroups: LivrableGroup[];
   onNewProject: () => void;
+  /** « Bien démarrer », above the figures while the agency sets itself up. */
+  gettingStarted: React.ReactNode;
 }) {
   const [filters, setFilters] = useState<Record<"figures" | "charts" | "register" | "breakdown", number[] | null>>({
     figures: null,
@@ -848,6 +867,8 @@ function HomePage({
           <Plus /> Projet
         </button>
       </header>
+
+      {gettingStarted}
 
       <section className="browser-section">
         <SectionHeader title="Chiffres clés" filter={filters.figures} onFilter={setFilter("figures")} groups={livrableGroups} />

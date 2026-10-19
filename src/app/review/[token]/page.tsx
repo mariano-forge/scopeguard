@@ -21,6 +21,7 @@ import { reviewAction } from "@/lib/reviewActions";
 import type { ClientRole } from "@/lib/clientRoles";
 import { AccessGate, ProfileGate } from "./AccessGate";
 import { initialsOf, sideOf, type Side } from "@/lib/authors";
+import { outsideStatusOf } from "@/lib/outsideStatus";
 
 
 
@@ -840,7 +841,8 @@ export default function ClientReviewPage() {
                     : undefined
                 }
                 onDelete={
-                  sideOf(comment) === "client" && requestKind(comment) === "comment" && !isReadOnlyVersion() && !locked
+                  // Their own comment, until the agency qualifies it (a title) or closes it: then it is closed, not deleted.
+                  sideOf(comment) === "client" && requestKind(comment) === "comment" && !comment.title?.trim() && !comment.closed && !isReadOnlyVersion() && !locked
                     ? () => {
                         deleteComment(comment.id);
                         setThreadOpen(false);
@@ -876,14 +878,22 @@ export default function ClientReviewPage() {
             proposalStage={(comment) => (proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : null)}
             onOpenProposal={openProposalModal}
             unread={(comment) => isUnread(comment as ClientComment)}
+            // A draft quote is never sent here: for the client, anything not sent is « En cours de chiffrage ».
+            outsideStatus={(comment) =>
+              outsideStatusOf({ state: proposalStates[comment.id] === "sent" ? "sent" : "none", decision: proposalDecisions[comment.id] ?? "none", adaptation: adaptationRequests[comment.id] })
+            }
             proposalSummary={(comment) => {
               const proposal = activeProposalFor(comment.id);
-              const status = proposalStatus(comment.id);
               return (
                 <span className="client-proposal-line">
-                  <b>{formatProposalAmount(proposal?.amount)} HT</b>
-                  <span>{formatProposalDeadline(proposal?.deadline)}</span>
-                  <span className={`decision-badge ${status.tone}`}>{status.label}</span>
+                  <span className="proposal-figure">
+                    <small>Montant</small>
+                    <b>{formatProposalAmount(proposal?.amount)} HT</b>
+                  </span>
+                  <span className="proposal-figure">
+                    <small>Délai supplémentaire</small>
+                    <b>{parseNumericDays(proposal?.deadline) ? formatProposalDeadline(proposal?.deadline) : "aucun"}</b>
+                  </span>
                 </span>
               );
             }}

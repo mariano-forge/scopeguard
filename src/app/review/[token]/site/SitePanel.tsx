@@ -182,7 +182,8 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
   const onPage = requests.filter((request) => request.site?.url === pageUrl);
 
   // The site draws the pins of its page as Kora does: place, status, initials, label; never the text.
-  const pins: SitePin[] = onPage.map((request) => ({
+  // A closed discussion leaves the site, as in Kora.
+  const pins: SitePin[] = onPage.filter((request) => !request.closed).map((request) => ({
     id: request.id,
     selector: request.site!.selector,
     x: request.site!.x,
@@ -351,7 +352,7 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
             onEditMessage={(messageId, text) => void act(messageId === 0 ? `comments/${opened.id}` : `comments/${opened.id}/replies/${messageId}`, "PATCH", { message: text })}
             onDeleteMessage={(messageId) => void act(`comments/${opened.id}/replies/${messageId}`, "DELETE")}
             onDelete={
-              !closed && sideOf(opened) === me && requestKind(opened) === "comment"
+              !closed && sideOf(opened) === me && requestKind(opened) === "comment" && !opened.title?.trim() && !opened.closed
                 ? () => {
                     setOpenId(null);
                     void act(`comments/${opened.id}`, "DELETE");

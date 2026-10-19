@@ -3,7 +3,7 @@
 
 import type { Proof, ProofEvent } from "@/db/proof";
 
-const escapeHtml = (value: unknown) =>
+export const escapeHtml = (value: unknown) =>
   String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character);
 
 /** Server times, shown in Paris time (the agencies' time zone), to the second. */

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
-import { Maximize, MessageCirclePlus, Minus, MousePointer2, Plus } from "lucide-react";
+import { Hand, Maximize, MessageCirclePlus, Minus, Plus } from "lucide-react";
 import { DeliverableContent } from "@/components/DeliverableContent";
 import { SiteBoard } from "./SiteBoard";
 import type { DeliverableType } from "@/components/deliverableKinds";
@@ -48,6 +48,7 @@ export function ReviewCanvas({
   overlay,
   toolbarExtra,
   canMove,
+  isUnread,
   onMovePin,
 }: {
   deliverable: ViewedDeliverable;
@@ -73,6 +74,8 @@ export function ReviewCanvas({
   toolbarExtra?: React.ReactNode;
   /** Pins that can be moved (double-click, then click to drop). */
   canMove?: (comment: CanvasComment) => boolean;
+  /** Something of the client not read yet in this thread (its pin carries a dot). */
+  isUnread?: (comment: CanvasComment) => boolean;
   onMovePin?: (commentId: number, page: number, x: number, y: number) => void;
 }) {
   const panelRef = useRef<HTMLElement>(null);
@@ -335,7 +338,7 @@ export function ReviewCanvas({
   }
 
   const toolButtons: Record<CanvasTool, { icon: React.ReactNode; label: string; title: string }> = {
-    move: { icon: <MousePointer2 />, label: "", title: "Déplacer · V" },
+    move: { icon: <Hand />, label: "", title: "Main : faire glisser le livrable · V (ou molette enfoncée)" },
     remark: { icon: <MessageCirclePlus />, label: "", title: "Commenter : cliquez sur un élément ou dessinez une zone · C" },
   };
 
@@ -351,7 +354,8 @@ export function ReviewCanvas({
   return (
     <section className={`preview-panel canvas tool-${tool} ${moving ? "is-moving-pin" : ""}`} ref={panelRef} aria-label="Canevas">
       {overlay}
-      <div className="artboard-wrap">
+      {/* No browser autoscroll on a wheel-button press: it pans the canvas. */}
+      <div className="artboard-wrap" onMouseDown={(event) => event.button === 1 && event.preventDefault()}>
         <TransformWrapper
           ref={transformRef}
           initialScale={1}
@@ -362,7 +366,8 @@ export function ReviewCanvas({
           doubleClick={{ disabled: true }}
           wheel={{ step: 0.08, wheelDisabled: true, excluded: ["thread"] }}
           trackPadPanning={{ disabled: false, velocityDisabled: true, excluded: ["thread"] }}
-          panning={{ disabled: tool !== "move", excluded: ["thread", "canvas-pin"], velocityDisabled: true }}
+          // The hand pans with the left button; the wheel button pans whatever the tool, as in Figma.
+          panning={{ allowLeftClickPan: tool === "move", allowMiddleClickPan: true, allowRightClickPan: false, excluded: ["thread", "canvas-pin"], velocityDisabled: true }}
           onInit={() => requestAnimationFrame(fitWidth)}
           onTransform={(_, state) => setZoom(Math.round(state.scale * 100))}
         >
@@ -398,12 +403,14 @@ export function ReviewCanvas({
                         moving?.id === comment.id ? { ...comment, page: moving.page, position: { x: moving.x, y: moving.y } } : comment,
                       )
                       .filter((comment) => (comment.page ?? 1) === page && comment.position)
+                      .filter((comment) => !comment.closed || (threadOpen && comment.id === selectedId))
                       .map((comment) => (
                         <CommentPin
                           key={comment.id}
                           comment={comment}
                           active={threadOpen && comment.id === selectedId}
                           moving={moving?.id === comment.id}
+                          unread={isUnread?.(comment)}
                           onOpen={() => {
                             if (!moved.current && !moving) onPinClick(comment);
                           }}
@@ -414,7 +421,7 @@ export function ReviewCanvas({
                           }
                         />
                       ))}
-                    {threadOpen && !moving && selected && (selected.page ?? 1) === page && renderThread(selected)}
+                    {threadOpen && !moving && selected?.position && (selected.page ?? 1) === page && renderThread(selected)}
                     {composer?.page === page && renderComposer(composer)}
                   </div>
                 )}
@@ -424,6 +431,8 @@ export function ReviewCanvas({
         </TransformWrapper>
       </div>
 
+      {/* A request without pin: its bubble by the panel, outside the zoomed pages. */}
+      {threadOpen && !moving && selected && !selected.position && <div className="canvas-docked-thread">{renderThread(selected)}</div>}
       {moving && (
         <p className="canvas-hint" role="status">
           Cliquez pour déposer le commentaire · <kbd>Échap</kbd> pour annuler
@@ -436,7 +445,7 @@ export function ReviewCanvas({
               <button
                 className={`tool-button ${toolButtons[option].label ? "with-label" : ""} ${tool === option ? "selected" : ""}`}
                 aria-pressed={tool === option}
-                aria-label={option === "move" ? "Déplacer" : "Commentaire"}
+                aria-label={option === "move" ? "Main" : "Commentaire"}
                 onClick={() => onToolChange(option)}
                 disabled={option !== "move" && readOnly}
               >

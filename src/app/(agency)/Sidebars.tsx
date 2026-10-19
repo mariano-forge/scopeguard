@@ -34,7 +34,6 @@ import { AccountMenu } from "./CurrentUser";
 /** `href`: the page it is about (src/app/(agency)/routes.ts notificationHref); none for older ones. */
 type Notification = { id: number; message: string; href?: string };
 type Client = { id: number; name: string; email: string };
-type Project = { id: number; name: string; clientId?: number };
 
 /** What the client sent from its review space: a message (comment or reply), or "changes requested" on a version. */
 export type ClientFeedback = {
@@ -53,7 +52,7 @@ export type ClientFeedback = {
 };
 
 /** Bell + shadcn popover, opening beside the sidebar: client messages first, then the activity. */
-function Notifications({
+export function Notifications({
   notifications,
   feedback,
   onMarkAllRead,
@@ -283,8 +282,6 @@ export type PanelMode = "livrables";
  * The gear opens the main menu; every rail action stays in the deliverable tab.
  */
 export function ProjectSidebar({
-  project,
-  client,
   livrableName,
   livrableMenu,
   systemMenu,
@@ -294,17 +291,12 @@ export function ProjectSidebar({
   onPanel,
   canvasHref,
   onNavigate,
-  notifications,
-  feedback,
-  onMarkAllRead,
   panelWidth,
   onPanelResize,
   livrables,
   onImportVersion,
-  onImportLivrable,
+  onNewLivrable,
 }: {
-  project: Project;
-  client?: Client;
   livrableName: string;
   /** Shortcuts of the open deliverable, under its name. */
   livrableMenu: MenuEntry[];
@@ -319,18 +311,17 @@ export function ProjectSidebar({
   canvasHref: string;
   /** Switches view inside the deliverable's tab. */
   onNavigate: (target: string) => void;
-  notifications: Notification[];
-  feedback: ClientFeedback[];
-  onMarkAllRead: () => void;
   panelWidth: number;
   onPanelResize: (width: number) => void;
   livrables: SidebarLivrable[];
   /** A file becomes the next version of the open deliverable. */
   onImportVersion: (file: File) => void;
-  /** A file becomes a new deliverable of the project. */
-  onImportLivrable: (file: File) => void;
+  /** « + »: the new deliverable dialog, in this project. */
+  onNewLivrable: () => void;
 }) {
   const [livrablesOpen, setLivrablesOpen] = useState(true);
+  // The open deliverable is the canvas itself: the list shows the project's others.
+  const others = livrables.filter((livrable) => !livrable.active);
   return (
     <aside className={`sidebar project-sidebar ${panel ? "" : "is-collapsed"}`} aria-label="Navigation du livrable">
       <nav className="rail" aria-label="Outils">
@@ -376,7 +367,6 @@ export function ProjectSidebar({
           entries={systemMenu}
         />
         <span className="rail-spacer" />
-        <Notifications notifications={notifications} feedback={feedback} onMarkAllRead={onMarkAllRead} compact />
         <AccountMenu compact />
       </nav>
 
@@ -396,13 +386,6 @@ export function ProjectSidebar({
               menuClassName="livrable-menu"
               entries={livrableMenu}
             />
-          </div>
-          <div className="panel-context">
-            <span className="panel-path">
-              {client && <Link href={href.client(client.id)}>{client.name}</Link>}
-              {client && <span aria-hidden="true">/</span>}
-              <Link href={href.project(project.id)}>{project.name}</Link>
-            </span>
           </div>
 
           <div className="panel-scroll">
@@ -431,18 +414,23 @@ export function ProjectSidebar({
                 ))}
               </ul>
             </section>
-            <section className="panel-section" aria-label="Livrables">
+            <section className="panel-section" aria-label="Autres livrables du projet">
               <div className="panel-section-header">
                 <button type="button" className="panel-section-toggle" aria-expanded={livrablesOpen} onClick={() => setLivrablesOpen((open) => !open)}>
                   <ChevronDown aria-hidden="true" className={livrablesOpen ? "" : "is-closed"} />
-                  <h2>Livrables</h2>
-                  <span className="panel-section-count">{livrables.length}</span>
+                  <h2>Autres livrables du projet</h2>
+                  <span className="panel-section-count">{others.length}</span>
                 </button>
-                <FileAddButton label="Ajouter un fichier comme nouveau livrable" onFile={onImportLivrable} />
+                <Hint label="Ajouter un livrable au projet">
+                  <button type="button" className="nav-section-action" aria-label="Ajouter un livrable au projet" onClick={onNewLivrable}>
+                    <Plus />
+                  </button>
+                </Hint>
               </div>
+              {livrablesOpen && others.length === 0 && <p className="panel-empty">Aucun autre livrable dans ce projet.</p>}
               {livrablesOpen && (
                 <ul>
-                  {livrables.map((livrable) => (
+                  {others.map((livrable) => (
                     <li key={livrable.id}>
                       <Link className={`panel-item ${livrable.active ? "is-active" : ""}`} href={livrable.href} aria-current={livrable.active ? "page" : undefined}>
                         <FileText className="panel-item-icon" aria-hidden="true" />

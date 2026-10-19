@@ -296,11 +296,11 @@ test("an agency member is recognised in the panel by a Kora window, then annotat
   await closed;
   await expect(panel.getByText("Agence : Alice Martin")).toBeVisible();
 
-  // The agency sees its internal pin too, Kora's dark one, said internal in its thread as in Kora.
+  // The agency sees its draft pin too, Kora's blue one, as in Kora.
   await expect(page.getByRole("button", { name: "Commentaire #30" })).not.toHaveClass(/is-agency/);
   await expect(page.getByRole("button", { name: "Commentaire #31" })).toHaveClass(/is-agency/);
   await panel.getByRole("button", { name: "Commentaire #31" }).click();
-  await expect(panel.getByRole("note").filter({ hasText: "Non visible par le client tant que vous ne l’avez pas qualifiée" })).toBeVisible();
+  await expect(panel.getByRole("dialog", { name: /#31$/ })).toBeVisible();
   await panel.getByRole("button", { name: "Demandes", exact: true }).click();
 
   // A remark of its own on the site: an internal pin, as in Kora.
@@ -308,8 +308,9 @@ test("an agency member is recognised in the panel by a Kora window, then annotat
   await page.getByRole("heading", { name: "Bienvenue chez Northwind" }).click({ position: { x: 40, y: 10 } });
   await panel.getByLabel("Votre remarque").fill("Vérifier le contraste du titre");
   await panel.getByRole("button", { name: "Envoyer" }).click();
+  // (The capture of the page is sent first: it takes longer on a loaded machine.)
   await expect
-    .poll(async () => (await sql<{ data: Record<string, unknown> }>("select data from comments where organization_id = $1 and data->>'message' = 'Vérifier le contraste du titre'", [org]))[0]?.data)
+    .poll(async () => (await sql<{ data: Record<string, unknown> }>("select data from comments where organization_id = $1 and data->>'message' = 'Vérifier le contraste du titre'", [org]))[0]?.data, { timeout: 30_000 })
     .toMatchObject({ from: "agency", author: "Alice Martin", internalNote: true, location: "/", decision: "À qualifier", site: { url: "/", selector: "#titre" } });
 
   // The client's request, qualified from the site.

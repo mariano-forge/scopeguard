@@ -124,6 +124,9 @@ button {
 .workspace {
   flex: 1;
   min-width: 0;
+  /* Nothing inside widens the page: wide tables scroll in their own frame. `clip` (not `hidden`)
+     makes no scroll container, so sticky headers keep working. */
+  overflow-x: clip;
 }
 .icon-button,
 .close-button {
@@ -2467,10 +2470,14 @@ button {
 /* Browser views: home, client, project */
 .browser {
   display: grid;
+  /* One column no wider than the page: a wide table scrolls in its frame (.overview-table-wrap)
+     instead of stretching the column, and the page with it. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s-8);
 }
 .browser-section {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s-3);
 }
 .browser-section h2 {
@@ -3285,7 +3292,8 @@ button.rail-avatar {
 }
 .editor {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  /* The requests panel's width, resizable (AgencyApp sets --inspector-width). */
+  grid-template-columns: minmax(0, 1fr) var(--inspector-width, 320px);
   height: calc(100vh - var(--tab-bar-height));
 }
 .preview-panel.canvas {
@@ -4341,6 +4349,139 @@ a.page-nav-label:hover {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) 3fr;
   gap: var(--s-4);
+}
+/* The guided tour (ProductTour.tsx): a bubble beside the feature, the feature ringed. */
+.product-tour {
+  width: 300px;
+  gap: 6px;
+  padding: var(--s-4);
+  border-radius: var(--r-panel);
+  background: var(--paper);
+  box-shadow: 0 12px 32px rgba(17, 17, 17, 0.16);
+}
+.product-tour h2 {
+  margin: 0;
+  font: 700 16px / 22px var(--font-display);
+  letter-spacing: -0.01em;
+}
+.product-tour p {
+  margin: 0;
+  color: var(--graphite);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.product-tour .product-tour-count {
+  color: var(--action-ui);
+  font: 600 var(--t-caption) var(--font-ui);
+}
+.product-tour-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+[data-tour-target] {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 3px;
+  border-radius: var(--r-button);
+  transition: outline-offset 200ms var(--ease-out);
+}
+
+/* « Bien démarrer » (GettingStarted.tsx): a new agency's steps up to its first client review. */
+.getting-started {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-6) var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  background: var(--paper);
+}
+.getting-started header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.getting-started h2 {
+  margin: 0;
+  font: 700 18px / 24px var(--font-display);
+  letter-spacing: -0.01em;
+}
+.getting-started header p {
+  margin: 2px 0 0;
+  color: var(--graphite);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.getting-started-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.getting-started-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--action-ui);
+  transition: width 300ms var(--ease-out);
+}
+.getting-started ol {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.getting-started li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 48px;
+  padding: var(--s-2) 0;
+  border-top: 1px solid var(--border);
+  color: var(--graphite);
+}
+.getting-started li:first-child {
+  border-top: 0;
+}
+.getting-started li[data-current] {
+  color: var(--ink);
+}
+.getting-started-check {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--border-input);
+  border-radius: var(--r-full);
+}
+.getting-started li[data-current] .getting-started-check {
+  border-color: var(--action-ui);
+}
+.getting-started li[data-done] .getting-started-check {
+  border-color: var(--status-resolved-text);
+  background: var(--status-resolved-text);
+  color: var(--paper);
+}
+.getting-started-check .lucide {
+  width: 12px;
+  height: 12px;
+  stroke-width: 3;
+}
+.getting-started-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.getting-started-text b {
+  font: 500 var(--t-ui) var(--font-ui);
+}
+.getting-started li[data-done] b {
+  text-decoration: line-through;
+  text-decoration-color: var(--border-input);
+}
+.getting-started-text small {
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
 }
 .hero-stat,
 .stat-tile {
@@ -7971,4 +8112,718 @@ body.is-resizing {
   margin: var(--s-8) auto;
   color: var(--graphite);
   text-align: center;
+}
+
+/* ——— Phones: a bar instead of the tabs, the sidebar as a drawer, the requests as a bottom sheet ——— */
+.mobile-bar,
+.mobile-scrim,
+.inspector-sheet-toggle {
+  display: none;
+}
+@media (max-width: 680px) {
+  :root {
+    --tab-bar-height: 52px;
+  }
+  .tab-bar {
+    display: none;
+  }
+  .mobile-bar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: var(--s-1);
+    height: var(--tab-bar-height);
+    padding: 0 var(--s-2);
+    border-bottom: 1px solid var(--border);
+    background: var(--canvas);
+  }
+  .mobile-bar-home {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    color: var(--ink);
+  }
+  .mobile-bar-home svg {
+    width: 22px;
+    height: 22px;
+  }
+  .mobile-bar-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ink);
+    font: 600 var(--t-ui) var(--font-ui);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* The page's sidebar, from the left, over the page. */
+  .app-shell[data-nav-open] .sidebar {
+    position: fixed;
+    top: var(--tab-bar-height);
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    display: flex;
+    width: auto;
+    max-width: 88vw;
+    height: auto;
+    background: var(--paper);
+    box-shadow: 0 16px 48px rgba(17, 17, 17, 0.18);
+    animation: mobile-nav-in 220ms var(--ease-out) both;
+  }
+  .app-shell[data-nav-open] .home-sidebar {
+    width: min(300px, 88vw);
+  }
+  .app-shell[data-nav-open] .mobile-scrim {
+    position: fixed;
+    inset: var(--tab-bar-height) 0 0;
+    z-index: 35;
+    display: block;
+    background: rgba(17, 17, 17, 0.24);
+  }
+
+  /* The deliverable takes the screen; its requests come up from the bottom. */
+  .editor {
+    display: block;
+    height: calc(100dvh - var(--tab-bar-height));
+  }
+  .editor .preview-panel.canvas {
+    height: 100%;
+  }
+  .editor-inspector {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 25;
+    max-height: 78dvh;
+    height: 78dvh;
+    border: 1px solid var(--border);
+    border-bottom: 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -12px 32px rgba(17, 17, 17, 0.12);
+    transform: translateY(calc(100% - 56px));
+    transition: transform 300ms var(--ease-out);
+  }
+  .editor-inspector[data-sheet-open] {
+    transform: none;
+  }
+  .editor-inspector .resize-handle {
+    display: none;
+  }
+  /* The handle already says « Demandes »; the canvas tools stay above it. */
+  .editor-inspector .requests-header h2 {
+    display: none;
+  }
+  .editor-inspector .requests-actions {
+    width: 100%;
+  }
+  .editor-inspector .requests-add {
+    margin-left: auto;
+  }
+  .editor .canvas-toolbar {
+    bottom: calc(56px + var(--s-3));
+  }
+  .sidebar-search kbd {
+    display: none;
+  }
+  .inspector-sheet-toggle {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    padding: 0 var(--s-4);
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+    color: var(--ink);
+    font: 600 var(--t-ui) var(--font-ui);
+    cursor: pointer;
+  }
+  .inspector-sheet-toggle b {
+    margin-left: var(--s-1);
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--canvas);
+    font-weight: 600;
+  }
+  .inspector-sheet-toggle .lucide {
+    width: 18px;
+    height: 18px;
+    transition: transform 300ms var(--ease-out);
+  }
+  .editor-inspector[data-sheet-open] .inspector-sheet-toggle .lucide {
+    transform: rotate(180deg);
+  }
+}
+@keyframes mobile-nav-in {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell[data-nav-open] .sidebar {
+    animation: none;
+  }
+  .editor-inspector,
+  .inspector-sheet-toggle .lucide {
+    transition: none;
+  }
+}
+
+/* ——— Deliverable editor, feedback rounds of October 2026 ——— */
+
+/* The tool in use: a white icon on Kora's blue (the CTA blue). */
+.canvas-toolbar .tool-button.selected {
+  background: var(--action-ui);
+  color: var(--paper);
+}
+
+/* Pins readable on any deliverable, all-white or all-black: a solid color, a white ring and a fine dark
+   outline. The agency in blue, the client in coral, included in green, out of scope in violet. Copied
+   in public/kora-toolbar.js (the staging site's pins). */
+.canvas-pin {
+  border: 2px solid var(--paper);
+  box-shadow: 0 0 0 1px rgba(17, 17, 17, 0.32), 0 3px 10px rgba(17, 17, 17, 0.28);
+}
+.canvas-pin.is-comment {
+  background: var(--attention-fill);
+  color: var(--ink);
+}
+.canvas-pin.is-comment.is-agency {
+  background: var(--action-ui);
+  color: var(--paper);
+}
+.canvas-pin.is-correction {
+  background: var(--status-resolved-text);
+  color: var(--paper);
+}
+.canvas-pin.is-outside {
+  background: var(--status-scope-text);
+  color: var(--paper);
+}
+/* Not read yet: a red dot on the pin's corner. */
+.canvas-pin.is-unread::after {
+  content: "";
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+  background: var(--status-high-text);
+}
+/* Authors in the lists: the agency in ink (the dark blue is for actions), the client in coral. */
+.thread-avatar.is-agency,
+.thread-row .thread-avatar.is-agency,
+.thread-message.is-agency .thread-avatar {
+  background: var(--ink);
+  color: var(--paper);
+}
+.thread-avatar.is-client,
+.thread-row .thread-avatar.is-client,
+.thread-message.is-client .thread-avatar {
+  background: var(--attention-fill);
+  color: var(--ink);
+}
+/* Something not read: red everywhere (pins, tabs, cards). */
+.unread-dot {
+  background: var(--status-high-text);
+}
+
+/* The bubble's header: who wrote it, and when. */
+.thread-title b {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The request in its bubble: its status as a tag and what it means, then its title. */
+.request-body {
+  display: grid;
+  gap: 6px;
+}
+.request-kind {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+}
+.kind-pill {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font: 600 var(--t-caption) var(--font-ui);
+}
+.request-kind.is-comment .kind-pill {
+  background: var(--status-clarify-bg);
+  color: var(--status-clarify-text);
+}
+.request-kind.is-correction .kind-pill {
+  background: var(--status-resolved-bg);
+  color: var(--status-resolved-text);
+}
+.request-kind.is-outside .kind-pill {
+  background: var(--status-scope-bg);
+  color: var(--status-scope-text);
+}
+.request-kind-hint {
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.request-body .request-title {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font: 600 15px / 1.35 var(--font-ui);
+}
+.request-body .request-description {
+  margin: 0;
+  color: var(--graphite);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+
+/* Qualifying: three choices on one line, the chosen one raised; what it means said under them. */
+.scope-choice-field {
+  display: grid;
+  gap: 6px;
+}
+.scope-choice {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--canvas);
+}
+.scope-choice .scope-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--graphite);
+  font: 500 var(--t-caption) var(--font-ui);
+  white-space: nowrap;
+}
+.scope-choice .scope-option::before {
+  content: "";
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--status-clarify-text);
+}
+.scope-choice .scope-option.is-correction::before {
+  background: var(--status-resolved-text);
+}
+.scope-choice .scope-option.is-outside::before {
+  background: var(--status-scope-text);
+}
+.scope-choice .scope-option:hover {
+  color: var(--ink);
+}
+.scope-choice .scope-option.is-selected {
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(17, 17, 17, 0.12);
+}
+.scope-choice-hint {
+  margin: 0;
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+/* Its buttons on the beige band, as at the foot of every Kora dialog. */
+.qualify-form .qualify-form-actions {
+  margin: var(--s-1) calc(-1 * var(--s-3)) calc(-1 * var(--s-3));
+  padding: var(--s-3);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--r-panel) var(--r-panel);
+  background: var(--canvas);
+}
+.qualify-form .quote-toggle {
+  cursor: default;
+}
+
+/* The requests panel's head: the bell on the left, the actions on the right. */
+.editor-inspector .requests-header {
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--border);
+}
+.editor-inspector .requests-actions {
+  gap: var(--s-2);
+}
+/* The tabs fit at the panel's default width, and scroll sideways when it is narrower. */
+.inspector-tabs {
+  gap: 14px;
+  padding: 0 var(--s-3);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.inspector-tabs button {
+  flex-shrink: 0;
+  gap: 4px;
+  font-size: 13px;
+}
+.inspector-tabs button span {
+  padding: 0 5px;
+}
+
+/* Requests as cards, each in its own frame on the panel's tinted ground. */
+.inspector-list {
+  padding: var(--s-3);
+  background: var(--canvas);
+}
+.inspector-list ul {
+  display: grid;
+  gap: var(--s-2);
+}
+.inspector-list li {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgba(17, 17, 17, 0.04);
+  transition:
+    border-color var(--d-fast) var(--ease-out),
+    box-shadow var(--d-fast) var(--ease-out);
+}
+.inspector-list li:hover {
+  border-color: var(--border-input);
+  box-shadow: 0 4px 14px rgba(17, 17, 17, 0.07);
+}
+/* Selected: the stroke turns black, nothing else (an older rule tinted the whole case blue). */
+.inspector-list li.inspector-row,
+.inspector-list li.inspector-row:hover,
+.inspector-list li.inspector-row:hover .thread-row,
+.inspector-list li.inspector-row.is-selected,
+.inspector-list li.inspector-row.is-selected .thread-row {
+  background: var(--paper);
+}
+.inspector-list li.inspector-row.is-selected {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+.inspector-list li.inspector-row.is-closed,
+.inspector-list li.inspector-row.is-closed .thread-row {
+  background: var(--canvas);
+}
+.inspector-list li.is-closed {
+  background: var(--canvas);
+}
+.inspector-list li .thread-row,
+.inspector-list li .thread-row:hover,
+.inspector-list li .thread-row.is-selected {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding: var(--s-3);
+  background: transparent;
+}
+.thread-row-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.thread-row-top .thread-row-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink);
+  font: 500 var(--t-ui) var(--font-ui);
+}
+.thread-row-top .thread-row-text.is-title {
+  font-weight: 600;
+}
+.inspector-list .thread-row-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.inspector-list .thread-row-meta .thread-avatar {
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
+}
+.thread-row-replies {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--graphite);
+  font: 500 var(--t-caption) var(--font-ui);
+}
+.thread-row-replies .lucide {
+  width: 13px;
+  height: 13px;
+}
+.thread-row-replies.is-unread {
+  color: var(--status-high-text);
+  font-weight: 600;
+}
+.inspector-list li .row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border-top: 1px solid var(--border);
+  background: var(--canvas);
+}
+.inspector-list li .row-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* A status, small: a colored dot and its words. One tone per step of an out-of-scope request. */
+.status-pill {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--mist);
+  color: var(--graphite);
+  font: 600 11px / 16px var(--font-ui);
+  white-space: nowrap;
+}
+.status-pill i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.status-pill.is-pending {
+  background: var(--status-medium-bg);
+  color: var(--status-medium-text);
+}
+.status-pill.is-ready {
+  background: var(--status-scope-bg);
+  color: var(--status-scope-text);
+}
+.status-pill.is-attention {
+  background: var(--status-clarify-bg);
+  color: var(--status-clarify-text);
+}
+.status-pill.is-accepted {
+  background: var(--status-resolved-bg);
+  color: var(--status-resolved-text);
+}
+.status-pill.is-refused {
+  background: var(--status-high-bg);
+  color: var(--status-high-text);
+}
+.status-filter {
+  margin-bottom: var(--s-3);
+}
+.status-filter [data-slot="select-trigger"] {
+  height: 34px;
+  background: var(--paper);
+}
+@media (prefers-reduced-motion: reduce) {
+  .inspector-list li {
+    transition: none;
+  }
+}
+
+/* The account menu: who is signed in, in which agency, then the actions. */
+.account-menu {
+  padding: 6px;
+}
+.account-menu .account-menu-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2);
+}
+.account-menu-head .avatar {
+  flex-shrink: 0;
+}
+.account-menu-head b {
+  display: block;
+  overflow: hidden;
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-menu-head small {
+  display: block;
+  overflow: hidden;
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.account-menu-agency {
+  margin: 0 var(--s-2) var(--s-2);
+  padding: 6px var(--s-2);
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--canvas);
+  color: var(--graphite);
+  font: 500 var(--t-caption) var(--font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A required field left empty: said in red under it (ThreadPopover's qualification). */
+.field-error {
+  color: var(--danger);
+  font: 500 var(--t-caption) var(--font-ui);
+}
+.qualify-form input[aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px var(--danger);
+}
+
+/* « Demandes » | « Commentaires »: shadcn Tabs, on the panel's width. */
+.panel-views {
+  margin: var(--s-3) var(--s-3) 0;
+}
+.panel-views [data-slot="tabs-list"] {
+  height: 34px;
+  border: 1px solid var(--border);
+  background: var(--canvas);
+}
+.panel-views [data-slot="tabs-trigger"] span {
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+.panel-views [data-slot="tabs-trigger"][data-state="active"],
+.panel-views [data-slot="tabs-trigger"][data-active] {
+  background: var(--paper);
+  color: var(--ink);
+}
+/* The status filter: the size of the panel's text. */
+.status-filter [data-slot="select-trigger"],
+.status-filter-menu [data-slot="select-item"] {
+  font-size: 13px;
+}
+/* The bubble never outgrows the canvas: its header stays, its content scrolls. */
+.thread,
+.thread.is-qualifying {
+  max-height: min(460px, calc(100dvh - 180px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.thread > .thread-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--paper);
+}
+.request-body .request-description {
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+/* A request without pin: its bubble by the panel, outside the zoomed pages. */
+.canvas-docked-thread {
+  position: absolute;
+  top: var(--s-4);
+  right: var(--s-4);
+  z-index: 12;
+}
+.canvas-docked-thread .thread.is-docked {
+  position: static;
+  transform: none;
+  max-height: calc(100dvh - var(--tab-bar-height) - 2 * var(--s-4) - 80px);
+}
+/* The panel's text size for its tabs and the cards' buttons (an older rule sets the panel's buttons larger). */
+.panel-views [data-slot="tabs-trigger"] {
+  font-size: 13px;
+}
+.inspector-list .row-buttons [data-slot="button"] {
+  height: 28px;
+  padding-inline: 10px;
+  font-size: 12px;
+}
+
+/* The bubble: what the request says, then a band for what can be done (as on its card). */
+.request-footer {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--mist);
+  background: var(--canvas);
+}
+.request-footer .request-proposal,
+.request-footer .request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+}
+/* A quote's figures, each with its label: « Montant » and « Délai supplémentaire ». */
+.client-proposal-line .proposal-figure {
+  display: grid;
+  gap: 1px;
+}
+.client-proposal-line .proposal-figure small {
+  color: var(--graphite);
+  font: 500 11px / 14px var(--font-ui);
+}
+.client-proposal-line .proposal-figure b {
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.inspector-list .client-proposal-line {
+  gap: var(--s-4);
+}
+.request-footer [data-slot="button"] {
+  height: 28px;
+  padding-inline: 10px;
+  font-size: 12px;
+}
+
+/* A request's bubble: « Détail » | « Discussion », the discussion on the bubble's whole height. */
+.thread,
+.thread.is-qualifying {
+  width: 380px;
+}
+.thread-tabs {
+  padding: var(--s-2) var(--s-3) 0;
+}
+.thread-tabs [data-slot="tabs-list"] {
+  height: 32px;
+  border: 1px solid var(--border);
+  background: var(--canvas);
+}
+.thread-tabs [data-slot="tabs-trigger"] {
+  font-size: 13px;
+}
+.thread-tabs [data-slot="tabs-trigger"] span {
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+.thread-tabs [data-slot="tabs-trigger"][data-state="active"],
+.thread-tabs [data-slot="tabs-trigger"][data-active] {
+  background: var(--paper);
+  color: var(--ink);
+}
+.thread .thread-messages {
+  min-height: 160px;
+  max-height: none;
 }
