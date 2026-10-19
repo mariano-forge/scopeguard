@@ -1,0 +1,1066 @@
+/*
+ * "Kora en quatre gestes" (Film.tsx): four tiles, each a short scene made of Kora's interface. A tile
+ * is a size container: pieces sit in % of it, the cursor travels in cqw/cqh, sizes are in em of a font
+ * that follows the tile's width, so a scene scales like a picture. Each piece's base style is its last
+ * frame; animations only say where it comes from (fill "both"), so without motion a scene is complete.
+ * Each tile starts a little after the previous one (--lag). Tokens only.
+ */
+
+.lp-film {
+  display: grid;
+}
+/* Same head as every section: the title, the pause on the right. */
+.lp-film-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: clamp(24px, 3vw, 40px);
+}
+.lp-film-toggle {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--ink);
+  transition: transform 160ms var(--ease-out);
+}
+.lp-film-toggle:active {
+  transform: scale(0.95);
+}
+.lp-film-toggle:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 3px;
+}
+.lp-film-toggle .lucide {
+  width: 18px;
+  height: 18px;
+}
+/* The four scenes, all visible at once. */
+.lp-moves {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lp-move.tone-0 {
+  --tone: var(--status-low-bg);
+  --dots: var(--status-low-text);
+}
+.lp-move.tone-1 {
+  --tone: var(--status-clarify-bg);
+  --dots: var(--status-clarify-text);
+}
+.lp-move.tone-2 {
+  --tone: var(--status-scope-bg);
+  --dots: var(--status-scope-text);
+}
+.lp-move.tone-3 {
+  --tone: var(--status-resolved-bg);
+  --dots: var(--status-resolved-text);
+}
+.lp-move-tile {
+  position: relative;
+  aspect-ratio: 2.2 / 1;
+  container-type: size;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--dots) 14%, transparent) 1px, transparent 1.5px) 0 0 / 20px 20px,
+    var(--tone);
+  overflow: hidden;
+}
+/* The step, under its scene: number in the scene's colour, name, one line. */
+.lp-move-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  padding: 12px 4px 0;
+}
+.lp-move-n {
+  display: grid;
+  align-self: center;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--tone);
+  color: var(--dots);
+  font: 700 12px var(--font-display);
+}
+.lp .lp-move-text h3 {
+  font-size: 17px;
+}
+.lp-move-text p {
+  margin: 0;
+  color: var(--graphite);
+  font: 400 14px / 1.4 var(--font-ui);
+}
+.lp-move-scene {
+  position: absolute;
+  inset: 0;
+  color: var(--ink);
+  font: 400 max(9px, 2cqw) / 1.35 var(--font-ui);
+}
+.lp-move-scene > * {
+  position: absolute;
+}
+/* Paused (by the visitor, or off screen): every scene stops where it is. */
+.lp-film:not([data-playing]) .lp-move-scene *,
+.lp-film:not([data-playing]) .lp-move-scene *::before {
+  animation-play-state: paused;
+}
+
+/* ——— Pieces ——— */
+/* The deliverable's picture (Plant, Mockups.tsx): here, so every page that plays a scene draws it. */
+.lp-mk-plant {
+  display: block;
+  width: 100%;
+}
+.lp-mk-plant .is-sun {
+  fill: color-mix(in srgb, var(--favorite-fill) 45%, var(--paper));
+}
+.lp-mk-plant .is-leaf {
+  fill: color-mix(in srgb, var(--status-resolved-text) 55%, var(--status-resolved-bg));
+}
+.lp-mk-plant .is-leaf.is-dark {
+  fill: var(--status-resolved-text);
+}
+.lp-mk-plant .is-pot {
+  fill: var(--attention-fill);
+}
+
+.f-card {
+  display: grid;
+  align-content: start;
+  gap: 0.55em;
+  padding: 1em;
+  border: 1px solid var(--border);
+  border-radius: 0.9em;
+  background: var(--paper);
+  box-shadow: 0 1em 2.5em rgba(17, 17, 17, 0.1);
+}
+.f-card > small {
+  color: var(--graphite);
+  font-size: 0.82em;
+  font-weight: 600;
+}
+
+.f-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  height: 2.4em;
+  padding: 0 1em;
+  border-radius: 0.6em;
+  background: var(--cta-fill);
+  color: var(--cta-text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.f-button svg {
+  width: 1em;
+  height: 1em;
+}
+.f-button.is-ghost {
+  border: 1px solid var(--border);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.f-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  color: var(--status-resolved-text);
+  font-size: 0.9em;
+  font-weight: 600;
+}
+.f-done svg {
+  flex-shrink: 0;
+  width: 1.2em;
+  height: 1.2em;
+}
+
+.f-done.is-strong {
+  font-size: 1em;
+}
+.f-done.is-strong svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.f-done.is-strong path {
+  stroke-dasharray: 1;
+  animation: f-draw 450ms var(--ease-out) calc(var(--at) + var(--lag, 0s) + 150ms) both;
+}
+.f-pin {
+  display: grid;
+  place-items: center;
+  width: 2.3em;
+  height: 2.3em;
+  border: 0.15em solid var(--paper);
+  border-radius: 50% 50% 50% 0.3em;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.85em;
+  font-weight: 700;
+  box-shadow: 0 0.4em 1em rgba(17, 17, 17, 0.25);
+  translate: 0 -100%;
+}
+.f-cursor {
+  top: 0;
+  left: 0;
+  z-index: 5;
+  color: var(--ink);
+  filter: drop-shadow(0 0.15em 0.2em rgba(17, 17, 17, 0.3));
+}
+.f-cursor svg {
+  display: block;
+  width: 1.9em;
+  height: 1.9em;
+  fill: var(--paper);
+}
+.f-ripple {
+  z-index: 4;
+  width: 2.8em;
+  height: 2.8em;
+  border: 0.2em solid var(--action-fill);
+  border-radius: 50%;
+  opacity: 0;
+  translate: -50% -50%;
+  animation: f-ripple 600ms var(--ease-out) calc(var(--at) + var(--lag, 0s)) forwards;
+}
+
+/* 2. Commenter */
+.f-page {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 1em;
+  padding: 1em;
+  border: 1px solid var(--border);
+  border-radius: 0.9em;
+  background: var(--paper);
+  box-shadow: 0 1em 2.5em rgba(17, 17, 17, 0.1);
+}
+.f-page-copy {
+  display: grid;
+  align-content: center;
+  gap: 0.4em;
+}
+.f-page-copy small {
+  font: 700 0.85em var(--font-display);
+}
+.f-page-copy b {
+  font: 700 1.7em / 1.05 var(--font-display);
+  letter-spacing: -0.03em;
+}
+.f-page-copy span {
+  color: var(--graphite);
+  font-size: 0.8em;
+}
+.f-page-copy em {
+  justify-self: start;
+  padding: 0.35em 0.9em;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.75em;
+  font-style: normal;
+  font-weight: 600;
+}
+.f-page-art {
+  display: grid;
+  place-items: center;
+  border-radius: 0.7em;
+  background: var(--status-clarify-bg);
+  overflow: hidden;
+}
+.f-page-art svg {
+  width: 72%;
+}
+.f-bubble {
+  z-index: 3;
+  display: grid;
+  gap: 0.4em;
+  padding: 0.7em 0.9em;
+  border: 1px solid var(--border);
+  border-radius: 0.3em 0.9em 0.9em 0.9em;
+  background: var(--paper);
+  box-shadow: 0 1em 2.5em rgba(17, 17, 17, 0.16);
+  white-space: nowrap;
+}
+.f-sent {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  color: var(--status-resolved-text);
+  font-size: 0.8em;
+  font-weight: 600;
+}
+.f-sent svg {
+  width: 1.1em;
+  height: 1.1em;
+}
+
+.f-avatar {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 2.6em;
+  height: 2.6em;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.7em;
+  font-weight: 700;
+}
+
+/* The price counts up to its value. */
+@property --amount {
+  syntax: "<integer>";
+  inherits: false;
+  initial-value: 850;
+}
+.f-amount {
+  font: 700 2.2em var(--font-display);
+  letter-spacing: -0.03em;
+  counter-reset: amount var(--amount);
+  animation: f-count 1.2s var(--ease-out) calc(2s + var(--lag, 0s)) both;
+}
+.f-amount::before {
+  content: counter(amount);
+}
+.f-delay {
+  justify-self: start;
+  padding: 0.25em 0.6em;
+  border-radius: 999px;
+  background: var(--status-medium-bg);
+  color: var(--status-medium-text);
+  font-size: 0.85em;
+  font-weight: 600;
+}
+
+/* 4. Valider */
+.f-card.is-offer b {
+  font: 700 1.4em var(--font-display);
+  letter-spacing: -0.02em;
+}
+.f-price {
+  font: 700 1.2em var(--font-display);
+}
+.f-price small {
+  color: var(--graphite);
+  font: 500 0.7em var(--font-ui);
+}
+
+.f-events {
+  display: grid;
+  align-content: start;
+  gap: 0.45em;
+}
+.f-events span {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.6em 0.8em;
+  border: 1px solid var(--border);
+  border-radius: 0.7em;
+  background: var(--paper);
+  box-shadow: 0 0.5em 1.4em rgba(17, 17, 17, 0.07);
+  font-size: 0.88em;
+  white-space: nowrap;
+}
+.f-events svg {
+  flex-shrink: 0;
+  width: 1.1em;
+  height: 1.1em;
+  color: var(--graphite);
+}
+.f-events .is-ok {
+  border-color: transparent;
+  background: var(--status-resolved-text);
+  color: var(--paper);
+  font-weight: 600;
+}
+.f-events .is-ok svg {
+  color: inherit;
+}
+.f-events i {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 2.4em;
+  height: 2.4em;
+  border: 0.15em solid var(--paper);
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.72em;
+  font-style: normal;
+  font-weight: 700;
+}
+.f-events i + i {
+  margin-left: -0.9em;
+  background: var(--action-ui);
+}
+
+/* ——— 1. Partager: drag and drop, then the invitation ——— */
+/* The drop zone: waiting, lit up when the file hovers it, then gone (its last frame: hidden). */
+.f-zone {
+  top: 10%;
+  left: 40%;
+  width: 54%;
+  height: 78%;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.5em;
+  border: 0.12em dashed color-mix(in srgb, var(--status-low-text) 45%, transparent);
+  border-radius: 1em;
+  color: var(--status-low-text);
+  font-weight: 600;
+  opacity: 0;
+  animation: f-zone 6s linear both;
+}
+.f-zone svg {
+  width: 1.8em;
+  height: 1.8em;
+}
+@keyframes f-zone {
+  0%,
+  19% {
+    opacity: 1;
+    background: transparent;
+  }
+  21%,
+  28% {
+    opacity: 1;
+    border-color: var(--action-ui);
+    background: color-mix(in srgb, var(--paper) 55%, transparent);
+    scale: 1.02;
+  }
+  31%,
+  100% {
+    opacity: 0;
+  }
+}
+/* The file, carried by the cursor from the desk to the zone. */
+.f-drag {
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0 0.9em;
+  border: 1px solid var(--border);
+  border-radius: 0.8em;
+  background: var(--paper);
+  box-shadow: 0 1em 2.5em rgba(17, 17, 17, 0.16);
+  font-weight: 600;
+  opacity: 0;
+  animation: f-drag 6s var(--ease-in-out) both;
+}
+.f-drag svg {
+  flex-shrink: 0;
+  width: 1.5em;
+  height: 1.5em;
+  color: var(--attention-text);
+}
+.f-drag small {
+  display: block;
+  color: var(--graphite);
+  font-size: 0.75em;
+  font-weight: 500;
+}
+@keyframes f-drag {
+  0% {
+    opacity: 0;
+    transform: none;
+  }
+  4%,
+  7% {
+    opacity: 1;
+    transform: none;
+  }
+  26% {
+    opacity: 1;
+    transform: translate(50cqw, -20cqh) rotate(4deg);
+  }
+  29% {
+    opacity: 1;
+    transform: translate(50cqw, -20cqh) scale(0.9);
+  }
+  31%,
+  100% {
+    opacity: 0;
+    transform: translate(50cqw, -20cqh) scale(0.8);
+  }
+}
+.f-person {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.6em;
+  border-radius: 0.7em;
+  background: var(--canvas);
+  font-weight: 600;
+}
+.f-person small {
+  display: block;
+  color: var(--graphite);
+  font-size: 0.78em;
+  font-weight: 500;
+}
+/* Where the file comes from. */
+.f-desk {
+  display: grid;
+  align-content: start;
+  gap: 0.5em;
+  padding: 1em;
+  border: 1px solid var(--border);
+  border-radius: 0.9em;
+  background: color-mix(in srgb, var(--paper) 70%, transparent);
+}
+.f-desk small {
+  margin-bottom: 0.2em;
+  color: var(--graphite);
+  font-size: 0.82em;
+  font-weight: 600;
+}
+.f-desk span {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.55em 0.6em;
+  border-radius: 0.6em;
+  background: var(--paper);
+  color: var(--graphite);
+  font-size: 0.9em;
+}
+.f-desk svg {
+  width: 1.2em;
+  height: 1.2em;
+}
+/* A slot carries a piece's entrance; the piece inside keeps its own press and exit. */
+.f-slot > * {
+  position: absolute;
+  inset: 0;
+}
+/* A confirmation in place of the button it replaces (placed like the button, with at()). */
+.f-done.is-box {
+  justify-content: center;
+  border-radius: 0.6em;
+  background: var(--status-resolved-bg);
+}
+
+/* ——— 3. Chiffrer: a request requalified in the list, priced, sent ——— */
+.f-list {
+  padding: 1em 1.1em;
+  border: 1px solid var(--border);
+  border-radius: 0.9em;
+  background: var(--paper);
+  box-shadow: 0 1em 2.5em rgba(17, 17, 17, 0.1);
+}
+.f-list small {
+  color: var(--graphite);
+  font-size: 0.82em;
+  font-weight: 600;
+}
+.f-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0 0.7em;
+  border-radius: 0.6em;
+  font-size: 0.95em;
+}
+/* The row picked by the cursor stays lit. */
+.f-pick {
+  background: var(--status-scope-bg);
+  animation: f-pick 250ms ease calc(var(--at) + var(--lag, 0s)) both;
+}
+@keyframes f-pick {
+  from {
+    background: transparent;
+  }
+}
+.f-chip,
+.f-pill {
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3em;
+  border-radius: 999px;
+  font-size: 0.8em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.f-chip.is-in {
+  background: var(--status-resolved-bg);
+  color: var(--status-resolved-text);
+}
+.f-chip.is-out {
+  background: var(--paper);
+  color: var(--status-scope-text);
+  box-shadow: 0 0.2em 0.6em rgba(17, 17, 17, 0.12);
+}
+.f-chip.is-ask,
+.f-pill.is-ask {
+  background: var(--status-clarify-bg);
+  color: var(--status-clarify-text);
+}
+/* The days count up after the price. */
+@property --days {
+  syntax: "<integer>";
+  inherits: false;
+  initial-value: 3;
+}
+.f-days {
+  counter-reset: days var(--days);
+  animation: f-days 600ms steps(3) calc(3s + var(--lag, 0s)) both;
+}
+.f-days::before {
+  content: counter(days);
+}
+@keyframes f-days {
+  from {
+    --days: 0;
+  }
+}
+/* The quote leaves as a paper plane. */
+.f-plane {
+  z-index: 4;
+  color: var(--action-ui);
+  opacity: 0;
+  animation: f-plane 900ms var(--ease-out) calc(var(--at) + var(--lag, 0s)) both;
+}
+.f-plane svg {
+  display: block;
+  width: 1.8em;
+  height: 1.8em;
+}
+@keyframes f-plane {
+  0% {
+    opacity: 0;
+    transform: none;
+  }
+  10% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(16cqw, -48cqh) rotate(-18deg) scale(0.6);
+  }
+}
+
+/* ——— 4. Valider: a burst, the version validated, the journal ——— */
+.f-note {
+  margin-top: 0.3em;
+  color: var(--graphite);
+  font-size: 0.85em;
+}
+.f-burst {
+  z-index: 4;
+  width: 0;
+  height: 0;
+}
+.f-burst i {
+  position: absolute;
+  top: -0.22em;
+  left: -0.22em;
+  width: 0.45em;
+  height: 0.45em;
+  border-radius: 50%;
+  background: var(--action-fill);
+  opacity: 0;
+  animation: f-burst 700ms var(--ease-out) calc(var(--at) + var(--lag, 0s)) both;
+}
+.f-burst i:nth-child(2n) {
+  background: var(--attention-fill);
+}
+.f-burst i:nth-child(3n) {
+  background: var(--status-resolved-text);
+}
+@keyframes f-burst {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--r)) translateX(0);
+  }
+  10% {
+    opacity: 1;
+    transform: rotate(var(--r)) translateX(0.6em);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--r)) translateX(4.5em) scale(0.4);
+  }
+}
+.f-version {
+  display: grid;
+  align-content: center;
+  padding: 0 1.1em;
+  border: 1px solid var(--border);
+  border-radius: 0.9em;
+  background: var(--paper);
+  box-shadow: 0 1em 2.5em rgba(17, 17, 17, 0.1);
+}
+.f-version b {
+  font: 700 1.15em var(--font-display);
+}
+.f-version small {
+  color: var(--graphite);
+  font-size: 0.8em;
+}
+.f-pill.is-ok {
+  background: var(--status-resolved-text);
+  color: var(--paper);
+}
+.f-pill svg {
+  width: 1em;
+  height: 1em;
+}
+
+/* The deliverable, as a card of Kora: a preview of the page, then its name, kind and version. */
+.f-deliv {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 0.9em;
+  background: var(--paper);
+  box-shadow: 0 1em 2.5em rgba(17, 17, 17, 0.12);
+  overflow: hidden;
+}
+.f-deliv-thumb {
+  position: relative;
+  flex: 1;
+  margin: 0.45em 0.45em 0;
+  border-radius: 0.6em;
+  background: var(--status-clarify-bg);
+  overflow: hidden;
+}
+.f-deliv-page {
+  position: absolute;
+  inset: 0.7em 0.7em 0;
+  display: grid;
+  grid-template-columns: 1fr 0.9fr;
+  grid-template-rows: auto 1fr;
+  gap: 0.4em;
+  padding: 0.6em;
+  border-radius: 0.45em 0.45em 0 0;
+  background: var(--paper);
+  box-shadow: 0 0.3em 0.9em rgba(17, 17, 17, 0.08);
+}
+.f-deliv-page i {
+  grid-column: 1 / -1;
+  width: 38%;
+  height: 0.35em;
+  border-radius: 1em;
+  background: var(--mist);
+}
+.f-deliv-page b {
+  align-self: center;
+  font: 700 0.95em / 1.05 var(--font-display);
+  letter-spacing: -0.02em;
+}
+.f-deliv-page svg {
+  align-self: center;
+  width: 100%;
+}
+.f-deliv-thumb .f-fill {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  height: 0.3em;
+  background: var(--action-ui);
+  transform-origin: left;
+}
+.f-deliv-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5em;
+  padding: 0.6em 0.8em 0.7em;
+}
+.f-deliv-meta b {
+  display: block;
+  font-weight: 600;
+}
+.f-deliv-meta small {
+  color: var(--graphite);
+  font-size: 0.78em;
+}
+.f-deliv-meta em {
+  padding: 0.2em 0.5em;
+  border-radius: 0.4em;
+  background: var(--status-low-bg);
+  color: var(--status-low-text);
+  font: 600 0.78em var(--font-mono);
+  font-style: normal;
+}
+
+/* ——— Motion: where each piece comes from, at its own time (--at), after its tile's lag ——— */
+.f-pop {
+  animation: f-pop 450ms var(--ease-spring) calc(var(--at) + var(--lag, 0s)) both;
+}
+.f-rise {
+  animation: f-rise 500ms var(--ease-out) calc(var(--at) + var(--lag, 0s)) both;
+}
+.f-drop {
+  animation: f-drop 550ms var(--ease-spring) calc(var(--at) + var(--lag, 0s)) both;
+}
+.f-press {
+  animation: f-press 300ms var(--ease-out) calc(var(--at) + var(--lag, 0s)) both;
+}
+.f-leave {
+  opacity: 0;
+  animation: f-out 220ms ease calc(var(--leave) + var(--lag, 0s)) both;
+}
+.f-press.f-leave {
+  animation:
+    f-press 300ms var(--ease-out) calc(var(--at) + var(--lag, 0s)) both,
+    f-out 220ms ease calc(var(--leave) + var(--lag, 0s)) both;
+}
+.f-type {
+  display: inline-block;
+  animation: f-type var(--dur) steps(var(--steps)) calc(var(--at) + var(--lag, 0s)) both;
+}
+.f-fill {
+  animation: f-fill var(--dur) linear calc(var(--at) + var(--lag, 0s)) both;
+}
+
+@keyframes f-pop {
+  from {
+    opacity: 0;
+    transform: translateY(0.6em) scale(0.94);
+  }
+}
+@keyframes f-rise {
+  from {
+    opacity: 0;
+    transform: translateY(1em);
+  }
+}
+@keyframes f-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-1.5em) scale(0.8);
+  }
+}
+@keyframes f-press {
+  50% {
+    scale: 0.93;
+  }
+}
+@keyframes f-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes f-type {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes f-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes f-count {
+  from {
+    --amount: 0;
+  }
+}
+@keyframes f-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+
+@keyframes f-ripple {
+  from {
+    opacity: 1;
+    scale: 0.4;
+  }
+  to {
+    opacity: 0;
+    scale: 1.6;
+  }
+}
+
+/* The cursor's path in each scene: glide, press, glide. Positions in % of the tile. */
+.is-0 .f-cursor {
+  animation: f-cursor-0 6s var(--ease-in-out) var(--lag, 0s) both;
+}
+.is-1 .f-cursor {
+  animation: f-cursor-1 6s var(--ease-in-out) var(--lag, 0s) both;
+}
+.is-2 .f-cursor {
+  animation: f-cursor-2 6s var(--ease-in-out) var(--lag, 0s) both;
+}
+.is-3 .f-cursor {
+  animation: f-cursor-3 6s var(--ease-in-out) var(--lag, 0s) both;
+}
+@keyframes f-cursor-0 {
+  0% {
+    opacity: 0;
+    transform: translate(17cqw, 66cqh);
+  }
+  4% {
+    opacity: 1;
+    transform: translate(17cqw, 66cqh);
+  }
+  7% {
+    transform: translate(17cqw, 66cqh) scale(0.85);
+  }
+  26% {
+    transform: translate(67cqw, 46cqh) scale(0.85);
+  }
+  29% {
+    transform: translate(67cqw, 46cqh);
+  }
+  40% {
+    transform: translate(67cqw, 46cqh);
+  }
+  57% {
+    transform: translate(81.5cqw, 68.5cqh);
+  }
+  58.5% {
+    transform: translate(81.5cqw, 68.5cqh) scale(0.85);
+  }
+  61% {
+    opacity: 1;
+    transform: translate(81.5cqw, 68.5cqh);
+  }
+  80%,
+  100% {
+    opacity: 0;
+    transform: translate(86cqw, 82cqh);
+  }
+}
+@keyframes f-cursor-1 {
+  0% {
+    opacity: 0;
+    transform: translate(85cqw, 96cqh);
+  }
+  5% {
+    opacity: 1;
+    transform: translate(85cqw, 96cqh);
+  }
+  19% {
+    transform: translate(36cqw, 72cqh);
+  }
+  21% {
+    transform: translate(36cqw, 72cqh) scale(0.85);
+  }
+  24% {
+    opacity: 1;
+    transform: translate(36cqw, 72cqh);
+  }
+  40%,
+  100% {
+    opacity: 0;
+    transform: translate(44cqw, 90cqh);
+  }
+}
+@keyframes f-cursor-2 {
+  0% {
+    opacity: 0;
+    transform: translate(88cqw, 95cqh);
+  }
+  4% {
+    opacity: 1;
+    transform: translate(88cqw, 95cqh);
+  }
+  17% {
+    transform: translate(43.25cqw, 50.5cqh);
+  }
+  19% {
+    transform: translate(43.25cqw, 50.5cqh) scale(0.85);
+  }
+  22% {
+    transform: translate(43.25cqw, 50.5cqh);
+  }
+  45% {
+    transform: translate(43.25cqw, 50.5cqh);
+  }
+  60% {
+    transform: translate(75.5cqw, 71.5cqh);
+  }
+  62% {
+    transform: translate(75.5cqw, 71.5cqh) scale(0.85);
+  }
+  65% {
+    opacity: 1;
+    transform: translate(75.5cqw, 71.5cqh);
+  }
+  82%,
+  100% {
+    opacity: 0;
+    transform: translate(80cqw, 86cqh);
+  }
+}
+@keyframes f-cursor-3 {
+  0% {
+    opacity: 0;
+    transform: translate(70cqw, 95cqh);
+  }
+  4% {
+    opacity: 1;
+    transform: translate(70cqw, 95cqh);
+  }
+  18% {
+    transform: translate(39.5cqw, 73.5cqh);
+  }
+  20.5% {
+    transform: translate(39.5cqw, 73.5cqh) scale(0.85);
+  }
+  23% {
+    opacity: 1;
+    transform: translate(39.5cqw, 73.5cqh);
+  }
+  40%,
+  100% {
+    opacity: 0;
+    transform: translate(46cqw, 90cqh);
+  }
+}
+
+/* Less motion: the scenes do not play (Film.tsx); each shows its last frame. */
+@media (prefers-reduced-motion: reduce) {
+  .lp-move-scene *,
+  .lp-move-scene *::before {
+    animation: none !important;
+  }
+  .f-cursor,
+  .f-ripple {
+    display: none;
+  }
+}
+
+
+@media (max-width: 760px) {
+  .lp-moves {
+    grid-template-columns: 1fr;
+  }
+}

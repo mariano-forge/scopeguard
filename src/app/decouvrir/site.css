@@ -1,0 +1,178 @@
+/*
+ * The public site's header and footer (SiteChrome.tsx): the landing page, the demo page and the
+ * sign-in page share them. Tokens only; motion only for a real pointer, none under reduced motion.
+ */
+
+.lp-nav,
+.lp-footer {
+  --lp-max: 1180px;
+  --lp-pad: clamp(20px, 4vw, 40px);
+}
+
+/* ——— Header: transparent on top, a soft bar once the page scrolls ——— */
+.lp-nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding: 14px var(--lp-pad);
+  transition: padding 250ms var(--ease-out);
+}
+.lp-nav-inner {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  max-width: var(--lp-max);
+  margin: 0 auto;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  transition:
+    background-color 250ms ease,
+    border-color 250ms ease,
+    box-shadow 250ms ease;
+}
+.lp-nav[data-scrolled] {
+  padding-top: 10px;
+}
+.lp-nav[data-scrolled] .lp-nav-inner {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--paper) 86%, transparent);
+  box-shadow: 0 8px 30px rgba(17, 17, 17, 0.06);
+  backdrop-filter: blur(16px) saturate(1.4);
+}
+.lp-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  font: 700 19px var(--font-display);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+/* Turns with the scroll (SiteNav writes --spin on the page), and a third of a turn more under the pointer. */
+.lp-brand-mark {
+  width: 24px;
+  height: 24px;
+  transform: rotate(var(--spin, 0deg));
+  transition: rotate 600ms var(--ease-spring);
+}
+@media (hover: hover) and (pointer: fine) {
+  .lp-brand:hover .lp-brand-mark {
+    rotate: 120deg;
+  }
+}
+.lp-nav-links {
+  display: flex;
+  gap: 4px;
+}
+.lp-nav-links a,
+.lp-nav-login {
+  padding: 8px 12px;
+  border-radius: 9px;
+  color: var(--graphite);
+  font: 500 15px var(--font-ui);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .lp-nav-links a:hover,
+  .lp-nav-login:hover {
+    color: var(--ink);
+    background: var(--mist);
+  }
+}
+.lp-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.lp-nav .lp-nav-button {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  transition:
+    transform 160ms var(--ease-out),
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+.lp-nav .lp-nav-button:active {
+  transform: scale(0.97);
+}
+
+/* ——— Footer ——— */
+.lp-footer {
+  max-width: var(--lp-max);
+  margin: clamp(64px, 8vw, 104px) auto 0;
+  padding: 0 var(--lp-pad) 40px;
+}
+.lp-footer-inner {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 32px;
+  padding-top: 48px;
+  border-top: 1px solid var(--border);
+}
+.lp-footer-brand p {
+  max-width: 300px;
+  margin: 12px 0 0;
+  color: var(--graphite);
+  font: 400 15px / 1.5 var(--font-ui);
+}
+.lp-footer nav {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+.lp-footer nav b {
+  font: 600 14px var(--font-ui);
+}
+.lp-footer nav a {
+  color: var(--graphite);
+  font: 400 15px var(--font-ui);
+  text-decoration: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .lp-footer nav a:hover {
+    color: var(--ink);
+  }
+}
+.lp-footer-legal {
+  margin: 40px 0 0;
+  color: var(--graphite);
+  font: 400 13px var(--font-ui);
+}
+
+@media (max-width: 1200px) {
+  .lp-nav-links {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .lp-footer-inner {
+    grid-template-columns: 1fr 1fr;
+  }
+  .lp-footer-brand {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 600px) {
+  .lp-nav {
+    padding-inline: 12px;
+  }
+  .lp-nav-login,
+  .lp-nav-demo {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-brand-mark {
+    transform: none;
+    transition: none;
+  }
+}

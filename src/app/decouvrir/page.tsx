@@ -1,365 +1,288 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowRight, BadgeEuro, Check, FileCheck2, KeyRound, Link2, Lock, MessageSquareText, MousePointerClick, ScrollText } from "lucide-react";
+import { BadgeEuro, Check, MessagesSquare, MousePointer2, ScrollText, X } from "lucide-react";
 import { KoraMark } from "@/components/KoraMark";
-import { Button } from "@/components/ui/button";
-import { DemoButton } from "./DemoButton";
+import { Faq } from "./Faq";
+import { Film } from "./Film";
+import { CardVisual, ClientVisual } from "./Mockups";
 import { RevealRoot } from "./Reveal";
+import { SiteFooter, SiteNav } from "./SiteChrome";
+import { Start } from "./Start";
 import "./landing.css";
 
 export const metadata: Metadata = {
-  title: "Kora · Chaque retour client devient une décision",
+  title: "Kora · Gardez le scope de vos projets sous contrôle",
   description:
-    "Kora place la discussion sur le livrable, qualifie chaque demande — incluse ou hors scope — et fait accepter le supplément avant que le travail commence. Pour les agences qui travaillent au forfait.",
-  openGraph: { title: "Kora · Chaque retour client devient une décision", description: "La revue client qui protège votre marge.", locale: "fr_FR", type: "website" },
+    "Repérez chaque demande hors devis et faites-la valider en un clic : votre marge reste intacte, et votre client sait ce qu’il paie.",
+  openGraph: { title: "Kora · Gardez le scope de vos projets sous contrôle", description: "La revue client, au même endroit pour l’agence et pour le client.", locale: "fr_FR", type: "website" },
 };
 
-/** What a visitor sees at "/" (src/proxy.ts rewrites it here without a session): the case for Kora, then a demo or the sign-in. */
+const delay = (index: number) => ({ "--i": index }) as React.CSSProperties;
+
+/** Where each word of the title starts from before it settles: offsets and tilts, fixed (no randomness in render). */
+const scatter = [
+  [-18, 26, -7],
+  [10, -30, 9],
+  [24, 34, -12],
+  [-14, -22, 6],
+  [20, 28, -5],
+  [-26, -18, 8],
+  [16, 30, -6],
+  [-22, -26, 7],
+];
+
+/** A collaborator's cursor, anchored on a word of the title: it comes, selects the word, leaves. */
+function Collaborator({ name, side }: { name: string; side: "client" | "agency" }) {
+  return (
+    <span className={`lp-cursor is-${side}`}>
+      <MousePointer2 />
+      <b>{name}</b>
+    </span>
+  );
+}
+
+/**
+ * The title's words, each in its own box, starting from its place in `scatter` (from `first` on);
+ * `picked` words get selected by a collaborator's cursor, in a loop.
+ */
+function settle(words: string[], first: number, picked: Record<string, React.ReactNode> = {}) {
+  return words.map((word, index) => {
+    const [x, y, r] = scatter[first + index];
+    const cursor = picked[word];
+    return (
+      <span
+        key={word}
+        className={`lp-word ${cursor ? "is-picked" : ""}`}
+        style={{ "--x": `${x}px`, "--y": `${y}px`, "--r": `${r}deg`, "--w": first + index } as React.CSSProperties}
+      >
+        {word}
+        {cursor}
+      </span>
+    );
+  });
+}
+
+type Tone = "is-in" | "is-out" | "is-ask";
+const label: Record<Tone, string> = { "is-in": "Inclus", "is-out": "Hors scope", "is-ask": "À clarifier" };
+
+/** Remarks every project gets, each as Kora sorts it. */
+const remarks: [string, string, Tone][][] = [
+  [
+    ["CM", "Le logo est trop petit sur mobile.", "is-in"],
+    ["AM", "On peut ajouter une page FAQ ?", "is-out"],
+    ["JD", "C’est quoi ce bleu ?", "is-ask"],
+    ["CM", "Remplacez la photo d’équipe.", "is-in"],
+    ["AM", "Et une version anglaise ?", "is-out"],
+    ["JD", "Le bouton ne mène nulle part.", "is-in"],
+  ],
+  [
+    ["AM", "Il manque les mentions légales.", "is-in"],
+    ["CM", "On voudrait un blog aussi.", "is-out"],
+    ["JD", "Plus de peps dans le titre ?", "is-ask"],
+    ["AM", "Ajoutez nos réseaux sociaux.", "is-in"],
+    ["CM", "Une animation au survol ?", "is-out"],
+    ["JD", "On n’est pas sûrs de la police.", "is-ask"],
+  ],
+];
+
+/** What a visitor sees at "/" (src/proxy.ts rewrites it here without a session). */
 export default function LandingPage() {
-  const title = ["Chaque", "retour", "client", "devient", "une"];
-  const messages = [
-    ["JD", "Juste une petite modif : ajouter une section témoignages."],
-    ["CM", "C’était pas compris dans le devis ?"],
-    ["PL", "On avait validé quelle version, déjà ?"],
-    ["SB", "Tu peux me renvoyer le PDF avec mes commentaires ?"],
-    ["AR", "Ça prend cinq minutes, non ?"],
-    ["CM", "Je pensais que c’était inclus."],
-    ["JD", "Mon associé veut aussi changer le logo."],
-    ["PL", "Voir mes remarques dans le mail du 12, en bas."],
-    ["SB", "Pour la facture, on avait dit quoi ?"],
-    ["AR", "Le bouton bleu, mais plus bleu."],
+  const avoided = [
+    { icon: MessagesSquare, pain: "Les retours éparpillés", answer: "Tout se dit sur le livrable, à l’endroit exact." },
+    { icon: BadgeEuro, pain: "Le travail fait sans accord", answer: "Chaque ajout est chiffré et accepté avant." },
+    { icon: ScrollText, pain: "Les « on n’avait jamais dit ça »", answer: "Un historique commun fait foi." },
+  ];
+  const cards = [
+    { kind: "precise", tone: "is-blue", title: "Des retours précis", text: "Fini les captures annotées et les PDF « v3-bis »." },
+    { kind: "scope", tone: "is-violet", title: "Le hors scope repéré", text: "Chaque demande est classée avant d’être traitée." },
+    { kind: "quote", tone: "is-yellow", title: "Des devis sans relance", text: "Le prix part du commentaire qui l’a motivé." },
+    { kind: "proof", tone: "is-green", title: "Une preuve pour tout", text: "Qui a demandé quoi, et qui a validé quand." },
+  ] as const;
+  const compared = [
+    ["Livrables", "Des pièces jointes et des liens partout", "Une page par livrable, chaque version gardée"],
+    ["Retours", "E-mails, appels, PDF annotés", "Sur le livrable, à l’endroit exact"],
+    ["Hors scope", "Repéré après coup", "Qualifié dès la demande"],
+    ["Devis", "Relances et oublis", "Envoyé et accepté en ligne"],
+    ["Transparence", "Chacun sa version des faits", "Le même historique pour tous"],
   ];
 
   return (
     <RevealRoot>
-      <a className="landing-skip" href="#contenu">
+      <a className="lp-skip" href="#contenu">
         Aller au contenu
       </a>
-
-      <header className="landing-nav">
-        <Link href="/" className="landing-brand" aria-label="Kora, accueil">
-          <KoraMark className="size-6" />
-          <span>Kora</span>
-        </Link>
-        <nav aria-label="Sections">
-          <a href="#etapes">Comment ça marche</a>
-          <a href="#difference">Pourquoi Kora</a>
-          <a href="#preuve">La preuve</a>
-        </nav>
-        <div className="landing-nav-actions">
-          <Button asChild variant="ghost" size="lg">
-            <Link href="/connexion">Se connecter</Link>
-          </Button>
-          <DemoButton />
-        </div>
-      </header>
+      <SiteNav />
 
       <main id="contenu">
-        {/* ——— Hero: the promise, then the whole story in one animated scene ——— */}
-        <section className="landing-section landing-hero" aria-labelledby="hero-title">
-          <div className="landing-hero-copy">
-            <p className="landing-eyebrow">Pour les agences qui travaillent au forfait</p>
-            <h1 id="hero-title">
-              {title.map((word, index) => (
-                <span key={word}>
-                  <span className="landing-word" style={{ "--i": index } as React.CSSProperties}>
-                    {word}
-                  </span>{" "}
-                </span>
-              ))}
-              <span className="landing-word" style={{ "--i": title.length } as React.CSSProperties}>
-                <span className="landing-hl">décision.</span>
+        <section className="lp-hero" aria-labelledby="lp-hero-title">
+          <div className="lp-hero-copy">
+            {/* Words arrive out of line, then snap into place: control. Then collaborators come and select words. */}
+            <h1 id="lp-hero-title" className="lp-settle" aria-label="Gardez le scope de vos projets sous contrôle.">
+              <span className="lp-settle-line" aria-hidden="true">
+                {settle(["Gardez", "le", "scope", "de", "vos", "projets"], 0, { scope: <Collaborator name="Claire · cliente" side="client" /> })}
+              </span>
+              <span className="lp-settle-line" aria-hidden="true">
+                {settle(["sous", "contrôle."], 6, { "contrôle.": <Collaborator name="Studio Bloom" side="agency" /> })}
               </span>
             </h1>
-            <p className="landing-lead">
-              Kora place la discussion directement sur le livrable. Vous qualifiez chaque demande — incluse, ou hors scope et chiffrée — et le client accepte le
-              supplément avant que le travail commence.
+            <p className="lp-lead lp-in" style={delay(2)}>
+              Repérez chaque demande hors devis et faites-la valider en un clic&nbsp;: votre marge reste intacte, et votre client sait ce qu’il paie.
             </p>
-            <div className="landing-actions">
-              <DemoButton className="landing-cta" />
-              <Button asChild variant="outline" size="lg" className="landing-cta">
-                <Link href="/connexion">
-                  Se connecter <ArrowRight />
-                </Link>
-              </Button>
+            <div className="lp-in" style={delay(3)}>
+              <Start id="lp-start-hero" />
             </div>
-            <p className="landing-note">Vos clients n’ont ni compte ni mot de passe à créer : un lien, un code reçu par e-mail.</p>
-          </div>
-
-          <div className="landing-hero-art">
-            <div className="scene" aria-hidden="true">
-              <div className="scene-page">
-                <i style={{ width: "38%" }} />
-                <div className="scene-block" />
-                <i style={{ width: "92%" }} />
-                <i style={{ width: "84%" }} />
-                <i style={{ width: "60%" }} />
-                <span className="scene-pin">CM</span>
-                <div className="scene-bubble">
-                  <b>Claire · cliente</b>
-                  Peut-on ajouter une section témoignages ?
-                </div>
-              </div>
-              <div className="scene-panel">
-                <span className="scene-chip">Hors scope · ajout à chiffrer</span>
-                <div className="scene-quote">
-                  <span>Section témoignages</span>
-                  <b>850 € HT · + 3 jours</b>
-                  <i className="scene-send">Envoyer la proposition</i>
-                </div>
-                <span className="scene-ok">
-                  <Check /> Acceptée par la cliente
-                </span>
-              </div>
-            </div>
-            <p className="scene-caption">Un commentaire, une qualification, un devis accepté. Avant la première heure de travail.</p>
           </div>
         </section>
 
-        {/* ——— The messages every agency has already received ——— */}
-        <section className="landing-marquee" aria-labelledby="marquee-title">
-          <div className="landing-section landing-marquee-head">
-            <h2 id="marquee-title" className="reveal">
-              Vous les avez déjà reçus.
+        <section id="fonctionnement" className="lp-section" aria-labelledby="lp-film-title">
+          <Film />
+        </section>
+
+        <section id="promesse" className="lp-section" aria-labelledby="lp-promise-title">
+          <div className="lp-head">
+            <h2 id="lp-promise-title" className="reveal">
+              Ce que Kora vous évite
             </h2>
-            <p className="landing-lead reveal" style={{ "--i": 1 } as React.CSSProperties}>
-              Chacun de ces messages a coûté des heures non facturées à une agence. Kora en fait une demande, puis une décision.
+            <p className="lp-sub reveal" style={delay(1)}>
+              Avec Kora, chaque retour se range en un clic. Simple pour vous, évident pour vos clients.
             </p>
           </div>
-          {[messages.slice(0, 5), messages.slice(5)].map((row, rowIndex) => (
-            <div key={rowIndex} className={`landing-marquee-row ${rowIndex === 1 ? "is-reverse" : ""}`}>
-              {[0, 1].map((copy) => (
-                <div key={copy} className="landing-marquee-track" aria-hidden={copy === 1 || rowIndex === 1}>
-                  {row.map(([initials, text]) => (
-                    <span key={text} className="landing-msg">
-                      <i>{initials}</i>
-                      {text}
+          <div className="lp-marquee reveal" style={delay(2)} aria-hidden="true">
+            {remarks.map((row, index) => (
+              <div key={index} className={`lp-marquee-row ${index % 2 ? "is-reverse" : ""}`}>
+                <div className="lp-marquee-track">
+                  {[...row, ...row].map(([who, text, tone], position) => (
+                    <span key={position} className="lp-remark">
+                      <i>{who}</i>«&nbsp;{text}&nbsp;»<em className={tone}>{label[tone]}</em>
                     </span>
                   ))}
                 </div>
-              ))}
-            </div>
-          ))}
-        </section>
-
-        {/* ——— How it works: three steps, told with the product's own pieces ——— */}
-        <section id="etapes" className="landing-section" aria-labelledby="etapes-title">
-          <p className="landing-eyebrow reveal">Comment ça marche</p>
-          <h2 id="etapes-title" className="reveal" style={{ "--i": 1 } as React.CSSProperties}>
-            Trois gestes, et le hors scope ne se cache plus.
-          </h2>
-          <div className="landing-steps">
-            <article className="landing-step reveal" style={{ "--i": 2 } as React.CSSProperties}>
-              <span className="landing-step-n">01</span>
-              <div className="landing-step-art" aria-hidden="true">
-                <div className="art-share">
-                  <span className="art-mail">
-                    <Link2 /> c•••••@client.fr
-                  </span>
-                  <span className="art-code">482 913</span>
-                </div>
               </div>
-              <h3>Partagez un lien</h3>
-              <p>Importez un PDF, une image ou une page de votre site de staging. Le client reçoit un lien et un code par e-mail. Rien à installer, rien à apprendre.</p>
-            </article>
-            <article className="landing-step reveal" style={{ "--i": 3 } as React.CSSProperties}>
-              <span className="landing-step-n">02</span>
-              <div className="landing-step-art" aria-hidden="true">
-                <div className="art-page">
-                  <i style={{ width: "70%" }} />
-                  <i style={{ width: "50%" }} />
-                  <span className="art-pin">
-                    <MousePointerClick />
-                  </span>
-                  <span className="art-note">Le logo est trop petit.</span>
-                </div>
-              </div>
-              <h3>Le client commente à l’endroit exact</h3>
-              <p>Un clic sur la maquette, un commentaire. Fini les captures annotées à la main, les PDF « v3-bis » et les remarques en bas d’un e-mail.</p>
-            </article>
-            <article className="landing-step reveal" style={{ "--i": 4 } as React.CSSProperties}>
-              <span className="landing-step-n">03</span>
-              <div className="landing-step-art" aria-hidden="true">
-                <div className="art-decide">
-                  <span className="art-choice is-in">Inclus</span>
-                  <span className="art-choice is-out">Hors scope</span>
-                  <span className="art-accepted">
-                    <BadgeEuro /> 850 € HT · acceptée
-                  </span>
-                </div>
-              </div>
-              <h3>Vous qualifiez, le client accepte</h3>
-              <p>Inclus, ou hors scope. Le devis part du commentaire lui-même ; le client l’accepte ou le refuse avant que votre équipe commence.</p>
-            </article>
+            ))}
           </div>
+          <ul className="lp-avoided">
+            {avoided.map(({ icon: Icon, pain, answer }, index) => (
+              <li key={pain} className="reveal" style={delay(index)}>
+                <span className="lp-avoided-icon">
+                  <Icon />
+                </span>
+                <s>{pain}</s>
+                <span>{answer}</span>
+              </li>
+            ))}
+          </ul>
         </section>
 
-        {/* ——— Before / after: the same request, without Kora and with it ——— */}
-        <section id="difference" className="landing-section" aria-labelledby="difference-title">
-          <p className="landing-eyebrow reveal">Pourquoi Kora</p>
-          <h2 id="difference-title" className="reveal" style={{ "--i": 1 } as React.CSSProperties}>
-            La même demande, racontée deux fois.
-          </h2>
-          <div className="landing-compare">
-            <div className="compare-card is-before reveal" style={{ "--i": 2 } as React.CSSProperties} aria-label="Sans Kora">
-              <p className="compare-title">
-                <span>Sans Kora</span>
-                <span>Boîte mail</span>
-              </p>
-              <ul className="compare-mails">
-                <li>
-                  <i>CM</i>
-                  <b>Re: Re: Re: maquette v3 FINAL (2)</b>
-                  <time>lun. 09:12</time>
-                </li>
-                <li>
-                  <i>AM</i>
-                  <b>RE: section témoignages ??</b>
-                  <time>lun. 11:40</time>
-                </li>
-                <li>
-                  <i>CM</i>
-                  <b>Tr: PDF annoté (v3-bis)</b>
-                  <time>mar. 08:05</time>
-                </li>
-                <li>
-                  <i>AM</i>
-                  <b>Devis complément — à valider</b>
-                  <time>mar. 14:22</time>
-                </li>
-                <li>
-                  <i>CM</i>
-                  <b>C’était pas inclus ?</b>
-                  <time>jeu. 17:30</time>
-                </li>
-              </ul>
-              <p className="compare-foot">14 e-mails · 3 PDF · 0 preuve</p>
-            </div>
-            <div className="compare-card is-after reveal" style={{ "--i": 3 } as React.CSSProperties} aria-label="Avec Kora">
-              <p className="compare-title">
-                <span>Avec Kora</span>
-                <span>Sur le livrable</span>
-              </p>
-              <ul className="compare-rows">
-                <li>
-                  <Check /> Une demande, à l’endroit exact
-                </li>
-                <li>
-                  <Check /> Une qualification : hors scope
-                </li>
-                <li>
-                  <Check /> Un devis accepté avant le travail
-                </li>
-                <li>
-                  <Check /> Une preuve horodatée
-                </li>
-              </ul>
-              <p className="compare-foot">Et une facture qui ne surprend personne.</p>
-            </div>
-          </div>
-        </section>
-
-        {/* ——— Proof: the journal that settles the "it was included" conversation ——— */}
-        <section id="preuve" className="landing-section landing-proof" aria-labelledby="preuve-title">
-          <div className="landing-proof-copy">
-            <p className="landing-eyebrow reveal">La preuve</p>
-            <h2 id="preuve-title" className="reveal" style={{ "--i": 1 } as React.CSSProperties}>
-              Une preuve, pas un souvenir.
+        <section className="lp-section" aria-labelledby="lp-cards-title">
+          <div className="lp-head">
+            <h2 id="lp-cards-title" className="lp-one-line reveal">
+              Moins d’allers-retours, plus de décisions.
             </h2>
-            <p className="landing-lead reveal" style={{ "--i": 2 } as React.CSSProperties}>
-              Chaque commentaire, qualification, devis et validation est horodaté dans un journal en ajout seul. Quand un client demande « on avait dit quoi ? », la
-              réponse existe déjà.
+          </div>
+          <div className="lp-cards">
+            {cards.map((card, index) => (
+              <article key={card.kind} className="lp-card reveal" style={delay(index % 2)}>
+                <div className={`lp-card-art ${card.tone}`} aria-hidden="true">
+                  <CardVisual kind={card.kind} />
+                </div>
+                <h3>{card.title}</h3>
+                <p>{card.text}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="lp-section" aria-labelledby="lp-compare-title">
+          <div className="lp-head">
+            <h2 id="lp-compare-title" className="reveal">
+              Tout au même endroit.
+            </h2>
+            <p className="lp-sub reveal" style={delay(1)}>
+              Livrables, retours, devis, décisions&nbsp;: une seule page, la même pour l’agence et pour le client.
             </p>
-            <ul className="landing-checks reveal" style={{ "--i": 3 } as React.CSSProperties}>
-              <li>
-                <ScrollText /> Journal en ajout seul : rien ne s’efface, rien ne se réécrit
-              </li>
-              <li>
-                <FileCheck2 /> Synthèse exportable pour la facture
-              </li>
-              <li>
-                <Lock /> Version validée verrouillée, avec qui et quand
-              </li>
-            </ul>
           </div>
-          <ol className="landing-timeline reveal" style={{ "--i": 2 } as React.CSSProperties}>
-            <li>
-              <time>14 oct. 09:12</time>
-              <span>
-                <b>Claire M.</b> commente « Section témoignages » sur la page 2.
-              </span>
-            </li>
-            <li>
-              <time>14 oct. 11:40</time>
-              <span>
-                <b>Alex M.</b> qualifie la demande hors scope et envoie un devis : 850 € HT, + 3 jours.
-              </span>
-            </li>
-            <li>
-              <time>15 oct. 08:05</time>
-              <span>
-                <b>Claire M.</b> accepte le devis.
-              </span>
-            </li>
-            <li className="is-final">
-              <time>16 oct. 17:30</time>
-              <span>
-                <b>V03 validée</b> par Claire M. Le journal est figé.
-              </span>
-            </li>
-          </ol>
-        </section>
-
-        {/* ——— For the client: simpler than an e-mail ——— */}
-        <section className="landing-section landing-clients" aria-labelledby="clients-title">
-          <p className="landing-eyebrow reveal">Côté client</p>
-          <h2 id="clients-title" className="reveal" style={{ "--i": 1 } as React.CSSProperties}>
-            Plus simple qu’un e-mail. Pour eux aussi.
-          </h2>
-          <div className="landing-features">
-            <div className="landing-feature reveal" style={{ "--i": 2 } as React.CSSProperties}>
-              <KeyRound />
-              <h3>Un lien, un code</h3>
-              <p>Pas de compte, pas de mot de passe. Le client confirme son adresse avec un code à usage unique et commence.</p>
-            </div>
-            <div className="landing-feature reveal" style={{ "--i": 3 } as React.CSSProperties}>
-              <BadgeEuro />
-              <h3>Le prix avant le oui</h3>
-              <p>Pour une demande hors scope, il voit le montant et l’impact sur le planning, puis accepte, refuse ou propose autre chose.</p>
-            </div>
-            <div className="landing-feature reveal" style={{ "--i": 4 } as React.CSSProperties}>
-              <MessageSquareText />
-              <h3>Il valide, et ça s’arrête là</h3>
-              <p>La bonne version, validée en un clic par la personne qui décide. Les autres contribuent, sans pouvoir engager l’agence.</p>
-            </div>
+          <div className="lp-compare reveal" style={delay(2)}>
+            <table>
+              <thead>
+                <tr>
+                  <td />
+                  <th scope="col">Sans Kora</th>
+                  <th scope="col" className="is-kora">
+                    <KoraMark /> Avec Kora
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {compared.map(([topic, without, withKora]) => (
+                  <tr key={topic}>
+                    <th scope="row">{topic}</th>
+                    <td>
+                      <X aria-hidden="true" />
+                      {without}
+                    </td>
+                    <td className="is-kora">
+                      <Check aria-hidden="true" />
+                      {withKora}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </section>
 
-        {/* ——— Final call ——— */}
-        <section className="landing-final reveal" aria-labelledby="final-title">
-          <h2 id="final-title">Arrêtez de faire gratuitement ce qui n’était pas prévu.</h2>
-          <p>Une démo de trente minutes, sur vos propres livrables.</p>
-          <div className="landing-actions is-center">
-            <DemoButton className="landing-cta" />
-            <Button asChild variant="outline" size="lg" className="landing-cta">
-              <Link href="/connexion">Créer un compte</Link>
-            </Button>
+
+        <section id="client" className="lp-section lp-split" aria-labelledby="lp-client-title">
+          <div className="lp-split-copy">
+            <h2 id="lp-client-title" className="reveal">
+              Vos clients disent oui plus vite.
+            </h2>
+            <p className="lp-sub reveal" style={delay(1)}>
+              Ni compte ni formation&nbsp;: ils ouvrent le lien et commentent. Chaque supplément leur arrive chiffré, ils l’acceptent en un clic, et vous démarrez sans relancer.
+            </p>
+          </div>
+          <div className="lp-split-art reveal" style={delay(1)} aria-hidden="true">
+            <ClientVisual />
+          </div>
+        </section>
+
+        <section id="questions" className="lp-section lp-faq-section" aria-labelledby="lp-faq-title">
+          <div className="lp-head">
+            <h2 id="lp-faq-title" className="reveal">
+              Questions fréquentes
+            </h2>
+          </div>
+          <div className="reveal" style={delay(1)}>
+            <Faq />
+          </div>
+        </section>
+
+        <section className="lp-final reveal" aria-labelledby="lp-final-title">
+          <div className="lp-final-copy">
+            <h2 id="lp-final-title">Votre prochain projet mérite mieux qu’un fil d’e-mails.</h2>
+            <p>Créez votre espace et invitez un client sur un premier livrable.</p>
+            <Start id="lp-start-final" />
+          </div>
+          {/* The Kora mark, with what goes round it: requests sorted, priced, validated. */}
+          <div className="lp-orbit" aria-hidden="true">
+            <KoraMark className="lp-orbit-mark" />
+            <div className="lp-orbit-ring">
+              <span className="lp-orbit-slot" style={{ "--a": "-30deg" } as React.CSSProperties}>
+                <span className="lp-orbit-chip is-out">Hors scope · page FAQ</span>
+              </span>
+              <span className="lp-orbit-slot" style={{ "--a": "90deg" } as React.CSSProperties}>
+                <span className="lp-orbit-chip is-in">Devis accepté · 850&nbsp;€ HT</span>
+              </span>
+              <span className="lp-orbit-slot" style={{ "--a": "210deg" } as React.CSSProperties}>
+                <span className="lp-orbit-chip is-ok">
+                  <Check /> V03 validée par Claire
+                </span>
+              </span>
+            </div>
           </div>
         </section>
       </main>
 
-      <footer className="landing-footer">
-        <span className="landing-brand">
-          <KoraMark className="size-5" />
-          <span>Kora</span>
-        </span>
-        <span className="landing-footer-note">La revue client qui protège votre marge.</span>
-        <nav aria-label="Pied de page">
-          <Link href="/connexion">Se connecter</Link>
-          <a href="#etapes">Comment ça marche</a>
-          <a href="#preuve">La preuve</a>
-        </nav>
-      </footer>
+      <SiteFooter />
     </RevealRoot>
   );
 }

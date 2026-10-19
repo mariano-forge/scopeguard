@@ -1,13 +1,19 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { googleSignInEnabled } from "@/lib/auth";
+import { socialSignIns } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/session";
 import { agencyInvitation } from "@/lib/agencyInvitations";
 import { maskEmail } from "@/lib/maskEmail";
 import { AuthShell } from "@/components/AuthShell";
+import { SiteNav } from "../decouvrir/SiteChrome";
 import { SignInForm } from "./SignInForm";
 
 export const metadata: Metadata = { title: "Connexion · Kora" };
+
+/** An address typed on the landing page ("Commencer"), to fill in: a plausible e-mail, or nothing. */
+function startEmail(value: string | string[] | undefined) {
+  return typeof value === "string" && value.length <= 200 && /^[^\s@]+@[^\s@]+$/.test(value) ? value : undefined;
+}
 
 /** Where to go after signing in: a path of this site only (never "//other.site"). */
 function safeNext(value: string | string[] | undefined) {
@@ -24,11 +30,12 @@ export default async function SignInPage({ searchParams }: PageProps<"/connexion
   const invitation = invitationId ? await agencyInvitation(invitationId) : null;
 
   return (
-    <AuthShell>
+    <AuthShell nav={<SiteNav signIn={false} />}>
       <SignInForm
         next={next}
-        googleEnabled={googleSignInEnabled()}
+        providers={socialSignIns()}
         oauthError={typeof params.error === "string" ? params.error : undefined}
+        email={startEmail(params.email)}
         invitation={invitation && invitation.status === "pending" ? { maskedEmail: maskEmail(invitation.email), organizationName: invitation.organizationName } : undefined}
       />
     </AuthShell>

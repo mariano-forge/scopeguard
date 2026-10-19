@@ -37,7 +37,7 @@ export function RevealRoot({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <div ref={root} className="landing">
+    <div ref={root} className="lp">
       {children}
     </div>
   );

@@ -102,7 +102,7 @@ export function AccessGate({
   );
 
   return (
-    <AuthShell>
+    <AuthShell plain>
       {step === "email" && (
         <form className="grid gap-4" onSubmit={sendCode}>
           {heading("Confirmez votre adresse", "Pour protéger cette revue, nous envoyons un code à usage unique à votre adresse e-mail.")}
@@ -241,7 +241,7 @@ export function ProfileGate({ token, deliverable, email, onSaved }: { token: str
   }
 
   return (
-    <AuthShell>
+    <AuthShell plain>
       <form className="grid gap-4" onSubmit={save}>
         <div className="grid gap-1">
           <p className="text-xs font-semibold tracking-wide text-[var(--graphite)] uppercase">Revue · {deliverable || "livrable"}</p>

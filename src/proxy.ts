@@ -9,7 +9,7 @@ import { siteFramePath, siteFramePolicy } from "@/lib/securityHeaders";
 import { parentOrigin, siteAgencyCookie } from "@/lib/siteReview";
 
 /** Reachable without an agency session: the landing page, sign-in pages, the client review and what they load. */
-const publicPaths = [/^\/decouvrir$/, /^\/connexion$/, /^\/reinitialiser$/, /^\/review\//, /^\/api\/auth\//, /^\/api\/review\//, /^\/api\/files\//, /^\/api\/demo$/];
+const publicPaths = [/^\/decouvrir$/, /^\/demo$/, /^\/connexion$/, /^\/commencer$/, /^\/reinitialiser$/, /^\/review\//, /^\/api\/auth\//, /^\/api\/review\//, /^\/api\/files\//, /^\/api\/demo$/];
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

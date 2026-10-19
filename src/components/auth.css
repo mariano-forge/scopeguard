@@ -1,161 +1,522 @@
-/* AuthShell: brand panel + form. Tokens only; motion off under prefers-reduced-motion. */
+/*
+ * AuthShell. Split (the agency's pages): what Kora is for on the left, the form on the right.
+ * Plain (the client's pages): the form alone. Fields and buttons are the shadcn components as they
+ * are; only the shell's own pieces are styled here. Fits the screen. Tokens only.
+ */
 
 .auth {
   display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
-  min-height: 100vh;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 24px 16px;
   background: var(--canvas);
-}
-.auth-brand {
-  position: relative;
-  isolation: isolate;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: var(--s-8);
-  padding: clamp(24px, 4vw, 48px);
-  border-right: 1px solid var(--border);
-  background: var(--paper);
   color: var(--ink);
-  overflow: hidden;
 }
-/* Two soft halos, the action blue and the scope violet, drifting slowly behind the promise. */
-.auth-brand::before {
-  content: "";
-  position: absolute;
-  inset: -30% -20%;
-  z-index: -1;
-  background:
-    radial-gradient(closest-side at 25% 20%, color-mix(in srgb, var(--action-fill) 22%, transparent), transparent 70%),
-    radial-gradient(closest-side at 80% 85%, color-mix(in srgb, var(--status-scope-bg) 85%, transparent), transparent 70%);
-  animation: auth-glow 16s ease-in-out infinite alternate;
+.auth-column {
+  display: grid;
+  gap: 24px;
+  width: 100%;
+  max-width: 380px;
+  animation: auth-in 500ms var(--ease-out) both;
 }
 .auth-logo {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  color: inherit;
-  font: 700 20px var(--font-display);
+  gap: 9px;
+  justify-self: start;
+  color: var(--ink);
+  font: 700 19px var(--font-display);
+  letter-spacing: -0.01em;
   text-decoration: none;
 }
-.auth-promise {
-  max-width: 14ch;
-  margin: 0 0 28px;
-  font: 700 clamp(30px, 3.4vw, 44px) / 1.08 var(--font-display);
-  letter-spacing: -0.02em;
+.auth-logo svg {
+  width: 26px;
+  height: 26px;
+  transition: transform 600ms var(--ease-spring);
+}
+@media (hover: hover) and (pointer: fine) {
+  .auth-logo:hover svg {
+    transform: rotate(120deg);
+  }
+}
+.auth-logo:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+
+/* ——— Split ——— */
+/* Under the site's header (the sign-in page): the split takes what the header leaves. */
+.auth-page {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  min-height: 600px;
+  background: var(--canvas);
+}
+.auth-page .auth.is-split {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  padding-top: 0;
+}
+.auth.is-split {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  place-items: stretch;
+  height: 100dvh;
+  min-height: 560px;
+  padding: 12px;
+}
+
+.auth-form {
+  display: grid;
+  place-items: center;
+  padding: 24px clamp(16px, 4vw, 48px);
+  overflow-y: auto;
+}
+.auth-form-logo {
+  display: none;
+}
+/* One title and one quiet subtitle for the agency's pages, whatever their own markup. */
+.auth.is-split .auth-column h1 {
+  margin: 0;
+  font: 700 30px / 1.15 var(--font-display);
+  letter-spacing: -0.03em;
+}
+.auth.is-split .auth-column h1 + p {
+  margin-top: 6px;
+  color: var(--graphite);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+/* ——— Sign-in page (SignInForm) ——— */
+/* « Mot de passe oublié ? »: a quiet link, smaller than the field's label. */
+.auth-forgot {
+  color: var(--graphite);
+  font-size: 13px;
+  font-weight: 400;
+}
+.auth-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--graphite);
+  font: 400 13px var(--font-ui);
+}
+.auth-or::before,
+.auth-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.auth-switch {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 6px;
+  margin: 4px 0 0;
+  color: var(--graphite);
+  font: 400 14px var(--font-ui);
+}
+
+@keyframes auth-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The left side goes on a narrow screen: the form keeps the logo. */
+@media (max-width: 900px) {
+  .auth-page {
+    height: auto;
+  }
+  .auth.is-split {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100dvh;
+    padding: 0;
+  }
+  
+  .auth-form-logo {
+    display: block;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-column {
+    animation: auth-fade 300ms ease both;
+  }
+  .auth-logo svg {
+    transition: none;
+  }
+}
+@keyframes auth-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ——— The left side: why Kora, still, on Kora's « hors scope » violet ——— */
+
+/* ——— Split: the form on the left, Kora's interface on the right (a still shot, off the edges) ——— */
+.auth.is-split {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: 12px;
+}
+/* Without the illustration (hidden under 900 px), the form alone, centred: no empty column. */
+@media (max-width: 900px) {
+  .auth.is-split {
+    grid-template-columns: 1fr;
+  }
+}
+.auth.is-split .auth-form {
+  padding-inline: clamp(20px, 6vw, 96px);
+}
+.auth.is-split .auth-column {
+  max-width: 440px;
+}
+.auth.is-split .auth-column h1 {
+  font-size: clamp(34px, 3.6vw, 48px);
+  letter-spacing: -0.04em;
+}
+.auth.is-split .auth-column h1 + p {
+  margin-top: 10px;
+  font-size: 17px;
+}
+.auth-form-logo {
+  display: block;
+}
+
+@property --sorted-total {
+  syntax: "<integer>";
+  inherits: false;
+  initial-value: 830;
+}
+
+/* ——— The right side: Kora's blue, the pitch, then the four gestures on white ——— */
+.auth-shot {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  padding: clamp(28px, 4vw, 48px);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--status-low-text) 14%, transparent) 1px, transparent 1.5px) 0 0 / 22px 22px,
+    var(--status-low-bg);
+  overflow: hidden;
+}
+.auth-shot-title {
+  max-width: 18ch;
+  margin: 0;
+  font: 700 clamp(28px, 2.8vw, 40px) / 1.06 var(--font-display);
+  letter-spacing: -0.035em;
   text-wrap: balance;
 }
-.auth-flow {
+.auth-shot-title span {
+  color: var(--action-ui);
+}
+.auth-shot-text {
+  max-width: 420px;
+  margin: 0 0 10px;
+  color: var(--graphite);
+  font: 400 16px / 1.5 var(--font-ui);
+}
+.auth-film {
+  font-size: 14px;
+}
+/* The scenes on white, so they stand out from the blue. */
+.auth-film .lp-move-tile {
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--border);
+  background: var(--paper);
+  box-shadow: 0 18px 44px rgba(17, 17, 17, 0.08);
+}
+.auth-film .lp-move-text h3 {
+  margin: 0;
+  font: 700 17px var(--font-display);
+}
+@media (max-width: 900px) {
+  .auth-shot {
+    display: none;
+  }
+}
+
+
+/* What a new password must contain, ticked as it is typed (SignInForm, ResetPasswordForm). */
+.auth-rules {
   display: grid;
-  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 12px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--graphite);
+  font: 400 12px / 1.5 var(--font-ui);
+}
+.auth-rules li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.auth-rules li::before {
+  content: "";
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-input);
+  transition: background-color 150ms ease;
+}
+.auth-rules li[data-met] {
+  color: var(--status-resolved-text);
+}
+.auth-rules li[data-met]::before {
+  background: var(--status-resolved-text);
+}
+
+/* Account created: the confirmation screen (SignInForm). */
+.auth-sent {
+  display: grid;
+  gap: 18px;
+}
+.auth-sent-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--status-low-bg);
+  color: var(--status-low-text);
+}
+.auth-sent-icon .lucide {
+  width: 26px;
+  height: 26px;
+}
+.auth-sent b {
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.auth-sent-note {
+  margin: -6px 0 0;
+  color: var(--graphite);
+  font: 400 13px var(--font-ui);
+  text-align: center;
+}
+
+/* ——— A new agency's first steps (/bienvenue, /demarrer): progress, skip, colleagues invited ——— */
+.auth-progress {
+  display: grid;
+  gap: 8px;
+}
+.auth-progress ol {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.auth-flow li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--graphite);
-  font: 500 14px var(--font-ui);
-  animation: auth-step 0.7s var(--ease-spring) both;
-}
-.auth-flow li:nth-child(1) {
-  animation-delay: 0.25s;
-}
-.auth-flow li:nth-child(2) {
-  animation-delay: 0.5s;
-}
-.auth-flow li:nth-child(3) {
-  animation-delay: 0.75s;
-}
-.auth-flow-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--action-fill);
-}
-.auth-flow-chip {
-  padding: 6px 10px;
+.auth-progress li {
+  height: 4px;
   border-radius: 999px;
-  font: 600 13px var(--font-ui);
+  background: var(--border);
+  transition: background-color 200ms var(--ease-out);
 }
-.auth-flow-chip.is-scope {
-  background: var(--status-scope-bg);
-  color: var(--status-scope-text);
+.auth-progress li[data-done] {
+  background: var(--action-ui);
 }
-.auth-flow-chip.is-ok {
-  background: var(--status-resolved-bg);
-  color: var(--status-resolved-text);
-}
-.auth-brand-foot {
+.auth-progress p {
   margin: 0;
   color: var(--graphite);
-  font: 400 13px var(--font-ui);
+  font: 500 13px var(--font-ui);
 }
-.auth-panel {
+
+/* ——— /demarrer: one question per screen, a bar at the bottom (Onboarding.tsx) ——— */
+.ob {
   display: grid;
-  align-content: center;
-  justify-items: center;
-  gap: var(--s-6);
-  padding: clamp(24px, 5vw, 64px) var(--s-4);
+  grid-template-rows: auto 1fr auto;
+  min-height: 100dvh;
+  background: var(--canvas);
+  color: var(--ink);
 }
-.auth-mobile-brand {
-  display: none;
+.ob-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px clamp(16px, 4vw, 48px);
 }
-.auth-card {
+/* Buttons and fields of the onboarding share one radius, the buttons' (--r-button). */
+.ob-quit {
+  height: 40px;
+  padding-inline: 16px;
+  border-radius: var(--r-button);
+  font-size: 14px;
+}
+.ob-main {
+  display: grid;
+  place-items: center;
+  padding: 24px 16px 48px;
+}
+.ob-step {
+  display: grid;
+  gap: 16px;
   width: 100%;
-  max-width: 420px;
-  padding: clamp(24px, 3vw, 32px);
-  border: 1px solid var(--border);
-  border-radius: 16px;
+  max-width: 560px;
+  animation: ob-in-next 280ms var(--ease-out) both;
+}
+.ob-step[data-direction="back"] {
+  animation-name: ob-in-back;
+}
+.ob-eyebrow {
+  margin: 0;
+  color: var(--graphite);
+  font: 500 14px var(--font-ui);
+}
+.ob-step h1 {
+  margin: 0;
+  font: 700 clamp(30px, 4vw, 44px) / 1.1 var(--font-display);
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+.ob-lead {
+  margin: 0 0 16px;
+  color: var(--graphite);
+  font-size: 17px;
+  line-height: 1.5;
+}
+.ob-lead b {
+  color: var(--ink);
+  font-weight: 600;
+}
+/* A field the size of the question. */
+.ob-label {
+  margin: 0 0 -8px;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+/* A fieldset's legend sits outside its grid, with no gap after it. */
+.ob-emails > legend.ob-label {
+  margin-bottom: 8px;
+}
+.ob-step .ob-input {
+  height: 56px;
+  padding-inline: 16px;
+  border-radius: var(--r-button);
   background: var(--paper);
-  box-shadow: var(--shadow);
-  animation: auth-card-in 0.6s var(--ease-spring) both;
+  font-size: 18px;
 }
-@keyframes auth-card-in {
+.ob-emails {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.ob-email {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ob-add {
+  justify-self: start;
+  height: 36px;
+  padding-inline: 8px;
+  color: var(--action-ui);
+  font-weight: 500;
+}
+.ob-note {
+  margin: 8px 0 0;
+  color: var(--graphite);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.ob-error {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--status-high-bg);
+  color: var(--status-high-text);
+  font-size: 14px;
+}
+/* The bar at the bottom: the progress across the whole width, « Retour » on the left, « Suivant » on the right. */
+.ob-footer {
+  position: sticky;
+  bottom: 0;
+  background: var(--canvas);
+}
+.ob-progress {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.ob-progress span {
+  height: 4px;
+  background: var(--border);
+}
+.ob-progress span[data-done] {
+  background: var(--ink);
+  transition: background-color 300ms var(--ease-out);
+}
+.ob-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px clamp(16px, 4vw, 48px);
+}
+.ob-back {
+  height: auto;
+  padding: 0;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.ob-next {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ob-next button {
+  height: 48px;
+  border-radius: var(--r-button);
+  font-size: 16px;
+}
+.ob-submit {
+  min-width: 128px;
+  padding-inline: 24px;
+}
+@keyframes ob-in-next {
   from {
     opacity: 0;
-    transform: translateY(12px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: none;
+    transform: translateX(24px);
   }
 }
-@keyframes auth-step {
+@keyframes ob-in-back {
   from {
     opacity: 0;
-    transform: translateX(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes auth-glow {
-  to {
-    transform: translate3d(4%, -3%, 0) rotate(5deg);
-  }
-}
-@media (max-width: 900px) {
-  .auth {
-    grid-template-columns: 1fr;
-  }
-  .auth-brand {
-    display: none;
-  }
-  .auth-mobile-brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font: 700 18px var(--font-display);
+    transform: translateX(-24px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .auth-card,
-  .auth-flow li,
-  .auth-brand::before {
-    animation: none;
+  .ob-step,
+  .ob-step[data-direction="back"] {
+    animation-name: auth-fade;
   }
 }

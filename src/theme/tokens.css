@@ -24,7 +24,7 @@
   --action-text: #005593;
   --attention-fill: #ff795c;
   --attention-text: #a21d00;
-  --danger: #8d2615;
+  --danger: #d92d20;
   /* Starred items: yellow fill, outlined with --status-medium-text so the star keeps 3:1 on white */
   --favorite-fill: #ffc233;
 
@@ -86,6 +86,8 @@
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   /* Moderate overshoot, for what "lands" (a pin, a card, a chip); never for what leaves */
   --ease-spring: cubic-bezier(0.34, 1.45, 0.64, 1);
+  /* Strong ease-in-out, for what moves or morphs on screen (a switch, a wipe) */
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 
   /* Breakpoints — reference only: custom properties cannot be used inside @media */
   --bp-sm: 680px;

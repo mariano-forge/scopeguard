@@ -17,7 +17,7 @@ export default async function SiteAgencyPage({ params }: PageProps<"/review/[tok
   const member = Boolean(access && user && (await isMemberOf(user.id, access.organizationId)));
   const back = `/connexion?suite=${encodeURIComponent(`/review/${token}/site/agence`)}`;
   return (
-    <AuthShell>
+    <AuthShell plain>
       {!access ? (
         <p className="text-sm">Ce lien de revue n’est plus valable.</p>
       ) : !user ? (

@@ -65,9 +65,12 @@ test("a colleague joins from the invitation mail; the wrong account cannot; remo
   expect(await carol.content()).not.toContain(carolEmail);
   await expect(carol.getByLabel("E-mail")).toHaveValue("");
   await carol.getByLabel("E-mail").fill(carolEmail);
-  await carol.getByLabel("Nom complet").fill("Carol Petit");
+  await carol.getByLabel("Prénom").fill("Carol");
+  await carol.getByLabel("Nom", { exact: true }).fill("Petit");
   await carol.getByLabel("Mot de passe").fill(PASSWORD);
-  await carol.getByRole("button", { name: "Créer mon compte" }).click();
+  await carol.getByLabel("Confirmation").fill(PASSWORD);
+  // The confirmation screen comes once the server has created the account.
+  await Promise.all([carol.waitForResponse((answer) => answer.url().includes("/api/auth/sign-up/email")), carol.getByRole("button", { name: "Créer mon compte" }).click()]);
   // The confirmation link signs Carol in and brings her back to the invitation.
   await expect(carol.getByRole("status")).toContainText("lien de confirmation");
   await carol.goto(linkIn(await waitForMail(carolEmail, "Confirmez votre adresse"))!);
