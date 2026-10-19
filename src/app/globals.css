@@ -8939,3 +8939,15 @@ body.is-resizing {
 .notification-panel {
   overflow: hidden;
 }
+
+/* The send dialog names who receives the proposal. */
+.proposal-recipients {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.proposal-recipients span {
+  color: var(--graphite);
+  margin-right: 4px;
+}

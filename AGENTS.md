@@ -55,6 +55,7 @@ Pour les tests :
 - Une discussion close (`comment.close`, agence seulement, `PUT /api/comments/:id/closure`) est en lecture seule pour tous jusqu'à sa réouverture : toute réponse est refusée, et le client la voit marquée close. Elle ne se clôt pas tant qu'une proposition attend la décision du client.
 - L'auteur d'un message se lit avec `sideOf()` (`src/lib/authors.ts`), jamais avec les initiales.
 - Une adresse e-mail n'est jamais montrée en entier à qui n'a pas prouvé qu'elle est la sienne : un lien personnel de revue ou d'invitation d'agence l'affiche masquée (`maskEmail`, `src/lib/maskEmail.ts`), et le code se demande par l'identifiant de l'invitation (`requestedEmail`, `src/db/reviewAuth.ts`).
+- Une proposition ne part qu’aux décideurs invités sur la version, par un lien actif et non expiré (`linkDeciders`, `src/lib/linkDeciders.ts`) : sans décideur, le serveur refuse l’envoi, et la fenêtre d’envoi nomme les destinataires ou propose de partager la revue. Ne la présente jamais comme envoyée « au client » de l’espace : un espace n’est pas un client.
 - Seul le décideur valide, et jamais avec un devis en attente : la validation est refusée tant qu'un devis envoyé attend la décision du client ; les demandes « À clarifier » restantes sont abandonnées en validant, et l'événement de validation les nomme.
 
 **Revue d'un site de recette** (`public/kora-toolbar.js`, `src/app/review/[token]/site/`, `src/lib/siteReview.ts`)

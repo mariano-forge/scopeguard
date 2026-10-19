@@ -15,6 +15,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { sameValue, type ListChange, type MapChange, type SharedState, type StateChanges } from "@/lib/sharedState";
 import { initialsOf, sideOf } from "@/lib/authors";
 import { siteOriginOf } from "@/lib/siteReview";
+import { linkExpired } from "@/lib/linkDeciders";
 import type { Db } from "./client";
 import { commentProposals, comments, deliverables, notifications, proposalVersions, reviewLinks } from "./schema";
 import { readState } from "./state";
@@ -32,12 +33,7 @@ const shortText = (value: unknown, max: number) => (typeof value === "string" ? 
 export type ReviewAccess = { organizationId: string; key: string; link: Data; deliverableId: number; version: number };
 
 /** "31/12/2026" -> end of that day; an unreadable date counts as expired. */
-export function expired(link: Data) {
-  if (link.autoExpire === false || typeof link.expiresAt !== "string") return false;
-  const [day, month, year] = link.expiresAt.split("/").map(Number);
-  if (!day || !month || !year) return true;
-  return new Date(year, month - 1, day, 23, 59, 59).getTime() < Date.now();
-}
+export const expired = (link: Data) => linkExpired(link);
 
 /** The link behind a token, if it is active and not expired. */
 export async function findReviewAccess(db: Db, token: string): Promise<ReviewAccess | null> {

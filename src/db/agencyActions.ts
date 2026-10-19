@@ -36,7 +36,7 @@ import { canManageAgency, reservedActions } from "./agencyPermissions";
 import type { Db } from "./client";
 import { commentProposals, deliverables, proposalVersions, reviewLinks, storedFiles } from "./schema";
 import { visibleToClient } from "./reviewAccess";
-import { mailQuoteToClient, type AgencyQuoteEvent } from "./reviewMails";
+import { mailQuoteToClient, versionDeciders, type AgencyQuoteEvent } from "./reviewMails";
 import { applyChanges, type Writer } from "./state";
 import { readWorkspaceAction, workspaceChanges, type WorkspaceAction, type WorkspaceParams } from "./workspaceActions";
 
@@ -447,6 +447,10 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
     case "proposal.version":
     case "adaptation.decide": {
       if (comment.decision !== "Hors périmètre") return refused("Seule une demande hors scope se chiffre.");
+      // A proposal goes to the version's deciders: none invited, nobody would receive it.
+      const sending = action.type === "proposal.send" || action.type === "proposal.send-draft" || (action.type === "proposal.version" && action.send);
+      if (sending && (stored.deliverableId === null || !(await versionDeciders(db, org, stored.deliverableId)).length))
+        return refused("Aucun décideur n’est invité sur cette version : partagez la revue avec un décideur avant d’envoyer la proposition.");
       const proposal = await storedProposal(db, org, action.commentId);
       const pendingAdaptation = Boolean(proposal.adaptation) && !proposal.adaptation?.decision;
       const now = displayedNow();

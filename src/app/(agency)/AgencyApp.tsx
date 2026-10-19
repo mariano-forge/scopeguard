@@ -83,6 +83,7 @@ import { SiteToolbarSnippet } from "./SiteToolbarSnippet";
 import { previousPeople, ReshareDialog, type ReshareChoice } from "./ReshareDialog";
 import { Select } from "@/components/Select";
 import { loadSharedState, refreshSharedState, subscribeSharedState } from "@/lib/stateSync";
+import { linkDeciders } from "@/lib/linkDeciders";
 
 
 type Decision = "À qualifier" | "Inclus" | "Hors périmètre";
@@ -2677,13 +2678,19 @@ export function AgencyApp() {
           {(() => {
             const request = confirmSendId !== null ? comments.find((comment) => comment.id === confirmSendId) : undefined;
             const draft = confirmSendId !== null ? proposalVersions[confirmSendId]?.find((proposal) => proposal.status === "draft") : undefined;
+            // The proposal goes to the deciders invited on this version; with none, the server refuses it.
+            const deciders = currentDeliverable ? linkDeciders(reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]).map((invite) => invite.email) : [];
             return (
               <Modal
                 open={Boolean(request && draft)}
                 onClose={() => setConfirmSendId(null)}
                 role="alertdialog"
                 title="Envoyer la proposition au client ?"
-                description={`${selectedClient?.name ?? "Le client"} la recevra sur sa page de revue et pourra l’accepter, la refuser ou demander une adaptation.`}
+                description={
+                  deciders.length
+                    ? `${deciders.length > 1 ? "Les décideurs la recevront" : "Le décideur la recevra"} par e-mail et sur leur page de revue, et ${deciders.length > 1 ? "pourront" : "pourra"} l’accepter, la refuser ou demander une adaptation.`
+                    : "Aucun décideur n’est invité sur cette version : personne ne recevrait la proposition. Partagez d’abord la revue avec un décideur du client."
+                }
                 className="confirm-send-modal"
                 footer={
                   <>
@@ -2691,12 +2698,29 @@ export function AgencyApp() {
                     <Button variant="outline" onClick={() => setConfirmSendId(null)}>
                       Annuler
                     </Button>
-                    <Button disabled={!canManage} onClick={() => confirmSendId !== null && sendQuotedProposal(confirmSendId)}>
-                      Envoyer la proposition
-                    </Button>
+                    {deciders.length ? (
+                      <Button disabled={!canManage} onClick={() => confirmSendId !== null && sendQuotedProposal(confirmSendId)}>
+                        Envoyer la proposition
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => {
+                          setConfirmSendId(null);
+                          if (currentDeliverable && reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]?.invites?.length) openShareDialog();
+                          else shareCurrentVersion();
+                        }}
+                      >
+                        <Share2 /> Partager la revue
+                      </Button>
+                    )}
                   </>
                 }
               >
+                {request && draft && deciders.length > 0 && (
+                  <p className="proposal-recipients">
+                    <span>Envoyée à</span> {deciders.join(", ")}
+                  </p>
+                )}
                 {request && draft && (
                   <div className="proposal-summary">
                     <div>

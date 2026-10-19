@@ -8,6 +8,7 @@
 import "server-only";
 import { and, desc, eq } from "drizzle-orm";
 import { roleOfInvite } from "@/lib/clientRoles";
+import { linkDeciders } from "@/lib/linkDeciders";
 import { sendMail } from "@/lib/mail";
 import { renderMail } from "@/lib/mailTemplates";
 import { formatProposalAmount, formatProposalDeadline } from "@/lib/proposalFormat";
@@ -127,6 +128,14 @@ export async function mailClientDecision(db: Db, access: ReviewAccess, email: st
 // ——— Agency → client ———
 
 export type AgencyQuoteEvent = { type: "sent" } | { type: "adaptation"; decision: "accepted" | "refused" };
+
+/** The deciders invited on the shared version of a deliverable: those a proposal goes to (none when its link is off). */
+export async function versionDeciders(db: Db, org: string, deliverableId: number) {
+  const [record] = await db.select({ version: deliverables.version }).from(deliverables).where(and(eq(deliverables.organizationId, org), eq(deliverables.id, deliverableId))).limit(1);
+  if (!record) return [];
+  const [row] = await db.select().from(reviewLinks).where(and(eq(reviewLinks.organizationId, org), eq(reviewLinks.key, `${deliverableId}:${record.version}`))).limit(1);
+  return row?.active ? linkDeciders(row.data as Data) : [];
+}
 
 /** Tells the client's deciders on the request's version that a quote was sent, or their counter-proposal answered. */
 export async function mailQuoteToClient(db: Db, org: string, actor: { id: string; name: string }, commentId: number, event: AgencyQuoteEvent) {
