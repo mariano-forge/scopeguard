@@ -11,13 +11,22 @@ import { applyChanges } from "../../src/db/state";
 import type { StateChanges } from "../../src/lib/sharedState";
 import { baseURL, mailOutbox, testDatabaseUrl } from "../../playwright.config";
 
-export const PASSWORD = "mot-de-passe-solide";
+/** Meets the password rule (src/lib/passwordPolicy.ts): 12+ characters, both cases, a digit, a special one. */
+export const PASSWORD = "Mot-de-passe-solide-24";
 
 let counter = 0;
 /** "alice-k3x9" : names and addresses never collide between tests of the same run. */
 export const unique = (prefix: string) => `${prefix}-${Date.now().toString(36)}${(counter++).toString(36)}`;
-/** One address per simulated person: sign-in limits are counted per address (TRUSTED_PROXY_HOPS=1). */
-export const newIp = () => `198.51.${100 + Math.floor(counter / 250)}.${(counter++ % 250) + 1}`;
+/**
+ * One address per simulated person: sign-in limits are counted per address (TRUSTED_PROXY_HOPS=1).
+ * Drawn from a random start: a worker restarted after a failure starts its counter again, and would
+ * otherwise reuse the addresses of the run, already at their limit (429 on sign-up).
+ */
+const ipStart = Math.floor(Math.random() * 60_000);
+export const newIp = () => {
+  const n = ipStart + counter++;
+  return `10.${Math.floor(n / 62_500) % 250}.${Math.floor(n / 250) % 250}.${(n % 250) + 1}`;
+};
 
 export type Person = { cookie: string; ip: string };
 
@@ -206,6 +215,9 @@ export async function sql<T = Record<string, unknown>>(query: string, params: un
 /** A browser context of its own (cookies, address), like another person on another device. */
 export async function newPerson(browser: Browser) {
   const context = await browser.newContext({ extraHTTPHeaders: { "x-forwarded-for": newIp() }, viewport: { width: 1400, height: 900 } });
+  // The deliverable page's guided tour is seen (src/app/(agency)/DeliverableTour.tsx): its bubble would
+  // cover what the tests click. tests/e2e/product-tour.spec.ts opens it on purpose.
+  await context.addInitScript(() => window.localStorage.setItem("kora:tutoriel:livrable", "1"));
   const page = await context.newPage();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
