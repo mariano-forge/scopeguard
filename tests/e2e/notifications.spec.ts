@@ -70,3 +70,35 @@ test("bell activities open their request, the share dialog or the version; those
   await expect(panel.getByRole("link", { name: "Livrable disparu" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test("the bell tells what is new from what was already seen; seen once the bell is closed", async ({ browser }) => {
+  const alice = await signUp("Alice Martin");
+  await createAgency(alice, "Studio Nouveautés");
+  await seedState(alice, {
+    lists: {
+      notifications: {
+        upsert: [
+          { id: 1, message: "Relance envoyée hier", time: "x" },
+          { id: 2, message: "Proposition acceptée par le client", time: "x" },
+        ],
+        remove: [],
+      },
+    },
+  });
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, alice.email);
+  await page.goto("/espaces");
+  await expect(page.getByRole("button", { name: "Notifications (2 non lues)" }).first()).toBeVisible();
+  let panel = await bell(page);
+  await expect(panel).toContainText("Nouveaux · 2");
+  await expect(panel.getByText("Proposition acceptée par le client (nouveau)")).toHaveCount(1);
+  await expect(panel).not.toContainText("Déjà lus");
+
+  // Closed, they are seen: listed under « Déjà lus », the count gone.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Notifications", exact: true }).first()).toBeVisible();
+  panel = await bell(page);
+  await expect(panel).toContainText("Rien de nouveau.");
+  await expect(panel.locator(".notification-list.is-read")).toContainText("Proposition acceptée par le client");
+  expect(errors).toEqual([]);
+});

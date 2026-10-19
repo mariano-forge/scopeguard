@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import {
   Bell,
@@ -29,7 +29,7 @@ import { Hint } from "@/components/hint";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { timeLabel, useNow } from "./editor/CanvasComments";
-import { AccountMenu } from "./CurrentUser";
+import { AccountMenu, useCurrentUser } from "./CurrentUser";
 
 /** `href`: the page it is about (src/app/(agency)/routes.ts notificationHref); none for older ones. */
 type Notification = { id: number; message: string; href?: string };
@@ -51,7 +51,24 @@ export type ClientFeedback = {
   href: string;
 };
 
-/** Bell + shadcn popover, opening beside the sidebar: client messages first, then the activity. */
+/** The latest activity this member has seen in the bell, per browser and agency. */
+const seenActivityKey = (organizationId: string) => `kora:notifications-vues:${organizationId}`;
+const subscribeToStorage = (onChange: () => void) => {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
+};
+function readSeenActivity(key: string) {
+  try {
+    return Number(window.localStorage.getItem(key) ?? 0) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * The bell: what is new (the client's messages not opened yet, the activity not seen yet), then what was
+ * already seen. Activity counts as seen once the bell is closed; a message, once its thread is opened.
+ */
 export function Notifications({
   notifications,
   feedback,
@@ -65,10 +82,49 @@ export function Notifications({
 }) {
   const [open, setOpen] = useState(false);
   const now = useNow();
-  const unread = feedback.length;
+  const { organizationId } = useCurrentUser();
+  const key = seenActivityKey(organizationId ?? "");
+  // Everything seen while rendered on the server: the browser then says what is new.
+  const seenUpTo = useSyncExternalStore(subscribeToStorage, () => readSeenActivity(key), () => Number.MAX_SAFE_INTEGER);
+  const freshActivity = notifications.filter((notification) => notification.id > seenUpTo);
+  const pastActivity = notifications.filter((notification) => notification.id <= seenUpTo).slice(0, 6);
+  const unread = feedback.length + freshActivity.length;
+
+  function markActivitySeen() {
+    const latest = Math.max(seenUpTo === Number.MAX_SAFE_INTEGER ? 0 : seenUpTo, ...notifications.map((notification) => notification.id));
+    try {
+      window.localStorage.setItem(key, String(latest));
+    } catch {
+      // Not remembered: shown as new again next time.
+    }
+    window.dispatchEvent(new StorageEvent("storage", { key }));
+  }
+  const activity = (notification: Notification, fresh: boolean) => {
+    const content = (
+      <>
+        <span className={`notification-dot ${fresh ? "is-new" : ""}`} aria-hidden="true" />
+        <span>{notification.message}</span>
+        {fresh && <span className="sr-only"> (nouveau)</span>}
+      </>
+    );
+    return notification.href ? (
+      <Link className={`notification-item is-link ${fresh ? "is-new" : ""}`} href={notification.href} onClick={() => setOpen(false)}>
+        {content}
+      </Link>
+    ) : (
+      <span className={`notification-item ${fresh ? "is-new" : ""}`}>{content}</span>
+    );
+  };
+
   return (
     <div className={`notifications ${compact ? "is-compact" : ""}`}>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) markActivitySeen();
+        }}
+      >
         <Hint label="Notifications" side={compact ? "right" : "bottom"}>
           <PopoverTrigger asChild>
             <button className="sidebar-icon-button" aria-label={`Notifications${unread ? ` (${unread} non lues)` : ""}`}>
@@ -80,21 +136,28 @@ export function Notifications({
         <PopoverContent side={compact ? "right" : "bottom"} align="start" className="notification-panel w-96 gap-0 p-0" aria-label="Notifications">
           <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
             <p className="font-heading text-sm font-semibold">Notifications</p>
-            {feedback.some((item) => item.kind === "message") && (
-              <Button variant="ghost" size="sm" onClick={onMarkAllRead}>
+            {unread > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onMarkAllRead();
+                  markActivitySeen();
+                }}
+              >
                 Tout marquer comme lu
               </Button>
             )}
           </div>
           <div className="max-h-[min(480px,calc(100vh-8rem))] overflow-y-auto">
-            <p className="notification-section">Messages du client{unread ? ` · ${unread}` : ""}</p>
-            {feedback.length === 0 ? (
-              <p className="px-4 pb-3 text-sm text-muted-foreground">Aucun nouveau message.</p>
+            <p className="notification-section">Nouveaux{unread ? ` · ${unread}` : ""}</p>
+            {unread === 0 ? (
+              <p className="notification-empty">Rien de nouveau.</p>
             ) : (
-              <ul>
+              <ul className="notification-list">
                 {feedback.map((item) => (
                   <li key={item.key}>
-                    <Link className="notification-message" href={item.href} onClick={() => setOpen(false)}>
+                    <Link className="notification-message is-new" href={item.href} onClick={() => setOpen(false)}>
                       <span className="thread-avatar" aria-hidden="true">
                         {item.initials}
                       </span>
@@ -109,26 +172,19 @@ export function Notifications({
                     </Link>
                   </li>
                 ))}
+                {freshActivity.map((notification) => (
+                  <li key={notification.id} className="px-4">
+                    {activity(notification, true)}
+                  </li>
+                ))}
               </ul>
             )}
-            {notifications.length > 0 && (
+            {pastActivity.length > 0 && (
               <>
-                <p className="notification-section">Activité</p>
-                <ul className="grid gap-2 px-4 pb-3">
-                  {notifications.slice(0, 5).map((notification) => (
-                    <li key={notification.id}>
-                      {notification.href ? (
-                        <Link className="notification-item is-link" href={notification.href} onClick={() => setOpen(false)}>
-                          <span className="notification-dot" />
-                          <span>{notification.message}</span>
-                        </Link>
-                      ) : (
-                        <span className="notification-item">
-                          <span className="notification-dot" />
-                          <span>{notification.message}</span>
-                        </span>
-                      )}
-                    </li>
+                <p className="notification-section">Déjà lus</p>
+                <ul className="notification-list is-read grid gap-2 px-4 pb-3">
+                  {pastActivity.map((notification) => (
+                    <li key={notification.id}>{activity(notification, false)}</li>
                   ))}
                 </ul>
               </>

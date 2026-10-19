@@ -580,10 +580,6 @@ export function ThreadPopover({
             <div className="request-body">
               <p className={`request-kind is-${kind}`}>
                 <span className="kind-pill">{kind === "outside" ? "Hors scope" : kind === "correction" ? "Inclus" : "À clarifier"}</span>
-                {/* What the status means for the agency's work: not the client's concern. */}
-                {me !== "client" && (
-                  <span className="request-kind-hint">{kind === "outside" ? "ajout à chiffrer" : kind === "correction" ? "prévu au devis" : "à préciser avec le client"}</span>
-                )}
               </p>
               <p className="request-title">{requestText(comment)}</p>
               {comment.description && <p className="request-description">{comment.description}</p>}
@@ -613,7 +609,7 @@ export function ThreadPopover({
                         </Button>
                       )}
                       {proposal.stage === "draft" && !readOnly && (
-                        <Button variant="outline" size="sm" onClick={onSendProposal}>
+                        <Button size="sm" className="cta-ink" onClick={onSendProposal}>
                           Envoyer la proposition
                         </Button>
                       )}

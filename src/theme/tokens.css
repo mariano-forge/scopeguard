@@ -41,6 +41,10 @@
   --status-scope-text: #4e31a6;
   --status-clarify-bg: #ffe8d6;
   --status-clarify-text: #7f3500;
+  /* Marks (dots, squares) of the three qualifications: bright, never used for text. */
+  --mark-clarify: #f59e0b;
+  --mark-included: #22a55a;
+  --mark-outside: #8b5cf6;
 
   /* Elevation: floating menus and modals only */
   --shadow: 0 16px 50px rgba(17, 17, 17, 0.06);

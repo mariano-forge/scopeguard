@@ -8827,3 +8827,105 @@ body.is-resizing {
   min-height: 160px;
   max-height: none;
 }
+
+/* ——— Feedback round: brighter marks, the black CTA, unread in blue, empty states, the bell ——— */
+.scope-choice .scope-option::before {
+  background: var(--mark-clarify);
+}
+.scope-choice .scope-option.is-correction::before {
+  background: var(--mark-included);
+}
+.scope-choice .scope-option.is-outside::before {
+  background: var(--mark-outside);
+}
+/* The one call to action of a card or a bubble: ink, not the blue of the page's main button. */
+.cta-ink[data-slot="button"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+.cta-ink[data-slot="button"]:hover {
+  background: color-mix(in srgb, var(--ink) 82%, var(--paper));
+}
+/* The status above the request's title. */
+.thread-row-status {
+  display: flex;
+}
+/* Something not read: blue (the pin's dot, the tab's number, the card's count). */
+.unread-dot,
+.canvas-pin.is-unread::after {
+  background: var(--action-ui);
+}
+.thread-row-replies.is-unread {
+  color: var(--action-ui);
+}
+.inspector-tabs .tab-count {
+  position: relative;
+}
+.inspector-tabs .tab-count .unread-dot {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  width: 10px;
+  height: 10px;
+  margin: 0;
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+}
+/* An empty list: a mark, what it is for, how it fills. */
+.inspector-list .inspector-empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 40px var(--s-4);
+  text-align: center;
+}
+.empty-state-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--graphite);
+}
+.empty-state-mark .lucide {
+  width: 20px;
+  height: 20px;
+}
+.inspector-empty-state b {
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.inspector-list .inspector-empty-state p {
+  max-width: 260px;
+  margin: 0;
+  color: var(--graphite);
+  font-size: 13px;
+  line-height: 1.45;
+}
+/* The bell: what is new, then what was already seen. */
+.notification-empty {
+  margin: 0;
+  padding: 0 var(--s-4) var(--s-3);
+  color: var(--graphite);
+  font-size: 13px;
+}
+.notification-message.is-new {
+  background: color-mix(in srgb, var(--action-ui) 6%, var(--paper));
+}
+.notification-dot.is-new {
+  background: var(--action-ui);
+}
+.notification-item.is-new {
+  color: var(--ink);
+  font-weight: 500;
+}
+.notification-list.is-read .notification-item {
+  color: var(--graphite);
+}
+.notification-list.is-read .notification-dot {
+  background: var(--border-input);
+}

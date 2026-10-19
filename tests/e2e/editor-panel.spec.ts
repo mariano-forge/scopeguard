@@ -78,7 +78,7 @@ test("drafts and closed discussions sit in « Commentaires »; out-of-scope requ
   await page.getByLabel("Titre de la demande").fill("Marges à confirmer");
   await page.getByRole("button", { name: "Créer la demande" }).click();
   // Qualified, it leaves the drafts: back in « Demandes ».
-  await expect(views.getByRole("tab", { name: /^Commentaires\s*0/ })).toBeVisible();
+  await expect(panel.getByRole("tab", { name: /^Mes brouillons/ })).toHaveCount(0);
   await expect(views.getByRole("tab", { name: /^Demandes/ })).toHaveAttribute("aria-selected", "true");
   await panel.getByRole("tab", { name: /^À clarifier/ }).click();
   await expect(list).toContainText("Marges à confirmer");

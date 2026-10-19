@@ -19,17 +19,17 @@ export type InspectorTab = RequestKind | "draft" | "closed";
 export const inspectorTabOf = (comment: ThreadComment, drafts = true): InspectorTab =>
   comment.closed ? "closed" : drafts && isAgencyDraft(comment) ? "draft" : requestKind(comment);
 
-type TabOption = { kind: InspectorTab; label: string; empty: string };
+type TabOption = { kind: InspectorTab; label: string; emptyTitle: string; empty: string };
 const requestTabs: TabOption[] = [
-  { kind: "comment", label: "À clarifier", empty: "Aucune demande à clarifier. Cliquez sur le livrable pour commenter." },
-  { kind: "correction", label: "Inclus", empty: "Aucune demande incluse. Créez-en une avec « + Demande » ou depuis un commentaire." },
-  { kind: "outside", label: "Hors scope", empty: "Aucune demande hors scope. Créez-en une avec « + Demande » ou depuis un commentaire." },
+  { kind: "comment", label: "À clarifier", emptyTitle: "Rien à clarifier", empty: "Cliquez sur le livrable pour commenter, ou ajoutez une demande reçue ailleurs avec « + Demande »." },
+  { kind: "correction", label: "Inclus", emptyTitle: "Aucune demande incluse", empty: "Les demandes prévues au devis s’affichent ici, une fois qualifiées « Inclus »." },
+  { kind: "outside", label: "Hors scope", emptyTitle: "Aucun ajout hors scope", empty: "Les ajouts à chiffrer s’affichent ici, une fois qualifiés « Hors scope »." },
 ];
 const commentTabs: TabOption[] = [
-  { kind: "draft", label: "Mes brouillons", empty: "Aucun brouillon. Vos commentaires restent ici, internes, tant que vous ne les avez pas qualifiés." },
-  { kind: "closed", label: "Discussions clôturées", empty: "Aucune discussion clôturée." },
+  { kind: "draft", label: "Mes brouillons", emptyTitle: "Aucun brouillon", empty: "Vos commentaires restent ici, internes, tant que vous ne les avez pas qualifiés." },
+  { kind: "closed", label: "Discussions clôturées", emptyTitle: "Aucune discussion clôturée", empty: "Une discussion clôturée s’affiche ici, en lecture seule ; rouvrez-la pour y répondre." },
 ];
-const closedTab: TabOption = { kind: "closed", label: "Closes", empty: "Aucune discussion close." };
+const closedTab: TabOption = { kind: "closed", label: "Closes", emptyTitle: "Aucune discussion close", empty: "Les discussions closes par l’agence s’affichent ici." };
 
 /** Markdown summary of every request of the version (copy / export). */
 export function threadsToMarkdown(title: string, comments: ThreadComment[]) {
@@ -136,7 +136,6 @@ export function RequestPanel({
   const list = inTab
     .filter((comment) => !filtering || statusOf(comment)?.label === outsideStatusView(statusFilter as OutsideStatus, reader).label)
     .sort((left, right) => right.id - left.id);
-  const countIn = (options: TabOption[]) => options.reduce((total, option) => total + count(option.kind), 0);
   const views = [
     { key: "requests", label: "Demandes", options: requestTabs },
     { key: "comments", label: "Commentaires", options: commentTabs },
@@ -149,7 +148,7 @@ export function RequestPanel({
           <TabsList aria-label="Vue du panneau" className="w-full">
             {views.map((option) => (
               <TabsTrigger key={option.key} value={option.key}>
-                {option.label} <span>{countIn(option.options)}</span>
+                {option.label}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -158,8 +157,11 @@ export function RequestPanel({
       <div className="inspector-tabs" role="tablist" aria-label="Demandes">
         {shownTabs.map((option) => (
           <button key={option.kind} role="tab" aria-selected={current.kind === option.kind} className={current.kind === option.kind ? "is-active" : ""} onClick={() => onTab(option.kind)}>
-            {option.label} <span>{count(option.kind)}</span>
-            {hasUnread(option.kind) && <i className="unread-dot" aria-label="Message non lu" />}
+            {option.label}{" "}
+            <span className="tab-count">
+              {count(option.kind)}
+              {hasUnread(option.kind) && <i className="unread-dot" aria-label="Message non lu" />}
+            </span>
           </button>
         ))}
       </div>
@@ -218,8 +220,11 @@ export function RequestPanel({
         )}
         {list.length === 0 ? (
           <div className="inspector-empty-state">
-            <MessageSquare aria-hidden="true" />
-            <p>{filtering ? "Aucune demande avec ce statut." : current.kind === "comment" && emptyHint ? emptyHint : current.empty}</p>
+            <span className="empty-state-mark" aria-hidden="true">
+              <MessageSquare />
+            </span>
+            <b>{filtering ? "Aucune demande avec ce statut" : current.emptyTitle}</b>
+            <p>{filtering ? "Choisissez un autre statut, ou « Tous les statuts »." : current.kind === "comment" && emptyHint ? emptyHint : current.empty}</p>
           </div>
         ) : (
           <ul>
@@ -237,10 +242,12 @@ export function RequestPanel({
                     aria-label={`${itemLabel(comment)} #${comment.id}`}
                     onClick={() => onFocus(comment.id)}
                   >
-                    <span className="thread-row-top">
-                      <span className={`thread-row-text ${kind !== "comment" || comment.title ? "is-title" : ""}`}>{requestText(comment)}</span>
-                      {comment.closed ? <StatusPill label="Close" tone="waiting" /> : status && <StatusPill label={status.label} tone={status.tone} />}
-                    </span>
+                    {(comment.closed || status) && (
+                      <span className="thread-row-status">
+                        {comment.closed ? <StatusPill label="Close" tone="waiting" /> : status && <StatusPill label={status.label} tone={status.tone} />}
+                      </span>
+                    )}
+                    <span className={`thread-row-text ${kind !== "comment" || comment.title ? "is-title" : ""}`}>{requestText(comment)}</span>
                     <span className="thread-row-meta">
                       <span className={`thread-avatar ${sideOf(comment) === "agency" ? "is-agency" : "is-client"}`} aria-hidden="true">
                         {comment.initials}
@@ -271,7 +278,7 @@ export function RequestPanel({
                           </Button>
                         )}
                         {stage.stage === "draft" && onSendProposal && (
-                          <Button variant="outline" size="sm" onClick={() => onSendProposal(comment.id)}>
+                          <Button size="sm" className="cta-ink" onClick={() => onSendProposal(comment.id)}>
                             Envoyer la proposition
                           </Button>
                         )}

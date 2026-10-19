@@ -63,7 +63,8 @@ test("a member comments, replies, edits and deletes in the editor; each write is
   await expect(bubble.locator(".thread-title")).toContainText("Alice Martin");
   await expect(bubble).not.toContainText("n°");
   await expect(bubble.locator(".request-kind")).toContainText("À clarifier");
-  await expect(bubble.locator(".request-kind")).toContainText("à préciser avec le client");
+  // The status alone, without a hint of what it means.
+  await expect(bubble.locator(".request-kind-hint")).toHaveCount(0);
   await expect(bubble).toContainText("Taille du logo à confirmer");
   // Out of draft, nothing of it is internal any more: no such label.
   await expect(page.getByText(/Interne, non visible/)).toHaveCount(0);
@@ -74,7 +75,6 @@ test("a member comments, replies, edits and deletes in the editor; each write is
   await expect.poll(async () => (await agencyComments(org))[0].data.decision).toBe("Inclus");
   const included = page.getByRole("dialog", { name: /^Demande incluse #\d+$/ });
   await expect(included.locator(".request-kind")).toContainText("Inclus");
-  await expect(included.locator(".request-kind")).toContainText("prévu au devis");
   await included.getByRole("button", { name: "Remettre à clarifier" }).click();
   await expect.poll(async () => (await agencyComments(org))[0].data).toMatchObject({ decision: "À qualifier", title: "Taille du logo à confirmer" });
   await expect(page.getByRole("dialog", { name: /^Demande à clarifier #\d+$/ }).locator(".thread-title")).toContainText("Alice Martin");
