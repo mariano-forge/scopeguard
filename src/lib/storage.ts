@@ -32,15 +32,19 @@ function storageConfig() {
 /** Largest file an agency can import (MAX_UPLOAD_MB, 50 by default). */
 export const maxUploadBytes = () => Math.max(1, Number(process.env.MAX_UPLOAD_MB) || 50) * 1024 * 1024;
 
-const globalForStorage = globalThis as unknown as { koraStorage?: { service: BlobServiceClient; credential: StorageSharedKeyCredential; ready: Promise<void> } };
+// The account's CORS rule is set once per process (kept across reloads); the client and its key stay
+// with this copy of the module. In development a reload can bring a new copy of the Azure SDK, which
+// refuses a key made by the old one (« Invalid sharedKeyCredential »): every file answered 503.
+const globalForStorage = globalThis as unknown as { koraStorageReady?: Promise<void> };
+let client: { service: BlobServiceClient; credential: StorageSharedKeyCredential } | undefined;
 
 function storage() {
-  if (!globalForStorage.koraStorage) {
+  if (!client) {
     const { url, credential } = storageConfig();
-    const service = new BlobServiceClient(url, credential);
-    globalForStorage.koraStorage = { service, credential, ready: allowBrowserTransfers(service) };
+    client = { service: new BlobServiceClient(url, credential), credential };
   }
-  return globalForStorage.koraStorage;
+  globalForStorage.koraStorageReady ??= allowBrowserTransfers(client.service);
+  return { ...client, ready: globalForStorage.koraStorageReady };
 }
 
 /**
