@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { CircleCheck, MailOpen, ShieldCheck, UserPlus, UserRound } from "lucide-react";
+import { CodeField, GateAccount, GateHeading } from "@/components/GatePieces";
 
 type Step = "email" | "code" | "request" | "requested";
 
@@ -89,106 +91,88 @@ export function AccessGate({
   }
 
   const errorBox = error && (
-    <p role="alert" className="rounded-[var(--r-field)] bg-[var(--status-high-bg)] px-3 py-2 text-sm text-[var(--status-high-text)]">
+    <p role="alert" className="gate-error">
       {error}
     </p>
-  );
-  const heading = (title: string, text: React.ReactNode) => (
-    <div className="grid gap-1">
-      <p className="text-xs font-semibold tracking-wide text-[var(--graphite)] uppercase">Revue · {deliverable || "livrable"}</p>
-      <h1 className="font-heading text-lg font-bold">{title}</h1>
-      <p className="text-sm text-[var(--graphite)]">{text}</p>
-    </div>
   );
 
   return (
     <AuthShell plain>
       {step === "email" && (
-        <form className="grid gap-4" onSubmit={sendCode}>
-          {heading("Confirmez votre adresse", "Pour protéger cette revue, nous envoyons un code à usage unique à votre adresse e-mail.")}
+        <form className="gate-form" onSubmit={sendCode}>
+          <GateHeading icon={<ShieldCheck />} deliverable={deliverable} title="Accédez à la revue">
+            Pour protéger ce livrable, confirmez qu’il s’agit bien de vous : nous vous envoyons un code à usage unique par e-mail.
+          </GateHeading>
           {!byInvitation ? (
             <div className="grid gap-1.5">
               <Label htmlFor="access-email">Votre e-mail</Label>
-              <Input id="access-email" type="email" required autoComplete="email" autoFocus value={email} onChange={(event) => setEmail(event.target.value)} />
+              <Input id="access-email" type="email" required autoComplete="email" autoFocus placeholder="vous@entreprise.fr" value={email} onChange={(event) => setEmail(event.target.value)} />
             </div>
           ) : (
-            <div className="flex items-center justify-between gap-3 rounded-[var(--r-field)] border border-[var(--border)] px-3 py-2 text-sm">
-              <span className="truncate font-medium">{shownEmail}</span>
-              <button type="button" className="shrink-0 text-[var(--action-text)] underline-offset-2 hover:underline" onClick={() => setByInvitation(false)}>
-                Ce n’est pas moi
-              </button>
-            </div>
+            <GateAccount
+              email={shownEmail}
+              action={
+                <button type="button" className="gate-link" onClick={() => setByInvitation(false)}>
+                  Ce n’est pas moi
+                </button>
+              }
+            />
           )}
           {errorBox}
-          <Button type="submit" size="lg" disabled={pending || !shownEmail.trim()}>
+          <Button type="submit" size="lg" className="w-full" disabled={pending || !shownEmail.trim()}>
             Recevoir un code
           </Button>
         </form>
       )}
 
       {step === "code" && (
-        <form className="grid gap-4" onSubmit={verify}>
-          {heading(
-            "Saisissez votre code",
-            <>
-              Si <b>{shownEmail}</b> est invitée sur cette revue, un code à 6 chiffres vient d’y être envoyé. Il est valable 10 minutes.
-            </>,
-          )}
+        <form className="gate-form" onSubmit={verify}>
+          <GateHeading icon={<MailOpen />} deliverable={deliverable} title="Vérifiez vos e-mails">
+            Si <b>{shownEmail}</b> est invitée sur cette revue, un code à 6 chiffres vient d’y être envoyé. Il est valable 10 minutes.
+          </GateHeading>
           <div className="grid gap-1.5">
-            <Label htmlFor="access-code">Code</Label>
-            <Input
-              id="access-code"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              pattern="[0-9]{6}"
-              maxLength={6}
-              required
-              autoFocus
-              className="text-center font-mono text-lg tracking-[0.5em]"
-              value={code}
-              onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
-            />
+            <Label htmlFor="access-code">Code à 6 chiffres</Label>
+            <CodeField id="access-code" value={code} onChange={setCode} />
           </div>
           {errorBox}
-          <Button type="submit" size="lg" disabled={pending || code.length !== 6}>
+          <Button type="submit" size="lg" className="w-full" disabled={pending || code.length !== 6}>
             Accéder à la revue
           </Button>
-          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-            <button type="button" className="text-[var(--action-text)] underline-offset-2 hover:underline disabled:text-[var(--graphite)] disabled:no-underline" disabled={resendIn > 0 || pending} onClick={() => void sendCode()}>
+          <div className="gate-links">
+            <button type="button" className="gate-link" disabled={resendIn > 0 || pending} onClick={() => void sendCode()}>
               {resendIn > 0 ? `Renvoyer le code (${resendIn} s)` : "Renvoyer le code"}
             </button>
-            <button type="button" className="text-[var(--action-text)] underline-offset-2 hover:underline" onClick={() => (setStep("email"), setByInvitation(false), setError(""))}>
+            <button type="button" className="gate-link" onClick={() => (setStep("email"), setByInvitation(false), setError(""))}>
               Changer d’adresse
             </button>
           </div>
           {/* A code only reaches invited addresses: someone given the link by a colleague asks the agency. */}
-          <div className="grid gap-2 border-t border-[var(--border)] pt-4 text-sm text-[var(--graphite)]">
+          <div className="gate-aside">
             <p>
-              <b className="text-[var(--ink)]">Pas de code ?</b> Il n’est envoyé qu’aux adresses invitées par l’agence. Si ce lien vous a été transmis par quelqu’un d’autre, demandez l’accès.
+              <b>Pas de code ?</b> Il n’est envoyé qu’aux adresses invitées par l’agence. Si ce lien vous a été transmis par quelqu’un d’autre, demandez l’accès.
             </p>
             <Button type="button" variant="outline" onClick={() => (setStep("request"), setError(""))}>
-              Demander l’accès à l’agence
+              <UserPlus /> Demander l’accès à l’agence
             </Button>
           </div>
         </form>
       )}
 
       {step === "request" && (
-        <form className="grid gap-4" onSubmit={requestAccess}>
-          {heading(
-            "Demander l’accès",
-            verifiedEmail ? (
+        <form className="gate-form" onSubmit={requestAccess}>
+          <GateHeading icon={<UserPlus />} deliverable={deliverable} title="Demandez l’accès">
+            {verifiedEmail ? (
               <>
                 Votre adresse <b>{verifiedEmail}</b> n’a pas accès à cette revue. L’agence peut vous l’ouvrir.
               </>
             ) : (
-              "L’agence recevra votre demande et pourra vous inviter. Vous recevrez alors un lien par e-mail."
-            ),
-          )}
+              "L’agence recevra votre demande et pourra vous inviter. Vous recevrez alors votre lien par e-mail."
+            )}
+          </GateHeading>
           {!verifiedEmail && (
             <div className="grid gap-1.5">
               <Label htmlFor="request-email">Votre e-mail</Label>
-              <Input id="request-email" type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+              <Input id="request-email" type="email" required autoComplete="email" placeholder="vous@entreprise.fr" value={email} onChange={(event) => setEmail(event.target.value)} />
             </div>
           )}
           <div className="grid gap-1.5">
@@ -196,20 +180,24 @@ export function AccessGate({
             <Textarea id="request-message" maxLength={500} placeholder="Ex. : je remplace Claire pendant ses congés." value={message} onChange={(event) => setMessage(event.target.value)} />
           </div>
           {errorBox}
-          <Button type="submit" size="lg" disabled={pending || !email.trim()}>
+          <Button type="submit" size="lg" className="w-full" disabled={pending || !email.trim()}>
             Envoyer la demande
           </Button>
           {!verifiedEmail && (
-            <Button type="button" variant="link" onClick={() => (setStep("email"), setError(""))}>
-              J’ai été invité : recevoir un code
-            </Button>
+            <div className="gate-links is-center">
+              <button type="button" className="gate-link" onClick={() => (setStep("email"), setError(""))}>
+                J’ai été invité : recevoir un code
+              </button>
+            </div>
           )}
         </form>
       )}
 
       {step === "requested" && (
-        <div className="grid gap-4" role="status">
-          {heading("Demande envoyée", "L’agence a été prévenue par e-mail. Si elle accepte, vous recevrez votre lien personnel à cette adresse.")}
+        <div className="gate-form" role="status">
+          <GateHeading icon={<CircleCheck />} tone="success" deliverable={deliverable} title="Demande envoyée à l’agence">
+            L’agence a été prévenue par e-mail. Si elle accepte, vous recevrez votre lien personnel à cette adresse.
+          </GateHeading>
         </div>
       )}
     </AuthShell>
@@ -242,24 +230,21 @@ export function ProfileGate({ token, deliverable, email, onSaved }: { token: str
 
   return (
     <AuthShell plain>
-      <form className="grid gap-4" onSubmit={save}>
-        <div className="grid gap-1">
-          <p className="text-xs font-semibold tracking-wide text-[var(--graphite)] uppercase">Revue · {deliverable || "livrable"}</p>
-          <h1 className="font-heading text-lg font-bold">Comment vous appelez-vous ?</h1>
-          <p className="text-sm text-[var(--graphite)]">
-            Votre nom accompagnera vos retours et vos validations. Votre adresse <b>{email}</b> est vérifiée.
-          </p>
-        </div>
+      <form className="gate-form" onSubmit={save}>
+        <GateHeading icon={<UserRound />} deliverable={deliverable} title="Comment vous appelez-vous ?">
+          Votre nom accompagnera vos retours et vos validations, à la place de votre adresse.
+        </GateHeading>
+        <GateAccount email={email} verified />
         <div className="grid gap-1.5">
           <Label htmlFor="profile-name">Nom complet</Label>
           <Input id="profile-name" required minLength={2} maxLength={80} autoComplete="name" autoFocus placeholder="Claire Martin" value={name} onChange={(event) => setName(event.target.value)} />
         </div>
         {error && (
-          <p role="alert" className="rounded-[var(--r-field)] bg-[var(--status-high-bg)] px-3 py-2 text-sm text-[var(--status-high-text)]">
+          <p role="alert" className="gate-error">
             {error}
           </p>
         )}
-        <Button type="submit" size="lg" disabled={pending || name.trim().length < 2}>
+        <Button type="submit" size="lg" className="w-full" disabled={pending || name.trim().length < 2}>
           Accéder à la revue
         </Button>
       </form>

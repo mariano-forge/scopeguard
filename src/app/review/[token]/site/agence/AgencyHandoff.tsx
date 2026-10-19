@@ -4,6 +4,8 @@
 // own origin, never to the staging site's page (src/lib/siteAgency.ts).
 
 import { useState } from "react";
+import { Building2 } from "lucide-react";
+import { GateHeading } from "@/components/GatePieces";
 import { Button } from "@/components/ui/button";
 import type { TicketMessage } from "@/lib/siteReview";
 
@@ -27,25 +29,21 @@ export function AgencyHandoff({ token, name, deliverable }: { token: string; nam
   }
 
   return (
-    <div className="grid gap-4 text-sm">
-      <div className="grid gap-1">
-        <p className="text-xs font-semibold tracking-wide text-[var(--graphite)] uppercase">Revue · {deliverable}</p>
-        <h1 className="font-heading text-lg font-bold">Annoter le site au nom de l’agence</h1>
-        <p className="text-[var(--graphite)]">
-          Le panneau Kora du site de recette s’ouvrira en tant que <b className="text-[var(--ink)]">{name}</b>, pour 12 heures, sur ce site seulement.
-        </p>
-      </div>
+    <div className="gate-form">
+      <GateHeading icon={<Building2 />} deliverable={deliverable} title="Annoter le site au nom de l’agence">
+        Le panneau Kora du site de recette s’ouvrira en tant que <b>{name}</b>, pour 12 heures, sur ce site seulement.
+      </GateHeading>
       {error && (
-        <p role="alert" className="rounded-[var(--r-field)] bg-[var(--status-high-bg)] px-3 py-2 text-[var(--status-high-text)]">
+        <p role="alert" className="gate-error">
           {error}
         </p>
       )}
       {sent ? (
-        <p role="status" className="text-[var(--graphite)]">
+        <p role="status" className="gate-aside">
           C’est fait : revenez sur le site de recette. Cette fenêtre se ferme d’elle-même.
         </p>
       ) : (
-        <Button size="lg" disabled={pending} onClick={() => void confirm()}>
+        <Button size="lg" className="w-full" disabled={pending} onClick={() => void confirm()}>
           Continuer en tant que {name}
         </Button>
       )}

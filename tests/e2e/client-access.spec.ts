@@ -106,7 +106,7 @@ test("a copied link: the uninvited person gets no code, asks for access, and the
   await page.getByLabel("Votre e-mail").fill(email);
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   // No code for an address nobody invited; the page says so and leads to the request.
-  await expect(page.getByRole("heading", { name: "Saisissez votre code" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Vérifiez vos e-mails" })).toBeVisible();
   await expect(page.getByText("Il n’est envoyé qu’aux adresses invitées par l’agence")).toBeVisible();
   expect(mailsTo(email)).toEqual([]);
   await page.getByRole("button", { name: "Demander l’accès à l’agence" }).click();
@@ -177,4 +177,44 @@ test("a personal link asks the code by its invitation: it reaches the invitee; a
 
   expect((await call(`/api/review/${token}/access/verify`, { person: { ip }, body: { invitation: "inventee", code } })).status).toBe(400);
   expect((await call(`/api/review/${token}/access/verify`, { person: { ip }, body: { invitation, code } })).status).toBe(200);
+});
+
+test("the client’s pages: a real title per step, the deliverable they open, the code in six boxes, on a phone too", async ({ browser }) => {
+  const { alice, linkKey } = await sharedReview();
+  const email = `${unique("claire")}@client.test`;
+  await call("/api/review-access/invite", { person: alice, body: { linkKey, emails: [email] } });
+  const personalLink = linkIn(lastMailTo(email))!;
+  const { page, errors } = await newPerson(browser);
+
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(personalLink);
+    // One title, the deliverable named beside it, the invited address as an account.
+    await expect(page.getByRole("heading", { level: 1, name: "Accédez à la revue" })).toBeVisible();
+    await expect(page.locator(".gate-context")).toContainText("maquette-1.png");
+    await expect(page.locator(".gate-account")).toContainText(`c${"•".repeat(8)}@client.test`);
+    await expect(page.getByText("Accès sécurisé")).toBeVisible();
+    // Nothing scrolls sideways; on a phone the card loses its frame and takes the width.
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    const card = (await page.locator(".auth-card").boundingBox())!;
+    if (width === 390) expect(card.width).toBeGreaterThan(350);
+    else expect(card.width).toBeLessThanOrEqual(440);
+  }
+
+  // The code: six boxes over one field, which takes what is typed or pasted.
+  await page.getByRole("button", { name: "Recevoir un code" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Vérifiez vos e-mails" })).toBeVisible();
+  await expect(page.locator(".code-slot")).toHaveCount(6);
+  const code = await waitForCode(email);
+  await page.getByLabel("Code à 6 chiffres").fill(code);
+  await expect(page.locator(".code-slot.is-filled")).toHaveCount(6);
+  await expect(page.locator(".code-slot").first()).toHaveText(code[0]);
+  await page.getByRole("button", { name: "Accéder à la revue" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Comment vous appelez-vous ?" })).toBeVisible();
+  await expect(page.locator(".gate-account")).toContainText("Adresse vérifiée");
+
+  // A link that leads nowhere says so, in the same frame.
+  await page.goto(`/review/${unique("tok-inconnu")}`);
+  await expect(page.getByRole("heading", { level: 1, name: "Lien indisponible" })).toBeVisible();
+  expect(errors).toEqual([]);
 });

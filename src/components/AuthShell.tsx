@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LockKeyhole } from "lucide-react";
 import { KoraMark } from "@/components/KoraMark";
 import { FilmLoop } from "@/app/decouvrir/Film";
 import "./auth.css";
@@ -19,8 +20,8 @@ function Shot() {
 /**
  * The frame of every page where someone identifies themselves. For the agency (sign-in, new agency,
  * invitation, new password): the form on the left, Kora's four gestures playing on the right, under the site's
- * header when one is given (`nav`, the sign-in page). `plain` (the client's access check, the site
- * panel's window): the form alone, centred. Fits the screen: nothing to scroll.
+ * header when one is given (`nav`, the sign-in page). `plain` (the client's pages: access check, name,
+ * unavailable link, the site panel's windows): Kora's bar and one card (src/components/GatePieces.tsx).
  */
 export function AuthShell({ children, plain = false, nav }: { children: React.ReactNode; plain?: boolean; nav?: React.ReactNode }) {
   const logo = (
@@ -29,14 +30,21 @@ export function AuthShell({ children, plain = false, nav }: { children: React.Re
       <span>Kora</span>
     </Link>
   );
+  // The client's pages: Kora's bar, then one card in the middle of the screen (the whole width on a phone
+  // or in the staging site's panel).
   if (plain)
     return (
-      <main className="auth">
-        <div className="auth-column">
+      <div className="auth-plain">
+        <header className="auth-plain-bar">
           {logo}
-          {children}
-        </div>
-      </main>
+          <span className="auth-plain-secure">
+            <LockKeyhole aria-hidden="true" /> Accès sécurisé
+          </span>
+        </header>
+        <main className="auth-plain-body">
+          <div className="auth-card">{children}</div>
+        </main>
+      </div>
     );
 
   const split = (

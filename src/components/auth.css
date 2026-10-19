@@ -520,3 +520,290 @@
     animation-name: auth-fade;
   }
 }
+
+/* ——— Plain: the client's pages ———
+   Kora's bar, then one card: an icon, the deliverable, a real title, one sentence, the form. On a phone
+   or in the staging site's panel the card takes the whole width, without its frame. */
+.auth-plain {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  background: var(--canvas);
+  color: var(--ink);
+}
+.auth-plain-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-6);
+}
+.auth-plain-secure {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--graphite);
+  font: 500 13px var(--font-ui);
+}
+.auth-plain-secure svg {
+  width: 14px;
+  height: 14px;
+}
+.auth-plain-body {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  padding: var(--s-4) var(--s-4) 12vh;
+}
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  padding: var(--s-8);
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgba(17, 17, 17, 0.04), 0 12px 32px rgba(17, 17, 17, 0.06);
+  animation: auth-in 500ms var(--ease-out) both;
+}
+.gate-form {
+  display: grid;
+  gap: 20px;
+}
+.gate-heading {
+  display: grid;
+  justify-items: start;
+  gap: var(--s-2);
+}
+.gate-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: var(--s-2);
+  border-radius: var(--r-button);
+  background: var(--mist);
+  color: var(--ink);
+}
+.gate-icon svg {
+  width: 22px;
+  height: 22px;
+}
+.gate-icon.is-success {
+  background: var(--status-resolved-bg);
+  color: var(--status-resolved-text);
+}
+.gate-icon.is-warning {
+  background: var(--status-medium-bg);
+  color: var(--status-medium-text);
+}
+.gate-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin: 0;
+  padding: 3px 10px 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--graphite);
+  font: 500 12px / 18px var(--font-ui);
+}
+.gate-context svg {
+  flex: none;
+  width: 13px;
+  height: 13px;
+}
+.gate-heading h1 {
+  margin: 0;
+  font: 700 26px / 1.2 var(--font-display);
+  letter-spacing: -0.02em;
+}
+.gate-text {
+  margin: 0;
+  color: var(--graphite);
+  font: 400 15px / 1.55 var(--font-ui);
+}
+.gate-text b {
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.gate-account {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 10px var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+}
+.gate-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--paper);
+  font: 600 13px var(--font-ui);
+}
+.gate-account-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  font: 500 14px / 20px var(--font-ui);
+}
+.gate-account-text small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--status-resolved-text);
+  font: 500 12px / 16px var(--font-ui);
+}
+.gate-account-text small svg {
+  width: 13px;
+  height: 13px;
+}
+.gate-link {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--action-text);
+  font: 500 14px var(--font-ui);
+  cursor: pointer;
+  text-underline-offset: 3px;
+}
+.gate-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.gate-link:disabled {
+  color: var(--graphite);
+  cursor: default;
+}
+.gate-link:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.gate-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-4);
+  margin-top: -4px;
+}
+.gate-links.is-center {
+  justify-content: center;
+}
+.gate-aside {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: var(--s-4);
+  border-radius: var(--r-button);
+  background: var(--canvas);
+  color: var(--graphite);
+  font: 400 14px / 1.5 var(--font-ui);
+}
+.gate-aside p {
+  margin: 0;
+}
+.gate-aside b {
+  color: var(--ink);
+}
+.gate-error {
+  margin: 0;
+  padding: 10px var(--s-3);
+  border-radius: var(--r-button);
+  background: var(--status-high-bg);
+  color: var(--status-high-text);
+  font: 500 14px / 1.45 var(--font-ui);
+}
+.gate-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  margin: 0;
+  color: var(--graphite);
+  font: 500 14px var(--font-ui);
+}
+.gate-loading svg {
+  width: 18px;
+  height: 18px;
+  animation: gate-spin 900ms linear infinite;
+}
+@keyframes gate-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The code: six boxes over one real field. */
+.code-field {
+  position: relative;
+}
+.code-field-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  font-size: 16px;
+  opacity: 0;
+  z-index: 1;
+}
+.code-field-slots {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+.code-slot {
+  display: grid;
+  place-items: center;
+  height: 52px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--r-button);
+  background: var(--paper);
+  font: 600 22px var(--font-display);
+  transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
+}
+.code-field:focus-within .code-slot.is-current {
+  border-color: var(--action-ui);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--action-ui) 22%, transparent);
+}
+
+@media (max-width: 520px) {
+  .auth-plain-bar {
+    padding: var(--s-3) var(--s-4);
+  }
+  .auth-plain-body {
+    place-items: start stretch;
+    padding: var(--s-2) 0 var(--s-6);
+  }
+  .auth-card {
+    max-width: none;
+    padding: var(--s-4);
+    border: 0;
+    background: none;
+    box-shadow: none;
+  }
+  .gate-heading h1 {
+    font-size: 23px;
+  }
+  .code-slot {
+    height: 48px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-card {
+    animation: none;
+  }
+  .gate-loading svg {
+    animation-duration: 3s;
+  }
+}

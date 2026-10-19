@@ -5,7 +5,7 @@ import { areaFromPin } from "@/lib/pinArea";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
-import { ArrowRight, Check, Clock, Lock, PenLine } from "lucide-react";
+import { ArrowRight, Check, Clock, Link2Off, Loader2, Lock, PenLine } from "lucide-react";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { Composer, ThreadPopover, requestKind, type Area, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
 import { RequestPanel, type InspectorTab } from "@/app/(agency)/editor/EditorInspector";
@@ -21,6 +21,8 @@ import { loadSharedState, subscribeSharedState } from "@/lib/stateSync";
 import { reviewAction } from "@/lib/reviewActions";
 import type { ClientRole } from "@/lib/clientRoles";
 import { AccessGate, ProfileGate } from "./AccessGate";
+import { AuthShell } from "@/components/AuthShell";
+import { GateHeading } from "@/components/GatePieces";
 import { initialsOf, sideOf, type Side } from "@/lib/authors";
 import { outsideStatusOf } from "@/lib/outsideStatus";
 
@@ -677,19 +679,22 @@ export default function ClientReviewPage() {
     );
 
   if (loading) {
-    return <main className="client-review-state">Chargement de la revue...</main>;
+    return (
+      <AuthShell plain>
+        <p className="gate-loading" role="status">
+          <Loader2 aria-hidden="true" /> Chargement de la revue…
+        </p>
+      </AuthShell>
+    );
   }
 
   if (accessState === "denied") {
     return (
-      <main className="client-review-state">
-        <div className="client-state-mark">!</div>
-        <p className="eyebrow">ACCÈS À LA REVUE</p>
-        <h1>Lien indisponible</h1>
-        <p>
-          Ce lien de revue est inconnu, expiré ou a été révoqué par l'agence.
-        </p>
-      </main>
+      <AuthShell plain>
+        <GateHeading icon={<Link2Off />} tone="warning" title="Lien indisponible">
+          Ce lien de revue est inconnu, expiré ou a été révoqué par l’agence. Demandez-lui un nouveau lien.
+        </GateHeading>
+      </AuthShell>
     );
   }
 
@@ -877,7 +882,7 @@ export default function ClientReviewPage() {
             proposalStage={(comment) => (proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : null)}
             onOpenProposal={openProposalModal}
             unread={(comment) => isUnread(comment as ClientComment)}
-            // A draft quote is never sent here: for the client, anything not sent is « En cours de chiffrage ».
+            // A draft quote is never sent here: for the client, nothing is said before a proposal is sent.
             outsideStatus={(comment) =>
               outsideStatusOf({ state: proposalStates[comment.id] === "sent" ? "sent" : "none", decision: proposalDecisions[comment.id] ?? "none", adaptation: adaptationRequests[comment.id] })
             }

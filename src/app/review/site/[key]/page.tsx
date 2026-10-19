@@ -4,15 +4,20 @@
 // or a key not signed by Kora, gets nothing.
 
 import { redirect } from "next/navigation";
+import { Info } from "lucide-react";
+import { AuthShell } from "@/components/AuthShell";
+import { GateHeading } from "@/components/GatePieces";
 import { getDb } from "@/db/client";
 import { latestSharedSite } from "@/db/reviewAccess";
 import { readSiteKey } from "@/lib/siteKey";
 import { parentOrigin } from "@/lib/siteReview";
 
-const note = (text: string) => (
-  <main className="grid min-h-screen place-items-center bg-[var(--canvas)] p-6 text-center text-sm text-[var(--graphite)]">
-    <p>{text}</p>
-  </main>
+const note = (title: string, text: string) => (
+  <AuthShell plain>
+    <GateHeading icon={<Info />} title={title}>
+      {text}
+    </GateHeading>
+  </AuthShell>
 );
 
 export default async function SiteKeyPage({ params, searchParams }: PageProps<"/review/site/[key]">) {
@@ -21,7 +26,7 @@ export default async function SiteKeyPage({ params, searchParams }: PageProps<"/
   const deliverable = readSiteKey(key);
   const found = deliverable ? await latestSharedSite(getDb(), deliverable.organizationId, deliverable.livrableId) : null;
   const origin = parentOrigin(typeof parent === "string" ? parent : null);
-  if (!found?.site || found.site !== origin) return note("Ce panneau Kora ne s’ouvre que sur le site de la revue.");
-  if (!found.token) return note("Aucune version de ce site n’est partagée pour l’instant. L’agence vous préviendra dès qu’elle le sera.");
+  if (!found?.site || found.site !== origin) return note("Panneau indisponible ici", "Ce panneau Kora ne s’ouvre que sur le site de la revue.");
+  if (!found.token) return note("Rien à revoir pour l’instant", "Aucune version de ce site n’est partagée pour l’instant. L’agence vous préviendra dès qu’elle le sera.");
   redirect(`/review/${encodeURIComponent(found.token)}/site?parent=${encodeURIComponent(origin)}`);
 }
