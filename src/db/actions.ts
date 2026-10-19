@@ -82,6 +82,12 @@ export async function decisionLocked(db: Db, org: string, commentId: number) {
   return (proposal.decision !== null && proposal.decision !== "none") || Boolean((proposal.adaptation as Data | null)?.decision);
 }
 
+/** A proposal sent for this request still waits for the client's answer. */
+export async function proposalAwaiting(db: Db, org: string, commentId: number) {
+  const [proposal] = await db.select().from(commentProposals).where(and(eq(commentProposals.organizationId, org), eq(commentProposals.commentId, commentId))).limit(1);
+  return proposal?.state === "sent" && !(proposal.decision !== null && proposal.decision !== "none") && !(proposal.adaptation as Data | null)?.decision;
+}
+
 /** Audit events of one action: distinct ids (several events may share a millisecond). */
 export function trail(actor: string, deliverableId: number | null) {
   const stamp = Date.now() * 1000;

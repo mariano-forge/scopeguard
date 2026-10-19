@@ -16,6 +16,7 @@ import type { ListChange, StateChanges } from "@/lib/sharedState";
 import {
   trail,
   decisionLocked,
+  proposalAwaiting,
   displayedNow,
   freeCommentId,
   id,
@@ -51,6 +52,7 @@ export type AgencyAction =
   | { type: "comment.move"; commentId: number; page: number; x: number; y: number }
   | { type: "comment.delete"; commentId: number }
   | { type: "comment.qualify"; commentId: number; decision: Qualification; title?: string; description?: string; quote?: Quote }
+  | { type: "comment.close"; commentId: number; closed: boolean }
   | { type: "reply.create"; commentId: number; id?: number; message: string }
   | { type: "reply.edit"; commentId: number; replyId: number; message: string }
   | { type: "reply.delete"; commentId: number; replyId: number }
@@ -130,6 +132,8 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
       if (!commentId || !decision || (decision !== "À qualifier" && !title)) return null;
       return { type, commentId, decision, title, description: text(body.description), quote: readQuote(body.quote) };
     }
+    case "comment.close":
+      return commentId && typeof body.closed === "boolean" ? { type, commentId, closed: body.closed } : null;
     case "reply.create":
       return commentId && message ? { type, commentId, id: id(body.id), message } : null;
     case "reply.edit":
@@ -329,7 +333,7 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
         location: action.location ?? "Livrable (général)",
         decision: "À qualifier",
         kind: "remark",
-        // Its words are for the agency: the client gets its title and description once qualified (src/lib/internalNotes.ts).
+        // The agency's draft until qualified (src/db/reviewAccess.ts visibleToClient).
         internalNote: true,
         page: action.page ?? 1,
         ...(action.position ? { position: action.position } : {}),
@@ -385,6 +389,9 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
     }
     case "comment.delete":
       if (!ownComment || (await settled())) return refused();
+      // Only a draft goes away; a qualified request is closed instead (its history stays, for the proof).
+      if (comment.decision !== "À qualifier" || (typeof comment.title === "string" && comment.title.trim() !== ""))
+        return refused("Une demande qualifiée ne se supprime pas : clôturez-la.");
       changes.lists.comments = { upsert: [], remove: [action.commentId] };
       log.add("comment.deleted", "Commentaire agence supprimé", action.commentId);
       break;
@@ -412,13 +419,24 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
         log.add("proposal.drafted", `Chiffrage préparé : ${action.quote.amount} € · ${action.quote.days} j`, action.commentId);
       break;
     }
+    case "comment.close": {
+      // Closed (archived): read-only for everyone until reopened. Not while a proposal waits for the client.
+      if (action.closed && (await proposalAwaiting(db, org, action.commentId))) return refused("Une proposition attend la décision du client : la discussion reste ouverte.");
+      if ((comment.closed === true) === action.closed) return { changes };
+      const rest = { ...comment };
+      delete rest.closedAt;
+      upsertComment(action.closed ? { ...comment, closed: true, closedAt: Date.now() } : { ...rest, closed: false });
+      log.add(action.closed ? "comment.closed" : "comment.reopened", action.closed ? "Discussion clôturée" : "Discussion rouverte", action.commentId);
+      break;
+    }
     case "reply.create": {
       if (await settled()) return refused();
+      if (comment.closed === true) return refused("Cette discussion est close : rouvrez-la pour répondre.");
       const taken = new Set(replies.map((reply) => reply.id));
       const replyId = action.id && !taken.has(action.id) ? action.id : Math.max(Date.now(), ...replies.map((reply) => Number(reply.id) + 1 || 0));
-      // Written while the client cannot see the request: it stays internal, even once the request shows.
-      const quotes = (await db.select({ data: proposalVersions.data }).from(proposalVersions).where(and(eq(proposalVersions.organizationId, org), eq(proposalVersions.commentId, action.commentId)))).map((row) => row.data);
-      const internal = !visibleToClient(comment, quotes);
+      // Written on a draft (the client does not see the request yet): said so in the journal. Once the
+      // request is qualified, the client reads it with the rest of the thread (decided 19 October 2026).
+      const internal = !visibleToClient(comment);
       upsertComment({ ...comment, replies: [...replies, { id: replyId, ...signer, message: action.message, time: "À l'instant", createdAt: Date.now(), internal }] });
       log.add("reply.created", internal ? "Note interne de l’agence ajoutée" : "Réponse agence ajoutée", action.commentId);
       log.into(changes);
