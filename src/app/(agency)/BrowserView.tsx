@@ -833,7 +833,7 @@ function HomePage({
   overviewFor: (selection: number[] | null) => HomeOverview;
   livrableGroups: LivrableGroup[];
   onNewProject: () => void;
-  /** « Bien démarrer », above the figures while the agency sets itself up. */
+  /** « Bien démarrer », in a panel on the right while the agency sets itself up (nothing once done or hidden). */
   gettingStarted: React.ReactNode;
 }) {
   const [filters, setFilters] = useState<Record<"figures" | "charts" | "register" | "breakdown", number[] | null>>({
@@ -868,8 +868,9 @@ function HomePage({
         </button>
       </header>
 
-      {gettingStarted}
-
+      {/* The figures, and « Bien démarrer » beside them; alone, they take the whole width. */}
+      <div className="home-layout">
+      <div className="home-main">
       <section className="browser-section">
         <SectionHeader title="Chiffres clés" filter={filters.figures} onFilter={setFilter("figures")} groups={livrableGroups} />
         <div className="overview">
@@ -944,6 +945,9 @@ function HomePage({
           </div>
         )}
       </section>
+      </div>
+      <div className="home-aside">{gettingStarted}</div>
+      </div>
     </div>
   );
 }

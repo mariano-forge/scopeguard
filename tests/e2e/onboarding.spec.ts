@@ -97,12 +97,19 @@ test("skipping the first steps leads home, where « Bien démarrer » takes over
 
   const list = page.getByRole("region", { name: "Bien démarrer" });
   await expect(list).toContainText("1 sur 5");
-  // The key figures stay side by side without overlapping, on a laptop screen too.
-  for (const width of [1100, 1400]) {
+  // « Bien démarrer » sits in a panel on the right, beside the figures; on a narrower screen, above them.
+  // The key figures never overlap, whatever width the panel leaves them.
+  for (const width of [1100, 1243, 1400]) {
     await page.setViewportSize({ width, height: 800 });
+    const panel = (await list.boundingBox())!;
+    const figures = (await page.locator(".overview").boundingBox())!;
+    if (width > 1100) expect(panel.x, `${width} px`).toBeGreaterThanOrEqual(figures.x + figures.width);
+    else expect(panel.y + panel.height, `${width} px`).toBeLessThanOrEqual(figures.y);
     const hero = (await page.locator(".hero-stat").boundingBox())!;
     const firstTile = (await page.locator(".stat-tile").first().boundingBox())!;
-    expect(hero.x + hero.width).toBeLessThanOrEqual(firstTile.x);
+    const apart = hero.x + hero.width <= firstTile.x || hero.y + hero.height <= firstTile.y;
+    expect(apart, `${width} px`).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   }
   await expect(list.getByRole("button", { name: "Créer un espace" })).toBeVisible();
 

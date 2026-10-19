@@ -8990,3 +8990,59 @@ body.is-resizing {
 .thread > .thread-reply {
   background: var(--paper);
 }
+
+/* Home: « Bien démarrer » in a panel on the right, kept in view; the figures adapt to the width they
+   have (a container), so nothing overlaps. Without it (done, hidden), the figures take the width. */
+.home-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--s-6);
+  align-items: start;
+}
+.home-layout:has(> .home-aside:empty) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.home-aside:empty {
+  display: none;
+}
+.home-main {
+  display: grid;
+  gap: var(--s-8);
+  min-width: 0;
+  container-type: inline-size;
+}
+.home-aside {
+  position: sticky;
+  top: var(--s-4);
+}
+.home-aside .getting-started {
+  padding: var(--s-4);
+}
+@container (max-width: 760px) {
+  .home-main .overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .home-main .overview .stat-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 1100px) {
+  .home-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .home-aside {
+    position: static;
+    order: -1;
+  }
+}
+/* In the narrow panel, the current step's button goes under its text, aligned with it. */
+.home-aside .getting-started li {
+  flex-wrap: wrap;
+  row-gap: var(--s-2);
+}
+.home-aside .getting-started li > [data-slot="button"] {
+  margin-left: 32px;
+}
+.home-aside .getting-started-text {
+  flex-basis: calc(100% - 32px);
+}
