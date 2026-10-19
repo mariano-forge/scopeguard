@@ -199,6 +199,10 @@ test("the client’s pages: a real title per step, the deliverable they open, th
     const card = (await page.locator(".auth-card").boundingBox())!;
     if (width === 390) expect(card.width).toBeGreaterThan(350);
     else expect(card.width).toBeLessThanOrEqual(440);
+    // On a wide screen, what the review is for, beside the card; a phone keeps the card alone.
+    const welcome = page.getByRole("complementary", { name: "Votre espace de revue" });
+    if (width === 390) await expect(welcome).toBeHidden();
+    else await expect(welcome.getByRole("listitem")).toHaveText([/Commentez sur le livrable/, /Suivez chaque demande/, /Validez en un clic/]);
   }
 
   // The code: six boxes over one field, which takes what is typed or pasted.

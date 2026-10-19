@@ -97,7 +97,7 @@ export function AccessGate({
   );
 
   return (
-    <AuthShell plain>
+    <AuthShell plain showcase>
       {step === "email" && (
         <form className="gate-form" onSubmit={sendCode}>
           <GateHeading icon={<ShieldCheck />} deliverable={deliverable} title="Accédez à la revue">
@@ -229,7 +229,7 @@ export function ProfileGate({ token, deliverable, email, onSaved }: { token: str
   }
 
   return (
-    <AuthShell plain>
+    <AuthShell plain showcase>
       <form className="gate-form" onSubmit={save}>
         <GateHeading icon={<UserRound />} deliverable={deliverable} title="Comment vous appelez-vous ?">
           Votre nom accompagnera vos retours et vos validations, à la place de votre adresse.

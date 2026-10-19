@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { LockKeyhole } from "lucide-react";
 import { KoraMark } from "@/components/KoraMark";
+import { ClientShowcase } from "@/components/ClientShowcase";
 import { FilmLoop } from "@/app/decouvrir/Film";
 import "./auth.css";
 
@@ -23,7 +24,18 @@ function Shot() {
  * header when one is given (`nav`, the sign-in page). `plain` (the client's pages: access check, name,
  * unavailable link, the site panel's windows): Kora's bar and one card (src/components/GatePieces.tsx).
  */
-export function AuthShell({ children, plain = false, nav }: { children: React.ReactNode; plain?: boolean; nav?: React.ReactNode }) {
+export function AuthShell({
+  children,
+  plain = false,
+  nav,
+  showcase = false,
+}: {
+  children: React.ReactNode;
+  plain?: boolean;
+  nav?: React.ReactNode;
+  /** Plain only: the client's welcome, what the review is for beside the card on a wide screen. */
+  showcase?: boolean;
+}) {
   const logo = (
     <Link href="/" className="auth-logo" aria-label="Kora, accueil">
       <KoraMark />
@@ -41,8 +53,9 @@ export function AuthShell({ children, plain = false, nav }: { children: React.Re
             <LockKeyhole aria-hidden="true" /> Accès sécurisé
           </span>
         </header>
-        <main className="auth-plain-body">
+        <main className={`auth-plain-body${showcase ? " has-showcase" : ""}`}>
           <div className="auth-card">{children}</div>
+          {showcase && <ClientShowcase />}
         </main>
       </div>
     );

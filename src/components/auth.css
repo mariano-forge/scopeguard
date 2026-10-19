@@ -807,3 +807,326 @@
     animation-duration: 3s;
   }
 }
+
+/* ——— The client's welcome: some life ———
+   A light ground with slow coloured shapes, the card's content arriving line by line, and beside it on
+   a wide screen a small scene of a review (pins appear, a comment is typed, the version is validated). */
+.auth-plain {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.auth-plain::before,
+.auth-plain::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: 560px;
+  height: 560px;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.9;
+  pointer-events: none;
+  animation: plain-drift 18s ease-in-out infinite alternate;
+}
+.auth-plain::before {
+  top: -220px;
+  left: -160px;
+  background: var(--status-low-bg);
+}
+.auth-plain::after {
+  right: -180px;
+  bottom: -240px;
+  background: var(--status-scope-bg);
+  animation-delay: -9s;
+}
+@keyframes plain-drift {
+  to {
+    transform: translate(80px, 60px) scale(1.12);
+  }
+}
+
+/* The card's lines arrive one after the other. */
+.auth-card .gate-form > *,
+.auth-card > .gate-heading,
+.auth-card .gate-heading > * {
+  animation: gate-rise 520ms var(--ease-out) both;
+}
+.auth-card .gate-heading > :nth-child(2) { animation-delay: 60ms; }
+.auth-card .gate-heading > :nth-child(3) { animation-delay: 120ms; }
+.auth-card .gate-heading > :nth-child(4) { animation-delay: 180ms; }
+.auth-card .gate-form > :nth-child(2) { animation-delay: 240ms; }
+.auth-card .gate-form > :nth-child(3) { animation-delay: 300ms; }
+.auth-card .gate-form > :nth-child(4) { animation-delay: 360ms; }
+.auth-card .gate-form > :nth-child(n + 5) { animation-delay: 420ms; }
+@keyframes gate-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+/* Done: the tick pops. */
+.gate-icon.is-success svg {
+  animation: gate-pop 600ms var(--ease-spring) 200ms both;
+}
+@keyframes gate-pop {
+  from {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+}
+
+.auth-plain-body.has-showcase {
+  grid-template-columns: minmax(0, 440px) minmax(0, 480px);
+  gap: 56px;
+  place-content: center;
+  align-items: center;
+}
+.showcase {
+  display: grid;
+  gap: var(--s-6);
+  animation: auth-in 700ms var(--ease-out) 150ms both;
+}
+.showcase-scene {
+  position: relative;
+  height: 300px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  background:
+    radial-gradient(var(--border) 1px, transparent 1px) 0 0 / 16px 16px,
+    var(--canvas);
+  overflow: hidden;
+}
+.showcase-doc {
+  position: absolute;
+  inset: 28px 48px 0;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: var(--r-button) var(--r-button) 0 0;
+  background: var(--paper);
+  box-shadow: 0 12px 32px rgba(17, 17, 17, 0.08);
+}
+.showcase-doc > span {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--mist);
+}
+.showcase-doc .showcase-doc-bar {
+  width: 30%;
+  height: 6px;
+  margin-bottom: 6px;
+}
+.showcase-doc .showcase-doc-title {
+  width: 70%;
+  height: 14px;
+  background: var(--border);
+}
+.showcase-doc .is-short {
+  width: 55%;
+}
+.showcase-doc .showcase-doc-image {
+  height: 70px;
+  margin: 4px 0;
+  background: linear-gradient(120deg, var(--status-low-bg), var(--status-scope-bg));
+}
+.showcase-pin {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--paper);
+  border-radius: 50% 50% 50% 4px;
+  color: var(--paper);
+  font: 700 11px var(--font-ui);
+  box-shadow: 0 6px 14px rgba(17, 17, 17, 0.18);
+  animation: showcase-pin 10s var(--ease-spring) infinite both;
+}
+.showcase-pin.is-one {
+  top: 70px;
+  left: 62%;
+  background: var(--action-ui);
+}
+.showcase-pin.is-two {
+  top: 150px;
+  left: 28%;
+  background: var(--mark-outside);
+  animation-delay: 1.6s;
+}
+.showcase-pin.is-three {
+  top: 205px;
+  left: 70%;
+  background: var(--status-resolved-text);
+  animation-delay: 3.2s;
+}
+@keyframes showcase-pin {
+  0% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.4);
+  }
+  5%,
+  80% {
+    opacity: 1;
+    transform: none;
+  }
+  88%,
+  100% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+.showcase-bubble {
+  position: absolute;
+  top: 58px;
+  /* Left of its pin, inside the scene. */
+  right: calc(38% + 8px);
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--paper);
+  box-shadow: 0 8px 20px rgba(17, 17, 17, 0.1);
+  color: var(--ink);
+  font: 500 12px / 16px var(--font-ui);
+  white-space: nowrap;
+  animation: showcase-bubble 10s var(--ease-out) 0.5s infinite both;
+}
+.showcase-typed {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  border-right: 1.5px solid var(--ink);
+  animation: showcase-type 10s steps(27) 0.5s infinite both;
+}
+@keyframes showcase-bubble {
+  0%,
+  3% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  6%,
+  76% {
+    opacity: 1;
+    transform: none;
+  }
+  84%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes showcase-type {
+  0%,
+  6% {
+    max-width: 0;
+  }
+  24%,
+  100% {
+    max-width: 180px;
+    border-right-color: transparent;
+  }
+}
+.showcase-approved {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--status-resolved-bg);
+  color: var(--status-resolved-text);
+  font: 600 12px var(--font-ui);
+  box-shadow: 0 8px 20px rgba(17, 17, 17, 0.08);
+  animation: showcase-approved 10s var(--ease-spring) infinite both;
+}
+.showcase-approved svg {
+  width: 14px;
+  height: 14px;
+}
+@keyframes showcase-approved {
+  0%,
+  52% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.85);
+  }
+  58%,
+  82% {
+    opacity: 1;
+    transform: none;
+  }
+  90%,
+  100% {
+    opacity: 0;
+  }
+}
+.showcase-promises {
+  display: grid;
+  gap: var(--s-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.showcase-promises li {
+  display: flex;
+  gap: var(--s-3);
+  align-items: flex-start;
+}
+.showcase-promise-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-button);
+  background: var(--paper);
+  border: 1px solid var(--border);
+  color: var(--ink);
+}
+.showcase-promise-icon svg {
+  width: 17px;
+  height: 17px;
+}
+.showcase-promises b {
+  display: block;
+  font: 600 14px / 20px var(--font-ui);
+}
+.showcase-promises small {
+  display: block;
+  color: var(--graphite);
+  font: 400 13px / 19px var(--font-ui);
+}
+
+/* Not enough room (a laptop in half, a phone, the staging site's panel): the card alone. */
+@media (max-width: 1000px) {
+  .auth-plain-body.has-showcase {
+    grid-template-columns: minmax(0, 440px);
+  }
+  .showcase {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-plain::before,
+  .auth-plain::after,
+  .auth-card .gate-form > *,
+  .auth-card > .gate-heading,
+  .auth-card .gate-heading > *,
+  .gate-icon.is-success svg,
+  .showcase,
+  .showcase-pin,
+  .showcase-bubble,
+  .showcase-typed,
+  .showcase-approved {
+    animation: none;
+  }
+}
+@media (max-width: 520px) {
+  .auth-plain-body.has-showcase {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
