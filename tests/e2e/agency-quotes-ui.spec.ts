@@ -136,8 +136,9 @@ test("with no decider invited on the version, a proposal is not sent: the dialog
   await page.locator('[data-pin="31"]').click();
   await thread(page).getByRole("button", { name: "Envoyer la proposition" }).click();
   const confirm = page.getByRole("alertdialog");
-  await expect(confirm).toContainText("Aucun décideur n’est invité sur cette version");
-  await expect(confirm.getByRole("button", { name: "Envoyer la proposition" })).toHaveCount(0);
+  // A warning says why; « Envoyer » stays greyed out.
+  await expect(confirm.getByRole("alert")).toContainText("Aucun décideur pour recevoir cette proposition");
+  await expect(confirm.getByRole("button", { name: "Envoyer la proposition" })).toBeDisabled();
   // The server refuses it too.
   const refused = await call("/api/comments/31/proposal/send", { method: "POST", person: alice, body: {} });
   expect(refused.status).toBe(409);
@@ -145,7 +146,7 @@ test("with no decider invited on the version, a proposal is not sent: the dialog
   expect(await proposal(org, 31)).toMatchObject({ state: "draft" });
   expect(await events(org, 31)).toEqual([]);
 
-  await confirm.getByRole("button", { name: "Partager la revue" }).click();
+  await confirm.getByRole("alert").getByRole("button", { name: "Partager la revue" }).click();
   await expect(confirm).toHaveCount(0);
   await expect(page.getByRole("dialog", { name: "Partager la revue" })).toBeVisible();
   expect(errors).toEqual([]);

@@ -450,7 +450,7 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
       // A proposal goes to the version's deciders: none invited, nobody would receive it.
       const sending = action.type === "proposal.send" || action.type === "proposal.send-draft" || (action.type === "proposal.version" && action.send);
       if (sending && (stored.deliverableId === null || !(await versionDeciders(db, org, stored.deliverableId)).length))
-        return refused("Aucun décideur n’est invité sur cette version : partagez la revue avec un décideur avant d’envoyer la proposition.");
+        return refused("Aucun décideur pour recevoir cette proposition : partagez la revue de cette version avec au moins un décideur du client, puis envoyez-la.");
       const proposal = await storedProposal(db, org, action.commentId);
       const pendingAdaptation = Boolean(proposal.adaptation) && !proposal.adaptation?.decision;
       const now = displayedNow();

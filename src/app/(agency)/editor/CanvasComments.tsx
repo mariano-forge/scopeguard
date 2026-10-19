@@ -573,7 +573,7 @@ export function ThreadPopover({
         <>
           {asRequest && (
             <Tabs value={view} onValueChange={(next) => setView(next as "detail" | "discussion")} className="thread-tabs">
-              <TabsList aria-label="Demande" className="w-full">
+              <TabsList variant="line" aria-label="Demande">
                 <TabsTrigger value="detail">Détail</TabsTrigger>
                 <TabsTrigger value="discussion">Discussion</TabsTrigger>
               </TabsList>
@@ -588,7 +588,9 @@ export function ThreadPopover({
               {comment.description && <p className="request-description">{comment.description}</p>}
             </div>
           )}
-          {/* What can be done, apart from what the request says (as on its card). */}
+          {(showDetail || !asRequest) && comment.source && <RequestSourceNote source={comment.source} enteredBy={comment.author} />}
+          {(showDetail || !asRequest) && comment.site && <SiteCapture site={comment.site} />}
+          {/* What can be done, apart from what the request says (as on its card): last, kept in view while the bubble scrolls. */}
           {showDetail && ((kind === "outside" && proposal) || (onQualify && canWrite)) && (
             <div className="request-footer">
               {kind === "outside" && proposal && (
@@ -642,8 +644,6 @@ export function ThreadPopover({
             </div>
           )}
 
-          {(showDetail || !asRequest) && comment.source && <RequestSourceNote source={comment.source} enteredBy={comment.author} />}
-          {(showDetail || !asRequest) && comment.site && <SiteCapture site={comment.site} />}
           {showDiscussion && (
           <div className="thread-messages" ref={listRef}>
             {messages.map((message) => (

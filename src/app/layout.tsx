@@ -36,7 +36,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
-        <Toaster position="bottom-center" />
+        <Toaster position="bottom-right" offset={16} mobileOffset={16} />
         <AgentationProvider />
       </body>
     </html>

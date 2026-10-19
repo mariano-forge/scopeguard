@@ -41,7 +41,7 @@ async function clientPage(browser: Browser) {
   });
   await page.goto(`/review/${token}`);
   await expect(page.getByRole("button", { name: "Valider cette version" })).toBeVisible();
-  return { org: alice.organizationId!, email, page, errors, writes };
+  return { alice, org: alice.organizationId!, email, page, errors, writes };
 }
 
 const commentsOf = (org: string) =>
@@ -151,5 +151,42 @@ test("the client accepts one quote, asks to adapt another, decides it when valid
   await page.reload();
   await expect(page.getByRole("button", { name: "Valider cette version" })).toHaveCount(0);
   await expect(page.getByText("Vous avez validé cette version")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("out of scope, the client sees no status until a proposal is sent to them; then « À valider »", async ({ browser }) => {
+  const { alice, page, errors } = await clientPage(browser);
+  // Not quoted yet, and quoted but still the agency’s draft: nothing said about a quote.
+  await seedState(alice, {
+    lists: {
+      comments: {
+        upsert: [
+          { id: 13, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Blog", decision: "Hors périmètre", kind: "request", title: "Blog", location: "", time: "t" },
+          { id: 14, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Newsletter", decision: "Hors périmètre", kind: "request", title: "Newsletter", location: "", time: "t" },
+        ],
+        remove: [],
+      },
+    },
+    maps: {
+      proposalStates: { upsert: { "14": "draft" }, remove: [] },
+      proposalVersions: { upsert: { "14": [{ id: 140, version: 1, commentId: 14, description: "Newsletter", amount: 400, deadline: 2, status: "draft", createdAt: "x" }] }, remove: [] },
+    },
+  });
+  await page.reload();
+  const panel = page.getByRole("complementary", { name: "Vos retours" });
+  await panel.getByRole("tab", { name: /^Hors scope/ }).click();
+  const card = (title: string) => panel.getByRole("listitem").filter({ hasText: title });
+  for (const title of ["Blog", "Newsletter"]) {
+    await expect(card(title)).toBeVisible();
+    await expect(card(title).locator(".status-pill")).toHaveCount(0);
+  }
+  await expect(panel).not.toContainText("chiffrage");
+  // A proposal sent: « À valider », in the tone the agency gives to what is still to be done.
+  await expect(card("Témoignages").locator(".status-pill")).toHaveText("À valider");
+  await expect(card("Témoignages").locator(".status-pill")).toHaveClass(/is-pending/);
+  // Its filter offers only what the client can tell apart.
+  await panel.getByRole("combobox", { name: "Filtrer par statut" }).click();
+  await expect(page.getByRole("option", { name: /^À valider · 2$/ })).toBeVisible();
+  await expect(page.getByRole("option", { name: /chiffrage/ })).toHaveCount(0);
   expect(errors).toEqual([]);
 });

@@ -244,7 +244,7 @@ export function RequestPanel({
                   >
                     {(comment.closed || status) && (
                       <span className="thread-row-status">
-                        {comment.closed ? <StatusPill label="Close" tone="waiting" /> : status && <StatusPill label={status.label} tone={status.tone} />}
+                        {comment.closed ? <StatusPill label="Close" tone="waiting" /> : status?.label && <StatusPill label={status.label} tone={status.tone} />}
                       </span>
                     )}
                     <span className={`thread-row-text ${kind !== "comment" || comment.title ? "is-title" : ""}`}>{requestText(comment)}</span>

@@ -84,6 +84,7 @@ import { previousPeople, ReshareDialog, type ReshareChoice } from "./ReshareDial
 import { Select } from "@/components/Select";
 import { loadSharedState, refreshSharedState, subscribeSharedState } from "@/lib/stateSync";
 import { linkDeciders } from "@/lib/linkDeciders";
+import { SendProposalDialog } from "./SendProposalDialog";
 
 
 type Decision = "À qualifier" | "Inclus" | "Hors périmètre";
@@ -2678,66 +2679,21 @@ export function AgencyApp() {
           {(() => {
             const request = confirmSendId !== null ? comments.find((comment) => comment.id === confirmSendId) : undefined;
             const draft = confirmSendId !== null ? proposalVersions[confirmSendId]?.find((proposal) => proposal.status === "draft") : undefined;
-            // The proposal goes to the deciders invited on this version; with none, the server refuses it.
-            const deciders = currentDeliverable ? linkDeciders(reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]).map((invite) => invite.email) : [];
+            const linkKey = currentDeliverable ? `${currentDeliverable.id}:${currentDeliverable.version}` : "";
             return (
-              <Modal
-                open={Boolean(request && draft)}
+              <SendProposalDialog
+                proposal={request && draft ? { title: request.title ?? request.message, amount: draft.amount, deadline: draft.deadline } : null}
+                // The proposal goes to the deciders invited on this version; with none, the server refuses it.
+                deciders={linkDeciders(reviewLinks[linkKey]).map((invite) => invite.email)}
+                canManage={canManage}
                 onClose={() => setConfirmSendId(null)}
-                role="alertdialog"
-                title="Envoyer la proposition au client ?"
-                description={
-                  deciders.length
-                    ? `${deciders.length > 1 ? "Les décideurs la recevront" : "Le décideur la recevra"} par e-mail et sur leur page de revue, et ${deciders.length > 1 ? "pourront" : "pourra"} l’accepter, la refuser ou demander une adaptation.`
-                    : "Aucun décideur n’est invité sur cette version : personne ne recevrait la proposition. Partagez d’abord la revue avec un décideur du client."
-                }
-                className="confirm-send-modal"
-                footer={
-                  <>
-                    {!canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Envoi réservé aux administrateurs de l’agence</span>}
-                    <Button variant="outline" onClick={() => setConfirmSendId(null)}>
-                      Annuler
-                    </Button>
-                    {deciders.length ? (
-                      <Button disabled={!canManage} onClick={() => confirmSendId !== null && sendQuotedProposal(confirmSendId)}>
-                        Envoyer la proposition
-                      </Button>
-                    ) : (
-                      <Button
-                        onClick={() => {
-                          setConfirmSendId(null);
-                          if (currentDeliverable && reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]?.invites?.length) openShareDialog();
-                          else shareCurrentVersion();
-                        }}
-                      >
-                        <Share2 /> Partager la revue
-                      </Button>
-                    )}
-                  </>
-                }
-              >
-                {request && draft && deciders.length > 0 && (
-                  <p className="proposal-recipients">
-                    <span>Envoyée à</span> {deciders.join(", ")}
-                  </p>
-                )}
-                {request && draft && (
-                  <div className="proposal-summary">
-                    <div>
-                      <span>Demande</span>
-                      <b>{request.title ?? request.message}</b>
-                    </div>
-                    <div>
-                      <span>Montant HT</span>
-                      <b>{formatProposalAmount(draft.amount)}</b>
-                    </div>
-                    <div>
-                      <span>Délai</span>
-                      <b>{formatProposalDeadline(draft.deadline)}</b>
-                    </div>
-                  </div>
-                )}
-              </Modal>
+                onSend={() => confirmSendId !== null && sendQuotedProposal(confirmSendId)}
+                onShare={() => {
+                  setConfirmSendId(null);
+                  if (reviewLinks[linkKey]?.invites?.length) openShareDialog();
+                  else shareCurrentVersion();
+                }}
+              />
             );
           })()}
           {renameOpen && latestVersionRecord && (

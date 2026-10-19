@@ -87,7 +87,7 @@ test("drafts and closed discussions sit in « Commentaires »; out-of-scope requ
   await panel.getByRole("tab", { name: /^Hors scope/ }).click();
   await expect(list.getByRole("listitem")).toHaveCount(4);
   await expect(list.getByRole("listitem").filter({ hasText: "Page FAQ" })).toContainText("À chiffrer");
-  await expect(list.getByRole("listitem").filter({ hasText: "Version anglaise" })).toContainText("Proposition prête");
+  await expect(list.getByRole("listitem").filter({ hasText: "Version anglaise" })).toContainText("Prête pour l’envoi");
   await expect(list.getByRole("listitem").filter({ hasText: "Blog" })).toContainText("En attente du client");
   // The quote's figures, each with its label.
   await expect(list.getByRole("listitem").filter({ hasText: "Blog" }).locator(".client-proposal-line")).toContainText("Montant900 € HT");
@@ -244,6 +244,17 @@ test("a request without pin opens by the panel; a long one scrolls in its bubble
   // Its long text scrolls inside it; its line breaks are kept.
   expect(await bubble.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
   expect(await bubble.locator(".request-description").evaluate((element) => getComputedStyle(element).whiteSpace)).toBe("pre-line");
+  // Its actions stay in view at the bottom, wherever the text is scrolled.
+  const actions = bubble.locator(".request-footer");
+  for (const top of [0, 10_000]) {
+    await bubble.evaluate((element, at) => element.scrollTo({ top: at }), top);
+    const [frame, band] = await Promise.all([bubble.boundingBox(), actions.boundingBox()]);
+    expect(band!.y + band!.height, `scrolled to ${top}`).toBeLessThanOrEqual(frame!.y + frame!.height + 1);
+    expect(band!.y, `scrolled to ${top}`).toBeGreaterThanOrEqual(frame!.y);
+  }
+  await expect(actions.getByRole("button", { name: "Remettre à clarifier" })).toBeVisible();
+  // « Détail | Discussion »: underlined tabs.
+  await expect(bubble.getByRole("tablist", { name: "Demande" })).toHaveAttribute("data-variant", "line");
 
   // The selected card: a black stroke on white, no tint.
   await expect(card).toHaveClass(/is-selected/);
@@ -302,6 +313,10 @@ test("a client's message shows at the agency at once: a notice, and a red count 
   // Written while the agency is on the page: no reload.
   expect((await clientReply(30, "Et la couleur du bouton ?")).status).toBe(200);
   await expect(page.getByText("Claire Dubois a écrit")).toBeVisible();
+  // The notice (shadcn's Sonner) sits in the screen's bottom-right corner.
+  const notice = (await page.locator("[data-sonner-toast]").first().boundingBox())!;
+  expect(1400 - (notice.x + notice.width)).toBeLessThanOrEqual(24);
+  expect(900 - (notice.y + notice.height)).toBeLessThanOrEqual(24);
   await expect(card).toContainText("2 messages non lus");
   await expect(card.locator(".thread-row-replies")).toHaveClass(/is-unread/);
   // Opened, read: the count gives way to the number of replies.
