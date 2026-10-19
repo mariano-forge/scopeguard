@@ -154,7 +154,6 @@ export default function ClientReviewPage() {
   const [reviewLink, setReviewLink] = useState<ReviewLink | null>(null);
   const [comments, setComments] = useState<ClientComment[]>([]);
   /** "Northstar · Refonte site": where the shared deliverable lives. */
-  const [context, setContext] = useState("");
   const [panelWidth, setPanelWidth] = useState(340);
   /** Agency replies and proposals the client has opened ("c12", "r1739…", "p1739…"); read once, in the browser. */
   const [seen, setSeen] = useState<string[] | null>(() => {
@@ -266,9 +265,6 @@ export default function ClientReviewPage() {
           ) ?? parsedState.deliverables?.[0];
           if (sharedDeliverable) {
             setDeliverable(sharedDeliverable);
-            const project = parsedState.projects?.find((candidate) => candidate.id === (sharedDeliverable.projectId ?? 1));
-            const client = parsedState.clients?.find((candidate) => candidate.id === (project?.clientId ?? 1));
-            setContext([client?.name, project?.name].filter(Boolean).join(" · "));
           }
           const review = reviewStateOf(sharedDeliverable, parsedState);
           setReviewStatus(review.status);
@@ -736,8 +732,6 @@ export default function ClientReviewPage() {
             <h1 className="client-topbar-title">
               <span className="truncate">{deliverable.name}</span>
             </h1>
-            {context && <p className="client-topbar-context">{context}</p>}
-            {viewerMode === "preview" && <p className="client-topbar-context">Aperçu agence · lecture seule</p>}
             {contributor && <p className="client-topbar-context">Contributeur · vos retours sont transmis, la validation revient au décideur désigné par l’agence</p>}
           </div>
         </div>

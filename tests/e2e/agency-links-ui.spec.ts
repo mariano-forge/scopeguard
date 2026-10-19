@@ -1,5 +1,5 @@
 // Review links in the agency's editor, used as an administrator does: sharing creates the link,
-// invitations are removed, the link is revoked, the client page is previewed, a validation reopened.
+// invitations are removed, the link is revoked, no client preview, a validation reopened.
 
 import { expect, test, type Browser } from "@playwright/test";
 import { createAgency, newPerson, seedState, signInPage, signUp, sql, unique } from "./helpers";
@@ -60,12 +60,23 @@ test("sharing creates the link; an invitation is removed; the link is revoked", 
   expect(errors).toEqual([]);
 });
 
-test("the client preview opens the client page of a link created for it", async ({ browser }) => {
-  const { org, page, errors, writes } = await editor(browser);
-  const [preview] = await Promise.all([page.context().waitForEvent("page"), page.getByRole("button", { name: "Aperçu client" }).first().click()]);
-  await expect(preview.getByText("Aperçu agence · lecture seule")).toBeVisible();
-  expect(new URL(preview.url()).pathname).toBe(`/review/${(await link(org)).token}`);
-  expect(writes.filter((write) => write === "PATCH /api/state")).toEqual([]);
+test("no client preview in the editor; a member opening the client link reads it, without the space or project", async ({ browser }) => {
+  const { org, page, errors } = await editor(browser);
+  await expect(page.getByRole("button", { name: "Partager la revue" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Aperçu client" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Actions du livrable maquette.png" }).click();
+  await expect(page.getByRole("menuitem", { name: "Partager la revue" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Aperçu client" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // Signed in to Kora, the member who opens a link still only reads it; the page names the deliverable alone.
+  await page.getByRole("button", { name: "Partager la revue" }).first().click();
+  await expect.poll(async () => (await link(org))?.active).toBe(true);
+  await page.goto(`/review/${(await link(org)).token}`);
+  await expect(page.getByRole("heading", { name: "maquette.png" })).toBeVisible();
+  await expect(page.getByText("Aperçu agence")).toHaveCount(0);
+  await expect(page.getByText(/Northwind|Refonte/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Valider cette version" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

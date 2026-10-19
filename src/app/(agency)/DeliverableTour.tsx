@@ -27,12 +27,6 @@ const steps: TourStep[] = [
     side: "right",
   },
   {
-    target: '[aria-label="Aperçu client"]',
-    title: "Voyez ce que voit le client",
-    text: "L’aperçu montre la revue telle qu’il la recevra : sans vos notes internes.",
-    side: "bottom",
-  },
-  {
     target: '[aria-label="Partager la revue"]',
     title: "Partagez avec votre client",
     text: "Il reçoit un lien personnel, commente sur place et décide de vos devis. Rien ne lui est visible avant ce partage.",

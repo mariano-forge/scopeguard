@@ -17,7 +17,6 @@ import {
   FileDown,
   Check,
   CircleHelp,
-  Eye,
   FilePlus,
   FolderClosed,
   Keyboard,
@@ -1374,12 +1373,6 @@ export function AgencyApp() {
     setShareOpen(true);
   }
 
-  /** The page the client sees, in a new tab, once its link is saved. */
-  async function openClientPreview() {
-    const link = await ensureReviewLink();
-    if (link) window.open(`/review/${link.token}`, "_blank", "noopener");
-  }
-
   function updateAutoExpire(autoExpire: boolean) {
     if (!reviewLink) return;
     setReviewLink({ ...reviewLink, autoExpire });
@@ -1762,7 +1755,6 @@ export function AgencyApp() {
     { kind: "section", label: "Ce livrable" },
     { label: "Importer une nouvelle version", icon: <Upload />, onFile: importVersionFile, accept: "application/pdf,image/*,video/*" },
     { label: "Partager la revue", icon: <Share2 />, onSelect: openShareDialog },
-    { label: "Aperçu client", icon: <Eye />, onSelect: () => void openClientPreview() },
     { kind: "section", label: "Suivi" },
     { label: "Rouvrir la validation", icon: <RotateCcw />, onSelect: () => { setChangesMessage(""); setChangesOpen(true); } },
     { label: "Synthèse & export", icon: <FileCheck />, onSelect: () => setProofOpen(true) },
@@ -2123,7 +2115,6 @@ export function AgencyApp() {
               onAddRequest={isReadOnlyVersion ? undefined : setNewRequestKind}
               // Shared with no one yet: first the one-click offer to the previous version's people.
               onShare={() => (currentDeliverable && reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]?.invites?.length ? openShareDialog() : shareCurrentVersion())}
-              onPreview={() => void openClientPreview()}
               width={panelWidths.inspector}
               onResize={(width) => resizePanel("inspector", width)}
             />
