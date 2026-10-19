@@ -1,5 +1,6 @@
 "use client";
 import { formatProposalAmount, formatProposalDeadline, parseNumericAmount, parseNumericDays } from "@/lib/proposalFormat";
+import { areaFromPin } from "@/lib/pinArea";
 
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
@@ -477,20 +478,18 @@ export default function ClientReviewPage() {
     toast("Commentaire supprimé", { action: { label: "Annuler", onClick: () => restoreComment(target) } });
   }
 
-  /** Double-click a pin, then click: the comment moves there (its drawn area follows). */
+  /** Double-click a pin, then click: the comment moves there (its drawn area follows, as the server does: src/lib/pinArea.ts). */
   function moveComment(commentId: number, page: number, x: number, y: number) {
     if (isReadOnlyVersion()) return;
     void reviewAction(params.token, `comments/${commentId}`, "PATCH", { page, x, y });
     setComments((current) =>
       current.map((comment) => {
         if (comment.id !== commentId || !comment.position) return comment;
-        const dx = x - comment.position.x;
-        const dy = y - comment.position.y;
         return {
           ...comment,
           page,
           position: { x, y },
-          area: comment.area ? { ...comment.area, x: comment.area.x + dx, y: comment.area.y + dy } : undefined,
+          area: comment.area ? areaFromPin(comment.area, comment.position, x, y) : undefined,
           location: comment.location.replace(/^Page \d+/, `Page ${page}`),
         };
       }),

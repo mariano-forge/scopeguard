@@ -6,6 +6,7 @@ import { Hand, Maximize, MessageCirclePlus, Minus, Plus } from "lucide-react";
 import { DeliverableContent } from "@/components/DeliverableContent";
 import { SiteBoard } from "./SiteBoard";
 import type { DeliverableType } from "@/components/deliverableKinds";
+import { areaFromPin } from "@/lib/pinArea";
 import { CommentPin, TargetHighlight, describeTarget, type Area, type TargetBox, type ThreadComment } from "./CanvasComments";
 import { Hint } from "@/components/hint";
 
@@ -89,6 +90,8 @@ export function ReviewCanvas({
   const commenting = tool !== "move" && !readOnly;
   /** Pin being moved: it follows the pointer until a click drops it (Escape cancels). */
   const [moving, setMoving] = useState<{ id: number; page: number; x: number; y: number } | null>(null);
+  // The pin under the pointer: its drawn zone shows.
+  const [pinHover, setPinHover] = useState<number | null>(null);
   /** Press on a movable pin: past a few pixels it becomes a drag, dropped on release. */
   const pinPress = useRef<{ id: number; x: number; y: number; dragging: boolean } | null>(null);
   useEffect(() => {
@@ -397,7 +400,18 @@ export function ReviewCanvas({
                     {hover?.page === page && <TargetHighlight box={hover.box} />}
                     {drawing?.page === page && <TargetHighlight box={drawing.box} drawing />}
                     {composer?.page === page && composer.area && <TargetHighlight box={areaBox(composer.area)} drawing />}
-                    {threadOpen && selected?.area && (selected.page ?? 1) === page && <TargetHighlight box={areaBox(selected.area)} drawing />}
+                    {threadOpen && !moving && selected?.area && (selected.page ?? 1) === page && <TargetHighlight box={areaBox(selected.area)} drawing />}
+                    {comments
+                      .filter((comment) => comment.area && (comment.page ?? 1) === page && (comment.id === pinHover || comment.id === moving?.id))
+                      .filter((comment) => moving?.id === comment.id || !(threadOpen && comment.id === selectedId))
+                      .map((comment) => (
+                        <TargetHighlight
+                          key={`zone-${comment.id}`}
+                          // While its pin moves: the zone as it will be, its far corner kept.
+                          box={areaBox(moving?.id === comment.id && comment.position ? areaFromPin(comment.area!, comment.position, moving.x, moving.y) : comment.area!)}
+                          drawing={moving?.id === comment.id}
+                        />
+                      ))}
                     {comments
                       .map((comment) =>
                         moving?.id === comment.id ? { ...comment, page: moving.page, position: { x: moving.x, y: moving.y } } : comment,
@@ -410,6 +424,7 @@ export function ReviewCanvas({
                           comment={comment}
                           active={threadOpen && comment.id === selectedId}
                           moving={moving?.id === comment.id}
+                          onHover={(over) => setPinHover(over ? comment.id : null)}
                           unread={isUnread?.(comment)}
                           onOpen={() => {
                             if (!moved.current && !moving) onPinClick(comment);

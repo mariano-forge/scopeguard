@@ -550,7 +550,7 @@ export function BrowserView({
               deleteLocked={!canManage}
             />
             <button className="primary-button" onClick={onNewProject}>
-              <Plus /> Projet
+              <Plus /> Ajouter un projet
             </button>
           </div>
         </header>
@@ -595,7 +595,7 @@ export function BrowserView({
               onMove={(clientId) => onMoveProject(project.id, clientId)}
             />
             <button className="primary-button" onClick={onNewDeliverable}>
-              <Plus /> Livrable
+              <Plus /> Ajouter un livrable
             </button>
           </div>
         </header>
@@ -655,7 +655,7 @@ export function BrowserView({
         <header className="page-header">
           <h1 className="page-title">Tous les espaces</h1>
           <button className="primary-button" onClick={onNewClient}>
-            <Plus /> Espace
+            <Plus /> Ajouter un espace
           </button>
         </header>
         {sorted.length === 0 ? (
@@ -864,7 +864,7 @@ function HomePage({
       <header className="page-header">
         <h1 className="page-title">Vue d’ensemble</h1>
         <button className="primary-button" onClick={onNewProject}>
-          <Plus /> Projet
+          <Plus /> Ajouter un projet
         </button>
       </header>
 

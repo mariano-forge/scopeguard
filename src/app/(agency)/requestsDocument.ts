@@ -50,5 +50,10 @@ export function requestsHtml(title: string, comments: ThreadComment[], statusOf:
   </style></head><body>
   <header><p class="eyebrow">DEMANDES DU LIVRABLE</p><h1>${escapeHtml(title)}</h1><small>Exporté le ${escapeHtml(generated)} (heure de Paris)</small></header>
   <main>${body || "<p>Aucune demande sur cette version.</p>"}</main>
-  <button onclick="window.print()">Imprimer ou enregistrer en PDF</button></body></html>`;
+  <button id="print">Imprimer ou enregistrer en PDF</button>
+  <script>
+    // The page prints itself once drawn (a window asked by another to print may print it blank).
+    document.getElementById("print").addEventListener("click", () => window.print());
+    window.addEventListener("load", () => setTimeout(() => window.print(), 300));
+  </script></body></html>`;
 }

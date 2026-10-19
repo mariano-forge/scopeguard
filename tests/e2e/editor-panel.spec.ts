@@ -254,8 +254,17 @@ test("a request without pin opens by the panel; a long one scrolls in its bubble
 
 test("« Exporter en PDF » opens the version's requests as a printable page, without the agency's drafts", async ({ browser }) => {
   const { page, errors } = await editor(browser);
+  await page.context().addInitScript(() => {
+    window.print = () => {
+      document.title = `Imprimée · ${document.title}`;
+    };
+  });
   await page.getByRole("button", { name: "Copier ou exporter les demandes" }).click();
   const [printable] = await Promise.all([page.waitForEvent("popup"), page.getByRole("menuitem", { name: "Exporter en PDF" }).click()]);
+  // A page of its own, which prints itself once loaded (no window asked to print by another).
+  expect(printable.url()).toMatch(/^blob:/);
+  // It asks to print by itself (print() marked in this test browser instead of opening its dialog).
+  await expect(printable).toHaveTitle(/^Imprimée · /);
   await expect(printable.locator("header")).toContainText("DEMANDES DU LIVRABLE");
   await expect(printable.locator("main")).toContainText("Le logo plus grand");
   await expect(printable.locator("main")).toContainText("Hors scope · 4");
@@ -337,11 +346,69 @@ test("the hand moves the view, the wheel button too in comment mode; « + » ope
 
   // The sidebar: the other deliverables of the project, and « + » opens the dialog, not a file picker.
   const sidebar = page.getByRole("complementary", { name: "Navigation du livrable" });
-  const others = sidebar.getByRole("region", { name: "Autres livrables du projet" });
+  const others = sidebar.getByRole("region", { name: "Autres livrables" });
   await expect(others.getByRole("link", { name: "logo.png" })).toBeVisible();
   await expect(others.getByRole("link", { name: "maquette.pdf" })).toHaveCount(0);
   await expect(sidebar).not.toContainText("Northwind");
   await others.getByRole("button", { name: "Ajouter un livrable au projet" }).click();
   await expect(page.getByRole("dialog").filter({ hasText: "Livrable" }).first()).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("a drawn zone shows on its pin's hover; moving the pin moves its corner only; tabs, menus and dialogs look right", async ({ browser }) => {
+  const alice = await signUp("Alice Martin");
+  const org = await createAgency(alice, "Studio Zones");
+  await seedState(alice, {
+    lists: {
+      clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
+      projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },
+      deliverables: { upsert: [{ id: 1, projectId: 1, name: "maquette.pdf", type: "PDF", version: 1, status: "Brouillon", locked: false, importedAt: "14/10/2026" }], remove: [] },
+      comments: {
+        upsert: [
+          { id: 50, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Ce bloc", decision: "À qualifier", kind: "remark", location: "Page 1 · Zone sélectionnée", page: 1, position: { x: 20, y: 20 }, area: { x: 20, y: 20, w: 30, h: 20 }, time: "t" },
+        ],
+        remove: [],
+      },
+    },
+  });
+  const { page, errors } = await newPerson(browser);
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1/livrables/1");
+  await expect(page.locator("[data-page]").first()).toBeVisible();
+
+  // Its zone shows while the pointer is on the pin, and only then.
+  const zone = page.locator(".target-highlight");
+  await expect(zone).toHaveCount(0);
+  await page.getByRole("button", { name: /^Commentaire #50 :/ }).hover();
+  await expect(zone).toHaveCount(1);
+  await page.mouse.move(5, 5);
+  await expect(zone).toHaveCount(0);
+
+  // Moved, the pin takes its corner with it: the opposite one (50 %, 40 %) stays.
+  expect((await call("/api/comments/50", { method: "PATCH", person: alice, body: { page: 1, x: 10, y: 10 } })).status).toBe(200);
+  const [moved] = await sql<{ data: { area: unknown; position: unknown } }>("select data from comments where organization_id = $1 and id = 50", [org]);
+  expect(moved.data.position).toEqual({ x: 10, y: 10 });
+  expect(moved.data.area).toEqual({ x: 10, y: 10, w: 40, h: 30 });
+
+  // The active tab keeps its line; a menu's rows keep their size on hover; dialogs on a dark ground.
+  const active = page.getByRole("complementary", { name: "Demandes" }).getByRole("tab", { selected: true }).last();
+  expect(await active.evaluate((element) => getComputedStyle(element).boxShadow)).toContain("inset");
+  await page.getByRole("button", { name: "Copier ou exporter les demandes" }).click();
+  const item = page.getByRole("menuitem", { name: "Copier les demandes" });
+  // Measured once the menu has finished opening (it grows from 95 %).
+  await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
+  const before = (await item.boundingBox())!;
+  await item.hover();
+  const after = (await item.boundingBox())!;
+  expect([after.x, after.width, after.height]).toEqual([before.x, before.width, before.height]);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Ajouter une demande" }).click();
+  const overlay = page.locator('[data-slot="dialog-overlay"]');
+  await expect(overlay).toBeVisible();
+  // Black at 45 % (said rgba or oklab by the browser), and no blur.
+  const [ground, blur] = await overlay.evaluate((element) => [getComputedStyle(element).backgroundColor, getComputedStyle(element).backdropFilter]);
+  expect(ground).toMatch(/^(rgba\(0, 0, 0, 0\.45\)|oklab\(0 0 0 \/ 0\.45\))$/);
+  expect(blur).toBe("none");
   expect(errors).toEqual([]);
 });

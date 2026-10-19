@@ -107,7 +107,7 @@ test("skipping the first steps leads home, where « Bien démarrer » takes over
   await expect(list.getByRole("button", { name: "Créer un espace" })).toBeVisible();
 
   // « + Projet » with no space yet: the dialog asks for the space, and creates both.
-  await page.getByRole("button", { name: "Projet", exact: true }).click();
+  await page.getByRole("button", { name: "Ajouter un projet" }).click();
   const dialog = page.getByRole("dialog", { name: "Créer un projet" });
   await expect(dialog.getByRole("combobox")).toHaveCount(0);
   await dialog.getByLabel("Nom du projet").fill("Catalogue");

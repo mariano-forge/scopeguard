@@ -34,14 +34,14 @@ const rows = <T,>(query: string, org: string, params: unknown[] = []) => sql<T>(
 test("an administrator creates a space and a project, then renames them", async ({ browser }) => {
   const { org, page, errors, writes } = await workspace(browser);
   await page.goto("/espaces");
-  await page.getByRole("button", { name: "Espace", exact: true }).click();
+  await page.getByRole("button", { name: "Ajouter un espace" }).click();
   await page.getByLabel("Nom de l’espace").fill("Atelier Horizon");
   await page.getByRole("button", { name: "Créer l’espace" }).click();
   await page.waitForURL(/\/espaces\/\d+$/);
   const spaceId = Number(page.url().split("/").at(-1));
   await expect.poll(async () => (await rows<{ name: string }>("select data->>'name' as name from clients where organization_id = $1 and id = $2", org, [spaceId]))[0]?.name).toBe("Atelier Horizon");
 
-  await page.getByRole("button", { name: "Projet", exact: true }).click();
+  await page.getByRole("button", { name: "Ajouter un projet" }).click();
   await page.getByLabel("Nom du projet").fill("Site vitrine");
   await page.getByRole("button", { name: "Créer le projet" }).click();
   await page.waitForURL(/\/projets\/\d+$/);
@@ -72,7 +72,7 @@ test("an administrator creates a space and a project, then renames them", async 
 test("a project created from the home page goes in the space chosen in the dialog", async ({ browser }) => {
   const { org, page, errors } = await workspace(browser);
   await page.goto("/");
-  await page.getByRole("button", { name: "Projet", exact: true }).click();
+  await page.getByRole("button", { name: "Ajouter un projet" }).click();
   const dialog = page.getByRole("dialog", { name: "Créer un projet" });
   await dialog.getByLabel("Nom du projet").fill("Identité visuelle");
   await expect(dialog.getByLabel("Espace", { exact: true })).toContainText("Northwind");

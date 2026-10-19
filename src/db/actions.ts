@@ -3,6 +3,7 @@
 
 import { and, eq, inArray } from "drizzle-orm";
 import type { ListChange, StateChanges } from "@/lib/sharedState";
+import { areaFromPin } from "@/lib/pinArea";
 import type { Db } from "./client";
 import { commentProposals, comments, deliverables } from "./schema";
 
@@ -50,12 +51,12 @@ export function movedComment(comment: Data, page: number, x: number, y: number):
   const position = comment.position as { x: number; y: number } | undefined;
   if (!position) return null;
   const area = comment.area as Area | undefined;
-  const [dx, dy] = [x - position.x, y - position.y];
   return {
     ...comment,
     page,
     position: { x, y },
-    ...(area ? { area: { ...area, x: area.x + dx, y: area.y + dy } } : {}),
+    // The pin is one corner of its zone: that corner follows it, the opposite one stays (src/lib/pinArea.ts).
+    ...(area ? { area: areaFromPin(area, position, x, y) } : {}),
     location: typeof comment.location === "string" ? comment.location.replace(/^Page \d+/, `Page ${page}`) : comment.location,
   };
 }

@@ -27,7 +27,7 @@ test("« + Demande »: received by e-mail, with the client’s words and a captu
   await page.goto("/projets/1/livrables/1");
   await expect(page.locator("[data-page]").first()).toBeVisible();
 
-  await page.getByRole("button", { name: "Demande", exact: true }).click();
+  await page.getByRole("button", { name: "Ajouter une demande" }).click();
   // Opened from the « À clarifier » tab: that choice comes first.
   await expect(page.getByRole("heading", { name: "Nouvelle demande" })).toBeVisible();
   const dialog = page;

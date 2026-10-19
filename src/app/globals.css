@@ -5878,10 +5878,6 @@ a.page-nav-label:hover {
   min-width: 0;
 }
 
-.app-menu-item:hover:not(:disabled),
-
-.app-menu-item:disabled,
-
 /* Rail logo opens the main menu */
 button.rail-logo {
   display: flex;
@@ -8928,4 +8924,18 @@ body.is-resizing {
 }
 .notification-list.is-read .notification-dot {
   background: var(--border-input);
+}
+
+/* The active tab's line drawn inside the button: the tabs scroll sideways (overflow), which cut a border
+   pulled over the list's bottom line. */
+.inspector-tabs button {
+  margin-bottom: 0;
+  border-bottom: 0;
+}
+.inspector-tabs button.is-active {
+  box-shadow: inset 0 -2px 0 var(--ink);
+}
+/* The bell's panel keeps its rounded corners over a highlighted row. */
+.notification-panel {
+  overflow: hidden;
 }

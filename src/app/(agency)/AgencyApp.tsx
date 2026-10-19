@@ -1134,16 +1134,15 @@ export function AgencyApp() {
   const exportTitle = currentDeliverable ? `${currentDeliverable.name} — V${String(currentDeliverable.version).padStart(2, "0")}` : "Demandes";
   /** The version's requests as a printable page, saved as PDF from the browser (as the proof). */
   function exportRequests() {
-    const exportWindow = window.open("", "_blank");
-    if (!exportWindow) return;
     const statusOf = (comment: Comment) =>
       comment.decision === "Hors périmètre"
         ? outsideStatusView(outsideStatusOf({ state: proposalStateFor(comment.id), decision: proposalDecisionFor(comment.id), adaptation: adaptationRequests[comment.id] }), "agency").label
         : null;
-    const parsed = new DOMParser().parseFromString(requestsHtml(exportTitle, activeComments, (comment) => statusOf(comment as Comment)), "text/html");
-    exportWindow.document.documentElement.replaceWith(exportWindow.document.importNode(parsed.documentElement, true));
-    exportWindow.focus();
-    exportWindow.print();
+    // A page of its own, which prints itself once loaded (src/app/(agency)/requestsDocument.ts).
+    const page = URL.createObjectURL(new Blob([requestsHtml(exportTitle, activeComments, (comment) => statusOf(comment as Comment))], { type: "text/html" }));
+    if (!window.open(page, "_blank")) toast.error("Votre navigateur a bloqué la fenêtre d’export : autorisez les fenêtres pour Kora, puis réessayez.");
+    // Freed once the page has had time to open.
+    window.setTimeout(() => URL.revokeObjectURL(page), 60_000);
   }
 
   function replyTo(commentId: number, message: string) {

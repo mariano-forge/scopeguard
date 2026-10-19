@@ -470,11 +470,11 @@ export function ProjectSidebar({
                 ))}
               </ul>
             </section>
-            <section className="panel-section" aria-label="Autres livrables du projet">
+            <section className="panel-section" aria-label="Autres livrables">
               <div className="panel-section-header">
                 <button type="button" className="panel-section-toggle" aria-expanded={livrablesOpen} onClick={() => setLivrablesOpen((open) => !open)}>
                   <ChevronDown aria-hidden="true" className={livrablesOpen ? "" : "is-closed"} />
-                  <h2>Autres livrables du projet</h2>
+                  <h2>Autres livrables</h2>
                   <span className="panel-section-count">{others.length}</span>
                 </button>
                 <Hint label="Ajouter un livrable au projet">

@@ -392,7 +392,7 @@ export function EditorInspector({
           {onAddRequest && (
             <Hint label="Une demande reçue ailleurs (e-mail, appel, réunion…) ou portant sur tout le livrable">
               <Button className="requests-add" onClick={() => onAddRequest(tab === "outside" ? "Hors périmètre" : tab === "correction" ? "Inclus" : "À qualifier")}>
-                <Plus /> Demande
+                <Plus /> Ajouter une demande
               </Button>
             </Hint>
           )}

@@ -155,9 +155,12 @@ export function CommentPin({
   onOpen,
   onMove,
   unread,
+  onHover,
 }: {
   comment: ThreadComment;
   active: boolean;
+  /** The pointer enters or leaves the pin (its drawn zone shows meanwhile). */
+  onHover?: (over: boolean) => void;
   /** Something of the client not read yet in its thread: a dot on the pin. */
   unread?: boolean;
   /** Being moved (follows the pointer). */
@@ -181,6 +184,8 @@ export function CommentPin({
         event.stopPropagation();
         onMove?.();
       }}
+      onPointerEnter={() => onHover?.(true)}
+      onPointerLeave={() => onHover?.(false)}
       title={onMove ? "Glisser pour déplacer" : undefined}
       aria-label={`${itemLabel(comment)} #${comment.id} : ${requestText(comment)}${unread ? " (non lu)" : ""}`}
       aria-expanded={active}
@@ -570,9 +575,7 @@ export function ThreadPopover({
             <Tabs value={view} onValueChange={(next) => setView(next as "detail" | "discussion")} className="thread-tabs">
               <TabsList aria-label="Demande" className="w-full">
                 <TabsTrigger value="detail">Détail</TabsTrigger>
-                <TabsTrigger value="discussion">
-                  Discussion <span>{messages.length}</span>
-                </TabsTrigger>
+                <TabsTrigger value="discussion">Discussion</TabsTrigger>
               </TabsList>
             </Tabs>
           )}
