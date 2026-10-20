@@ -1,15 +1,19 @@
 "use client";
 
 // The review canvas of a « Lien » deliverable (agency and client pages, through ReviewCanvas): its staging
-// site is reviewed there, with the toolbar (public/kora-toolbar.js); here, the requests it got, page by
-// page, each with the capture of what was pointed at. A card opens its request as a pin does, and the
-// request's thread shows next to the cards. The agency also gets how to set the toolbar up (`setup`).
+// site is reviewed there, with the toolbar (public/kora-toolbar.js); here, one sheet in the middle of the
+// canvas, framed as a browser window: what the toolbar is and the steps to use it (SiteGuide.tsx), then the
+// requests it got, page by page, each with the capture of what was pointed at. A card opens its request as
+// a pin does, and the request's thread floats over the canvas, docked as a request without pin is
+// (ReviewCanvas), so the cards keep the sheet's width. The agency also gets how to set the toolbar up
+// (`setup`): its presence is what tells the agency's board from the client's.
 
-import { ArrowUpRight, Globe, MousePointerClick, Settings2 } from "lucide-react";
+import { ArrowUpRight, Globe, Inbox, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { SiteAnchor } from "@/lib/siteReview";
 import { siteClientUrl } from "@/lib/siteReview";
-import { itemLabel, requestKind, requestText, statusLabels, statusTones, type ThreadComment } from "./CanvasComments";
+import { itemLabel, requestKind, requestText, statusLabels, statusTones, type RequestKind, type ThreadComment } from "./CanvasComments";
+import { SiteBarDemo, SiteGuideSteps } from "./SiteGuide";
 
 type BoardComment = ThreadComment & { page?: number };
 const siteOf = (comment: BoardComment) => (comment as BoardComment & { site?: SiteAnchor }).site;
@@ -17,6 +21,14 @@ const siteOf = (comment: BoardComment) => (comment as BoardComment & { site?: Si
 /** "/" first, then the pages in alphabetical order. */
 const byPage = (left: string, right: string) => (left === "/" ? -1 : right === "/" ? 1 : left.localeCompare(right, "fr"));
 const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "s" : ""}`;
+const kinds: RequestKind[] = ["comment", "correction", "outside"];
+
+/** The client's steps: where to click, nothing to set up. */
+const clientSteps = [
+  { title: "Ouvrez le site", text: "Avec le bouton « Ouvrir le site », en haut." },
+  { title: "Cliquez sur « Kora »", text: "En bas à droite, puis entrez le code reçu par e-mail." },
+  { title: "Commentez", text: "Choisissez « Commenter » et cliquez sur l’élément à revoir." },
+];
 
 export function SiteBoard({
   siteUrl,
@@ -35,6 +47,7 @@ export function SiteBoard({
   /** The agency: how to set the toolbar up (the script, the link for the client). */
   setup?: React.ReactNode;
 }) {
+  const agency = Boolean(setup);
   const placed = comments.filter((comment) => siteOf(comment));
   const elsewhere = comments.filter((comment) => !siteOf(comment));
   const pages = [...new Set(placed.map((comment) => siteOf(comment)!.url))].sort(byPage);
@@ -42,6 +55,13 @@ export function SiteBoard({
   const empty = !placed.length && !elsewhere.length;
   // The agency and the client open the site with the toolbar shown.
   const siteLink = siteClientUrl({ type: "Link", url: siteUrl }) ?? siteUrl;
+  const pageLink = (page: string) => {
+    try {
+      return siteClientUrl({ type: "Link", url: new URL(page, siteUrl).toString() });
+    } catch {
+      return null;
+    }
+  };
   const host = (() => {
     try {
       return siteUrl ? new URL(siteUrl).host : "";
@@ -82,74 +102,117 @@ export function SiteBoard({
     );
   };
 
-  return (
-    <div className="site-board">
-      <header className="site-board-header">
-        <span className="site-board-favicon" aria-hidden="true">
-          <Globe />
-        </span>
-        <div className="site-board-title">
-          <p className="site-board-eyebrow">Site de recette</p>
-          <h2 className="truncate">{host}</h2>
-          <p className="site-board-meta">{empty ? "Aucune demande pour l’instant" : `${plural(comments.length, "demande")} · ${plural(pages.length, "page")}`}</p>
-        </div>
-        {siteLink && (
-          <Button asChild className="site-board-open">
-            <a href={siteLink} target="_blank" rel="noopener">
-              Ouvrir le site <ArrowUpRight />
-            </a>
-          </Button>
+  /** One group of cards, headed like a browser tab: the page's address, its count, a way to open it. */
+  const group = (label: string, title: React.ReactNode, items: BoardComment[], href?: string | null) => (
+    <section key={label} className="site-board-page" aria-label={label}>
+      <header className="site-page-tab">
+        <span className="site-page-address">{title}</span>
+        <span className="site-page-count">{plural(items.length, "demande")}</span>
+        {href && (
+          <a className="site-page-open" href={href} target="_blank" rel="noopener">
+            Ouvrir la page <ArrowUpRight aria-hidden="true" />
+          </a>
         )}
       </header>
+      <ul className="site-board-grid">{items.sort((left, right) => left.id - right.id).map(card)}</ul>
+    </section>
+  );
 
-      {/* The agency's setup: open until the first requests arrive, then folded away. */}
-      {setup && (
-        <details className="site-setup-card" open={empty}>
-          <summary>
-            <Settings2 aria-hidden="true" /> Paramétrer la barre Kora
-            <small>Une seule fois pour toutes les versions</small>
-          </summary>
-          {setup}
-        </details>
-      )}
-
-      <div className="site-board-body">
-        <div className="site-board-pages">
-          {empty ? (
-            <div className="site-board-empty">
-              <span className="site-board-empty-icon" aria-hidden="true">
-                <MousePointerClick />
-              </span>
-              <b>Aucune demande sur le site pour l’instant.</b>
-              <p>Sur le site de recette, la barre Kora (en bas à droite) permet de commenter chaque élément. Chaque demande arrive ici, page par page, avec la capture de ce qui était visé.</p>
+  return (
+    <>
+      <div className="site-board">
+        <article className="site-sheet">
+          {/* The sheet is framed as the browser window the site is reviewed in. */}
+          <header className="site-board-header">
+            <span className="site-chrome-dots" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            <div className="site-chrome-address">
+              <Lock aria-hidden="true" />
+              <h2 className="truncate">{host}</h2>
             </div>
-          ) : (
-            <>
-              {pages.map((page) => {
-                const items = placed.filter((comment) => siteOf(comment)!.url === page).sort((left, right) => left.id - right.id);
-                return (
-                  <section key={page} className="site-board-page" aria-label={`Page ${page}`}>
-                    <h3>
-                      <code>{page}</code>
-                      <span>{items.length}</span>
-                    </h3>
-                    <ul className="site-board-grid">{items.map(card)}</ul>
-                  </section>
-                );
-              })}
-              {elsewhere.length > 0 && (
-                <section className="site-board-page" aria-label="Hors du site">
-                  <h3>
-                    Reçues ailleurs <span>{elsewhere.length}</span>
-                  </h3>
-                  <ul className="site-board-grid">{elsewhere.sort((left, right) => left.id - right.id).map(card)}</ul>
-                </section>
-              )}
-            </>
-          )}
-        </div>
-        {selected && <aside className="site-thread site-board-thread">{renderThread(selected)}</aside>}
+            {siteLink && (
+              <Button asChild className="site-board-open">
+                <a href={siteLink} target="_blank" rel="noopener">
+                  Ouvrir le site <ArrowUpRight />
+                </a>
+              </Button>
+            )}
+          </header>
+
+          <div className="site-sheet-body">
+            <section className="site-hero" aria-label="Site de recette">
+              <div className="site-hero-text">
+                <h3>Les retours se font sur le site</h3>
+                <p>{agency ? "Votre client clique sur un élément et écrit sa demande : elle arrive ici, avec une capture." : "Cliquez sur un élément et écrivez votre demande : elle arrive ici, avec une capture."}</p>
+              </div>
+              <SiteBarDemo />
+            </section>
+
+            {/* The steps: open until the first requests arrive, then folded away. */}
+            <details className="site-guide" open={empty}>
+              <summary>
+                <span>
+                  {agency ? "Paramétrer la barre Kora" : "Comment commenter le site"}
+                  <small>{agency ? "3 étapes, une seule fois pour toutes les versions" : "3 étapes"}</small>
+                </span>
+              </summary>
+              <div className="site-guide-body">{setup ?? <SiteGuideSteps steps={clientSteps} />}</div>
+            </details>
+
+            <section className="site-requests" aria-labelledby="site-requests-title">
+              <header className="site-requests-header">
+                <h3 id="site-requests-title">Demandes reçues</h3>
+                {!empty && (
+                  <ul className="site-requests-counts" aria-label="Par qualification">
+                    <li className="is-total">
+                      {plural(comments.length, "demande")} · {plural(pages.length, "page")}
+                    </li>
+                    {kinds.map((kind) => {
+                      const count = comments.filter((comment) => requestKind(comment) === kind).length;
+                      return count ? (
+                        <li key={kind} className={`is-${kind}`}>
+                          {count} {statusLabels[kind]}
+                        </li>
+                      ) : null;
+                    })}
+                  </ul>
+                )}
+              </header>
+              <div className="site-board-pages">
+                {empty ? (
+                  <div className="site-board-empty">
+                    <span className="site-board-empty-icon" aria-hidden="true">
+                      <Inbox />
+                    </span>
+                    <b>Aucune demande sur le site pour l’instant.</b>
+                    <p>{agency ? "Elles apparaîtront ici dès que votre client aura commenté un élément du site." : "Vos demandes apparaîtront ici dès votre premier commentaire sur le site."}</p>
+                  </div>
+                ) : (
+                  <>
+                    {pages.map((page) =>
+                      group(
+                        `Page ${page}`,
+                        <>
+                          <Globe aria-hidden="true" />
+                          <span className="site-page-host">{host}</span>
+                          <code>{page}</code>
+                        </>,
+                        placed.filter((comment) => siteOf(comment)!.url === page),
+                        pageLink(page),
+                      ),
+                    )}
+                    {elsewhere.length > 0 && group("Hors du site", "Reçues ailleurs", elsewhere)}
+                  </>
+                )}
+              </div>
+            </section>
+          </div>
+        </article>
       </div>
-    </div>
+      {selected && <div className="canvas-docked-thread">{renderThread(selected)}</div>}
+    </>
   );
 }

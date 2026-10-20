@@ -1,31 +1,40 @@
 "use client";
 
-// On the agency's « Tableau de recette » of a « Lien » deliverable: how to set up the Kora toolbar, in two
+// On the agency's « Tableau de recette » of a « Lien » deliverable: how to set up the Kora toolbar, in three
 // steps. The line to put on the staging site once for every version (its fixed key, src/lib/siteKey.ts),
-// and the address to send the client, which shows the toolbar on their device (public/kora-toolbar.js).
+// the address to send the client, which shows the toolbar on their device (public/kora-toolbar.js), and
+// where their requests then arrive.
 
 import { useEffect, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { siteClientUrl } from "@/lib/siteReview";
+import { SiteGuideSteps } from "./editor/SiteGuide";
 
-/** A value to copy, with its button that says it was copied. */
-function CopyButton({ value, label }: { value: string; label: string }) {
+/** A value to copy, in one line, with its button that says it was copied. The script reads as code. */
+function CopyField({ id, label, value, copyLabel, code }: { id: string; label: string; value: string; copyLabel?: string; code?: boolean }) {
   const [copied, setCopied] = useState(false);
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      aria-label={label}
-      onClick={() => {
-        void navigator.clipboard.writeText(value).then(() => setCopied(true));
-      }}
-    >
-      {copied ? <Check /> : <Copy />} {copied ? "Copié" : "Copier"}
-    </Button>
+    <div className={`site-copy ${code ? "is-code" : ""}`}>
+      <Label htmlFor={id} className="sr-only">
+        {label}
+      </Label>
+      <Input id={id} readOnly value={value} spellCheck={false} onFocus={(event) => event.target.select()} />
+      {copyLabel && (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={copyLabel}
+          onClick={() => {
+            void navigator.clipboard.writeText(value).then(() => setCopied(true));
+          }}
+        >
+          {copied ? <Check /> : <Copy />} {copied ? "Copié" : "Copier"}
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -54,33 +63,33 @@ export function SiteToolbarSnippet({ deliverableId, siteUrl }: { deliverableId: 
     );
   const snippet = key ? `<script src="${window.location.origin}/kora-toolbar.js" data-site="${key}" defer></script>` : "Préparation du script…";
   return (
-    <ol className="site-setup">
-      <li>
-        <span className="site-setup-step" aria-hidden="true">
-          1
-        </span>
-        <div className="site-setup-body">
-          <Label htmlFor="site-snippet">Script de recette</Label>
-          <p>Collez-le une seule fois sur le site, juste avant <code>&lt;/body&gt;</code> : il ouvre toujours la dernière version partagée.</p>
-          <div className="site-setup-value">
-            <Textarea id="site-snippet" readOnly rows={2} className="font-mono text-xs" value={snippet} onFocus={(event) => event.target.select()} />
-            {key && <CopyButton value={snippet} label="Copier le script" />}
-          </div>
-        </div>
-      </li>
-      <li>
-        <span className="site-setup-step" aria-hidden="true">
-          2
-        </span>
-        <div className="site-setup-body">
-          <Label htmlFor="site-client-url">Lien du site pour le client</Label>
-          <p>Envoyez-le à votre client (il est aussi dans les e-mails d’invitation) : il s’y vérifie par un code, puis commente directement sur le site.</p>
-          <div className="site-setup-value">
-            <Input id="site-client-url" readOnly value={clientUrl} onFocus={(event) => event.target.select()} />
-            <CopyButton value={clientUrl} label="Copier le lien du site" />
-          </div>
-        </div>
-      </li>
-    </ol>
+    <SiteGuideSteps
+      steps={[
+        {
+          title: "Installez la barre Kora",
+          text: (
+            <>
+              Collez cette ligne une seule fois sur votre site ou prototype, avant <code>&lt;/body&gt;</code>.
+            </>
+          ),
+          children: <CopyField id="site-snippet" label="Script de recette" value={snippet} copyLabel={key ? "Copier le script" : undefined} code />,
+        },
+        {
+          title: "Invitez votre client",
+          text: "Envoyez-lui ce lien, ou passez par « Partager la revue ».",
+          children: <CopyField id="site-client-url" label="Lien du site pour le client" value={clientUrl} copyLabel="Copier le lien du site" />,
+        },
+        {
+          title: "Qualifiez ses demandes",
+          text: (
+            <>
+              Chacune arrive ci-dessous. Classez-la <span className="decision-badge decision-included">Inclus</span> si elle est prévue au devis,{" "}
+              <span className="decision-badge decision-outside">Hors scope</span> si elle est à chiffrer,{" "}
+              <span className="decision-badge decision-pending">À clarifier</span> s’il faut en parler.
+            </>
+          ),
+        },
+      ]}
+    />
   );
 }

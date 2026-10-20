@@ -602,9 +602,13 @@ test("the canvas of a « Lien » says how to set the toolbar up: the line with t
   const { page, errors } = await newPerson(browser);
   await signInPage(page, alice.email);
   await page.goto("/projets/1/livrables/1");
-  // No request yet: the setup is open on the board.
+  // No request yet: the setup is open on the board, as three steps, beside what the toolbar looks like.
   const board = page.getByRole("region", { name: "Tableau de recette" });
   await expect(board.getByText("Paramétrer la barre Kora")).toBeVisible();
+  await expect(board.getByRole("figure")).toContainText("La barre Kora");
+  for (const step of ["Installez la barre Kora", "Invitez votre client", "Qualifiez ses demandes"]) await expect(board.getByRole("heading", { name: step, exact: true })).toBeVisible();
+  // The last step teaches what each qualification means.
+  await expect(board.getByRole("listitem").filter({ hasText: "Qualifiez ses demandes" })).toContainText("Hors scope si elle est à chiffrer");
   // The long script line wraps in its field: the board never scrolls sideways, « Ouvrir le site » stays in view.
   await expect.poll(() => board.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
   await expect(board.getByRole("link", { name: "Ouvrir le site" })).toBeInViewport();
@@ -646,6 +650,11 @@ test("in Kora, a « Lien » shows its requests page by page with their captures,
   await expect(board.getByRole("region", { name: "Page /", exact: true }).getByRole("button")).toHaveCount(2);
   await expect(board.getByRole("region", { name: "Page /contact" }).getByRole("button")).toHaveCount(2);
   await expect(board.getByRole("link", { name: "Ouvrir le site" })).toHaveAttribute("href", `${site}/?kora`);
+  // Each page opens on the site, with the toolbar.
+  await expect(board.getByRole("region", { name: "Page /contact" }).getByRole("link", { name: "Ouvrir la page" })).toHaveAttribute("href", `${site}/contact?kora`);
+  // Requests came: the setup is folded under its title.
+  await expect(board.getByText("Paramétrer la barre Kora")).toBeVisible();
+  await expect(board.getByLabel("Script de recette")).toBeHidden();
   await board.getByRole("button", { name: "Commentaire #82" }).click();
   await expect(agency.page.getByRole("dialog", { name: "Commentaire #82" })).toContainText("Ajouter un plan d’accès");
   expect(agency.errors).toEqual([]);
@@ -662,6 +671,9 @@ test("in Kora, a « Lien » shows its requests page by page with their captures,
   // The toolbar's setup is the agency's: never on the client's page.
   await expect(clientBoard.getByText("Paramétrer la barre Kora")).toHaveCount(0);
   await expect(page.getByLabel("Script de recette")).toHaveCount(0);
+  // Their own guide: where to click, folded once requests are there.
+  await clientBoard.getByText("Comment commenter le site").click();
+  await expect(clientBoard.getByRole("heading", { name: "Cliquez sur « Kora »" })).toBeVisible();
   // The capture of a request they see opens for them (/api/files).
   const card = clientBoard.getByRole("button", { name: "Commentaire #82" }).locator("img");
   await expect.poll(() => card.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
@@ -673,6 +685,9 @@ test("a « Lien » without requests says how they come", async ({ browser }) => 
   const { page, errors } = await newPerson(browser);
   await signInPage(page, alice.email);
   await page.goto("/projets/1/livrables/1");
-  await expect(page.getByRole("region", { name: "Tableau de recette" }).getByText("Aucune demande sur le site pour l’instant.")).toBeVisible();
+  const board = page.getByRole("region", { name: "Tableau de recette" });
+  await expect(board.getByText("Aucune demande sur le site pour l’instant.")).toBeVisible();
+  // Said once, under « Demandes reçues », not again in the site's bar.
+  await expect(board.getByText("Aucune demande pour l’instant")).toHaveCount(0);
   expect(errors).toEqual([]);
 });

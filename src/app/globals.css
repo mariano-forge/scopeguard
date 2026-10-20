@@ -8014,201 +8014,523 @@ body.is-resizing {
   margin: var(--s-2) var(--s-4) 0;
 }
 
-/* The review canvas of a « Lien » deliverable (src/app/(agency)/editor/SiteBoard.tsx): a header for the
-   site, the agency's setup guide, then the requests page by page as cards with their captures; the open
-   request's thread beside them. */
+/* The review canvas of a « Lien » deliverable (src/app/(agency)/editor/SiteBoard.tsx): the dotted canvas of
+   the other deliverables, with one sheet in its middle framed as a browser window. In it: what the Kora
+   toolbar is (a miniature, SiteGuide.tsx), the steps and rules, then the requests page by page as cards
+   with their captures; the open request's thread beside them. */
 .site-board-panel {
-  overflow: auto;
-  background: var(--canvas);
+  position: relative;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background-color: var(--mist);
+  background-image: radial-gradient(circle, rgba(17, 17, 17, 0.14) 1px, transparent 1.4px);
+  background-size: 20px 20px;
 }
+/* The sheet scrolls, the docked thread stays over the canvas's corner. */
 .site-board {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--s-8) var(--s-8) 64px;
+}
+.site-sheet {
   display: grid;
   /* One column no wider than the canvas: a long script line wraps in its field instead of widening it. */
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--s-6);
-  max-width: 1280px;
+  max-width: 1040px;
   margin: 0 auto;
-  padding: var(--s-6) var(--s-8) var(--s-8);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--paper);
+  box-shadow:
+    0 1px 2px rgba(17, 17, 17, 0.04),
+    0 24px 60px rgba(17, 17, 17, 0.08);
 }
+
+/* The window's bar: three dots, the address, the way to the site. */
 .site-board-header {
   display: flex;
   align-items: center;
-  gap: var(--s-4);
-  padding: var(--s-4) var(--s-6);
-  border: 1px solid var(--border);
-  border-radius: var(--r-panel);
-  background:
-    radial-gradient(90% 140% at 100% 0%, var(--status-low-bg) 0%, transparent 60%),
-    var(--paper);
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3) var(--s-2) var(--s-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--canvas);
 }
-.site-board-favicon {
-  display: grid;
+.site-chrome-dots {
+  display: flex;
   flex: none;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-button);
-  background: var(--paper);
-  color: var(--action-ui);
+  gap: 6px;
 }
-.site-board-favicon svg {
-  width: 22px;
-  height: 22px;
+.site-chrome-dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-full);
+  background: var(--border);
 }
-.site-board-title {
-  display: grid;
+.site-chrome-address {
+  display: flex;
   flex: 1;
-  gap: 2px;
+  align-items: center;
+  gap: var(--s-2);
   min-width: 0;
+  height: 36px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--paper);
 }
-.site-board-eyebrow {
-  margin: 0;
-  color: var(--graphite);
-  font: 600 11px var(--font-ui);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.site-chrome-address svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--status-resolved-text);
 }
 .site-board-header h2 {
   margin: 0;
-  font: 700 22px / 1.2 var(--font-display);
-  letter-spacing: -0.02em;
-}
-.site-board-meta {
-  margin: 0;
-  color: var(--graphite);
-  font: 400 13px var(--font-ui);
+  font: 500 var(--t-ui) var(--font-ui);
 }
 .site-board-open {
   flex: none;
 }
+.site-sheet-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-8);
+  padding: var(--s-8);
+}
 
-/* The agency's setup: a card that folds once the first requests arrive. */
-.site-setup-card {
+/* What the board is for, beside a miniature of the toolbar on a page. */
+.site-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-8);
+}
+.site-hero-text {
+  display: grid;
+  gap: var(--s-3);
+}
+.site-hero-text h3 {
+  margin: 0;
+  font: 700 var(--t-h2) var(--font-display);
+  letter-spacing: var(--t-h2-tracking);
+  text-wrap: balance;
+}
+.site-hero-text p:last-child {
+  margin: 0;
+  color: var(--graphite);
+  font: 400 var(--t-body) var(--font-ui);
+  text-wrap: pretty;
+}
+.site-bar-demo {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+}
+.site-bar-demo-screen {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  height: 196px;
+  padding: var(--s-4);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  background:
+    radial-gradient(120% 90% at 100% 100%, var(--status-low-bg) 0%, transparent 55%),
+    var(--canvas);
+}
+.site-bar-demo-screen > span:not(.demo-bar, .demo-target) {
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--mist);
+}
+.site-bar-demo-screen .demo-nav {
+  width: 100%;
+  margin-bottom: var(--s-2);
+}
+.site-bar-demo-screen .demo-heading {
+  width: 62%;
+  height: 16px;
+  background: var(--border);
+}
+.site-bar-demo-screen .demo-line {
+  width: 84%;
+}
+.site-bar-demo-screen .demo-line.is-short {
+  width: 56%;
+}
+/* The element the client clicked: outlined as the toolbar does, its pin on its corner. */
+.site-bar-demo-screen .demo-target {
+  position: relative;
+  width: 96px;
+  height: 30px;
+  margin-top: var(--s-2);
+  border-radius: var(--r-button);
+  outline: 2px solid var(--action-fill);
+  outline-offset: 2px;
+  background: var(--ink);
+}
+.site-bar-demo-screen .demo-pin {
+  position: absolute;
+  top: -10px;
+  right: -14px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--paper);
+  border-radius: 8px 8px 8px 0;
+  background: var(--attention-fill);
+  box-shadow:
+    0 0 0 1px rgba(17, 17, 17, 0.32),
+    0 3px 10px rgba(17, 17, 17, 0.28);
+  color: var(--ink);
+  font: 700 10px / 1 var(--font-ui);
+  transform: translateY(-50%);
+  transform-origin: bottom left;
+  animation: site-demo-pin 600ms var(--ease-spring) 300ms both;
+}
+@keyframes site-demo-pin {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.4);
+  }
+}
+/* The toolbar itself (public/kora-toolbar.js .bar): the two tools and the launcher. */
+.site-bar-demo-screen .demo-bar {
+  position: absolute;
+  right: var(--s-3);
+  bottom: var(--s-3);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 10px;
+  border-radius: 999px;
+  background: var(--ink);
+  box-shadow: 0 4px 16px rgba(17, 17, 17, 0.2);
+  color: var(--paper);
+}
+.site-bar-demo-screen .demo-bar svg {
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+}
+.site-bar-demo-screen .demo-bar i {
+  width: 1px;
+  height: 16px;
+  margin-right: 4px;
+  background: rgba(255, 255, 255, 0.25);
+}
+.site-bar-demo-screen .demo-bar b {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  font: 600 12px / 1 var(--font-ui);
+}
+.site-bar-demo figcaption {
+  display: grid;
+  gap: 2px;
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.site-bar-demo figcaption b {
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
+}
+
+/* The steps and the rules: open until the first requests arrive, then folded under their title. */
+.site-guide {
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  background: var(--canvas);
+}
+.site-guide summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  cursor: pointer;
+  list-style: none;
+}
+.site-guide summary::-webkit-details-marker {
+  display: none;
+}
+.site-guide summary > span {
+  display: grid;
+  gap: 2px;
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.site-guide summary small {
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.site-guide summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  margin: 0 var(--s-1) 0 auto;
+  border-right: 1.5px solid var(--graphite);
+  border-bottom: 1.5px solid var(--graphite);
+  transform: rotate(45deg);
+  transition: transform var(--d-fast) var(--ease-out);
+}
+.site-guide[open] summary::after {
+  transform: rotate(-135deg);
+}
+.site-guide summary:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+  border-radius: var(--r-panel);
+}
+.site-guide-body {
+  display: grid;
+  gap: var(--s-4);
+  padding: 0 var(--s-4) var(--s-4);
+}
+.site-steps {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* One row per step: its number, what to do, then what to copy. */
+.site-step {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1.15fr);
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-4);
   border: 1px solid var(--border);
   border-radius: var(--r-panel);
   background: var(--paper);
 }
-.site-setup-card summary {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  padding: var(--s-3) var(--s-4);
-  font: 600 14px var(--font-ui);
-  cursor: pointer;
-  list-style: none;
-}
-.site-setup-card summary::-webkit-details-marker {
-  display: none;
-}
-.site-setup-card summary::after {
-  content: "";
-  width: 8px;
-  height: 8px;
-  margin-left: auto;
-  border-right: 1.5px solid var(--graphite);
-  border-bottom: 1.5px solid var(--graphite);
-  transform: rotate(45deg);
-  transition: transform 150ms var(--ease-out);
-}
-.site-setup-card[open] summary::after {
-  transform: rotate(-135deg);
-}
-.site-setup-card summary svg {
-  width: 16px;
-  height: 16px;
-  color: var(--graphite);
-}
-.site-setup-card summary small {
-  color: var(--graphite);
-  font: 400 12px var(--font-ui);
-}
-.site-setup {
+.site-step-number {
   display: grid;
-  gap: var(--s-4);
-  margin: 0;
-  padding: var(--s-2) var(--s-4) var(--s-4);
-  border-top: 1px solid var(--mist);
-  list-style: none;
-}
-.site-setup li {
-  display: flex;
-  gap: var(--s-3);
-  padding-top: var(--s-3);
-}
-.site-setup-step {
-  display: grid;
-  flex: none;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
+  align-self: start;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-full);
   background: var(--ink);
   color: var(--paper);
-  font: 700 12px var(--font-ui);
+  font: 700 var(--t-caption) var(--font-ui);
 }
-.site-setup-body {
+.site-step-text {
   display: grid;
-  flex: 1;
-  gap: 6px;
+  gap: 2px;
   min-width: 0;
 }
-.site-setup-body p {
+/* A step without anything to copy keeps its text over the row's width. */
+.site-step:not(:has(.site-step-value)) .site-step-text {
+  grid-column: 2 / -1;
+}
+.site-step h4 {
+  margin: 0;
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.site-step p {
   margin: 0;
   color: var(--graphite);
-  font: 400 13px / 1.5 var(--font-ui);
+  font: 400 13px / 1.6 var(--font-ui);
 }
-.site-setup-value {
+.site-step p .decision-badge {
+  vertical-align: 1px;
+}
+.site-step code {
+  font: 500 12px var(--font-mono);
+}
+.site-step-value {
+  min-width: 0;
+}
+/* A value to copy: one line in a box, its button inside on the right. The script reads as code. */
+.site-copy {
   display: flex;
-  align-items: flex-start;
-  gap: var(--s-2);
+  align-items: center;
+  gap: var(--s-1);
+  height: 40px;
+  padding: 0 4px 0 var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--canvas);
 }
-.site-setup-value > [data-slot="textarea"],
-.site-setup-value > [data-slot="input"] {
+.site-copy:focus-within {
+  border-color: var(--ink);
+}
+.site-copy > [data-slot="input"] {
   flex: 1;
   min-width: 0;
-  background: var(--canvas);
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+  font: 400 13px var(--font-ui);
+  text-overflow: ellipsis;
+}
+.site-copy > [data-slot="input"]:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.site-copy > [data-slot="button"] {
+  flex: none;
+  height: 30px;
+  font-size: 13px;
+}
+.site-copy.is-code {
+  border-color: var(--ink);
+  background: var(--ink);
+}
+.site-copy.is-code:focus-within {
+  outline: 2px solid var(--action-fill);
+  outline-offset: 2px;
+}
+.site-copy.is-code > [data-slot="input"] {
+  color: var(--paper);
+  font: 400 var(--t-mono) var(--font-mono);
+}
+.site-copy.is-code > [data-slot="button"] {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--paper);
+}
+.site-copy.is-code > [data-slot="button"]:hover {
+  background: rgba(255, 255, 255, 0.22);
+  color: var(--paper);
 }
 .site-setup-warning {
   margin: 0;
   padding: var(--s-3) var(--s-4);
-  border-top: 1px solid var(--mist);
+  border-radius: var(--r-panel);
   background: var(--status-medium-bg);
   color: var(--status-medium-text);
   font: 400 13px / 1.5 var(--font-ui);
 }
 
-.site-board-body {
+/* The requests, page by page. */
+.site-requests {
+  display: grid;
+  gap: var(--s-4);
+}
+.site-requests-header {
   display: flex;
-  align-items: flex-start;
-  gap: var(--s-6);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+}
+.site-requests-header h3 {
+  margin: 0;
+  font: 700 var(--t-h3) var(--font-display);
+}
+.site-requests-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.site-requests-counts li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--mist);
+  color: var(--ink);
+  font: 500 var(--t-caption-size) / 24px var(--font-ui);
+}
+.site-requests-counts li:not(.is-total)::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: var(--r-full);
+}
+.site-requests-counts .is-total {
+  padding-left: 0;
+  background: transparent;
+  color: var(--graphite);
+}
+.site-requests-counts .is-comment::before {
+  background: var(--mark-clarify);
+}
+.site-requests-counts .is-correction::before {
+  background: var(--mark-included);
+}
+.site-requests-counts .is-outside::before {
+  background: var(--mark-outside);
 }
 .site-board-pages {
   display: grid;
-  flex: 1;
-  gap: var(--s-8);
+  gap: var(--s-6);
   min-width: 0;
 }
-.site-board-page h3 {
+/* A page's group, headed like a browser tab: its address, its count, a way to open it. */
+.site-page-tab {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  margin-bottom: var(--s-3);
+  padding-bottom: var(--s-2);
+  border-bottom: 1px solid var(--mist);
+}
+.site-page-address {
   display: flex;
   align-items: center;
-  gap: var(--s-2);
-  margin: 0 0 var(--s-3);
-  font: 600 14px / 1.4 var(--font-ui);
+  gap: 6px;
+  min-width: 0;
+  font: 600 var(--t-ui) var(--font-ui);
 }
-.site-board-page h3 code {
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--paper);
-  font: 500 13px var(--font-mono, ui-monospace, monospace);
-}
-.site-board-page h3 > span {
-  padding: 0 7px;
-  border-radius: 999px;
-  background: var(--mist);
+.site-page-address svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
   color: var(--graphite);
-  font: 600 12px / 20px var(--font-ui);
+}
+.site-page-host {
+  overflow: hidden;
+  color: var(--graphite);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.site-page-address code {
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: var(--mist);
+  color: var(--ink);
+  font: 500 13px var(--font-mono);
+}
+.site-page-count {
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.site-page-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  border-radius: 4px;
+  color: var(--action-text);
+  font: 500 var(--t-caption) var(--font-ui);
+  text-decoration: none;
+}
+.site-page-open:hover {
+  text-decoration: underline;
+}
+.site-page-open:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.site-page-open svg {
+  width: 14px;
+  height: 14px;
 }
 .site-board-grid {
   display: grid;
@@ -8229,12 +8551,14 @@ body.is-resizing {
   text-align: left;
   cursor: pointer;
   transition:
-    box-shadow 150ms var(--ease-out),
-    transform 150ms var(--ease-out);
+    box-shadow var(--d-fast) var(--ease-out),
+    transform var(--d-fast) var(--ease-out);
 }
-.site-card:hover {
-  box-shadow: 0 10px 28px rgba(17, 17, 17, 0.1);
-  transform: translateY(-2px);
+@media (hover: hover) {
+  .site-card:hover {
+    box-shadow: 0 10px 28px rgba(17, 17, 17, 0.1);
+    transform: translateY(-2px);
+  }
 }
 .site-card.is-selected,
 .site-card:focus-visible {
@@ -8304,18 +8628,10 @@ body.is-resizing {
   color: var(--ink);
   font: 600 9px var(--font-ui);
 }
-.site-board-thread {
-  position: sticky;
-  top: var(--s-4);
-  flex: 0 0 360px;
-  padding: 0;
-}
 .site-board-empty {
   display: grid;
   justify-items: center;
   gap: var(--s-2);
-  max-width: 520px;
-  margin: var(--s-6) auto;
   padding: var(--s-8) var(--s-6);
   border: 1px dashed var(--border);
   border-radius: var(--r-panel);
@@ -8328,9 +8644,9 @@ body.is-resizing {
   width: 44px;
   height: 44px;
   margin-bottom: var(--s-1);
-  border-radius: 50%;
-  background: var(--paper);
   border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--canvas);
   color: var(--ink);
 }
 .site-board-empty-icon svg {
@@ -8342,21 +8658,40 @@ body.is-resizing {
   font: 600 15px var(--font-ui);
 }
 .site-board-empty p {
+  max-width: 420px;
   margin: 0;
   font: 400 13px / 1.55 var(--font-ui);
 }
-@media (max-width: 760px) {
+/* The panel is a container (.preview-panel): the sheet follows the canvas's width, not the window's. */
+@container (max-width: 760px) {
   .site-board {
     padding: var(--s-4);
   }
-  .site-board-header {
-    flex-wrap: wrap;
+  .site-sheet-body {
+    gap: var(--s-6);
+    padding: var(--s-4);
   }
-  .site-board-open {
-    width: 100%;
+  .site-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s-4);
   }
-  .site-setup-value {
-    flex-wrap: wrap;
+  .site-hero-text h3 {
+    font: 700 var(--t-h3) var(--font-display);
+  }
+  .site-hero-text p:last-child {
+    font: 400 var(--t-ui) var(--font-ui);
+  }
+  .site-bar-demo-screen {
+    height: 150px;
+  }
+  .site-chrome-dots {
+    display: none;
+  }
+  .site-step {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+  .site-step-value {
+    grid-column: 2;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -8364,6 +8699,9 @@ body.is-resizing {
   .site-card:hover {
     transition: none;
     transform: none;
+  }
+  .site-bar-demo-screen .demo-pin {
+    animation: none;
   }
 }
 
@@ -9593,10 +9931,4 @@ body.is-resizing {
 .share-dialog .share-guide {
   padding-top: var(--s-3);
   border-top: 1px solid var(--mist);
-}
-/* The script's field keeps the card's width (shadcn's textarea otherwise grows with its one long line). */
-.site-setup-value [data-slot="textarea"] {
-  field-sizing: fixed;
-  width: 100%;
-  word-break: break-all;
 }
