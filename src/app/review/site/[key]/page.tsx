@@ -4,7 +4,6 @@
 // or a key not signed by Kora, gets nothing.
 
 import { redirect } from "next/navigation";
-import { Info } from "lucide-react";
 import { AuthShell } from "@/components/AuthShell";
 import { GateHeading } from "@/components/GatePieces";
 import { getDb } from "@/db/client";
@@ -14,7 +13,7 @@ import { parentOrigin } from "@/lib/siteReview";
 
 const note = (title: string, text: string) => (
   <AuthShell plain>
-    <GateHeading icon={<Info />} title={title}>
+    <GateHeading title={title}>
       {text}
     </GateHeading>
   </AuthShell>

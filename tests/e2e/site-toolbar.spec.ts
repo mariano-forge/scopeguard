@@ -316,7 +316,7 @@ test("an agency member is recognised in the panel by a Kora window, then annotat
   // The client's request, qualified from the site.
   await panel.getByRole("button", { name: "Demandes", exact: true }).click();
   await panel.getByRole("tabpanel").getByRole("button", { name: "Commentaire #30" }).click();
-  await panel.getByRole("button", { name: "Créer une demande" }).click();
+  await panel.getByRole("button", { name: "Qualifier", exact: true }).click();
   await panel.getByRole("radio", { name: /^Inclus/ }).click();
   await panel.getByLabel("Titre de la demande").fill("Raccourcir le titre");
   await panel.getByRole("button", { name: "Créer la demande" }).click();
@@ -597,14 +597,22 @@ test("the invitation of a « Lien » leads to the staging site with the toolbar,
   expect(mail.text).toContain(`Les devis et la validation se font sur la page de revue : ${baseURL}/review/${token}?invitation=`);
 });
 
-test("« Partager la revue » of a « Lien » gives the line with the fixed key and the client's address", async ({ browser }) => {
+test("the canvas of a « Lien » says how to set the toolbar up: the line with the fixed key and the client's address", async ({ browser }) => {
   const { alice, key } = await siteReview();
   const { page, errors } = await newPerson(browser);
   await signInPage(page, alice.email);
   await page.goto("/projets/1/livrables/1");
+  // No request yet: the setup is open on the board.
+  const board = page.getByRole("region", { name: "Tableau de recette" });
+  await expect(board.getByText("Paramétrer la barre Kora")).toBeVisible();
+  // The long script line wraps in its field: the board never scrolls sideways, « Ouvrir le site » stays in view.
+  await expect.poll(() => board.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
+  await expect(board.getByRole("link", { name: "Ouvrir le site" })).toBeInViewport();
+  await expect(board.getByLabel("Script de recette")).toHaveValue(`<script src="${baseURL}/kora-toolbar.js" data-site="${key}" defer></script>`);
+  await expect(board.getByLabel("Lien du site pour le client")).toHaveValue(`${site}/?kora`);
+  // « Partager la revue » is about people only.
   await page.getByRole("button", { name: "Partager la revue" }).first().click();
-  await expect(page.getByLabel("Script de recette")).toHaveValue(`<script src="${baseURL}/kora-toolbar.js" data-site="${key}" defer></script>`);
-  await expect(page.getByLabel("Lien du site pour le client")).toHaveValue(`${site}/?kora`);
+  await expect(page.getByRole("dialog", { name: "Partager la revue" }).getByLabel("Script de recette")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -651,6 +659,9 @@ test("in Kora, a « Lien » shows its requests page by page with their captures,
   const clientBoard = page.getByRole("region", { name: "Tableau de recette" });
   await expect(clientBoard.getByRole("region", { name: "Page /contact" }).getByRole("button")).toHaveCount(1);
   await expect(clientBoard.getByText("Vérifier les marges")).toHaveCount(0);
+  // The toolbar's setup is the agency's: never on the client's page.
+  await expect(clientBoard.getByText("Paramétrer la barre Kora")).toHaveCount(0);
+  await expect(page.getByLabel("Script de recette")).toHaveCount(0);
   // The capture of a request they see opens for them (/api/files).
   const card = clientBoard.getByRole("button", { name: "Commentaire #82" }).locator("img");
   await expect.poll(() => card.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);

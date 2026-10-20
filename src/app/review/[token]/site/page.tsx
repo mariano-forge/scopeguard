@@ -3,7 +3,6 @@
 // src/proxy.ts lets only `parent` frame it; this page checks that `parent` is the site of the shared
 // deliverable (a « Lien »), and shows nothing otherwise: no other site gets a framed Kora to click on.
 
-import { Info } from "lucide-react";
 import { AuthShell } from "@/components/AuthShell";
 import { GateHeading } from "@/components/GatePieces";
 import { getDb } from "@/db/client";
@@ -20,7 +19,7 @@ export default async function SitePanelPage({ params, searchParams }: PageProps<
   if (!site || site !== parentOrigin(typeof parent === "string" ? parent : null))
     return (
       <AuthShell plain>
-        <GateHeading icon={<Info />} title="Panneau indisponible ici">
+        <GateHeading title="Panneau indisponible ici">
           Ce panneau Kora ne s’ouvre que sur le site de la revue, avec un lien valable.
         </GateHeading>
       </AuthShell>

@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CircleCheck, MailOpen, ShieldCheck, UserPlus, UserRound } from "lucide-react";
-import { CodeField, GateAccount, GateHeading } from "@/components/GatePieces";
+import { UserPlus } from "lucide-react";
+import { GateAccount, GateError, GateHeading } from "@/components/GatePieces";
+import { CodeField } from "@/components/CodeField";
 
 type Step = "email" | "code" | "request" | "requested";
 
@@ -90,17 +91,13 @@ export function AccessGate({
     if (await post("/request", { email, message })) setStep("requested");
   }
 
-  const errorBox = error && (
-    <p role="alert" className="gate-error">
-      {error}
-    </p>
-  );
+  const errorBox = error && <GateError>{error}</GateError>;
 
   return (
     <AuthShell plain showcase>
       {step === "email" && (
         <form className="gate-form" onSubmit={sendCode}>
-          <GateHeading icon={<ShieldCheck />} deliverable={deliverable} title="Accédez à la revue">
+          <GateHeading deliverable={deliverable} title="Accédez à la revue">
             Pour protéger ce livrable, confirmez qu’il s’agit bien de vous : nous vous envoyons un code à usage unique par e-mail.
           </GateHeading>
           {!byInvitation ? (
@@ -112,9 +109,9 @@ export function AccessGate({
             <GateAccount
               email={shownEmail}
               action={
-                <button type="button" className="gate-link" onClick={() => setByInvitation(false)}>
+                <Button type="button" variant="link" className="gate-link" onClick={() => setByInvitation(false)}>
                   Ce n’est pas moi
-                </button>
+                </Button>
               }
             />
           )}
@@ -127,7 +124,7 @@ export function AccessGate({
 
       {step === "code" && (
         <form className="gate-form" onSubmit={verify}>
-          <GateHeading icon={<MailOpen />} deliverable={deliverable} title="Vérifiez vos e-mails">
+          <GateHeading deliverable={deliverable} title="Vérifiez vos e-mails">
             Si <b>{shownEmail}</b> est invitée sur cette revue, un code à 6 chiffres vient d’y être envoyé. Il est valable 10 minutes.
           </GateHeading>
           <div className="grid gap-1.5">
@@ -139,12 +136,12 @@ export function AccessGate({
             Accéder à la revue
           </Button>
           <div className="gate-links">
-            <button type="button" className="gate-link" disabled={resendIn > 0 || pending} onClick={() => void sendCode()}>
+            <Button type="button" variant="link" className="gate-link" disabled={resendIn > 0 || pending} onClick={() => void sendCode()}>
               {resendIn > 0 ? `Renvoyer le code (${resendIn} s)` : "Renvoyer le code"}
-            </button>
-            <button type="button" className="gate-link" onClick={() => (setStep("email"), setByInvitation(false), setError(""))}>
+            </Button>
+            <Button type="button" variant="link" className="gate-link" onClick={() => (setStep("email"), setByInvitation(false), setError(""))}>
               Changer d’adresse
-            </button>
+            </Button>
           </div>
           {/* A code only reaches invited addresses: someone given the link by a colleague asks the agency. */}
           <div className="gate-aside">
@@ -160,7 +157,7 @@ export function AccessGate({
 
       {step === "request" && (
         <form className="gate-form" onSubmit={requestAccess}>
-          <GateHeading icon={<UserPlus />} deliverable={deliverable} title="Demandez l’accès">
+          <GateHeading deliverable={deliverable} title="Demandez l’accès">
             {verifiedEmail ? (
               <>
                 Votre adresse <b>{verifiedEmail}</b> n’a pas accès à cette revue. L’agence peut vous l’ouvrir.
@@ -185,9 +182,9 @@ export function AccessGate({
           </Button>
           {!verifiedEmail && (
             <div className="gate-links is-center">
-              <button type="button" className="gate-link" onClick={() => (setStep("email"), setError(""))}>
+              <Button type="button" variant="link" className="gate-link" onClick={() => (setStep("email"), setError(""))}>
                 J’ai été invité : recevoir un code
-              </button>
+              </Button>
             </div>
           )}
         </form>
@@ -195,7 +192,7 @@ export function AccessGate({
 
       {step === "requested" && (
         <div className="gate-form" role="status">
-          <GateHeading icon={<CircleCheck />} tone="success" deliverable={deliverable} title="Demande envoyée à l’agence">
+          <GateHeading deliverable={deliverable} title="Demande envoyée à l’agence">
             L’agence a été prévenue par e-mail. Si elle accepte, vous recevrez votre lien personnel à cette adresse.
           </GateHeading>
         </div>
@@ -231,7 +228,7 @@ export function ProfileGate({ token, deliverable, email, onSaved }: { token: str
   return (
     <AuthShell plain showcase>
       <form className="gate-form" onSubmit={save}>
-        <GateHeading icon={<UserRound />} deliverable={deliverable} title="Comment vous appelez-vous ?">
+        <GateHeading deliverable={deliverable} title="Comment vous appelez-vous ?">
           Votre nom accompagnera vos retours et vos validations, à la place de votre adresse.
         </GateHeading>
         <GateAccount email={email} verified />
@@ -240,9 +237,7 @@ export function ProfileGate({ token, deliverable, email, onSaved }: { token: str
           <Input id="profile-name" required minLength={2} maxLength={80} autoComplete="name" autoFocus placeholder="Claire Martin" value={name} onChange={(event) => setName(event.target.value)} />
         </div>
         {error && (
-          <p role="alert" className="gate-error">
-            {error}
-          </p>
+          <GateError>{error}</GateError>
         )}
         <Button type="submit" size="lg" className="w-full" disabled={pending || name.trim().length < 2}>
           Accéder à la revue

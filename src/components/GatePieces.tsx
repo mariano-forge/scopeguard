@@ -1,29 +1,13 @@
 // The pieces of the client's pages (AuthShell plain): a step's heading, the address it is about, the
-// 6-digit code. Styled in src/components/auth.css, tokens only.
+// 6-digit code, an error; shadcn components where there is one. Styled in src/components/auth.css.
 
-import { BadgeCheck, FileText } from "lucide-react";
+import { BadgeCheck, CircleAlert, FileText } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
-/** A step: its icon, the deliverable it opens, a real title and one sentence. */
-export function GateHeading({
-  icon,
-  deliverable,
-  title,
-  tone,
-  children,
-}: {
-  icon: React.ReactNode;
-  /** The deliverable under review, when known. */
-  deliverable?: string;
-  title: string;
-  /** « success » once done, « warning » when the page cannot go on. */
-  tone?: "success" | "warning";
-  children?: React.ReactNode;
-}) {
+/** A step: the deliverable it opens, a real title and one sentence. */
+export function GateHeading({ deliverable, title, children }: { deliverable?: string; title: string; children?: React.ReactNode }) {
   return (
     <div className="gate-heading">
-      <span className={`gate-icon${tone ? ` is-${tone}` : ""}`} aria-hidden="true">
-        {icon}
-      </span>
       {deliverable && (
         <p className="gate-context">
           <FileText aria-hidden="true" />
@@ -57,33 +41,12 @@ export function GateAccount({ email, verified = false, action }: { email: string
   );
 }
 
-/**
- * The 6-digit code as six boxes. One real field underneath (invisible, over the boxes): typing, pasting
- * and the phone's suggestion of the code received work as in any field.
- */
-export function CodeField({ id, value, onChange, length = 6 }: { id: string; value: string; onChange: (value: string) => void; length?: number }) {
-  const current = Math.min(value.length, length - 1);
+/** What went wrong (shadcn's Alert). */
+export function GateError({ children }: { children: React.ReactNode }) {
   return (
-    <div className="code-field">
-      <input
-        id={id}
-        className="code-field-input"
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        pattern={`[0-9]{${length}}`}
-        maxLength={length}
-        required
-        autoFocus
-        value={value}
-        onChange={(event) => onChange(event.target.value.replace(/\D/g, "").slice(0, length))}
-      />
-      <div className="code-field-slots" aria-hidden="true">
-        {Array.from({ length }, (_, at) => (
-          <span key={at} className={`code-slot${value[at] ? " is-filled" : ""}${at === current ? " is-current" : ""}`}>
-            {value[at] ?? ""}
-          </span>
-        ))}
-      </div>
-    </div>
+    <Alert variant="destructive" className="gate-error">
+      <CircleAlert />
+      <AlertDescription>{children}</AlertDescription>
+    </Alert>
   );
 }

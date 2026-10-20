@@ -200,19 +200,19 @@ test("the client’s pages: a real title per step, the deliverable they open, th
     if (width === 390) expect(card.width).toBeGreaterThan(350);
     else expect(card.width).toBeLessThanOrEqual(440);
     // On a wide screen, what the review is for, beside the card; a phone keeps the card alone.
-    const welcome = page.getByRole("complementary", { name: "Votre espace de revue" });
+    const welcome = page.getByRole("complementary", { name: "Vos retours, là où ils comptent." });
     if (width === 390) await expect(welcome).toBeHidden();
     else await expect(welcome.getByRole("listitem")).toHaveText([/Commentez sur le livrable/, /Suivez chaque demande/, /Validez en un clic/]);
   }
 
-  // The code: six boxes over one field, which takes what is typed or pasted.
+  // The code: shadcn's six slots over one field, which takes what is typed or pasted.
   await page.getByRole("button", { name: "Recevoir un code" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Vérifiez vos e-mails" })).toBeVisible();
-  await expect(page.locator(".code-slot")).toHaveCount(6);
+  const slots = page.locator("[data-slot=input-otp-slot]");
+  await expect(slots).toHaveCount(6);
   const code = await waitForCode(email);
   await page.getByLabel("Code à 6 chiffres").fill(code);
-  await expect(page.locator(".code-slot.is-filled")).toHaveCount(6);
-  await expect(page.locator(".code-slot").first()).toHaveText(code[0]);
+  await expect(slots).toHaveText(code.split(""));
   await page.getByRole("button", { name: "Accéder à la revue" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Comment vous appelez-vous ?" })).toBeVisible();
   await expect(page.locator(".gate-account")).toContainText("Adresse vérifiée");

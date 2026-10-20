@@ -5,7 +5,6 @@
 import { getDb } from "@/db/client";
 import { findReviewAccess } from "@/db/reviewAccess";
 import { reviewedDeliverableName } from "@/db/reviewAuth";
-import { Link2Off, LogIn, UserX } from "lucide-react";
 import { AuthShell } from "@/components/AuthShell";
 import { GateHeading } from "@/components/GatePieces";
 import { Button } from "@/components/ui/button";
@@ -22,12 +21,12 @@ export default async function SiteAgencyPage({ params }: PageProps<"/review/[tok
   return (
     <AuthShell plain>
       {!access ? (
-        <GateHeading icon={<Link2Off />} tone="warning" title="Lien indisponible">
+        <GateHeading title="Lien indisponible">
           Ce lien de revue n’est plus valable.
         </GateHeading>
       ) : !user ? (
         <div className="gate-form">
-          <GateHeading icon={<LogIn />} title="Connectez-vous à Kora">
+          <GateHeading title="Connectez-vous à Kora">
             Pour annoter le site de recette au nom de l’agence, connectez-vous d’abord à votre compte Kora.
           </GateHeading>
           <Button asChild size="lg" className="w-full">
@@ -35,7 +34,7 @@ export default async function SiteAgencyPage({ params }: PageProps<"/review/[tok
           </Button>
         </div>
       ) : !member ? (
-        <GateHeading icon={<UserX />} tone="warning" title="Revue d’une autre agence">
+        <GateHeading title="Revue d’une autre agence">
           Votre compte n’est pas membre de l’agence de cette revue.
         </GateHeading>
       ) : (

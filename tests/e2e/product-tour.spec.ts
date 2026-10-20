@@ -28,14 +28,23 @@ const bubble = (page: import("@playwright/test").Page, title: string) => page.ge
 
 test("the tour shows each feature in turn, and « Passer » ends it for good", async ({ browser }) => {
   const { page, errors } = await firstVisit(browser);
-  await expect(bubble(page, "Commentez sur le livrable")).toContainText("1 sur 4");
+  await expect(bubble(page, "Commentez sur le livrable")).toContainText("1 sur 5");
   // The feature it speaks of is ringed.
   await expect(page.locator('.tool-button[aria-label="Commentaire"]')).toHaveAttribute("data-tour-target", "");
+  // The rest of the page is darkened around it: the spotlight's hole is where the feature is.
+  const spotlight = page.locator(".product-tour-spotlight");
+  await expect(spotlight).toBeVisible();
+  await expect
+    .poll(async () => {
+      const [hole, feature] = await Promise.all([spotlight.boundingBox(), page.locator('.tool-button[aria-label="Commentaire"]').boundingBox()]);
+      return Boolean(hole && feature && hole.x <= feature.x && hole.y <= feature.y && hole.x + hole.width >= feature.x + feature.width && hole.y + hole.height >= feature.y + feature.height);
+    })
+    .toBe(true);
   // Sharing is no longer announced by a banner over the canvas.
   await expect(page.getByText("n’est partagée avec personne")).toHaveCount(0);
 
   await bubble(page, "Commentez sur le livrable").getByRole("button", { name: "Continuer" }).click();
-  await expect(bubble(page, "Qualifiez chaque demande")).toContainText("2 sur 4");
+  await expect(bubble(page, "Qualifiez chaque demande")).toContainText("2 sur 5");
   await expect(page.locator(".inspector-tabs")).toHaveAttribute("data-tour-target", "");
   await expect(page.locator('.tool-button[aria-label="Commentaire"]')).not.toHaveAttribute("data-tour-target", "");
 
@@ -50,9 +59,9 @@ test("the tour shows each feature in turn, and « Passer » ends it for good", a
 
 test("« Continuer » goes through the five features and « Terminer » closes the tour", async ({ browser }) => {
   const { page, errors } = await firstVisit(browser);
-  const titles = ["Commentez sur le livrable", "Qualifiez chaque demande", "Une nouvelle version ?", "Partagez avec votre client"];
+  const titles = ["Commentez sur le livrable", "Qualifiez chaque demande", "Une demande reçue ailleurs ?", "Suivez votre client", "Partagez avec votre client"];
   for (const [at, title] of titles.entries()) {
-    await expect(bubble(page, title)).toContainText(`${at + 1} sur 4`);
+    await expect(bubble(page, title)).toContainText(`${at + 1} sur 5`);
     await bubble(page, title).getByRole("button", { name: at === titles.length - 1 ? "Terminer" : "Continuer" }).click();
   }
   await expect(page.getByRole("dialog", { name: /Découvrir le livrable/ })).toHaveCount(0);

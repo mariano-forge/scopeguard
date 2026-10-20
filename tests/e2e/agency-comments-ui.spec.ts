@@ -49,13 +49,17 @@ test("a member comments, replies, edits and deletes in the editor; each write is
   // A pin of the agency, no status chosen: its draft, in « Commentaires · Brouillons », the client does not see it.
   const panel = page.getByRole("complementary", { name: "Demandes" });
   await expect(panel.getByRole("tab", { name: /^Mes brouillons\s*1/ })).toHaveAttribute("aria-selected", "true");
+  // Its bubble says so: a draft, which the client does not see until it is qualified.
+  const draftNote = page.getByRole("note").filter({ hasText: "Invisible pour le client tant qu’il n’est pas qualifié." });
+  await expect(draftNote).toBeVisible();
   // The same three choices as « + Demande »: « À clarifier » chosen with a title makes it a request the client sees.
-  await page.getByRole("button", { name: "Créer une demande" }).click();
+  await page.getByRole("button", { name: "Qualifier", exact: true }).click();
   await page.getByRole("radio", { name: /^À clarifier/ }).click();
   await page.getByLabel("Titre de la demande").fill("Taille du logo à confirmer");
   await page.getByRole("button", { name: "Créer la demande" }).click();
   await expect.poll(async () => (await agencyComments(org))[0].data).toMatchObject({ decision: "À qualifier", title: "Taille du logo à confirmer" });
-  // It joins the client's comment already there.
+  // It joins the client's comment already there; no longer a draft, the note leaves.
+  await expect(draftNote).toHaveCount(0);
   await expect(panel.getByRole("tab", { name: /^À clarifier\s*2/ })).toHaveAttribute("aria-selected", "true");
   // Qualified, it is a request: its title, and « À clarifier » as its status, never « Commentaire » again.
   const bubble = page.getByRole("dialog", { name: /^Demande à clarifier #\d+$/ });
@@ -125,7 +129,7 @@ test("a member qualifies a client remark as out of scope, with a draft quote", a
   await page.locator('[data-pin="30"]').click();
   // The client's own remark: they see it already.
   await expect(page.getByRole("note").filter({ hasText: "Non visible par le client" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Créer une demande" }).click();
+  await page.getByRole("button", { name: "Qualifier", exact: true }).click();
   // The two qualifications, named for what they mean against the quote.
   await expect(page.getByRole("radio", { name: /^Inclus/ })).toContainText("Prévu au devis");
   await expect(page.getByRole("tab", { name: /^Inclus/ })).toBeVisible();

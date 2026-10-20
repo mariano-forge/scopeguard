@@ -46,17 +46,22 @@ export function AuthShell({
   // or in the staging site's panel).
   if (plain)
     return (
-      <div className="auth-plain">
+      <div className={`auth-plain${showcase ? " has-showcase" : ""}`}>
         <header className="auth-plain-bar">
           {logo}
           <span className="auth-plain-secure">
             <LockKeyhole aria-hidden="true" /> Accès sécurisé
           </span>
         </header>
-        <main className={`auth-plain-body${showcase ? " has-showcase" : ""}`}>
-          <div className="auth-card">{children}</div>
+        <div className="auth-plain-content">
           {showcase && <ClientShowcase />}
-        </main>
+          <div className="auth-plain-side">
+            <main className="auth-plain-body">
+              <div className="auth-card">{children}</div>
+            </main>
+            {showcase && <p className="auth-plain-foot">Seules les personnes invitées par l’agence accèdent à cette revue.</p>}
+          </div>
+        </div>
       </div>
     );
 

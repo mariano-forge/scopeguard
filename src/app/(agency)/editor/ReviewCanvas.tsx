@@ -51,6 +51,7 @@ export function ReviewCanvas({
   canMove,
   isUnread,
   onMovePin,
+  siteSetup,
 }: {
   deliverable: ViewedDeliverable;
   comments: CanvasComment[];
@@ -78,6 +79,8 @@ export function ReviewCanvas({
   /** Something of the client not read yet in this thread (its pin carries a dot). */
   isUnread?: (comment: CanvasComment) => boolean;
   onMovePin?: (commentId: number, page: number, x: number, y: number) => void;
+  /** A « Lien », for the agency: how to set the staging site's toolbar up. */
+  siteSetup?: React.ReactNode;
 }) {
   const panelRef = useRef<HTMLElement>(null);
   const [zoom, setZoom] = useState(100);
@@ -350,7 +353,7 @@ export function ReviewCanvas({
     return (
       <section className="preview-panel site-board-panel" aria-label="Tableau de recette">
         {overlay}
-        <SiteBoard siteUrl={deliverable.url} comments={comments} selectedId={threadOpen ? selectedId : null} onOpen={onPinClick} renderThread={renderThread} />
+        <SiteBoard siteUrl={deliverable.url} comments={comments} selectedId={threadOpen ? selectedId : null} onOpen={onPinClick} renderThread={renderThread} setup={siteSetup} />
       </section>
     );
 

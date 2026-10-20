@@ -77,13 +77,13 @@ import { requestsHtml } from "./requestsDocument";
 import { uploadFile as sendFile, type UploadPlacement } from "@/lib/upload";
 import { agencyAction } from "@/lib/agencyActions";
 import type { ClientRole } from "@/lib/clientRoles";
-import { InviteList, roleOptions, type Invite } from "./InviteList";
+import type { Invite } from "./InviteList";
 import { SiteToolbarSnippet } from "./SiteToolbarSnippet";
 import { previousPeople, ReshareDialog, type ReshareChoice } from "./ReshareDialog";
-import { Select } from "@/components/Select";
 import { loadSharedState, refreshSharedState, subscribeSharedState } from "@/lib/stateSync";
 import { linkDeciders } from "@/lib/linkDeciders";
 import { SendProposalDialog } from "./SendProposalDialog";
+import { ShareDialog } from "./ShareDialog";
 
 
 type Decision = "À qualifier" | "Inclus" | "Hors périmètre";
@@ -474,7 +474,6 @@ export function AgencyApp() {
   /** "Partager la V03 ?" with the people of the previous version (ReshareDialog). */
   const [reshare, setReshare] = useState<{ deliverableId: number; version: number; previousVersion: number; people: Invite[] } | null>(null);
   /** Role given to the addresses invited from "Partager la revue" (src/lib/clientRoles.ts). */
-  const [inviteRole, setInviteRole] = useState<ClientRole>("decider");
   const [inviteError, setInviteError] = useState("");
   const [stateHydrated, setStateHydrated] = useState(false);
 
@@ -672,10 +671,6 @@ export function AgencyApp() {
     proposalPreviewCommentId === null
       ? undefined
       : adaptationRequests[proposalPreviewCommentId];
-  const lastReminderAt = reviewLink?.lastReminderAt ?? null;
-  // eslint-disable-next-line react-hooks/purity -- a 24-hour window: a render-time clock is precise enough.
-  const reminderBlocked = lastReminderAt !== null && Date.now() - lastReminderAt < 24 * 60 * 60 * 1000;
-  const nobodyInvited = !(reviewLink?.invites?.length);
 
   // The deliverable dashboard is gone (its analytics are on the home page): old links open the deliverable.
   useEffect(() => {
@@ -1373,12 +1368,6 @@ export function AgencyApp() {
     setShareOpen(true);
   }
 
-  function updateAutoExpire(autoExpire: boolean) {
-    if (!reviewLink) return;
-    setReviewLink({ ...reviewLink, autoExpire });
-    void agencyAction(`deliverables/${reviewLink.deliverableId ?? currentDeliverable.id}/review-link`, "PATCH", { autoExpire });
-  }
-
   function getReviewUrl() {
     return `${window.location.origin}/review/${reviewLink?.token ?? ""}`;
   }
@@ -1845,6 +1834,17 @@ export function AgencyApp() {
       homeActive={viewLivrableId === null}
       onClose={closeTab}
       onOpen={() => setPaletteOpen(true)}
+      onAdd={() => setNewDeliverableOpen(true)}
+      recents={recentLivrableIds
+        .filter((livrableId) => !openTabs.some((tab) => tab.livrableId === livrableId))
+        .flatMap((livrableId) => {
+          const latest = versionsOfLivrable(livrableId, deliverables)[0];
+          if (!latest) return [];
+          const project = projects.find((candidate) => candidate.id === (latest.projectId ?? 1));
+          const client = clients.find((candidate) => candidate.id === (project?.clientId ?? 1));
+          return [{ livrableId, href: hrefForRecord(latest, deliverables), name: latest.name, type: latest.type, context: [client?.name, project?.name].filter(Boolean).join(" / ") }];
+        })
+        .slice(0, 6)}
     />
     <MobileBar
       title={mobileTitle(view, {
@@ -1942,6 +1942,7 @@ export function AgencyApp() {
             <ViewTransition name={`livrable-${livrableRootId}`} share="kora-open" default="none">
             <ReviewCanvas
               deliverable={currentDeliverable}
+              siteSetup={currentDeliverable.type === "Link" && currentDeliverable.url ? <SiteToolbarSnippet deliverableId={currentDeliverable.id} siteUrl={currentDeliverable.url} /> : undefined}
               comments={activeComments}
               selectedId={selectedComment?.id ?? null}
               isUnread={(comment) => unreadIn(comment as Comment) > 0}
@@ -2521,151 +2522,41 @@ export function AgencyApp() {
             </div>
           </Modal>
 
-          <Modal
+          <ShareDialog
             open={shareOpen || shareFromBell}
             onClose={closeShare}
-            title="Partager la revue"
-            description="Le client pourra consulter la version actuelle et déposer ses retours depuis ce lien."
-            footer={
-              reviewLink?.active ? (
-                <>
-                  <Button
-                    variant="destructive"
-                    className="sm:mr-auto"
-                    disabled={!canManage}
-                    title={canManage ? undefined : "Réservé aux administrateurs de l’agence"}
-                    onClick={() => {
-                      if (!adminOnly()) return;
-                      closeShare();
-                      void agencyAction(`deliverables/${reviewLink.deliverableId ?? currentDeliverable.id}/review-link`, "DELETE").then((result) => result && toast("Lien de revue révoqué"));
-                    }}
-                  >
-                    Révoquer ce lien
-                  </Button>
-                  <Button onClick={copyReviewLink}>
-                    {linkCopied ? (
-                      <>
-                        Lien copié <Check />
-                      </>
-                    ) : (
-                      "Copier le lien"
-                    )}
-                  </Button>
-                </>
-              ) : undefined
-            }
-          >
-            {reviewLink?.active ? (
-              <>
-                <Field
-                  id="share-url"
-                  label="Lien sécurisé"
-                  hint={
-                    <>
-                      {reviewLink.autoExpire !== false ? `Expire le ${reviewLink.expiresAt}` : "Aucune expiration automatique"} · <span className="text-status-resolved-text">Lien actif</span>
-                    </>
-                  }
-                >
-                  <Input id="share-url" readOnly value={getReviewUrl()} onFocus={(event) => event.target.select()} />
-                </Field>
-                {currentDeliverable?.type === "Link" && currentDeliverable.url && <SiteToolbarSnippet deliverableId={currentDeliverable.id} siteUrl={currentDeliverable.url} />}
-                {/* A copied link opens to invited addresses only (src/db/reviewAuth.ts): said before it is sent. */}
-                {!(reviewLink.invites?.length) && (
-                  <p role="note" className="rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-sm text-[var(--status-medium-text)]">
-                    <b>Personne n’est encore invité.</b> Ce lien ne s’ouvre qu’aux adresses invitées ci-dessous : invitez d’abord votre client, sinon il ne recevra pas de code.
-                    {currentDeliverable && previousPeople(currentDeliverable, currentDeliverable.version, deliverables, reviewLinks) && (
-                      <Button
-                        variant="link"
-                        size="sm"
-                        className="h-auto px-0"
-                        onClick={() => {
-                          closeShare();
-                          shareCurrentVersion();
-                        }}
-                      >
-                        Reprendre les personnes de la version précédente
-                      </Button>
-                    )}
-                  </p>
-                )}
-                <Field id="share-invite" label="Inviter par e-mail" hint="Plusieurs adresses : séparez-les par une virgule. Un décideur peut valider la version et accepter les devis ; un contributeur commente seulement.">
-                  <div className="flex gap-2">
-                    <Input
-                      id="share-invite"
-                      type="email"
-                      multiple
-                      value={inviteDraft}
-                      placeholder="prenom@client.fr"
-                      onChange={(event) => {
-                        setInviteDraft(event.target.value);
-                        setInviteError("");
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          void inviteByEmail();
-                        }
-                      }}
-                      disabled={isReadOnlyVersion}
-                    />
-                    <Select label="Rôle des personnes invitées" value={inviteRole} options={roleOptions} onChange={setInviteRole} />
-                    <Button variant="outline" className="h-9" onClick={() => void inviteByEmail()} disabled={!inviteDraft.trim() || isReadOnlyVersion}>
-                      Inviter
-                    </Button>
-                  </div>
-                </Field>
-                {inviteError && <FormError>{inviteError}</FormError>}
-                {(reviewLink.invites?.length ?? 0) > 0 && (
-                  <InviteList invites={reviewLink.invites ?? []} onCopy={(invite) => void copyInviteLink(invite)} onRemove={removeInvite} onRole={changeInviteRole} />
-                )}
-                {accessRequests.some((request) => request.linkKey === linkKeyOf(reviewLink)) && (
-                  <div className="grid gap-2">
-                    <Label>Demandes d’accès</Label>
-                    <ul className="invite-list" aria-label="Demandes d’accès">
-                      {accessRequests
-                        .filter((request) => request.linkKey === linkKeyOf(reviewLink))
-                        .map((request) => (
-                          <li key={request.email}>
-                            <span className="grid min-w-0">
-                              <span className="truncate">{request.email}</span>
-                              {request.message && <small className="!ml-0 truncate">« {request.message} »</small>}
-                            </span>
-                            <span className="ml-auto flex shrink-0 gap-1">
-                              <Button variant="outline" size="xs" onClick={() => void decideAccessRequest(request, "refused")}>
-                                Refuser
-                              </Button>
-                              <Button size="xs" onClick={() => void decideAccessRequest(request, "accepted")}>
-                                Accepter
-                              </Button>
-                            </span>
-                          </li>
-                        ))}
-                    </ul>
-                  </div>
-                )}
-                <div className="flex items-center justify-between gap-3">
-                  <Label htmlFor="share-auto-expire" className="text-sm font-normal">
-                    Révoquer automatiquement après 7 jours
-                  </Label>
-                  <Switch id="share-auto-expire" checked={reviewLink.autoExpire !== false} onCheckedChange={updateAutoExpire} />
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs text-muted-foreground">
-                    {nobodyInvited
-                      ? "Invitez le client pour pouvoir le relancer"
-                      : lastReminderAt
-                        ? `Dernière relance : ${new Date(lastReminderAt).toLocaleString("fr-FR")}`
-                        : "Aucune relance envoyée"}
-                  </span>
-                  <Button variant="outline" size="sm" onClick={() => void remindClient()} disabled={reminderBlocked || isReadOnlyVersion || nobodyInvited}>
-                    {reminderBlocked ? "Relance déjà envoyée" : "Relancer le client"}
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <FormError>Ce lien a été révoqué. Fermez cette fenêtre pour en générer un nouveau.</FormError>
-            )}
-          </Modal>
+            subject={currentDeliverable ? `« ${currentDeliverable.name} » (V${String(currentDeliverable.version).padStart(2, "0")})` : "cette version"}
+            link={reviewLink}
+            readOnly={isReadOnlyVersion}
+            canManage={canManage}
+            inviteDraft={inviteDraft}
+            onInviteDraft={(value) => {
+              setInviteDraft(value);
+              setInviteError("");
+            }}
+            inviteError={inviteError}
+            onInvite={() => void inviteByEmail()}
+            previousPeople={Boolean(currentDeliverable && previousPeople(currentDeliverable, currentDeliverable.version, deliverables, reviewLinks))}
+            onReusePrevious={() => {
+              closeShare();
+              shareCurrentVersion();
+            }}
+            onCopyInvite={(invite) => void copyInviteLink(invite)}
+            onRemoveInvite={removeInvite}
+            onChangeRole={changeInviteRole}
+            accessRequests={reviewLink ? accessRequests.filter((request) => request.linkKey === linkKeyOf(reviewLink)) : []}
+            onDecideAccess={(request, decision) => {
+              const found = accessRequests.find((candidate) => candidate.email === request.email && reviewLink && candidate.linkKey === linkKeyOf(reviewLink));
+              if (found) void decideAccessRequest(found, decision);
+            }}
+            linkCopied={linkCopied}
+            onCopyLink={() => void copyReviewLink()}
+            onRevoke={() => {
+              if (!adminOnly() || !reviewLink) return;
+              closeShare();
+              void agencyAction(`deliverables/${reviewLink.deliverableId ?? currentDeliverable.id}/review-link`, "DELETE").then((result) => result && toast("Lien de revue révoqué"));
+            }}
+          />
 
           {(() => {
             const request = confirmSendId !== null ? comments.find((comment) => comment.id === confirmSendId) : undefined;
@@ -2819,7 +2710,7 @@ export function AgencyApp() {
       setInviteError(typed.length ? "Ces personnes sont déjà invitées." : "");
       return;
     }
-    const result = await callReviewAccess("invite", { linkKey: linkKeyOf(reviewLink), emails: fresh, role: inviteRole });
+    const result = await callReviewAccess("invite", { linkKey: linkKeyOf(reviewLink), emails: fresh, role: "decider" });
     if (!result) return;
     setInviteDraft("");
     setInviteError("");
@@ -2894,15 +2785,6 @@ export function AgencyApp() {
   function removeInvite(email: string) {
     if (!reviewLink) return;
     void agencyAction(`deliverables/${reviewLink.deliverableId ?? currentDeliverable.id}/review-link/invites/${encodeURIComponent(email)}`, "DELETE");
-  }
-
-  /** Mails every invited client a reminder with their personal link (once a day per link, checked by the server). */
-  async function remindClient() {
-    if (isReadOnlyVersion || !reviewLink || reminderBlocked || nobodyInvited) return;
-    const result = await callReviewAccess("remind", { linkKey: linkKeyOf(reviewLink) });
-    if (!result) return;
-    const count = reviewLink.invites?.length ?? 0;
-    toast(count > 1 ? `Relance envoyée à ${count} personnes` : `Relance envoyée à ${reviewLink.invites?.[0]?.email}`);
   }
 }
 

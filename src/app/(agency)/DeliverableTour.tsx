@@ -11,25 +11,31 @@ const steps: TourStep[] = [
   {
     target: '.tool-button[aria-label="Commentaire"]',
     title: "Commentez sur le livrable",
-    text: "Avec cet outil, cliquez à l’endroit voulu : le commentaire s’y épingle, et la discussion se poursuit dans son fil.",
+    text: "Cliquez à l’endroit voulu : votre commentaire s’y épingle. Il reste un brouillon, invisible pour le client, tant que vous ne l’avez pas qualifié.",
     side: "top",
   },
   {
     target: ".inspector-tabs",
     title: "Qualifiez chaque demande",
-    text: "Inclus : prévu au devis. Hors scope : un ajout, que vous chiffrez pour le client. À clarifier : en attente de précisions.",
+    text: "À clarifier, Inclus ou Hors scope : qualifiée, la demande devient visible pour le client. Une demande hors scope se chiffre, et la proposition part à ses décideurs.",
     side: "left",
   },
   {
-    target: '[aria-label="Importer un fichier comme nouvelle version"]',
-    title: "Une nouvelle version ?",
-    text: "Importez-la ici. La précédente reste consultable, et le client ne voit la nouvelle qu’une fois partagée.",
-    side: "right",
+    target: ".requests-add",
+    title: "Une demande reçue ailleurs ?",
+    text: "Un e-mail, un appel, une réunion : ajoutez-la avec sa source. Elle rejoint les autres, et le client la retrouve.",
+    side: "bottom",
+  },
+  {
+    target: '.requests-header [aria-label^="Notifications"]',
+    title: "Suivez votre client",
+    text: "Ses messages et ses décisions arrivent ici, dès qu’il les écrit.",
+    side: "bottom",
   },
   {
     target: '[aria-label="Partager la revue"]',
     title: "Partagez avec votre client",
-    text: "Il reçoit un lien personnel, commente sur place et décide de vos devis. Rien ne lui est visible avant ce partage.",
+    text: "Invitez ses personnes : les décideurs valident la version et décident de vos propositions, les contributeurs commentent. Rien ne leur est visible avant ce partage.",
     side: "bottom",
   },
 ];

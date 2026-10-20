@@ -5,7 +5,7 @@ import { areaFromPin } from "@/lib/pinArea";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
-import { ArrowRight, Check, Clock, Link2Off, Loader2, Lock, PenLine } from "lucide-react";
+import { ArrowRight, Check, Clock, Loader2, Lock, PenLine } from "lucide-react";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { Composer, ThreadPopover, requestKind, type Area, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
 import { RequestPanel, type InspectorTab } from "@/app/(agency)/editor/EditorInspector";
@@ -687,7 +687,7 @@ export default function ClientReviewPage() {
   if (accessState === "denied") {
     return (
       <AuthShell plain>
-        <GateHeading icon={<Link2Off />} tone="warning" title="Lien indisponible">
+        <GateHeading title="Lien indisponible">
           Ce lien de revue est inconnu, expiré ou a été révoqué par l’agence. Demandez-lui un nouveau lien.
         </GateHeading>
       </AuthShell>

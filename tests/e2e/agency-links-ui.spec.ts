@@ -31,7 +31,7 @@ const link = async (org: string) =>
 test("sharing creates the link; an invitation is removed; the link is revoked", async ({ browser }) => {
   const { org, page, errors, writes } = await editor(browser);
   await page.getByRole("button", { name: "Partager la revue" }).first().click();
-  await expect(page.getByText("Lien actif")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Partager la revue" }).getByRole("button", { name: "Copier le lien" })).toBeVisible();
   await expect.poll(async () => (await link(org))?.active).toBe(true);
   const created = await link(org);
   expect(created.token).toMatch(/^[0-9a-f-]{36}$/);
@@ -48,6 +48,21 @@ test("sharing creates the link; an invitation is removed; the link is revoked", 
   await page.getByRole("button", { name: `Retirer ${email}` }).click();
   await expect.poll(async () => (await link(org)).data.invites?.length ?? 0).toBe(0);
   await expect(warning).toBeVisible();
+
+  // Several at once: each address typed (or pasted) becomes a chip; a wrong one shows, and stops the sending.
+  const [lea, max] = [unique("lea"), unique("max")].map((name) => `${name}@client.test`);
+  const field = page.getByLabel("Inviter par e-mail");
+  await field.fill(`${lea} pas-une-adresse, `);
+  await expect(page.locator(".email-chip")).toHaveText([lea, "pas-une-adresse"]);
+  await expect(page.locator(".email-chip.is-invalid")).toHaveText("pas-une-adresse");
+  await page.getByRole("button", { name: "Inviter", exact: true }).click();
+  await expect(page.getByText("Adresse invalide : pas-une-adresse")).toBeVisible();
+  await page.getByRole("button", { name: "Retirer pas-une-adresse de la liste" }).click();
+  await field.fill(max);
+  await field.press("Enter");
+  await expect.poll(async () => (await link(org)).data.invites?.map((invite) => invite.email).sort()).toEqual([lea, max].sort());
+  await expect(page.locator(".email-chip")).toHaveCount(0);
+  await expect(page.getByRole("list", { name: "Personnes invitées" }).getByRole("listitem")).toHaveCount(2);
 
   await page.getByRole("button", { name: "Révoquer ce lien" }).click();
   await expect.poll(async () => (await link(org)).active).toBe(false);

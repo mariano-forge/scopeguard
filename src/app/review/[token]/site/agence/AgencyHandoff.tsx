@@ -4,8 +4,7 @@
 // own origin, never to the staging site's page (src/lib/siteAgency.ts).
 
 import { useState } from "react";
-import { Building2 } from "lucide-react";
-import { GateHeading } from "@/components/GatePieces";
+import { GateError, GateHeading } from "@/components/GatePieces";
 import { Button } from "@/components/ui/button";
 import type { TicketMessage } from "@/lib/siteReview";
 
@@ -30,13 +29,11 @@ export function AgencyHandoff({ token, name, deliverable }: { token: string; nam
 
   return (
     <div className="gate-form">
-      <GateHeading icon={<Building2 />} deliverable={deliverable} title="Annoter le site au nom de l’agence">
+      <GateHeading deliverable={deliverable} title="Annoter le site au nom de l’agence">
         Le panneau Kora du site de recette s’ouvrira en tant que <b>{name}</b>, pour 12 heures, sur ce site seulement.
       </GateHeading>
       {error && (
-        <p role="alert" className="gate-error">
-          {error}
-        </p>
+        <GateError>{error}</GateError>
       )}
       {sent ? (
         <p role="status" className="gate-aside">

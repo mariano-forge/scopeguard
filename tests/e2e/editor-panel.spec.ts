@@ -73,7 +73,7 @@ test("drafts and closed discussions sit in « Commentaires »; out-of-scope requ
 
   // Qualified « À clarifier » with a title, the draft becomes a request to clarify.
   await page.getByRole("button", { name: /^Commentaire #31 :/ }).click();
-  await page.getByRole("button", { name: "Créer une demande" }).click();
+  await page.getByRole("button", { name: "Qualifier", exact: true }).click();
   await page.getByRole("radio", { name: /^À clarifier/ }).click();
   await page.getByLabel("Titre de la demande").fill("Marges à confirmer");
   await page.getByRole("button", { name: "Créer la demande" }).click();
@@ -208,7 +208,7 @@ test("a qualified request is closed, never deleted: by the agency or by the clie
 test("qualifying: a required field left empty says so in red, under it", async ({ browser }) => {
   const { page, errors } = await sharedVersion(browser);
   await page.getByRole("button", { name: /^Commentaire #30 :/ }).click();
-  await page.getByRole("button", { name: "Créer une demande" }).click();
+  await page.getByRole("button", { name: "Qualifier", exact: true }).click();
   await page.getByRole("radio", { name: /^Hors scope/ }).click();
   await page.getByRole("switch", { name: /Chiffrer maintenant/ }).click();
   await page.getByRole("button", { name: "Créer la demande" }).click();
@@ -220,6 +220,15 @@ test("qualifying: a required field left empty says so in red, under it", async (
   await expect(page.getByText("Ce champ est obligatoire.")).toHaveCount(1);
   await page.getByLabel(/Montant HT/).fill("900");
   await expect(page.getByText("Ce champ est obligatoire.")).toHaveCount(0);
+  // The form scrolls in its bubble; its actions stay at the bottom, in view.
+  const bubble = page.locator(".thread.is-qualifying");
+  const actions = bubble.locator(".qualify-form-actions");
+  for (const top of [0, 10_000]) {
+    await bubble.evaluate((element, at) => element.scrollTo({ top: at }), top);
+    const [frame, band] = await Promise.all([bubble.boundingBox(), actions.boundingBox()]);
+    expect(band!.y + band!.height, `scrolled to ${top}`).toBeLessThanOrEqual(frame!.y + frame!.height + 1);
+    expect(band!.y, `scrolled to ${top}`).toBeGreaterThanOrEqual(frame!.y);
+  }
   expect(errors).toEqual([]);
 });
 
@@ -425,5 +434,36 @@ test("a drawn zone shows on its pin's hover; moving the pin moves its corner onl
   const [ground, blur] = await overlay.evaluate((element) => [getComputedStyle(element).backgroundColor, getComputedStyle(element).backdropFilter]);
   expect(ground).toMatch(/^(rgba\(0, 0, 0, 0\.45\)|oklab\(0 0 0 \/ 0\.45\))$/);
   expect(blur).toBe("none");
+  expect(errors).toEqual([]);
+});
+
+test("the tab bar's « + » adds a deliverable or opens a recent one; search stays at hand", async ({ browser }) => {
+  const { page, errors } = await editor(browser);
+  // logo.png opened, then its tab closed: a recent deliverable, not an open tab.
+  await page.goto("/projets/1/livrables/2");
+  await expect(page.locator("[data-page]").first()).toBeVisible();
+  await page.getByRole("button", { name: "Fermer logo.png" }).click();
+  await page.goto("/projets/1/livrables/1");
+  await expect(page.locator("[data-page]").first()).toBeVisible();
+
+  const plus = page.getByRole("button", { name: "Ajouter ou ouvrir un livrable" });
+  await plus.click();
+  const menu = page.getByRole("menu");
+  await expect(menu.getByRole("menuitem")).toHaveText([/Ajouter un livrable/, /logo\.png/, /Rechercher un livrable/]);
+  await menu.getByRole("menuitem", { name: /logo\.png/ }).click();
+  await page.waitForURL(/\/projets\/1\/livrables\/2$/);
+  await expect(menu).toHaveCount(0);
+
+  await plus.click();
+  await expect(menu).toBeVisible();
+  await page.getByRole("menuitem", { name: /Rechercher un livrable/ }).click();
+  const search = page.getByRole("dialog", { name: "Rechercher dans Kora" });
+  await expect(search.getByRole("combobox")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(search).toHaveCount(0);
+
+  await plus.click();
+  await page.getByRole("menuitem", { name: "Ajouter un livrable" }).click();
+  await expect(page.getByRole("dialog").filter({ hasText: "Livrable" }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });

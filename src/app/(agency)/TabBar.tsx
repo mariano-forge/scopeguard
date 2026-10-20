@@ -1,7 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { Check, Clock, House, PenLine, Plus, X } from "lucide-react";
+import { Check, Clock, House, PenLine, Plus, Search, X } from "lucide-react";
+import { useRef } from "react";
+import { useRouter } from "next/navigation";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { href } from "./routes";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
@@ -70,14 +81,24 @@ export function TabBar({
   homeActive,
   onClose,
   onOpen,
+  onAdd,
+  recents,
 }: {
   tabs: TabInfo[];
   activeLivrableId: number | null;
   homeActive: boolean;
   onClose: (livrableId: number) => void;
-  /** "+" button: pick a deliverable to open (command palette). */
+  /** Search among all the deliverables (the command palette, Ctrl K). */
   onOpen: () => void;
+  /** « Ajouter un livrable »: the new deliverable dialog. */
+  onAdd: () => void;
+  /** Recently opened deliverables not in a tab, most recent first. */
+  recents: Pick<TabInfo, "livrableId" | "href" | "name" | "type" | "context">[];
 }) {
+  const router = useRouter();
+  // The search opens once the menu is gone (after its closing animation): opened sooner, the menu would
+  // take the focus back from the search field.
+  const searchNext = useRef(false);
   return (
     <div className="tab-bar">
       <Link className="tab-logo" href={href.home()} aria-label="Kora · Accueil" title="Kora · Accueil">
@@ -121,11 +142,45 @@ export function TabBar({
             </div>
           );
         })}
-        <Hint label="Ouvrir un livrable" shortcut="Ctrl K">
-        <button type="button" className="tab-new" onClick={onOpen} aria-label="Ouvrir un livrable">
-          <Plus />
-        </button>
-        </Hint>
+        {/* « + »: add a deliverable, or open one of the recent ones; searching stays at hand. */}
+        {/* Not modal: the search opened from it takes the focus at once, nothing holds it back. */}
+        <DropdownMenu modal={false}>
+          <Hint label="Ajouter ou ouvrir un livrable">
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="tab-new" aria-label="Ajouter ou ouvrir un livrable">
+                <Plus />
+              </button>
+            </DropdownMenuTrigger>
+          </Hint>
+          {/* Each item moves the focus elsewhere (the search, a dialog, a page): it is not given back to « + ». */}
+          <DropdownMenuContent align="start" className="tab-new-menu w-72" onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              if (searchNext.current) onOpen();
+              searchNext.current = false;
+            }}
+          >
+            <DropdownMenuItem onSelect={onAdd}>
+              <Plus /> Ajouter un livrable
+            </DropdownMenuItem>
+            {recents.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Récents</DropdownMenuLabel>
+                {recents.map((recent) => (
+                  <DropdownMenuItem key={recent.livrableId} onSelect={() => router.push(recent.href)} title={`${recent.context} / ${recent.name}`}>
+                    <DeliverableIcon type={recent.type} />
+                    <span className="truncate">{recent.name}</span>
+                  </DropdownMenuItem>
+                ))}
+              </>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => (searchNext.current = true)}>
+              <Search /> Rechercher un livrable…
+              <DropdownMenuShortcut>Ctrl K</DropdownMenuShortcut>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </nav>
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ArrowUp, BadgeEuro, ClipboardCheck, Pencil, Tag, Trash2, Undo2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowUp, BadgeEuro, ClipboardCheck, EyeOff, Pencil, Tag, Trash2, Undo2, X } from "lucide-react";
 import { Hint } from "@/components/hint";
 import { SiteCapture } from "@/components/SiteCapture";
 import type { SiteAnchor } from "@/lib/siteReview";
@@ -442,9 +442,9 @@ export function ThreadPopover({
         </span>
         <span className="thread-header-actions">
           {!asRequest && onQualify && canWrite && !qualifying && (
-            <Hint label="Créer une demande (incluse ou hors scope)">
-              <Button size="icon-sm" className="thread-create" onClick={() => setQualifying(true)} aria-label="Créer une demande">
-                <Tag />
+            <Hint label="Qualifier en demande : à clarifier, incluse ou hors scope">
+              <Button size="sm" className="thread-create" onClick={() => setQualifying(true)}>
+                <Tag /> Qualifier
               </Button>
             </Hint>
           )}
@@ -644,6 +644,12 @@ export function ThreadPopover({
             </div>
           )}
 
+          {/* The agency's own pin, no status chosen: said in its bubble, the client does not see it yet. */}
+          {showDiscussion && me === "agency" && isAgencyDraft(comment) && (
+            <p role="note" className="thread-draft-note">
+              <EyeOff aria-hidden="true" /> Invisible pour le client tant qu’il n’est pas qualifié.
+            </p>
+          )}
           {showDiscussion && (
           <div className="thread-messages" ref={listRef}>
             {messages.map((message) => (
