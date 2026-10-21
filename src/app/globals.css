@@ -10310,3 +10310,9 @@ body.is-resizing {
   justify-content: space-between;
   gap: var(--s-3);
 }
+.share-reminded {
+  margin: 0;
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+  text-align: right;
+}

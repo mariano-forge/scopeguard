@@ -140,12 +140,14 @@ export function ShareDialog({
                   Personnes invitées <span>{invites.length}</span>
                 </h3>
                 {/* Once a day per link (the server says so too, 429): their personal link mailed again. */}
-                <Hint label={lastReminderAt ? `Dernière relance : ${new Date(lastReminderAt).toLocaleString("fr-FR")}` : "Leur renvoyer leur lien personnel par e-mail"}>
+                <Hint label="Leur renvoyer leur lien personnel par e-mail">
                   <Button variant="outline" size="sm" onClick={onRemind} disabled={reminderBlocked || readOnly}>
                     <BellRing /> {reminderBlocked ? "Relance déjà envoyée" : "Relancer le client"}
                   </Button>
                 </Hint>
               </div>
+              {/* In sight, not in a hint: a disabled button shows none, and that is when the date matters. */}
+              {lastReminderAt && <p className="share-reminded">Dernière relance : {new Date(lastReminderAt).toLocaleString("fr-FR")}</p>}
               <InviteList invites={invites} onCopy={onCopyInvite} onRemove={onRemoveInvite} onRole={onChangeRole} />
             </section>
           )}
