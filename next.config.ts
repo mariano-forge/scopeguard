@@ -14,6 +14,10 @@ const nextConfig: NextConfig = {
       { source: "/review/site/:key", headers: securityHeaders({ framed: true }) },
     ];
   },
+  // The storage SDK is loaded by Node, once: bundled, a reload of the dev server could evaluate a second
+  // copy of @azure/storage-common, whose key class the first copy's SAS signing no longer recognises
+  // (« Invalid sharedKeyCredential »: every file answered 503, src/lib/storage.ts).
+  serverExternalPackages: ["@azure/storage-blob", "@azure/storage-common"],
   // The import limit, known to the pages too (the server checks it again in /api/files).
   env: { NEXT_PUBLIC_MAX_UPLOAD_MB: process.env.MAX_UPLOAD_MB ?? "50" },
   // pdf.js 6 relies on JavaScript only the latest browsers have (Map.getOrInsertComputed, Math.sumPrecise):

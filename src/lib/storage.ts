@@ -33,8 +33,9 @@ function storageConfig() {
 export const maxUploadBytes = () => Math.max(1, Number(process.env.MAX_UPLOAD_MB) || 50) * 1024 * 1024;
 
 // The account's CORS rule is set once per process (kept across reloads); the client and its key stay
-// with this copy of the module. In development a reload can bring a new copy of the Azure SDK, which
-// refuses a key made by the old one (« Invalid sharedKeyCredential »): every file answered 503.
+// with this copy of the module. The SDK itself is not bundled (next.config.ts serverExternalPackages):
+// a reload that brought a second copy of it refused the key made by the first (« Invalid
+// sharedKeyCredential »): every file answered 503.
 const globalForStorage = globalThis as unknown as { koraStorageReady?: Promise<void> };
 let client: { service: BlobServiceClient; credential: StorageSharedKeyCredential } | undefined;
 
@@ -43,7 +44,12 @@ function storage() {
     const { url, credential } = storageConfig();
     client = { service: new BlobServiceClient(url, credential), credential };
   }
-  globalForStorage.koraStorageReady ??= allowBrowserTransfers(client.service);
+  // A failed setup is not kept: kept, it would turn every file into a 503 until the server restarts
+  // (the storage busy for a moment, as when another Kora process sets the same account up).
+  globalForStorage.koraStorageReady ??= allowBrowserTransfers(client.service).catch((error: unknown) => {
+    globalForStorage.koraStorageReady = undefined;
+    throw error;
+  });
   return { ...client, ready: globalForStorage.koraStorageReady };
 }
 
