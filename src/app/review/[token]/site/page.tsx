@@ -3,6 +3,8 @@
 // src/proxy.ts lets only `parent` frame it; this page checks that `parent` is the site of the shared
 // deliverable (a « Lien »), and shows nothing otherwise: no other site gets a framed Kora to click on.
 
+import { AuthShell } from "@/components/AuthShell";
+import { WrongSiteNote } from "@/components/GatePieces";
 import { getDb } from "@/db/client";
 import { findReviewAccess, reviewedSiteOrigin } from "@/db/reviewAccess";
 import { parentOrigin } from "@/lib/siteReview";
@@ -14,11 +16,12 @@ export default async function SitePanelPage({ params, searchParams }: PageProps<
   const db = getDb();
   const access = await findReviewAccess(db, token);
   const site = access ? await reviewedSiteOrigin(db, access) : null;
-  if (!site || site !== parentOrigin(typeof parent === "string" ? parent : null))
+  const origin = parentOrigin(typeof parent === "string" ? parent : null);
+  if (!site || site !== origin)
     return (
-      <main className="grid min-h-screen place-items-center bg-[var(--canvas)] p-6 text-center text-sm text-[var(--graphite)]">
-        <p>Ce panneau Kora ne s’ouvre que sur le site de la revue, avec un lien valable.</p>
-      </main>
+      <AuthShell plain>
+        <WrongSiteNote origin={origin} />
+      </AuthShell>
     );
   return <SitePanel token={token} parent={site} />;
 }

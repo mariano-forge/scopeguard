@@ -9,7 +9,7 @@ async function agencyWithWork() {
   const owner = await signUp("Alice Martin");
   await createAgency(owner, "Studio Rôles");
   const member = await addColleague(owner, "Mia Laurent", "member");
-  const link = { token: unique("tok-roles"), active: true, expiresAt: "01/01/2099", deliverableId: 1, version: 1 };
+  const link = { token: unique("tok-roles"), active: true, expiresAt: "01/01/2099", deliverableId: 1, version: 1, invites: [{ email: `${unique("claire")}@northwind.test`, at: "14/10/2026 10:00", role: "decider" }] };
   const now = Date.now();
   await seedState(owner, {
     lists: {

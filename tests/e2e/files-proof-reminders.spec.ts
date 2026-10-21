@@ -40,7 +40,7 @@ test("a PDF imported from the agency page is stored by version, shown, and serve
   });
   await signInPage(page, alice.email);
   await page.goto("/projets/7");
-  await page.getByRole("button", { name: /Livrable|Nouveau livrable/ }).first().click();
+  await page.getByRole("button", { name: "Ajouter un livrable", exact: true }).click();
   await page.getByLabel("Nom du livrable").fill("Maquette accueil");
   await page.locator('input[type="file"]').first().setInputFiles({ name: "maquette.pdf", mimeType: "application/pdf", buffer: makePdf("Version 1", 2) });
   await page.getByRole("button", { name: "Créer le livrable" }).click();

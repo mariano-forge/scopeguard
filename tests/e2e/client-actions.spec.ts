@@ -94,7 +94,8 @@ test("comments: created and signed by the server, changed only by their author, 
 test("quotes: decided once, adaptations only when allowed, nothing on a quote not sent", async () => {
   const { org, act } = await review();
   // 13: an out-of-scope request never quoted to the client is unknown to them.
-  expect((await act("proposals/13/decision", "POST", { decision: "accepted" })).status).toBe(404);
+  // A quote still a draft: the request shows (« En cours de chiffrage »), the quote cannot be decided.
+  expect((await act("proposals/13/decision", "POST", { decision: "accepted" })).status).toBe(409);
   expect((await act("proposals/10/decision", "POST", { decision: "peut-être" })).status).toBe(400);
   expect((await act("proposals/11/adaptation", "POST", { message: "Moins cher ?" })).status).toBe(409);
 

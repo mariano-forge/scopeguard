@@ -3,6 +3,7 @@
 
 import { and, eq, inArray } from "drizzle-orm";
 import type { ListChange, StateChanges } from "@/lib/sharedState";
+import { areaFromPin } from "@/lib/pinArea";
 import type { Db } from "./client";
 import { commentProposals, comments, deliverables } from "./schema";
 
@@ -50,12 +51,12 @@ export function movedComment(comment: Data, page: number, x: number, y: number):
   const position = comment.position as { x: number; y: number } | undefined;
   if (!position) return null;
   const area = comment.area as Area | undefined;
-  const [dx, dy] = [x - position.x, y - position.y];
   return {
     ...comment,
     page,
     position: { x, y },
-    ...(area ? { area: { ...area, x: area.x + dx, y: area.y + dy } } : {}),
+    // The pin is one corner of its zone: that corner follows it, the opposite one stays (src/lib/pinArea.ts).
+    ...(area ? { area: areaFromPin(area, position, x, y) } : {}),
     location: typeof comment.location === "string" ? comment.location.replace(/^Page \d+/, `Page ${page}`) : comment.location,
   };
 }
@@ -80,6 +81,12 @@ export async function decisionLocked(db: Db, org: string, commentId: number) {
   const [proposal] = await db.select().from(commentProposals).where(and(eq(commentProposals.organizationId, org), eq(commentProposals.commentId, commentId))).limit(1);
   if (!proposal) return false;
   return (proposal.decision !== null && proposal.decision !== "none") || Boolean((proposal.adaptation as Data | null)?.decision);
+}
+
+/** A proposal sent for this request still waits for the client's answer. */
+export async function proposalAwaiting(db: Db, org: string, commentId: number) {
+  const [proposal] = await db.select().from(commentProposals).where(and(eq(commentProposals.organizationId, org), eq(commentProposals.commentId, commentId))).limit(1);
+  return proposal?.state === "sent" && !(proposal.decision !== null && proposal.decision !== "none") && !(proposal.adaptation as Data | null)?.decision;
 }
 
 /** Audit events of one action: distinct ids (several events may share a millisecond). */

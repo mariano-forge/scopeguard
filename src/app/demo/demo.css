@@ -1,0 +1,158 @@
+/* The demo request page (/demo), on top of the landing page's styles (landing.css). Tokens only. */
+
+.demo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(32px, 6vw, 96px);
+  align-items: center;
+  max-width: var(--lp-max);
+  margin: 0 auto;
+  padding: clamp(32px, 6vw, 80px) var(--lp-pad) 0;
+}
+.demo h1 {
+  font-size: clamp(42px, 5.6vw, 68px);
+}
+
+/* The form sits on a pastel stage, like the screens of the landing page. */
+.demo-form {
+  padding: clamp(12px, 3vw, 40px);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--status-scope-text) 12%, transparent) 1px, transparent 1.5px) 0 0 / 22px 22px,
+    var(--status-scope-bg);
+}
+.demo-card {
+  display: grid;
+  gap: 18px;
+  padding: clamp(22px, 3vw, 32px);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--paper);
+  box-shadow:
+    0 1px 2px rgba(17, 17, 17, 0.05),
+    0 24px 60px rgba(17, 17, 17, 0.1);
+}
+.demo-card h2 {
+  font-size: 26px;
+  letter-spacing: -0.02em;
+}
+.demo-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.demo-card input,
+.demo-card textarea {
+  font-size: 15px;
+}
+.demo-card input {
+  height: 44px;
+}
+.demo .demo-submit {
+  width: 100%;
+  margin-top: 4px;
+}
+.demo-trap {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+/* Sent: the check draws itself, then the words come in. */
+.demo-done {
+  justify-items: center;
+  padding-block: 48px;
+  text-align: center;
+}
+.demo-done p {
+  max-width: 340px;
+  margin: 0;
+  color: var(--graphite);
+  font: 400 16px / 1.5 var(--font-ui);
+}
+.demo-done b {
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.demo-done h2,
+.demo-done p,
+.demo-done .lp-link {
+  animation: lp-enter 600ms var(--ease-out) both;
+}
+.demo-done h2 {
+  animation-delay: 450ms;
+}
+.demo-done p {
+  animation-delay: 530ms;
+}
+.demo-done .lp-link {
+  animation-delay: 610ms;
+}
+.demo-check {
+  width: 64px;
+  height: 64px;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+  animation: demo-pop 500ms var(--ease-spring) both;
+}
+.demo-check circle {
+  fill: var(--status-resolved-bg);
+  stroke: var(--status-resolved-text);
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  animation: demo-draw 600ms var(--ease-out) 100ms forwards;
+}
+.demo-check path {
+  stroke: var(--status-resolved-text);
+  stroke-width: 4;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: demo-draw 350ms var(--ease-out) 450ms forwards;
+}
+@keyframes demo-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes demo-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .demo {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 520px) {
+  .demo-row {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .demo-check,
+  .demo-check circle,
+  .demo-check path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .demo-done h2,
+  .demo-done p,
+  .demo-done .lp-link {
+    animation: lp-fade 300ms ease both;
+  }
+}
+

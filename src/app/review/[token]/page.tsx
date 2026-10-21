@@ -1,10 +1,11 @@
 "use client";
 import { formatProposalAmount, formatProposalDeadline, parseNumericAmount, parseNumericDays } from "@/lib/proposalFormat";
+import { areaFromPin } from "@/lib/pinArea";
 
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
-import { ArrowRight, Check, Clock, Lock, PenLine } from "lucide-react";
+import { ArrowRight, Check, Clock, Loader2, Lock, PenLine } from "lucide-react";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { Composer, ThreadPopover, requestKind, type Area, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
 import { RequestPanel, type InspectorTab } from "@/app/(agency)/editor/EditorInspector";
@@ -20,7 +21,10 @@ import { loadSharedState, subscribeSharedState } from "@/lib/stateSync";
 import { reviewAction } from "@/lib/reviewActions";
 import type { ClientRole } from "@/lib/clientRoles";
 import { AccessGate, ProfileGate } from "./AccessGate";
+import { AuthShell } from "@/components/AuthShell";
+import { GateHeading } from "@/components/GatePieces";
 import { initialsOf, sideOf, type Side } from "@/lib/authors";
+import { outsideStatusOf } from "@/lib/outsideStatus";
 
 
 
@@ -150,7 +154,6 @@ export default function ClientReviewPage() {
   const [reviewLink, setReviewLink] = useState<ReviewLink | null>(null);
   const [comments, setComments] = useState<ClientComment[]>([]);
   /** "Northstar · Refonte site": where the shared deliverable lives. */
-  const [context, setContext] = useState("");
   const [panelWidth, setPanelWidth] = useState(340);
   /** Agency replies and proposals the client has opened ("c12", "r1739…", "p1739…"); read once, in the browser. */
   const [seen, setSeen] = useState<string[] | null>(() => {
@@ -262,9 +265,6 @@ export default function ClientReviewPage() {
           ) ?? parsedState.deliverables?.[0];
           if (sharedDeliverable) {
             setDeliverable(sharedDeliverable);
-            const project = parsedState.projects?.find((candidate) => candidate.id === (sharedDeliverable.projectId ?? 1));
-            const client = parsedState.clients?.find((candidate) => candidate.id === (project?.clientId ?? 1));
-            setContext([client?.name, project?.name].filter(Boolean).join(" · "));
           }
           const review = reviewStateOf(sharedDeliverable, parsedState);
           setReviewStatus(review.status);
@@ -476,20 +476,18 @@ export default function ClientReviewPage() {
     toast("Commentaire supprimé", { action: { label: "Annuler", onClick: () => restoreComment(target) } });
   }
 
-  /** Double-click a pin, then click: the comment moves there (its drawn area follows). */
+  /** Double-click a pin, then click: the comment moves there (its drawn area follows, as the server does: src/lib/pinArea.ts). */
   function moveComment(commentId: number, page: number, x: number, y: number) {
     if (isReadOnlyVersion()) return;
     void reviewAction(params.token, `comments/${commentId}`, "PATCH", { page, x, y });
     setComments((current) =>
       current.map((comment) => {
         if (comment.id !== commentId || !comment.position) return comment;
-        const dx = x - comment.position.x;
-        const dy = y - comment.position.y;
         return {
           ...comment,
           page,
           position: { x, y },
-          area: comment.area ? { ...comment.area, x: comment.area.x + dx, y: comment.area.y + dy } : undefined,
+          area: comment.area ? areaFromPin(comment.area, comment.position, x, y) : undefined,
           location: comment.location.replace(/^Page \d+/, `Page ${page}`),
         };
       }),
@@ -677,19 +675,22 @@ export default function ClientReviewPage() {
     );
 
   if (loading) {
-    return <main className="client-review-state">Chargement de la revue...</main>;
+    return (
+      <AuthShell plain>
+        <p className="gate-loading" role="status">
+          <Loader2 aria-hidden="true" /> Chargement de la revue…
+        </p>
+      </AuthShell>
+    );
   }
 
   if (accessState === "denied") {
     return (
-      <main className="client-review-state">
-        <div className="client-state-mark">!</div>
-        <p className="eyebrow">ACCÈS À LA REVUE</p>
-        <h1>Lien indisponible</h1>
-        <p>
-          Ce lien de revue est inconnu, expiré ou a été révoqué par l'agence.
-        </p>
-      </main>
+      <AuthShell plain>
+        <GateHeading title="Lien indisponible">
+          Ce lien de revue est inconnu, expiré ou a été révoqué par l’agence. Demandez-lui un nouveau lien.
+        </GateHeading>
+      </AuthShell>
     );
   }
 
@@ -731,8 +732,6 @@ export default function ClientReviewPage() {
             <h1 className="client-topbar-title">
               <span className="truncate">{deliverable.name}</span>
             </h1>
-            {context && <p className="client-topbar-context">{context}</p>}
-            {viewerMode === "preview" && <p className="client-topbar-context">Aperçu agence · lecture seule</p>}
             {contributor && <p className="client-topbar-context">Contributeur · vos retours sont transmis, la validation revient au décideur désigné par l’agence</p>}
           </div>
         </div>
@@ -840,7 +839,8 @@ export default function ClientReviewPage() {
                     : undefined
                 }
                 onDelete={
-                  sideOf(comment) === "client" && requestKind(comment) === "comment" && !isReadOnlyVersion() && !locked
+                  // Their own comment, until the agency qualifies it (a title) or closes it: then it is closed, not deleted.
+                  sideOf(comment) === "client" && requestKind(comment) === "comment" && !comment.title?.trim() && !comment.closed && !isReadOnlyVersion() && !locked
                     ? () => {
                         deleteComment(comment.id);
                         setThreadOpen(false);
@@ -876,14 +876,22 @@ export default function ClientReviewPage() {
             proposalStage={(comment) => (proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : null)}
             onOpenProposal={openProposalModal}
             unread={(comment) => isUnread(comment as ClientComment)}
+            // A draft quote is never sent here: for the client, nothing is said before a proposal is sent.
+            outsideStatus={(comment) =>
+              outsideStatusOf({ state: proposalStates[comment.id] === "sent" ? "sent" : "none", decision: proposalDecisions[comment.id] ?? "none", adaptation: adaptationRequests[comment.id] })
+            }
             proposalSummary={(comment) => {
               const proposal = activeProposalFor(comment.id);
-              const status = proposalStatus(comment.id);
               return (
                 <span className="client-proposal-line">
-                  <b>{formatProposalAmount(proposal?.amount)} HT</b>
-                  <span>{formatProposalDeadline(proposal?.deadline)}</span>
-                  <span className={`decision-badge ${status.tone}`}>{status.label}</span>
+                  <span className="proposal-figure">
+                    <small>Montant</small>
+                    <b>{formatProposalAmount(proposal?.amount)} HT</b>
+                  </span>
+                  <span className="proposal-figure">
+                    <small>Délai supplémentaire</small>
+                    <b>{parseNumericDays(proposal?.deadline) ? formatProposalDeadline(proposal?.deadline) : "aucun"}</b>
+                  </span>
                 </span>
               );
             }}
@@ -997,7 +1005,7 @@ export default function ClientReviewPage() {
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field id="adaptation-budget" label="Budget indicatif" optional>
-            <AddonInput id="adaptation-budget" addon="€" type="number" min="0" step="10" value={adaptationBudget} onChange={(event) => setAdaptationBudget(event.target.value)} />
+            <AddonInput id="adaptation-budget" addon="€" type="number" min="0" step="0.01" value={adaptationBudget} onChange={(event) => setAdaptationBudget(event.target.value)} />
           </Field>
           <Field id="adaptation-deadline" label="Délai souhaité" optional>
             <AddonInput id="adaptation-deadline" addon="jours" type="number" min="0" step="1" value={adaptationDeadline} onChange={(event) => setAdaptationDeadline(event.target.value)} />

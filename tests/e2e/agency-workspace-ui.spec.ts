@@ -34,14 +34,14 @@ const rows = <T,>(query: string, org: string, params: unknown[] = []) => sql<T>(
 test("an administrator creates a space and a project, then renames them", async ({ browser }) => {
   const { org, page, errors, writes } = await workspace(browser);
   await page.goto("/espaces");
-  await page.getByRole("button", { name: "Espace", exact: true }).click();
+  await page.getByRole("button", { name: "Ajouter un espace" }).click();
   await page.getByLabel("Nom de l’espace").fill("Atelier Horizon");
   await page.getByRole("button", { name: "Créer l’espace" }).click();
   await page.waitForURL(/\/espaces\/\d+$/);
   const spaceId = Number(page.url().split("/").at(-1));
   await expect.poll(async () => (await rows<{ name: string }>("select data->>'name' as name from clients where organization_id = $1 and id = $2", org, [spaceId]))[0]?.name).toBe("Atelier Horizon");
 
-  await page.getByRole("button", { name: "Projet", exact: true }).click();
+  await page.getByRole("button", { name: "Ajouter un projet" }).click();
   await page.getByLabel("Nom du projet").fill("Site vitrine");
   await page.getByRole("button", { name: "Créer le projet" }).click();
   await page.waitForURL(/\/projets\/\d+$/);
@@ -66,6 +66,20 @@ test("an administrator creates a space and a project, then renames them", async 
   await expect.poll(async () => (await rows<{ client: string }>("select data->>'client' as client from projects where organization_id = $1 and id = $2", org, [projectId]))[0]?.client).toBe("Atelier Horizon SA");
   expect((await rows<{ name: string }>("select data->>'name' as name from clients where organization_id = $1 and id = $2", org, [spaceId]))[0].name).toBe("Atelier Horizon SA");
   expect(writes.filter((write) => write === "PATCH /api/state")).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test("a project created from the home page goes in the space chosen in the dialog", async ({ browser }) => {
+  const { org, page, errors } = await workspace(browser);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Ajouter un projet" }).click();
+  const dialog = page.getByRole("dialog", { name: "Créer un projet" });
+  await dialog.getByLabel("Nom du projet").fill("Identité visuelle");
+  await expect(dialog.getByLabel("Espace", { exact: true })).toContainText("Northwind");
+  await dialog.getByRole("button", { name: "Créer le projet" }).click();
+  await page.waitForURL(/\/projets\/\d+$/);
+  const projectId = Number(page.url().split("/").at(-1));
+  await expect.poll(async () => (await rows<{ data: Record<string, unknown> }>("select data from projects where organization_id = $1 and id = $2", org, [projectId]))[0]?.data).toMatchObject({ name: "Identité visuelle", clientId: 1 });
   expect(errors).toEqual([]);
 });
 
@@ -99,5 +113,32 @@ test("a deleted deliverable goes to the trash with its requests and comes back; 
   await expect.poll(async () => (await rows("select 1 from trash_items where organization_id = $1", org)).length).toBe(0);
   expect(await rows("select 1 from projects where organization_id = $1 and id = 2", org)).toHaveLength(0);
   expect(writes.filter((write) => write === "PATCH /api/state")).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test("back / forward arrows exist in the spaces area only: not on home, recents, shared, trash or « À traiter »", async ({ browser }) => {
+  const { page, errors } = await workspace(browser);
+  const history = page.getByRole("navigation", { name: "Historique" });
+  for (const path of ["/espaces", "/espaces/1", "/projets/1"]) {
+    await page.goto(path);
+    await expect(history).toBeVisible();
+  }
+  for (const path of ["/", "/recents", "/partages", "/corbeille", "/a-traiter"]) {
+    await page.goto(path);
+    // The page is drawn (the account menu is there) before checking what it lacks.
+    await expect(page.getByRole("button", { name: "Compte de Alice Martin" }).first()).toBeVisible();
+    await expect(history).toHaveCount(0);
+  }
+  expect(errors).toEqual([]);
+});
+
+test("the home page fits narrow screens: its wide tables scroll in their frame, never the page", async ({ browser }) => {
+  const { page, errors } = await workspace(browser);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Vue d’ensemble" })).toBeVisible();
+  for (const width of [1100, 840, 760, 600, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), { message: `${width} px` }).toBeLessThanOrEqual(0);
+  }
   expect(errors).toEqual([]);
 });

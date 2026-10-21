@@ -5,7 +5,7 @@
 
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { baseURL } from "../../playwright.config";
-import { addColleague, call, clientAction, makePdf, upload, createAgency, headers, newIp, newPerson, seedState, signInPage, signUp, sql, unique, verifiedClient, waitForCode, waitForMail, type Member, type Person } from "./helpers";
+import { addColleague, call, clientAction, makePdf, mailsTo, upload, createAgency, headers, newIp, newPerson, seedState, signInPage, signUp, sql, unique, verifiedClient, waitForCode, waitForMail, type Member, type Person } from "./helpers";
 
 const site = "https://recette.northwind.test";
 /** A 1×1 PNG, built here so the tests need no file on disk. */
@@ -78,7 +78,7 @@ async function verifyInPanel(page: Page, email: string) {
   await panel.getByRole("button", { name: "Accéder à la revue" }).click();
   await panel.getByLabel("Nom complet").fill("Claire Dubois");
   await panel.getByRole("button", { name: "Accéder à la revue" }).click();
-  await expect(panel.getByRole("heading", { name: "Demandes", exact: true })).toBeVisible();
+  await expect(panel.getByRole("heading", { name: "Commentaires", exact: true })).toBeVisible();
 }
 
 const siteRequests = (org: string) => sql<{ id: string; data: Record<string, unknown> }>("select id, data from comments where organization_id = $1 and data ? 'site' order by id", [org]);
@@ -98,6 +98,8 @@ test("the client verifies in Kora's panel on the staging site and places a reque
   // Folded, the bar is the « Kora » pill alone; opening Kora unfolds its tools.
   await expect(page.getByRole("button", { name: "Commenter" })).toBeHidden();
   await verifyInPanel(page, email);
+  // The list put away, the page is whole again: a comment then opens in a bubble beside its click.
+  await panel.getByRole("button", { name: "Fermer les commentaires" }).click();
 
   // Kora's two tools on the floating bar: « Naviguer » by default, « Commenter » until Escape (or V).
   const browse = page.getByRole("button", { name: "Naviguer" });
@@ -105,15 +107,20 @@ test("the client verifies in Kora's panel on the staging site and places a reque
   await expect(browse).toHaveAttribute("aria-pressed", "true");
   await comment.click();
   await expect(comment).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("status").filter({ hasText: "Cliquez sur un élément de la page" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Cliquez sur l’élément à commenter" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(browse).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("c");
   await expect(comment).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("heading", { name: "Bienvenue chez Northwind" }).click({ position: { x: 20, y: 10 } });
+  // Kora's bubble opens beside the click, as on Kora's canvas: what was clicked, then the comment.
+  const frame = page.getByRole("dialog", { name: "Kora", exact: true });
+  const [heading, bubbleBox] = [(await page.getByRole("heading", { name: "Bienvenue chez Northwind" }).boundingBox())!, await frame.boundingBox()];
+  expect(bubbleBox!.width).toBeLessThanOrEqual(340);
+  expect(Math.abs(bubbleBox!.y - heading.y)).toBeLessThan(80);
   await expect(panel.getByText("h1 « Bienvenue chez Northwind »")).toBeVisible();
   const message = "Le titre doit tenir sur une ligne";
-  await panel.getByLabel("Votre demande").fill(message);
+  await panel.getByLabel("Votre commentaire").fill(message);
   await panel.getByRole("button", { name: "Envoyer" }).click();
 
   // Stored as a request of the client, signed by the server, with where it was placed.
@@ -149,10 +156,9 @@ test("the client verifies in Kora's panel on the staging site and places a reque
   expect(red).toBeLessThan(140);
   // Far from it, the page as it is (white).
   expect((await colourAt({ x: 98, y: 98 }))[0]).toBeGreaterThan(200);
-  // …and shown in the panel's thread, read through the panel's session.
-  const shot = panel.getByRole("img", { name: "Capture de la page / au moment de la demande" });
-  await expect(shot).toBeVisible();
-  await expect.poll(() => shot.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  // …and read through the panel's session (on the site, the bubble does not repeat it: the element is there).
+  const kora = page.frames().find((candidate) => candidate.url().startsWith(baseURL))!;
+  expect(await kora.evaluate((href) => fetch(href).then((response) => response.ok), String((created.data.site as { capture: string }).capture))).toBe(true);
   // On the site, Kora's pin: a comment shows its author's initials.
   const pin = page.getByRole("button", { name: `Commentaire #${created.id}` });
   await expect(pin).toHaveText("CD");
@@ -166,7 +172,7 @@ test("the client verifies in Kora's panel on the staging site and places a reque
   await expect(panel.getByRole("button", { name: "Recevoir un code" })).toHaveCount(0);
   // « Réduire Kora » folds everything back into the pill.
   await page.getByRole("button", { name: "Réduire Kora" }).click();
-  await expect(page.getByRole("dialog", { name: "Kora" })).toBeHidden();
+  await expect(page.getByRole("dialog", { name: "Kora", exact: true })).toBeHidden();
   await expect(page.getByRole("button", { name: "Commenter" })).toBeHidden();
   await expect(page.getByRole("button", { name: "Ouvrir Kora" })).toBeVisible();
   expect(errors).toEqual([]);
@@ -187,20 +193,24 @@ test("the panel opens on the deliverable's own site only, in https: another site
 
   // …and the page shows nothing when that origin is not the deliverable's site.
   const elsewhere = await call(`/review/${token}/site?parent=${encodeURIComponent("https://autre.test")}`);
-  expect(String(elsewhere.json)).toContain("ne s’ouvre que sur le site de la revue");
+  expect(String(elsewhere.json)).toContain("Ce n’est pas le site de ce livrable");
   expect(String(elsewhere.json)).not.toContain("Recevoir un code");
 
   // A staging site in http (but on this computer): a page anyone on the way could rewrite frames nothing.
   await seedState(alice, { lists: { deliverables: { upsert: [siteDeliverable("http://recette.northwind.test/")], remove: [] } } });
   const unsecured = await call(`/review/${token}/site?parent=${encodeURIComponent("http://recette.northwind.test")}`);
-  expect(String(unsecured.json)).toContain("ne s’ouvre que sur le site de la revue");
+  expect(String(unsecured.json)).toContain("Ce n’est pas le site de ce livrable");
   await seedState(alice, { lists: { deliverables: { upsert: [siteDeliverable(`${site}/`)], remove: [] } } });
 
   // The toolbar copied onto another site: the panel refuses to open there.
   const other = await siteVisitor(browser, script, "https://autre.test");
   await other.page.goto("https://autre.test/?kora");
   await other.page.getByRole("button", { name: "Ouvrir Kora" }).click();
-  await expect(other.panel.getByText("ne s’ouvre que sur le site de la revue")).toBeVisible();
+  await expect(other.panel.getByText("Ce n’est pas le site de ce livrable")).toBeVisible();
+  // It says so to the agency as well as the client, naming the page it was opened on, never the deliverable's address.
+  await expect(other.panel.getByText(/pour l’administrateur comme pour le décideur/)).toBeVisible();
+  await expect(other.panel.getByText(/pour commenter sur https:\/\/autre\.test, créez dans Kora une nouvelle version/)).toBeVisible();
+  await expect(other.panel.getByText("recette.northwind.test")).toHaveCount(0);
   await expect(other.panel.getByRole("button", { name: "Recevoir un code" })).toHaveCount(0);
 
   // A page of another site framing the panel while naming the right site: the browser refuses the frame.
@@ -238,10 +248,11 @@ test("the site shows the pins the client may see, and says when an element is go
   // Only the pin the client sees, on an element the page has: Kora's « Inclus » tag.
   await expect(page.getByRole("button", { name: /#\d+$/ })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Demande incluse #20" }).locator("svg")).toBeVisible();
-  // In the panel, Kora's « Demandes »: both included requests under « Inclus ».
-  await panel.getByRole("tab", { name: /^Inclus/ }).click();
-  await expect(panel.getByRole("tabpanel").getByRole("button")).toHaveCount(2);
-  await panel.getByRole("button", { name: "Demande incluse #22" }).click();
+  // In Kora's list, the comments of the page the client may see: the two requests, without the follow-up's statuses.
+  const list = panel.getByRole("list", { name: "Commentaires de la page" });
+  await expect(list.getByRole("button")).toHaveCount(2);
+  await expect(panel.getByRole("tab")).toHaveCount(0);
+  await list.getByRole("button", { name: "Demande incluse #22" }).click();
   await expect(panel.getByText("Élément introuvable sur la page")).toBeVisible();
   await expect(panel.getByText("Penser à la marge interne")).toHaveCount(0);
   expect(await siteMarkup(page)).not.toContain("marge interne");
@@ -256,11 +267,89 @@ test("the site shows the pins the client may see, and says when an element is go
   expect(stored.data.site).toBeUndefined();
 });
 
+test("a long list of the page's comments scrolls between its header and its footer, which stay in place", async ({ browser }) => {
+  const { alice, email, script } = await siteReview();
+  const request = (id: number) => ({ id, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: `Demande ${id}`, title: `Demande ${id}`, decision: "Inclus", kind: "request", location: "/", time: "t", site: { url: "/", selector: "#titre", x: 10, y: 50, viewport: 1400 } });
+  await seedState(alice, { lists: { comments: { upsert: Array.from({ length: 16 }, (_, index) => request(30 + index)), remove: [] } } });
+  const { page, panel } = await siteVisitor(browser, script);
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.goto(`${site}/?kora`);
+  await verifyInPanel(page, email);
+
+  const list = panel.getByRole("list", { name: "Commentaires de la page" });
+  await expect(list.getByRole("button")).toHaveCount(16);
+  // The list scrolls, on its own; once at its end, the close button and the way to Kora are still in sight.
+  expect(await list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await list.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+  await expect(list.getByRole("button", { name: "Demande incluse #45" })).toBeInViewport();
+  await expect(panel.getByRole("button", { name: "Fermer les commentaires" })).toBeInViewport();
+  await expect(panel.getByRole("button", { name: "Ouvrir la revue dans Kora" })).toBeInViewport();
+});
+
+test("once in, Kora's logo opens the bar alone: the list of comments opens when asked, and closes without folding the bar", async ({ browser }) => {
+  const { alice, email, script } = await siteReview();
+  await seedState(alice, {
+    lists: { comments: { upsert: [{ id: 20, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Agrandir le titre", title: "Titre plus grand", decision: "Inclus", kind: "request", location: "/", time: "t", site: { url: "/", selector: "#titre", x: 10, y: 50, viewport: 1400 } }], remove: [] } },
+  });
+  const frame = (page: Page) => page.getByRole("dialog", { name: "Kora", exact: true });
+
+  // Not in yet: « Commenter » (or C) opens Kora on the address to verify, and does not comment.
+  const stranger = await siteVisitor(browser, script);
+  await stranger.page.goto(`${site}/?kora`);
+  await stranger.page.keyboard.press("c");
+  await expect(stranger.panel.getByLabel("Votre e-mail")).toBeVisible();
+  await expect(stranger.page.getByRole("button", { name: "Commenter" })).toHaveAttribute("aria-pressed", "false");
+
+  const { page, panel, errors } = await siteVisitor(browser, script);
+  await page.goto(`${site}/?kora`);
+  await verifyInPanel(page, email);
+  // The list closed from its header: the bar stays, with its tools.
+  await panel.getByRole("button", { name: "Fermer les commentaires" }).click();
+  await expect(frame(page)).toBeHidden();
+  await expect(page.getByRole("button", { name: "Commenter" })).toBeVisible();
+  await page.getByRole("button", { name: "Réduire Kora" }).click();
+  await expect(page.getByRole("button", { name: "Commenter" })).toBeHidden();
+
+  // Back later, in: the logo unfolds the bar without the list, which would hide the page.
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Demande incluse #20" })).toBeVisible();
+  await page.getByRole("button", { name: "Ouvrir Kora" }).click();
+  const list = page.getByRole("button", { name: "Commentaires", exact: true });
+  await expect(page.getByRole("button", { name: "Commenter" })).toBeVisible();
+  await expect(frame(page)).toBeHidden();
+  await expect(list).toHaveAttribute("aria-pressed", "false");
+  // « Commentaires » shows the list, and puts it away.
+  await list.click();
+  await expect(frame(page)).toBeVisible();
+  await expect(panel.getByRole("list", { name: "Commentaires de la page" }).getByRole("button")).toHaveCount(1);
+  await expect(list).toHaveAttribute("aria-pressed", "true");
+  // A comment opened, from the list or its pin, shows in the list: it stays open on the right, a way back to all.
+  const listBox = (await frame(page).boundingBox())!;
+  await page.getByRole("button", { name: "Demande incluse #20" }).click();
+  await expect(panel.getByRole("dialog", { name: /#20$/ })).toContainText("Titre plus grand");
+  await expect(panel.getByRole("heading", { name: "Commentaires", exact: true })).toBeVisible();
+  expect((await frame(page).boundingBox())!).toEqual(listBox);
+  // One cross only, the list's; on the bar, the list's button shows a single icon: the cross that closes it.
+  await expect(panel.getByRole("dialog", { name: /#20$/ }).getByRole("button", { name: "Fermer" })).toBeHidden();
+  await expect(list.locator("svg:visible")).toHaveCount(1);
+  await panel.getByRole("button", { name: "Tous les commentaires" }).click();
+  await expect(panel.getByRole("list", { name: "Commentaires de la page" })).toBeVisible();
+  await list.click();
+  await expect(frame(page)).toBeHidden();
+  await expect(list).toHaveAttribute("aria-pressed", "false");
+  // Commenting needs no list: the bubble opens beside the click.
+  await page.getByRole("button", { name: "Commenter" }).click();
+  await page.getByRole("heading", { name: "Bienvenue chez Northwind" }).click({ position: { x: 20, y: 10 } });
+  await expect(panel.getByLabel("Votre commentaire")).toBeVisible();
+  expect((await frame(page).boundingBox())!.width).toBeLessThanOrEqual(340);
+  expect(errors).toEqual([]);
+});
+
 // ——— The agency in the panel ———
 
 const anchorOn = (selector: string) => ({ url: "/", selector, x: 10, y: 50, viewport: 1400 });
 
-/** The panel's agency session of `member`, through the ticket of the Kora window, as a cookie. */
+/** The panel's agency session of `member`: their address verified by a code in the panel, as an invited client's is, as a cookie. */
 async function siteAgencySession(member: Member, token: string): Promise<Person> {
   const ticket = await call(`/api/review/${token}/site/ticket`, { person: member, body: {} });
   expect(ticket.status).toBe(200);
@@ -270,7 +359,7 @@ async function siteAgencySession(member: Member, token: string): Promise<Person>
   return { cookie: opened.headers.getSetCookie().map((cookie) => cookie.split(";")[0]).join("; "), ip };
 }
 
-test("an agency member is recognised in the panel by a Kora window, then annotates and qualifies on the site", async ({ browser }) => {
+test("an agency member is recognised in the panel by a Kora window, never by a code, then annotates and qualifies on the site", async ({ browser }) => {
   const { alice, org, script } = await siteReview();
   await seedState(alice, {
     lists: {
@@ -284,9 +373,16 @@ test("an agency member is recognised in the panel by a Kora window, then annotat
     },
   });
   const { page, errors, panel } = await siteVisitor(browser, script);
-  // Signed in to Kora in this browser, as the member would be in another tab.
-  await page.context().addCookies(alice.cookie.split("; ").map((pair) => ({ name: pair.split("=")[0], value: pair.slice(pair.indexOf("=") + 1), url: baseURL })));
   await page.goto(`${site}/?kora`);
+  await page.getByRole("button", { name: "Ouvrir Kora" }).click();
+  // The clients' door is not the agency's: a member's address is answered as any uninvited one, no code sent.
+  await panel.getByLabel("Votre e-mail").fill(alice.email);
+  await panel.getByRole("button", { name: "Recevoir un code" }).click();
+  await expect(panel.getByText("n’est pas invitée sur cette revue")).toBeVisible();
+  expect(mailsTo(alice.email).some((mail) => /est votre code/.test(mail.subject))).toBe(false);
+  // The agency's door: a Kora window, where the member's Kora session is (signed in, as in another tab).
+  await page.context().addCookies(alice.cookie.split("; ").map((pair) => ({ name: pair.split("=")[0], value: pair.slice(pair.indexOf("=") + 1), url: baseURL })));
+  await page.reload();
   await page.getByRole("button", { name: "Ouvrir Kora" }).click();
   const popup = page.waitForEvent("popup");
   await panel.getByRole("button", { name: "Je suis de l’agence" }).click();
@@ -294,28 +390,36 @@ test("an agency member is recognised in the panel by a Kora window, then annotat
   const closed = window.waitForEvent("close");
   await window.getByRole("button", { name: "Continuer en tant que Alice Martin" }).click();
   await closed;
-  await expect(panel.getByText("Agence : Alice Martin")).toBeVisible();
+  // Recognised as a member of the agency: no name to give, the list of the page's comments, its draft included.
+  await expect(panel.getByRole("heading", { name: "Commentaires", exact: true })).toBeVisible();
+  await expect(panel.getByRole("list", { name: "Commentaires de la page" }).getByRole("button")).toHaveCount(2);
 
-  // The agency sees its internal pin too, Kora's dark one, said internal in its thread as in Kora.
+  // The agency sees its draft pin too, Kora's blue one, as in Kora; its thread opens in a bubble beside the pin.
   await expect(page.getByRole("button", { name: "Commentaire #30" })).not.toHaveClass(/is-agency/);
   await expect(page.getByRole("button", { name: "Commentaire #31" })).toHaveClass(/is-agency/);
-  await panel.getByRole("button", { name: "Commentaire #31" }).click();
-  await expect(panel.getByRole("note").filter({ hasText: "Non visible par le client tant que vous ne l’avez pas qualifiée" })).toBeVisible();
-  await panel.getByRole("button", { name: "Demandes", exact: true }).click();
+  await page.getByRole("button", { name: "Commentaire #31" }).click();
+  await expect(panel.getByRole("dialog", { name: /#31$/ })).toBeVisible();
 
-  // A remark of its own on the site: an internal pin, as in Kora.
+  // A comment of its own on the site: an internal pin, as in Kora.
   await page.getByRole("button", { name: "Commenter" }).click();
   await page.getByRole("heading", { name: "Bienvenue chez Northwind" }).click({ position: { x: 40, y: 10 } });
-  await panel.getByLabel("Votre remarque").fill("Vérifier le contraste du titre");
+  await panel.getByLabel("Votre commentaire").fill("Vérifier le contraste du titre");
   await panel.getByRole("button", { name: "Envoyer" }).click();
+  // (The capture of the page is sent first: it takes longer on a loaded machine.)
   await expect
-    .poll(async () => (await sql<{ data: Record<string, unknown> }>("select data from comments where organization_id = $1 and data->>'message' = 'Vérifier le contraste du titre'", [org]))[0]?.data)
+    .poll(async () => (await sql<{ data: Record<string, unknown> }>("select data from comments where organization_id = $1 and data->>'message' = 'Vérifier le contraste du titre'", [org]))[0]?.data, { timeout: 30_000 })
     .toMatchObject({ from: "agency", author: "Alice Martin", internalNote: true, location: "/", decision: "À qualifier", site: { url: "/", selector: "#titre" } });
 
-  // The client's request, qualified from the site.
-  await panel.getByRole("button", { name: "Demandes", exact: true }).click();
-  await panel.getByRole("tabpanel").getByRole("button", { name: "Commentaire #30" }).click();
-  await panel.getByRole("button", { name: "Créer une demande" }).click();
+  // The client's request, qualified from the site. The comment just posted shows its thread first, in the
+  // list still open: back to all, Kora shows the list again.
+  const posted = panel.getByRole("dialog", { name: /^Commentaire #/ });
+  await expect(posted).toBeVisible();
+  await panel.getByRole("button", { name: "Tous les commentaires" }).click();
+  await expect(panel.getByRole("heading", { name: "Commentaires", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Commentaire #30" }).click();
+  await panel.getByRole("button", { name: "Qualifier", exact: true }).click();
+  // The bubble grows with the qualifying form: its whole height, not a cut-off part of it.
+  await expect.poll(async () => (await page.getByRole("dialog", { name: "Kora", exact: true }).boundingBox())!.height).toBeGreaterThan(300);
   await panel.getByRole("radio", { name: /^Inclus/ }).click();
   await panel.getByLabel("Titre de la demande").fill("Raccourcir le titre");
   await panel.getByRole("button", { name: "Créer la demande" }).click();
@@ -358,6 +462,20 @@ test("from the site, the agency only comments and qualifies on its version: quot
   expect(await sql("select 1 from comment_proposals where organization_id = $1", [alice.organizationId])).toHaveLength(0);
   expect((await sql<{ decision: string }>("select decision from comments where organization_id = $1 and id = 41", [alice.organizationId]))[0].decision).toBe("À qualifier");
 
+  // Opened on one link, the panel's session reaches that version only.
+  const chloe = await addColleague(alice, "Chloe Martin", "member");
+  const otherPanel = await siteAgencySession(chloe, otherToken);
+  expect((await call("/api/comments/40/replies", { person: otherPanel, body: { message: "D’ailleurs" } })).status).toBe(404);
+  // Codes are for clients: a member's address, in the panel or not, is answered as any uninvited one —
+  // nothing tells it apart, no code goes, nothing opens.
+  const dana = await addColleague(alice, "Dana Roux", "member");
+  for (const site of [false, true]) {
+    const asked = await call(`/api/review/${token}/access/code`, { body: { email: dana.email, site } });
+    expect(asked.json).toEqual({ ok: true, invited: false });
+    expect((await call(`/api/review/${token}/access/verify`, { body: { email: dana.email, code: "000000", site } })).status).toBe(400);
+  }
+  expect((await call(`/api/review/${token}/access/code`, { body: { email: `${unique("personne")}@ailleurs.test`, site: true } })).json).toEqual({ ok: true, invited: false });
+  expect(mailsTo(dana.email).some((mail) => /est votre code/.test(mail.subject))).toBe(false);
   // A ticket opens only its own link, only for a member, only as signed.
   const ticket = (await call(`/api/review/${token}/site/ticket`, { person: alice, body: {} })).json.ticket as string;
   expect((await call(`/api/review/${otherToken}/site/session`, { body: { ticket } })).status).toBe(400);
@@ -403,10 +521,10 @@ test("a quote waiting on the site is decided in Kora: the review opens in a tab 
   await page.goto(`${site}/?kora`);
   await verifyInPanel(page, email);
 
-  const waiting = panel.getByRole("status").filter({ hasText: "1 devis attend votre décision." });
-  await expect(waiting).toBeVisible();
+  // Said in the list's footer, with the way to Kora, where it is decided.
+  await expect(panel.getByRole("status").filter({ hasText: "1 devis attend votre décision." })).toBeVisible();
   const opened = page.context().waitForEvent("page");
-  await waiting.getByRole("button", { name: "Ouvrir dans Kora" }).click();
+  await panel.getByRole("button", { name: "Ouvrir la revue dans Kora" }).click();
   const review = await opened;
   await review.waitForURL(`${baseURL}/review/${token}`);
   // The usual review, opened by the panel's session: no code asked again.
@@ -501,7 +619,7 @@ test("the bar moves where the visitor drops it, stays there, and never under the
   const moved = (await pill.boundingBox())!;
   expect(Math.round(start.x - moved.x)).toBeGreaterThan(250);
   expect(Math.round(start.y - moved.y)).toBeGreaterThan(150);
-  await expect(page.getByRole("dialog", { name: "Kora" })).toBeHidden();
+  await expect(page.getByRole("dialog", { name: "Kora", exact: true })).toBeHidden();
 
   // Remembered on this device: still there at the next visit.
   await page.reload();
@@ -511,7 +629,7 @@ test("the bar moves where the visitor drops it, stays there, and never under the
 
   // A click still opens Kora. Dropped where the panel opens, the bar steps to its left.
   await page.getByRole("button", { name: "Ouvrir Kora" }).click();
-  await expect(page.getByRole("dialog", { name: "Kora" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Kora", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Réduire Kora" }).click();
   const folded = (await page.getByRole("button", { name: "Ouvrir Kora" }).boundingBox())!;
   await page.mouse.move(folded.x + folded.width / 2, folded.y + folded.height / 2);
@@ -520,7 +638,7 @@ test("the bar moves where the visitor drops it, stays there, and never under the
   await page.mouse.up();
   await page.getByRole("button", { name: "Ouvrir Kora" }).click();
   const beside = (await page.getByRole("toolbar", { name: "Outils Kora" }).boundingBox())!;
-  const panel = (await page.getByRole("dialog", { name: "Kora" }).boundingBox())!;
+  const panel = (await page.getByRole("dialog", { name: "Kora", exact: true }).boundingBox())!;
   expect(beside.x + beside.width).toBeLessThanOrEqual(panel.x);
   expect(errors).toEqual([]);
 });
@@ -568,14 +686,14 @@ test("a key opens only its own site, as Kora signed it; another agency gets no k
   expect(framed.response.headers.get("x-frame-options")).toBeNull();
   const elsewhere = await call(`/review/site/${encodeURIComponent(key)}?parent=${encodeURIComponent("https://autre.test")}`);
   expect(elsewhere.status).toBe(200);
-  expect(String(elsewhere.json)).toContain("ne s’ouvre que sur le site de la revue");
+  expect(String(elsewhere.json)).toContain("Ce n’est pas le site de ce livrable");
   expect(elsewhere.response.headers.get("content-security-policy")).toContain("frame-ancestors https://autre.test");
   // A key changed by hand: nothing.
   const [payload, signature] = key.split("~");
   const forged = `${Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(payload, "base64url").toString()), l: 2 })).toString("base64url")}~${signature}`;
   const refused = await call(`/review/site/${encodeURIComponent(forged)}?parent=${encodeURIComponent(site)}`);
   expect(refused.status).toBe(200);
-  expect(String(refused.json)).toContain("ne s’ouvre que sur le site de la revue");
+  expect(String(refused.json)).toContain("Cette ligne de script ne mène à aucun livrable");
   // Another agency, or a deliverable that is not a « Lien »: no key.
   const stranger = await signUp("Sam Dehors");
   await createAgency(stranger, "Autre Studio");
@@ -589,6 +707,81 @@ test("a key opens only its own site, as Kora signed it; another agency gets no k
   await expect(legacy.panel.getByRole("button", { name: "Recevoir un code" })).toBeVisible();
 });
 
+test("the key's panel says why it does not open: a new version not shared yet, a deliverable deleted", async () => {
+  const { alice, key } = await siteReview();
+  const fresh = "https://nouvelle.northwind.test";
+  const at = (origin: string) => `/review/site/${encodeURIComponent(key)}?parent=${encodeURIComponent(origin)}`;
+  // A V02 at a new address, not shared yet: the V01 still opens on its site, the V02's site is told to share it.
+  await seedState(alice, {
+    lists: { deliverables: { upsert: [{ ...siteDeliverable(`${site}/`), status: "Remplacée", locked: true }, { ...siteDeliverable(`${fresh}/`), id: 2, version: 2 }], remove: [] } },
+  });
+  const unshared = String((await call(at(fresh))).json);
+  expect(unshared).toContain("La V02 n’est pas encore partagée");
+  expect(unshared).toContain("La version partagée (V01) est à une autre adresse");
+  expect(unshared).not.toContain("recette.northwind.test");
+  // Shared: the panel opens there.
+  await seedState(alice, { maps: { reviewLinks: { upsert: { "2:2": { token: unique("tok-v2"), active: true, expiresAt: "01/01/2099", autoExpire: true, deliverableId: 2, version: 2 } }, remove: [] } } });
+  const opened = String((await call(at(fresh))).json);
+  expect(opened).not.toContain("pas encore partagée");
+  expect(opened).not.toContain("Ce n’est pas le site de ce livrable");
+  // The deliverable deleted: its line leads nowhere, and says what to do.
+  await seedState(alice, { lists: { deliverables: { upsert: [], remove: [1, 2] } } });
+  expect(String((await call(at(fresh))).json)).toContain("Cette ligne de script ne mène à aucun livrable");
+});
+
+test("a deliverable's line opens on its own site only: it names no other site of the agency, and no line is the agency's", async () => {
+  const { alice, key } = await siteReview();
+  const other = "https://autre.northwind.test";
+  const otherToken = unique("tok-autre");
+  // Another site of the same agency, shared with its client.
+  await seedState(alice, {
+    lists: { deliverables: { upsert: [{ ...siteDeliverable(`${other}/`), id: 2, name: "Autre site" }], remove: [] } },
+    maps: { reviewLinks: { upsert: { "2:1": { token: otherToken, active: true, expiresAt: "01/01/2099", autoExpire: true, deliverableId: 2, version: 1 } }, remove: [] } },
+  });
+  const otherKey = (await call("/api/deliverables/2/site-key", { person: alice })).json.key as string;
+  expect(otherKey).not.toBe(key);
+  const at = (line: string, origin: string) => `/review/site/${encodeURIComponent(line)}?parent=${encodeURIComponent(origin)}`;
+  // Its own line opens there; the first site's line, read by any visitor of that site, does not lead there.
+  expect((await call(at(otherKey, other))).response.headers.get("location")).toContain(otherToken);
+  const probed = await call(at(key, other));
+  expect(probed.status).toBe(200);
+  expect(probed.response.headers.get("location")).toBeNull();
+  expect(String(probed.json)).toContain("Ce n’est pas le site de ce livrable");
+  expect(String(probed.json)).not.toContain(otherToken);
+  expect(String(probed.json)).not.toContain("Autre site");
+  // The same answer for an address the agency has no site at: the line tells nothing of the others.
+  expect(String((await call(at(key, "https://inconnu.northwind.test"))).json)).toContain("Ce n’est pas le site de ce livrable");
+  // There is no line for the whole agency.
+  expect((await call("/api/site-key", { person: alice })).status).toBe(404);
+});
+
+test("« Nouveau livrable » says what the toolbar of a « Lien » does; its line, the deliverable's, comes once it is created", async ({ browser }) => {
+  const { alice } = await siteReview();
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1");
+  await page.getByRole("button", { name: "Ajouter un livrable", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Nouveau livrable" });
+  await dialog.locator(".kind-option").filter({ hasText: /^Lien$/ }).click();
+  // The dialog scrolls in a small window, its actions stay in view.
+  await page.setViewportSize({ width: 1127, height: 738 });
+  const inView = async () => {
+    const [frame, button] = [await dialog.boundingBox(), await dialog.getByRole("button", { name: "Créer le livrable" }).boundingBox()];
+    return Boolean(frame && button && button.y + button.height <= frame.y + frame.height + 1);
+  };
+  // The window just shrank: its layout follows, the dialog then scrolls.
+  await expect.poll(() => dialog.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await expect.poll(inView).toBe(true);
+  // Said for a first time: an invitation to set it up, where to paste it, where requests then arrive.
+  const intro = dialog.getByRole("region", { name: "Recevoir les retours directement depuis le site ?" });
+  await expect(intro).toContainText("Juste après la création, Kora vous donne une ligne à coller dans le code du site, avant </body>");
+  await expect(intro).toContainText("elle arrivera dans Kora, sur ce livrable, avec une capture");
+  await expect(intro).toContainText("Une ligne par site, valable pour toutes ses versions");
+  // No line before the deliverable: it is the deliverable's own, given on its board.
+  await expect(dialog.getByLabel("Script de recette")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test("the invitation of a « Lien » leads to the staging site with the toolbar, and the review page for decisions", async () => {
   const { token, email } = await siteReview();
   const mail = await waitForMail(email, "vous invite");
@@ -596,23 +789,36 @@ test("the invitation of a « Lien » leads to the staging site with the toolbar,
   expect(mail.text).toContain(`Les devis et la validation se font sur la page de revue : ${baseURL}/review/${token}?invitation=`);
 });
 
-test("« Partager la revue » of a « Lien » gives the line with the fixed key and the client's address", async ({ browser }) => {
+test("the canvas of a « Lien » says how to set the toolbar up: the line with the fixed key and the client's address", async ({ browser }) => {
+  // The deliverable's line: one per site, for all its versions.
   const { alice, key } = await siteReview();
   const { page, errors } = await newPerson(browser);
   await signInPage(page, alice.email);
   await page.goto("/projets/1/livrables/1");
+  // No request yet: the setup is open on the board, as three steps, beside the toolbar at work.
+  const board = page.getByRole("region", { name: "Tableau de recette" });
+  await expect(board.getByText("Paramétrer la barre Kora")).toBeVisible();
+  await expect(board.getByRole("img", { name: /Avec la barre Kora, on clique sur un élément du site/ })).toBeVisible();
+  for (const step of ["Installez la barre Kora", "Invitez le décideur", "Qualifiez ses demandes"]) await expect(board.getByRole("heading", { name: step, exact: true })).toBeVisible();
+  // The last step teaches what each qualification means.
+  await expect(board.getByRole("listitem").filter({ hasText: "Qualifiez ses demandes" })).toContainText("Hors scope si elle est à chiffrer");
+  // The long script line wraps in its field: the board never scrolls sideways, « Ouvrir le site » stays in view.
+  await expect.poll(() => board.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
+  await expect(board.getByRole("link", { name: "Ouvrir le site" })).toBeInViewport();
+  await expect(board.getByLabel("Script de recette")).toHaveValue(`<script src="${baseURL}/kora-toolbar.js" data-site="${key}" defer></script>`);
+  await expect(board.getByLabel("Lien du site pour le décideur")).toHaveValue(`${site}/?kora`);
+  // « Partager la revue » is about people only.
   await page.getByRole("button", { name: "Partager la revue" }).first().click();
-  await expect(page.getByLabel("Script de recette")).toHaveValue(`<script src="${baseURL}/kora-toolbar.js" data-site="${key}" defer></script>`);
-  await expect(page.getByLabel("Lien du site pour le client")).toHaveValue(`${site}/?kora`);
+  await expect(page.getByRole("dialog", { name: "Partager la revue" }).getByLabel("Script de recette")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
 // ——— The board of a « Lien » in Kora ———
 
-test("in Kora, a « Lien » shows its requests page by page with their captures, for the agency and the client", async ({ browser }) => {
+test("in Kora, a « Lien » shows each request as a page of the canvas, its capture with its pin, for the agency and the client", async ({ browser }) => {
   const { alice, token, email } = await siteReview();
   const shot = (await upload(alice, png, "capture.png", { kind: "request", projectId: 1, livrableId: 1 })).json.href!;
-  const at = (url: string, selector: string) => ({ url, selector, x: 10, y: 10, viewport: 1400, capture: shot });
+  const at = (url: string, selector: string) => ({ url, selector, x: 10, y: 10, viewport: 1400, view: { x: 30, y: 40 }, capture: shot });
   await seedState(alice, {
     lists: {
       comments: {
@@ -628,7 +834,8 @@ test("in Kora, a « Lien » shows its requests page by page with their captures,
     },
   });
 
-  // The agency: every request, page by page, each card opening its thread.
+  // The agency: every request, under its page of the site, as a page of the canvas: its capture, its pin
+  // where the click was on it, which opens its thread.
   const agency = await newPerson(browser);
   await signInPage(agency.page, alice.email);
   await agency.page.goto("/projets/1/livrables/1");
@@ -636,7 +843,28 @@ test("in Kora, a « Lien » shows its requests page by page with their captures,
   await expect(board.getByRole("heading", { name: "recette.northwind.test" })).toBeVisible();
   await expect(board.getByRole("region", { name: "Page /", exact: true }).getByRole("button")).toHaveCount(2);
   await expect(board.getByRole("region", { name: "Page /contact" }).getByRole("button")).toHaveCount(2);
+  await expect(board.getByRole("region", { name: "Page /contact" }).getByRole("img", { name: "Capture de /contact" })).toHaveCount(2);
+  const pin = board.getByRole("button", { name: "Commentaire #82" });
+  await expect(pin).toBeVisible();
+  expect(await pin.evaluate((element) => [element.style.left, element.style.top])).toEqual(["30%", "40%"]);
+  // The canvas keeps its bottom bar: the hand, the agency's pins (the decider comments on the site), the zoom.
+  const tools = board.getByRole("toolbar", { name: "Outils du canevas" });
+  await expect(tools.getByRole("button", { name: "Main" })).toBeVisible();
+  await expect(tools.getByRole("button", { name: "Commentaire" })).toBeVisible();
+  await expect(tools.getByRole("button", { name: "Augmenter le zoom" })).toBeVisible();
+  // The client's comments are in the requests panel too, to clarify.
+  await expect(agency.page.getByRole("complementary", { name: "Demandes" })).toContainText("Le titre est trop long");
   await expect(board.getByRole("link", { name: "Ouvrir le site" })).toHaveAttribute("href", `${site}/?kora`);
+  // The same link is copied from the site's address, to paste or send.
+  await agency.page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await board.getByRole("button", { name: "Copier le lien du site" }).click();
+  await expect(board.getByRole("button", { name: "Copier le lien du site" })).toContainText("Lien copié");
+  expect(await agency.page.evaluate(() => navigator.clipboard.readText())).toBe(`${site}/?kora`);
+  // Each page opens on the site, with the toolbar.
+  await expect(board.getByRole("region", { name: "Page /contact" }).getByRole("link", { name: "Ouvrir la page" })).toHaveAttribute("href", `${site}/contact?kora`);
+  // Requests came: the setup is folded under its title.
+  await expect(board.getByText("Paramétrer la barre Kora")).toBeVisible();
+  await expect(board.getByLabel("Script de recette")).toBeHidden();
   await board.getByRole("button", { name: "Commentaire #82" }).click();
   await expect(agency.page.getByRole("dialog", { name: "Commentaire #82" })).toContainText("Ajouter un plan d’accès");
   expect(agency.errors).toEqual([]);
@@ -650,9 +878,205 @@ test("in Kora, a « Lien » shows its requests page by page with their captures,
   const clientBoard = page.getByRole("region", { name: "Tableau de recette" });
   await expect(clientBoard.getByRole("region", { name: "Page /contact" }).getByRole("button")).toHaveCount(1);
   await expect(clientBoard.getByText("Vérifier les marges")).toHaveCount(0);
+  // The toolbar's setup is the agency's: never on the client's page.
+  await expect(clientBoard.getByText("Paramétrer la barre Kora")).toHaveCount(0);
+  await expect(page.getByLabel("Script de recette")).toHaveCount(0);
+  // The decider copies the site's link too.
+  await expect(clientBoard.getByRole("button", { name: "Copier le lien du site" })).toBeVisible();
+  // The decider's pins are placed on the site: their canvas has the hand only.
+  await expect(clientBoard.getByRole("toolbar", { name: "Outils du canevas" }).getByRole("button", { name: "Commentaire" })).toHaveCount(0);
+  // Their own steps, nothing to set up: always in view.
+  await expect(clientBoard.getByRole("heading", { name: "Commentez le site avec la barre Kora" })).toBeVisible();
+  await expect(clientBoard.getByRole("heading", { name: "Cliquez sur « Kora »" })).toBeVisible();
+  // Kora runs on this computer here: the browser will ask before showing the toolbar, and they are told what to answer.
+  await expect(clientBoard.getByRole("listitem").filter({ hasText: "Cliquez sur « Kora »" })).toContainText("votre navigateur peut demander l’autorisation d’accéder au réseau local");
   // The capture of a request they see opens for them (/api/files).
-  const card = clientBoard.getByRole("button", { name: "Commentaire #82" }).locator("img");
-  await expect.poll(() => card.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  const capture = clientBoard.getByRole("region", { name: "Page /contact" }).getByRole("img", { name: "Capture de /contact" });
+  await expect.poll(() => capture.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  expect(errors).toEqual([]);
+});
+
+test("a new version of a « Lien » is a new address of the site, asked for in Kora, not a file", async ({ browser }) => {
+  const { alice, org } = await siteReview();
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1/livrables/1");
+  const versions = page.getByRole("region", { name: "Versions" });
+  await expect(versions.locator('input[type="file"]')).toHaveCount(0);
+  await versions.getByRole("button", { name: "Nouvelle version du site" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nouvelle version du site" });
+  // The address of the current version, to change: an address that is not a web page is refused.
+  const field = dialog.getByLabel("Adresse du site");
+  await expect(field).toHaveValue(`${site}/`);
+  await field.fill("recette");
+  await dialog.getByRole("button", { name: "Créer la version" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("https://");
+  // A site on this computer, or in http: the client could not review it, it has to be deployed first.
+  await field.fill("http://localhost:5173/");
+  await dialog.getByRole("button", { name: "Créer la version" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("n’existe que sur votre ordinateur");
+  await field.fill("http://recette.northwind.test/");
+  await dialog.getByRole("button", { name: "Créer la version" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Le site doit être en https://");
+  await field.fill(`${site}/v2/`);
+  await dialog.getByRole("button", { name: "Créer la version" }).click();
+  // As for a file: the people of the V01 are offered the V02.
+  await expect(page.getByRole("heading", { name: "Partager la V02 ?" })).toBeVisible();
+  await page.getByRole("button", { name: "Plus tard" }).click();
+  await expect
+    .poll(async () => (await sql<{ data: Record<string, unknown> }>("select data from deliverables where organization_id = $1 and version = 2", [org]))[0]?.data)
+    .toMatchObject({ type: "Link", url: `${site}/v2/`, name: "Site de recette" });
+  await expect(page.getByRole("region", { name: "Tableau de recette" }).getByRole("link", { name: "Ouvrir le site" })).toHaveAttribute("href", `${site}/v2/?kora`);
+  // The menus ask for an address too.
+  await page.getByRole("button", { name: "Menu principal" }).first().click();
+  await page.getByRole("menuitem", { name: /Nouvelle version/ }).click();
+  await expect(page.getByRole("dialog", { name: "Nouvelle version du site" }).getByLabel("Adresse du site")).toHaveValue(`${site}/v2/`);
+  expect(errors).toEqual([]);
+});
+
+test("a new « Lien » must be a deployed site: the form refuses an address of this computer or in http", async ({ browser }) => {
+  const { alice, org } = await siteReview();
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1");
+  await page.getByRole("button", { name: "Ajouter un livrable", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Nouveau livrable" });
+  await dialog.getByLabel("Nom du livrable").fill("Portfolio");
+  // The kind is picked by its label (its radio is drawn by the label).
+  await dialog.locator(".kind-option").filter({ hasText: /^Lien$/ }).click();
+  await expect(dialog.getByRole("radio", { name: "Lien" })).toBeChecked();
+  const field = dialog.getByLabel("Adresse de la page");
+  const create = dialog.getByRole("button", { name: "Créer le livrable" });
+  await field.fill("http://localhost:5173/");
+  await create.click();
+  await expect(dialog.getByRole("alert")).toContainText("Déployez le site, ou donnez l’adresse de sa preview");
+  await field.fill("http://portfolio.northwind.test/");
+  await create.click();
+  await expect(dialog.getByRole("alert")).toContainText("Le site doit être en https://");
+  await field.fill("https://portfolio.northwind.test/");
+  await create.click();
+  await page.waitForURL(/livrables\/\d+/);
+  await expect
+    .poll(async () => (await sql<{ data: Record<string, unknown> }>("select data from deliverables where organization_id = $1 and data->>'name' = 'Portfolio'", [org]))[0]?.data)
+    .toMatchObject({ type: "Link", url: "https://portfolio.northwind.test/" });
+  expect(errors).toEqual([]);
+});
+
+test("on a « Lien »'s canvas, the agency pins a comment on a request's capture: its draft, tied to that request", async ({ browser }) => {
+  const { alice, org, token, email } = await siteReview();
+  const shot = (await upload(alice, png, "capture.png", { kind: "request", projectId: 1, livrableId: 1 })).json.href!;
+  const at = (url: string, selector: string) => ({ url, selector, x: 10, y: 10, viewport: 1400, view: { x: 30, y: 40 }, capture: shot });
+  await seedState(alice, {
+    lists: {
+      comments: {
+        upsert: [
+          { id: 82, deliverableId: 1, author: "Claire Dubois", initials: "CD", from: "client", message: "Ajouter un plan d’accès", decision: "À qualifier", kind: "remark", location: "/contact", time: "t", site: at("/contact", "form") },
+          // The agency's draft on the site, never shown to the client.
+          { id: 83, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Vérifier les marges", decision: "À qualifier", kind: "remark", internalNote: true, location: "/contact", time: "t", site: at("/contact", "h1") },
+          // Out of the site: a pin cannot be tied to it.
+          { id: 90, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Reçue par e-mail", title: "Reçue par e-mail", decision: "Inclus", kind: "request", location: "Livrable (général)", time: "t" },
+        ],
+        remove: [],
+      },
+    },
+  });
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1/livrables/1");
+  const board = page.getByRole("region", { name: "Tableau de recette" });
+  await board.getByRole("toolbar", { name: "Outils du canevas" }).getByRole("button", { name: "Commentaire" }).click();
+  const contact = board.getByRole("region", { name: "Page /contact" });
+  // A click on the capture's page (the comment tool takes the page, as on a PDF's).
+  await contact.locator("[data-page]").first().click({ position: { x: 60, y: 40 } });
+  await page.getByRole("textbox", { name: "Commentaire" }).fill("Bouton trop petit");
+  await page.getByRole("button", { name: "Publier" }).click();
+  const pinned = async () => (await sql<{ data: Record<string, unknown> }>("select data from comments where organization_id = $1 and data->>'message' = 'Bouton trop petit'", [org]))[0]?.data;
+  await expect.poll(pinned).toMatchObject({ from: "agency", internalNote: true, pinnedOn: 82 });
+  // Its pin on that capture, under the page of the site.
+  const own = contact.getByRole("button", { name: /Bouton trop petit/ });
+  await expect(own).toBeVisible();
+  // It moves on its capture, as any pin of the agency; the decider's, placed on the site, stays where it was clicked.
+  // (Its thread opened once published: closed first, as the agency would, so that it covers no pin.)
+  const thread = page.getByRole("dialog", { name: /^Commentaire #/ });
+  await expect(thread).toBeVisible();
+  await thread.getByRole("button", { name: "Fermer" }).click();
+  await expect(thread).toHaveCount(0);
+  const before = (await pinned())!.position as { x: number; y: number };
+  // The canvas glides to an opened thread: the pin is taken once it stands still, not on its way.
+  const steady = async (pin: typeof own) => {
+    let last = "";
+    await expect
+      .poll(async () => {
+        const now = JSON.stringify(await pin.boundingBox());
+        const still = now === last;
+        last = now;
+        return still;
+      })
+      .toBe(true);
+    return (await pin.boundingBox())!;
+  };
+  const drag = async (pin: typeof own, dx: number) => {
+    const box = await steady(pin);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2 + 20, { steps: 8 });
+    await page.mouse.up();
+  };
+  await drag(own, 60);
+  await expect.poll(async () => ((await pinned())!.position as { x: number }).x).toBeGreaterThan(before.x);
+  const decider = contact.getByRole("button", { name: /Commentaire #82/ });
+  const placed = await steady(decider);
+  await drag(decider, 60);
+  await expect.poll(async () => Math.round((await decider.boundingBox())!.x)).toBe(Math.round(placed.x));
+  expect((await sql<{ data: Record<string, unknown> }>("select data from comments where organization_id = $1 and id = 82", [org]))[0].data.position).toBeUndefined();
+  expect(errors).toEqual([]);
+
+  // The server ties a pin only to a request placed on the site, of this version.
+  const pin = (pinnedOn: number) => call("/api/comments", { method: "POST", person: alice, body: { deliverableId: 1, message: "Ici", page: 1, position: { x: 5, y: 5 }, pinnedOn } });
+  expect((await pin(90)).status).toBe(404);
+  expect((await pin(999)).status).toBe(404);
+
+  // Qualified, a pin shows to the client; tied to a request they do not see, it does not say which.
+  await seedState(alice, {
+    lists: {
+      comments: {
+        upsert: [
+          { id: 84, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Sur le plan", title: "Sur le plan", decision: "Inclus", kind: "request", location: "/contact", time: "t", pinnedOn: 82, position: { x: 50, y: 50 } },
+          { id: 85, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Sur les marges", title: "Sur les marges", decision: "Inclus", kind: "request", location: "/contact", time: "t", pinnedOn: 83, position: { x: 50, y: 50 } },
+        ],
+        remove: [],
+      },
+    },
+  });
+  const client = await verifiedClient(token, email);
+  const seen = ((await (await fetch(`${baseURL}/api/review/${token}`, { headers: { cookie: client.cookie.split(";")[0] } })).json()) as { state: { comments: Record<string, unknown>[] } }).state.comments;
+  expect(seen.find((comment) => comment.id === 84)).toMatchObject({ pinnedOn: 82 });
+  expect(seen.find((comment) => comment.id === 85)).not.toHaveProperty("pinnedOn");
+  expect(seen.find((comment) => comment.id === 83)).toBeUndefined();
+});
+
+test("a « Lien » with no decider yet says so at the top of its canvas, as any deliverable", async ({ browser }) => {
+  const alice = await signUp("Alice Martin");
+  await createAgency(alice, "Studio Partage");
+  await seedState(alice, {
+    lists: {
+      clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
+      projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },
+      deliverables: { upsert: [siteDeliverable(`${site}/`)], remove: [] },
+    },
+  });
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1/livrables/1");
+  const canvas = page.getByRole("region", { name: "Tableau de recette" });
+  const alert = canvas.getByRole("status").filter({ hasText: "Aucun décideur sur cette version" });
+  await expect(alert).toBeVisible();
+  // It covers nothing: the sheet starts under it, « Ouvrir le site » in view.
+  await expect
+    .poll(async () => (await alert.boundingBox())!.y + (await alert.boundingBox())!.height <= (await canvas.getByRole("link", { name: "Ouvrir le site" }).boundingBox())!.y)
+    .toBe(true);
+  // Not in the guide any more: the alert is the canvas's.
+  await expect(canvas.locator(".site-guide").getByText("pas encore partagée")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -661,6 +1085,9 @@ test("a « Lien » without requests says how they come", async ({ browser }) => 
   const { page, errors } = await newPerson(browser);
   await signInPage(page, alice.email);
   await page.goto("/projets/1/livrables/1");
-  await expect(page.getByRole("region", { name: "Tableau de recette" }).getByText("Aucune demande sur le site pour l’instant.")).toBeVisible();
+  const board = page.getByRole("region", { name: "Tableau de recette" });
+  await expect(board.getByText("Aucune demande sur le site pour l’instant.")).toBeVisible();
+  // Said once, under « Demandes reçues », not again in the site's bar.
+  await expect(board.getByText("Aucune demande pour l’instant")).toHaveCount(0);
   expect(errors).toEqual([]);
 });

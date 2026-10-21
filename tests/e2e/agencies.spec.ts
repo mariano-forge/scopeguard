@@ -1,7 +1,7 @@
 // Agencies are sealed from each other; colleagues join by invitation and lose access when removed.
 
 import { expect, test } from "@playwright/test";
-import { PASSWORD, call, createAgency, lastMailTo, linkIn, newPerson, readState, seedState, seedReview, signInPage, signUp, unique, waitForMail } from "./helpers";
+import { PASSWORD, call, createAgency, lastMailTo, linkIn, newPerson, readState, seedState, seedReview, signInPage, signUp, sql, unique, waitForMail } from "./helpers";
 
 test("another agency can neither read, overwrite, preview nor invite on an agency's data", async () => {
   const alice = await signUp("Alice Martin");
@@ -65,9 +65,12 @@ test("a colleague joins from the invitation mail; the wrong account cannot; remo
   expect(await carol.content()).not.toContain(carolEmail);
   await expect(carol.getByLabel("E-mail")).toHaveValue("");
   await carol.getByLabel("E-mail").fill(carolEmail);
-  await carol.getByLabel("Nom complet").fill("Carol Petit");
+  await carol.getByLabel("Prénom").fill("Carol");
+  await carol.getByLabel("Nom", { exact: true }).fill("Petit");
   await carol.getByLabel("Mot de passe").fill(PASSWORD);
-  await carol.getByRole("button", { name: "Créer mon compte" }).click();
+  await carol.getByLabel("Confirmation").fill(PASSWORD);
+  // The confirmation screen comes once the server has created the account.
+  await Promise.all([carol.waitForResponse((answer) => answer.url().includes("/api/auth/sign-up/email")), carol.getByRole("button", { name: "Créer mon compte" }).click()]);
   // The confirmation link signs Carol in and brings her back to the invitation.
   await expect(carol.getByRole("status")).toContainText("lien de confirmation");
   await carol.goto(linkIn(await waitForMail(carolEmail, "Confirmez votre adresse"))!);
@@ -86,4 +89,22 @@ test("a colleague joins from the invitation mail; the wrong account cannot; remo
 
   await carol.goto("/");
   await carol.waitForURL((url) => url.pathname === "/bienvenue");
+});
+
+test("an invitation is accepted only from a confirmed address, whatever the sign-in method", async () => {
+  const alice = await signUp("Alice Martin");
+  await createAgency(alice, "Studio Delta");
+  // A Microsoft directory can claim someone else's address without proving it (nOAuth): such an account
+  // has a session with its address unconfirmed. Simulated here on a real account, flagged unconfirmed.
+  const claimant = await signUp("Dan Usurpateur");
+  const invitation = await call("/api/auth/organization/invite-member", { person: alice, body: { email: claimant.email, role: "member", organizationId: alice.organizationId } });
+  const invitationId = invitation.json.id;
+  await sql("UPDATE users SET email_verified = false WHERE email = $1", [claimant.email]);
+
+  expect((await call("/api/auth/organization/accept-invitation", { person: claimant, body: { invitationId } })).status).toBe(403);
+  expect(await sql("SELECT 1 FROM members m JOIN users u ON u.id = m.user_id WHERE m.organization_id = $1 AND u.email = $2", [alice.organizationId, claimant.email])).toHaveLength(0);
+
+  // Once the address is confirmed, the same invitation goes through: the refusal came from the check.
+  await sql("UPDATE users SET email_verified = true WHERE email = $1", [claimant.email]);
+  expect((await call("/api/auth/organization/accept-invitation", { person: claimant, body: { invitationId } })).status).toBe(200);
 });

@@ -3,7 +3,7 @@
 // and kept in the proof.
 
 import { expect, test } from "@playwright/test";
-import { call, createAgency, makePdf, newPerson, seedReview, signInPage, signUp, sql, unique, upload, verifiedClient, type Member, type Person } from "./helpers";
+import { call, createAgency, makePdf, newPerson, seedReview, seedState, signInPage, signUp, sql, unique, upload, verifiedClient, type Member, type Person } from "./helpers";
 
 /** A 1×1 PNG, built here so the tests need no file on disk. */
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
@@ -27,7 +27,7 @@ test("« + Demande »: received by e-mail, with the client’s words and a captu
   await page.goto("/projets/1/livrables/1");
   await expect(page.locator("[data-page]").first()).toBeVisible();
 
-  await page.getByRole("button", { name: "Demande", exact: true }).click();
+  await page.getByRole("button", { name: "Ajouter une demande" }).click();
   // Opened from the « À clarifier » tab: that choice comes first.
   await expect(page.getByRole("heading", { name: "Nouvelle demande" })).toBeVisible();
   const dialog = page;
@@ -64,12 +64,14 @@ test("« + Demande »: received by e-mail, with the client’s words and a captu
 
 test("the client sees the source and its capture; the proof keeps them; a hidden request's capture stays closed", async () => {
   const { alice, org, token, linkKey, act } = await agency();
+  // Another deliverable of the project, shared with no one: its requests stay hidden from this client.
+  await seedState(alice, { lists: { deliverables: { upsert: [{ id: 2, projectId: 1, name: "autre.png", type: "Image", version: 1, status: "Brouillon", locked: false, importedAt: "14/10/2026" }], remove: [] } } });
   const shown = await upload(alice, png, "appel.png", { kind: "request", projectId: 1, livrableId: 1 });
   const hidden = await upload(alice, Buffer.concat([png, Buffer.from("autre")]), "cache.png", { kind: "request", projectId: 1, livrableId: 1 });
   const included = await act(alice, { decision: "Inclus", title: "Logo plus grand", source: { channel: "call", excerpt: "Le logo est trop petit", capture: shown.json.href } });
   expect(included.status).toBe(200);
-  // An out-of-scope request not quoted yet stays internal, with its capture.
-  expect((await act(alice, { decision: "Hors périmètre", title: "Blog", source: { channel: "meeting", capture: hidden.json.href } })).status).toBe(200);
+  // A request on the deliverable not shared, with its capture.
+  expect((await act(alice, { deliverableId: 2, decision: "Hors périmètre", title: "Blog", source: { channel: "meeting", capture: hidden.json.href } })).status).toBe(200);
 
   const email = `${unique("claire")}@client.test`;
   await call("/api/review-access/invite", { person: alice, body: { linkKey, emails: [email] } });

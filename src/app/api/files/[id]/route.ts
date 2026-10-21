@@ -8,7 +8,7 @@ import { cookies } from "next/headers";
 import { getDb } from "@/db/client";
 import { expired, visibleToClient } from "@/db/reviewAccess";
 import { isInvited, reviewSessionCookie, reviewSessionEmail, siteSessionCookie } from "@/db/reviewAuth";
-import { comments, deliverables, proposalVersions, reviewLinks, storedFiles } from "@/db/schema";
+import { comments, deliverables, reviewLinks, storedFiles } from "@/db/schema";
 import type { Db } from "@/db/client";
 import { fileHref, readableUrl } from "@/lib/storage";
 import { getCurrentUser, isMemberOf } from "@/lib/session";
@@ -41,12 +41,7 @@ async function clientMaySee(db: Db, org: string, id: string) {
       .from(comments)
       .where(and(eq(comments.organizationId, org), inArray(comments.deliverableId, links.map((link) => link.deliverableId!))))
   ).filter(({ data }) => captureOf(data as Record<string, unknown>).includes(href));
-  if (!withCapture.length) return false;
-  const quotes = await db
-    .select({ commentId: proposalVersions.commentId, data: proposalVersions.data })
-    .from(proposalVersions)
-    .where(and(eq(proposalVersions.organizationId, org), inArray(proposalVersions.commentId, withCapture.map((comment) => comment.id))));
-  return withCapture.some((comment) => visibleToClient(comment.data as Record<string, unknown>, quotes.filter((quote) => quote.commentId === comment.id).map((quote) => quote.data)));
+  return withCapture.some((comment) => visibleToClient(comment.data as Record<string, unknown>));
 }
 
 export async function GET(_request: Request, context: RouteContext<"/api/files/[id]">) {

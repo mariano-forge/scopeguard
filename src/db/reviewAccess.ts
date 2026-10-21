@@ -14,8 +14,8 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { sameValue, type ListChange, type MapChange, type SharedState, type StateChanges } from "@/lib/sharedState";
 import { initialsOf, sideOf } from "@/lib/authors";
-import { clientFacingText, isInternalReply } from "@/lib/internalNotes";
 import { siteOriginOf } from "@/lib/siteReview";
+import { linkExpired } from "@/lib/linkDeciders";
 import type { Db } from "./client";
 import { commentProposals, comments, deliverables, notifications, proposalVersions, reviewLinks } from "./schema";
 import { readState } from "./state";
@@ -33,12 +33,7 @@ const shortText = (value: unknown, max: number) => (typeof value === "string" ? 
 export type ReviewAccess = { organizationId: string; key: string; link: Data; deliverableId: number; version: number };
 
 /** "31/12/2026" -> end of that day; an unreadable date counts as expired. */
-export function expired(link: Data) {
-  if (link.autoExpire === false || typeof link.expiresAt !== "string") return false;
-  const [day, month, year] = link.expiresAt.split("/").map(Number);
-  if (!day || !month || !year) return true;
-  return new Date(year, month - 1, day, 23, 59, 59).getTime() < Date.now();
-}
+export const expired = (link: Data) => linkExpired(link);
 
 /** The link behind a token, if it is active and not expired. */
 export async function findReviewAccess(db: Db, token: string): Promise<ReviewAccess | null> {
@@ -78,13 +73,14 @@ export async function livrableIdOfVersion(db: Db, organizationId: string, delive
 }
 
 /**
- * The staging site of a « Lien » deliverable (its latest version's address), and the token of its latest
- * version shared with an active link, if any (src/lib/siteKey.ts). Null when the deliverable is gone.
+ * A « Lien » deliverable as its key opens it (src/lib/siteKey.ts): its latest version (site and
+ * number), and its latest version shared with an active link, if any (site, number and token): the one
+ * the panel opens. Null when the deliverable is gone.
  */
 export async function latestSharedSite(db: Db, organizationId: string, livrableId: number) {
   const versions = await versionsOf(db, organizationId, livrableId);
   if (!versions.length) return null;
-  const site = siteOriginOf(versions[0].data as Data);
+  const latest = { site: siteOriginOf(versions[0].data as Data), version: versions[0].version };
   const links = await db
     .select()
     .from(reviewLinks)
@@ -92,9 +88,10 @@ export async function latestSharedSite(db: Db, organizationId: string, livrableI
   for (const version of versions) {
     const row = links.find((link) => link.key === `${version.id}:${version.version}`);
     const link = row?.data as Data | undefined;
-    if (row?.active && link?.active === true && !expired(link)) return { site, token: row.token };
+    if (row?.active && link?.active === true && !expired(link))
+      return { latest, shared: { site: siteOriginOf(version.data as Data), version: version.version, token: row.token } };
   }
-  return { site, token: null };
+  return { latest, shared: null };
 }
 
 /** What the client page needs of its link. */
@@ -106,14 +103,14 @@ const publicLink = (link: Data) => {
 
 /**
  * What the client sees of a version: their own requests always; of the agency's, those whose status it
- * chose. A pin the agency drops on the deliverable has none until qualified: it stays internal. A request
- * from « + Demande » is created with a chosen status and a title, even « À clarifier »: it shows.
- * « Hors scope » shows once a quote was sent (a draft stays internal).
+ * chose. A pin the agency drops on the deliverable has none until qualified: it is the agency's draft.
+ * A request from « + Demande » is created with a chosen status and a title, even « À clarifier »: it shows.
+ * « Hors scope » shows as soon as it is qualified, its status said (decided with the product owner on
+ * 19 October 2026); a draft quote's amount never leaves the server (readReviewState).
  */
-export function visibleToClient(comment: Data, quotes: unknown) {
+export function visibleToClient(comment: Data) {
   if (byClient(comment)) return true;
-  if (comment.decision === "Hors périmètre") return Array.isArray(quotes) && quotes.some((quote) => isObject(quote) && quote.status !== "draft");
-  if (comment.decision === "Inclus") return true;
+  if (comment.decision === "Hors périmètre" || comment.decision === "Inclus") return true;
   // Still to clarify: shown only when the agency chose that status (« + Demande », always titled).
   return typeof comment.title === "string" && comment.title.trim() !== "";
 }
@@ -126,9 +123,7 @@ export async function clientSeesComment(db: Db, access: ReviewAccess, commentId:
     .from(comments)
     .where(and(eq(comments.organizationId, org), eq(comments.id, commentId), eq(comments.deliverableId, access.deliverableId)))
     .limit(1);
-  if (!row) return false;
-  const quotes = (await db.select({ data: proposalVersions.data }).from(proposalVersions).where(and(eq(proposalVersions.organizationId, org), eq(proposalVersions.commentId, commentId)))).map((quote) => quote.data);
-  return visibleToClient(row.data as Data, quotes);
+  return Boolean(row) && visibleToClient(row.data as Data);
 }
 
 /** The part of the shared state the client page needs, in the same shape. */
@@ -139,16 +134,16 @@ export async function readReviewState(db: Db, access: ReviewAccess) {
   const record = state.deliverables?.find((item) => item.id === access.deliverableId && item.version === access.version);
   const project = state.projects?.find((item) => item.id === ((record?.projectId as number | undefined) ?? 1));
   const client = state.clients?.find((item) => item.id === ((project?.clientId as number | undefined) ?? 1));
-  const quotesOf = (id: number) => (state.proposalVersions ?? {})[String(id)];
-  // Shown requests without what the agency wrote for itself (src/lib/internalNotes.ts).
-  const versionComments = (state.comments ?? [])
-    .filter((comment) => comment.deliverableId === access.deliverableId && visibleToClient(comment, quotesOf(comment.id)))
-    .map((comment) => ({
-      ...comment,
-      message: clientFacingText(comment),
-      ...(Array.isArray(comment.replies) ? { replies: (comment.replies as Reply[]).filter((reply) => !isInternalReply(comment, reply)) } : {}),
-    }));
-  const ids = new Set(versionComments.map((comment) => String(comment.id)));
+  // A request out of draft shows whole: its first words and every reply (decided 19 October 2026).
+  const shown = (state.comments ?? []).filter((comment) => comment.deliverableId === access.deliverableId && visibleToClient(comment));
+  const ids = new Set(shown.map((comment) => String(comment.id)));
+  // A pin tied to a request the client does not see (src/db/agencyActions.ts pinnedOn) does not name it.
+  const versionComments = shown.map((comment) => {
+    if (comment.pinnedOn === undefined || ids.has(String(comment.pinnedOn))) return comment;
+    const rest = { ...comment };
+    delete rest.pinnedOn;
+    return rest;
+  });
   const only = (map: Record<string, unknown> | undefined) => Object.fromEntries(Object.entries(map ?? {}).filter(([key]) => ids.has(key)));
   // Draft quotes never leave the server: neither their amounts nor the fact that one is being prepared.
   const sentStates = Object.fromEntries(Object.entries(only(state.proposalStates)).filter(([, value]) => value === "sent"));
@@ -183,10 +178,9 @@ export async function readSiteAgencyState(db: Db, access: ReviewAccess) {
   const { revision, state } = await readState(db, access.organizationId);
   if (!state) return { revision, state: null };
   const record = state.deliverables?.find((item) => item.id === access.deliverableId && item.version === access.version);
-  const quotesOf = (id: number) => (state.proposalVersions ?? {})[String(id)];
   const versionComments = (state.comments ?? [])
     .filter((comment) => comment.deliverableId === access.deliverableId)
-    .map((comment) => ({ ...comment, clientSees: visibleToClient(comment, quotesOf(comment.id)) }));
+    .map((comment) => ({ ...comment, clientSees: visibleToClient(comment) }));
   const filtered: SharedState = {
     clients: [],
     projects: [],
@@ -284,7 +278,8 @@ export async function sanitizeReviewChanges(
       });
     const remove = (incoming.remove ?? []).filter((id) => {
       const comment = before.get(id);
-      return byClient(comment) && comment!.decision === "À qualifier";
+      // Their own comment, while the agency has not qualified it (no title given) nor closed it.
+      return byClient(comment) && comment!.decision === "À qualifier" && !String(comment!.title ?? "").trim() && comment!.closed !== true;
     });
     if (upsert.length || remove.length) lists.comments = { upsert, remove };
   }

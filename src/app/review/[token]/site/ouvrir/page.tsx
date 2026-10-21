@@ -5,6 +5,8 @@
 // usual session and goes to the review. Without a ticket, the review asks for the code as always.
 
 import { useEffect } from "react";
+import { Loader2 } from "lucide-react";
+import { AuthShell } from "@/components/AuthShell";
 import { useParams } from "next/navigation";
 import type { HandoffMessage } from "@/lib/siteReview";
 
@@ -38,5 +40,11 @@ export default function SiteHandoffPage() {
     };
   }, [token]);
 
-  return <main className="client-review-state">Ouverture de la revue…</main>;
+  return (
+    <AuthShell plain>
+      <p className="gate-loading" role="status">
+        <Loader2 aria-hidden="true" /> Ouverture de la revue…
+      </p>
+    </AuthShell>
+  );
 }

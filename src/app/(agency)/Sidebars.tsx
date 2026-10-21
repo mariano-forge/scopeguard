@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import {
   Bell,
@@ -29,12 +29,11 @@ import { Hint } from "@/components/hint";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { timeLabel, useNow } from "./editor/CanvasComments";
-import { AccountMenu } from "./CurrentUser";
+import { AccountMenu, useCurrentUser } from "./CurrentUser";
 
 /** `href`: the page it is about (src/app/(agency)/routes.ts notificationHref); none for older ones. */
 type Notification = { id: number; message: string; href?: string };
 type Client = { id: number; name: string; email: string };
-type Project = { id: number; name: string; clientId?: number };
 
 /** What the client sent from its review space: a message (comment or reply), or "changes requested" on a version. */
 export type ClientFeedback = {
@@ -52,8 +51,25 @@ export type ClientFeedback = {
   href: string;
 };
 
-/** Bell + shadcn popover, opening beside the sidebar: client messages first, then the activity. */
-function Notifications({
+/** The latest activity this member has seen in the bell, per browser and agency. */
+const seenActivityKey = (organizationId: string) => `kora:notifications-vues:${organizationId}`;
+const subscribeToStorage = (onChange: () => void) => {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
+};
+function readSeenActivity(key: string) {
+  try {
+    return Number(window.localStorage.getItem(key) ?? 0) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * The bell: what is new (the client's messages not opened yet, the activity not seen yet), then what was
+ * already seen. Activity counts as seen once the bell is closed; a message, once its thread is opened.
+ */
+export function Notifications({
   notifications,
   feedback,
   onMarkAllRead,
@@ -66,10 +82,49 @@ function Notifications({
 }) {
   const [open, setOpen] = useState(false);
   const now = useNow();
-  const unread = feedback.length;
+  const { organizationId } = useCurrentUser();
+  const key = seenActivityKey(organizationId ?? "");
+  // Everything seen while rendered on the server: the browser then says what is new.
+  const seenUpTo = useSyncExternalStore(subscribeToStorage, () => readSeenActivity(key), () => Number.MAX_SAFE_INTEGER);
+  const freshActivity = notifications.filter((notification) => notification.id > seenUpTo);
+  const pastActivity = notifications.filter((notification) => notification.id <= seenUpTo).slice(0, 6);
+  const unread = feedback.length + freshActivity.length;
+
+  function markActivitySeen() {
+    const latest = Math.max(seenUpTo === Number.MAX_SAFE_INTEGER ? 0 : seenUpTo, ...notifications.map((notification) => notification.id));
+    try {
+      window.localStorage.setItem(key, String(latest));
+    } catch {
+      // Not remembered: shown as new again next time.
+    }
+    window.dispatchEvent(new StorageEvent("storage", { key }));
+  }
+  const activity = (notification: Notification, fresh: boolean) => {
+    const content = (
+      <>
+        <span className={`notification-dot ${fresh ? "is-new" : ""}`} aria-hidden="true" />
+        <span>{notification.message}</span>
+        {fresh && <span className="sr-only"> (nouveau)</span>}
+      </>
+    );
+    return notification.href ? (
+      <Link className={`notification-item is-link ${fresh ? "is-new" : ""}`} href={notification.href} onClick={() => setOpen(false)}>
+        {content}
+      </Link>
+    ) : (
+      <span className={`notification-item ${fresh ? "is-new" : ""}`}>{content}</span>
+    );
+  };
+
   return (
     <div className={`notifications ${compact ? "is-compact" : ""}`}>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) markActivitySeen();
+        }}
+      >
         <Hint label="Notifications" side={compact ? "right" : "bottom"}>
           <PopoverTrigger asChild>
             <button className="sidebar-icon-button" aria-label={`Notifications${unread ? ` (${unread} non lues)` : ""}`}>
@@ -81,21 +136,28 @@ function Notifications({
         <PopoverContent side={compact ? "right" : "bottom"} align="start" className="notification-panel w-96 gap-0 p-0" aria-label="Notifications">
           <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
             <p className="font-heading text-sm font-semibold">Notifications</p>
-            {feedback.some((item) => item.kind === "message") && (
-              <Button variant="ghost" size="sm" onClick={onMarkAllRead}>
+            {unread > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  onMarkAllRead();
+                  markActivitySeen();
+                }}
+              >
                 Tout marquer comme lu
               </Button>
             )}
           </div>
           <div className="max-h-[min(480px,calc(100vh-8rem))] overflow-y-auto">
-            <p className="notification-section">Messages du client{unread ? ` · ${unread}` : ""}</p>
-            {feedback.length === 0 ? (
-              <p className="px-4 pb-3 text-sm text-muted-foreground">Aucun nouveau message.</p>
+            <p className="notification-section">Nouveaux{unread ? ` · ${unread}` : ""}</p>
+            {unread === 0 ? (
+              <p className="notification-empty">Rien de nouveau.</p>
             ) : (
-              <ul>
+              <ul className="notification-list">
                 {feedback.map((item) => (
                   <li key={item.key}>
-                    <Link className="notification-message" href={item.href} onClick={() => setOpen(false)}>
+                    <Link className="notification-message is-new" href={item.href} onClick={() => setOpen(false)}>
                       <span className="thread-avatar" aria-hidden="true">
                         {item.initials}
                       </span>
@@ -110,26 +172,19 @@ function Notifications({
                     </Link>
                   </li>
                 ))}
+                {freshActivity.map((notification) => (
+                  <li key={notification.id} className="px-4">
+                    {activity(notification, true)}
+                  </li>
+                ))}
               </ul>
             )}
-            {notifications.length > 0 && (
+            {pastActivity.length > 0 && (
               <>
-                <p className="notification-section">Activité</p>
-                <ul className="grid gap-2 px-4 pb-3">
-                  {notifications.slice(0, 5).map((notification) => (
-                    <li key={notification.id}>
-                      {notification.href ? (
-                        <Link className="notification-item is-link" href={notification.href} onClick={() => setOpen(false)}>
-                          <span className="notification-dot" />
-                          <span>{notification.message}</span>
-                        </Link>
-                      ) : (
-                        <span className="notification-item">
-                          <span className="notification-dot" />
-                          <span>{notification.message}</span>
-                        </span>
-                      )}
-                    </li>
+                <p className="notification-section">Déjà lus</p>
+                <ul className="notification-list is-read grid gap-2 px-4 pb-3">
+                  {pastActivity.map((notification) => (
+                    <li key={notification.id}>{activity(notification, false)}</li>
                   ))}
                 </ul>
               </>
@@ -247,8 +302,11 @@ export function HomeSidebar({
 /** Deliverables of the project, in the side panel (the open one is active). */
 export type SidebarLivrable = { id: number; name: string; href: string; active: boolean };
 
+/** How a version comes: a file of the deliverable's kind, or an action (the site's address of a « Lien »). */
+export type NewVersion = { onFile: (file: File) => void; accept?: string } | { onSelect: () => void };
+
 /** "+" of a panel section that picks a file (hidden input, like the menus). */
-function FileAddButton({ label, onFile }: { label: string; onFile: (file: File) => void }) {
+function FileAddButton({ label, accept, onFile }: { label: string; accept?: string; onFile: (file: File) => void }) {
   const input = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -260,7 +318,7 @@ function FileAddButton({ label, onFile }: { label: string; onFile: (file: File) 
       <input
         ref={input}
         type="file"
-        accept="application/pdf,image/*,video/*"
+        accept={accept}
         className="sr-only"
         tabIndex={-1}
         aria-hidden="true"
@@ -283,8 +341,6 @@ export type PanelMode = "livrables";
  * The gear opens the main menu; every rail action stays in the deliverable tab.
  */
 export function ProjectSidebar({
-  project,
-  client,
   livrableName,
   livrableMenu,
   systemMenu,
@@ -294,17 +350,12 @@ export function ProjectSidebar({
   onPanel,
   canvasHref,
   onNavigate,
-  notifications,
-  feedback,
-  onMarkAllRead,
   panelWidth,
   onPanelResize,
   livrables,
-  onImportVersion,
-  onImportLivrable,
+  newVersion,
+  onNewLivrable,
 }: {
-  project: Project;
-  client?: Client;
   livrableName: string;
   /** Shortcuts of the open deliverable, under its name. */
   livrableMenu: MenuEntry[];
@@ -319,18 +370,17 @@ export function ProjectSidebar({
   canvasHref: string;
   /** Switches view inside the deliverable's tab. */
   onNavigate: (target: string) => void;
-  notifications: Notification[];
-  feedback: ClientFeedback[];
-  onMarkAllRead: () => void;
   panelWidth: number;
   onPanelResize: (width: number) => void;
   livrables: SidebarLivrable[];
-  /** A file becomes the next version of the open deliverable. */
-  onImportVersion: (file: File) => void;
-  /** A file becomes a new deliverable of the project. */
-  onImportLivrable: (file: File) => void;
+  /** The « + » of the versions: the next version of the open deliverable, of the same nature. */
+  newVersion: NewVersion;
+  /** « + »: the new deliverable dialog, in this project. */
+  onNewLivrable: () => void;
 }) {
   const [livrablesOpen, setLivrablesOpen] = useState(true);
+  // The open deliverable is the canvas itself: the list shows the project's others.
+  const others = livrables.filter((livrable) => !livrable.active);
   return (
     <aside className={`sidebar project-sidebar ${panel ? "" : "is-collapsed"}`} aria-label="Navigation du livrable">
       <nav className="rail" aria-label="Outils">
@@ -376,7 +426,6 @@ export function ProjectSidebar({
           entries={systemMenu}
         />
         <span className="rail-spacer" />
-        <Notifications notifications={notifications} feedback={feedback} onMarkAllRead={onMarkAllRead} compact />
         <AccountMenu compact />
       </nav>
 
@@ -397,19 +446,20 @@ export function ProjectSidebar({
               entries={livrableMenu}
             />
           </div>
-          <div className="panel-context">
-            <span className="panel-path">
-              {client && <Link href={href.client(client.id)}>{client.name}</Link>}
-              {client && <span aria-hidden="true">/</span>}
-              <Link href={href.project(project.id)}>{project.name}</Link>
-            </span>
-          </div>
 
           <div className="panel-scroll">
             <section className="panel-section" aria-label="Versions">
               <div className="panel-section-header">
                 <h2>Versions</h2>
-                <FileAddButton label="Importer un fichier comme nouvelle version" onFile={onImportVersion} />
+                {"onSelect" in newVersion ? (
+                  <Hint label="Nouvelle version du site">
+                    <button type="button" className="nav-section-action" aria-label="Nouvelle version du site" onClick={newVersion.onSelect}>
+                      <Plus />
+                    </button>
+                  </Hint>
+                ) : (
+                  <FileAddButton label="Importer un fichier comme nouvelle version" accept={newVersion.accept} onFile={newVersion.onFile} />
+                )}
               </div>
               <ul>
                 {versions.map((version) => (
@@ -431,18 +481,23 @@ export function ProjectSidebar({
                 ))}
               </ul>
             </section>
-            <section className="panel-section" aria-label="Livrables">
+            <section className="panel-section" aria-label="Autres livrables">
               <div className="panel-section-header">
                 <button type="button" className="panel-section-toggle" aria-expanded={livrablesOpen} onClick={() => setLivrablesOpen((open) => !open)}>
                   <ChevronDown aria-hidden="true" className={livrablesOpen ? "" : "is-closed"} />
-                  <h2>Livrables</h2>
-                  <span className="panel-section-count">{livrables.length}</span>
+                  <h2>Autres livrables</h2>
+                  <span className="panel-section-count">{others.length}</span>
                 </button>
-                <FileAddButton label="Ajouter un fichier comme nouveau livrable" onFile={onImportLivrable} />
+                <Hint label="Ajouter un livrable au projet">
+                  <button type="button" className="nav-section-action" aria-label="Ajouter un livrable au projet" onClick={onNewLivrable}>
+                    <Plus />
+                  </button>
+                </Hint>
               </div>
+              {livrablesOpen && others.length === 0 && <p className="panel-empty">Aucun autre livrable dans ce projet.</p>}
               {livrablesOpen && (
                 <ul>
-                  {livrables.map((livrable) => (
+                  {others.map((livrable) => (
                     <li key={livrable.id}>
                       <Link className={`panel-item ${livrable.active ? "is-active" : ""}`} href={livrable.href} aria-current={livrable.active ? "page" : undefined}>
                         <FileText className="panel-item-icon" aria-hidden="true" />

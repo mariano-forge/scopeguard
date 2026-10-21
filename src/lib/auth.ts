@@ -1,10 +1,14 @@
-// Agency sign-in: e-mail + password and Google, with Better Auth. Accounts and sessions live in
+// Agency sign-in: e-mail + password, Google and Microsoft (each when its keys are set), with Better Auth. Accounts and sessions live in
 // Postgres (src/db/auth-schema.ts). Clients never sign in: they use their review link.
 //
 // Security choices:
-// - passwords hashed with scrypt, at least 10 characters; sessions in httpOnly cookies (Secure in production);
+// - passwords hashed with scrypt; a new password follows src/lib/passwordPolicy.ts (CNIL: 12 characters,
+//   mixed, nothing common nor personal), checked here for sign-up and reset whatever the page;
+//   sessions in httpOnly cookies (Secure in production);
 // - an address is confirmed by a mailed link before its first session (Google addresses come verified);
-// - a Google sign-in is never linked to an existing password account automatically: e-mail addresses are
+// - a Microsoft address counts only when Microsoft vouches for it, else it is confirmed by link like any
+//   other; an invitation is accepted only from a confirmed address;
+// - a Google or Microsoft sign-in is never linked to an existing password account automatically: e-mail addresses are
 //   not verified at sign-up (no e-mail provider yet), so someone could have registered with another
 //   person's address before them;
 // - sign-in, sign-up and reset attempts are limited per IP, counted in the database (shared by all instances);
@@ -17,6 +21,7 @@
 
 import "server-only";
 import { betterAuth } from "better-auth";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { organization } from "better-auth/plugins";
@@ -24,8 +29,13 @@ import { getDb } from "@/db/client";
 import { accounts, invitations, members, organizations, rateLimits, sessions, users, verifications } from "@/db/auth-schema";
 import { appUrl, sendMail } from "./mail";
 import { renderMail } from "./mailTemplates";
+import { maxPasswordLength, minPasswordLength, passwordProblem } from "./passwordPolicy";
 
 export const googleSignInEnabled = () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+export const microsoftSignInEnabled = () => Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET);
+
+/** The sign-in providers offered on the sign-in pages: only those whose keys are set. */
+export const socialSignIns = () => [...(googleSignInEnabled() ? (["google"] as const) : []), ...(microsoftSignInEnabled() ? (["microsoft"] as const) : [])];
 
 function createAuth() {
   if (!process.env.BETTER_AUTH_SECRET) throw new Error("BETTER_AUTH_SECRET is not set (see .env.example).");
@@ -51,7 +61,8 @@ function createAuth() {
       enabled: true,
       // The address is confirmed by a link before any session: nobody works under someone else's address.
       requireEmailVerification: true,
-      minPasswordLength: 10,
+      minPasswordLength,
+      maxPasswordLength,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
         await sendMail({
@@ -87,15 +98,35 @@ function createAuth() {
         });
       },
     },
-    socialProviders: googleSignInEnabled()
-      ? {
-          google: {
-            clientId: process.env.GOOGLE_CLIENT_ID!,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-            prompt: "select_account",
-          },
-        }
-      : {},
+    socialProviders: {
+      ...(googleSignInEnabled()
+        ? { google: { clientId: process.env.GOOGLE_CLIENT_ID!, clientSecret: process.env.GOOGLE_CLIENT_SECRET!, prompt: "select_account" as const } }
+        : {}),
+      // Work and personal Microsoft accounts ("common"), unless the app is limited to one tenant.
+      ...(microsoftSignInEnabled()
+        ? {
+            microsoft: {
+              clientId: process.env.MICROSOFT_CLIENT_ID!,
+              clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
+              tenantId: process.env.MICROSOFT_TENANT_ID || "common",
+              prompt: "select_account" as const,
+              // A directory can claim any address without proving it (nOAuth): unless Microsoft vouches for
+              // it (a domain the directory verified), no session before the mailed link confirms it.
+              requireEmailVerification: true,
+            },
+          }
+        : {}),
+    },
+    // A weak new password is refused before Better Auth stores it (sign-up, reset), with the reason.
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        const body = (ctx.body ?? {}) as Record<string, unknown>;
+        const password = ctx.path === "/sign-up/email" ? body.password : ctx.path === "/reset-password" ? body.newPassword : undefined;
+        if (typeof password !== "string") return;
+        const problem = passwordProblem(password, { email: typeof body.email === "string" ? body.email : undefined, name: typeof body.name === "string" ? body.name : undefined });
+        if (problem) throw new APIError("BAD_REQUEST", { message: problem, code: "PASSWORD_TOO_WEAK" });
+      }),
+    },
     account: { accountLinking: { disableImplicitLinking: true } },
     session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24 },
     rateLimit: {
@@ -106,6 +137,8 @@ function createAuth() {
         "/sign-up/email": { window: 60, max: 5 },
         "/request-password-reset": { window: 300, max: 3 },
         "/reset-password": { window: 300, max: 5 },
+        // « Renvoyer l'e-mail » on the confirmation screen: a few times, not a mailing machine.
+        "/send-verification-email": { window: 300, max: 3 },
       },
     },
     plugins: [
@@ -115,6 +148,8 @@ function createAuth() {
         organizationLimit: 1,
         invitationExpiresIn: 60 * 60 * 24 * 7,
         cancelPendingInvitationsOnReInvite: true,
+        // Invitations are matched by address: only a confirmed one may accept, whatever the sign-in method.
+        requireEmailVerificationOnInvitation: true,
         sendInvitationEmail: async ({ id, email, organization: agency, inviter }) => {
           await sendMail({
             to: email,

@@ -70,6 +70,40 @@ const loopback = (origin: string) => ["localhost", "127.0.0.1", "[::1]"].include
  */
 export const securedSite = (origin: string) => origin.startsWith("https://") || loopback(origin);
 
+/** A site's address as a « Lien » keeps it: without the toolbar's ?kora, which the decider's link adds again. */
+export function withoutToolbarFlag(value: string) {
+  try {
+    const url = new URL(value);
+    if (!url.searchParams.has("kora")) return value;
+    url.searchParams.delete("kora");
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
+/** An address only this computer or its network reaches: 192.168.…, 10.…, 172.16–31.…, name.local. */
+const privateHost = (hostname: string) =>
+  hostname === "0.0.0.0" || hostname.endsWith(".local") || /^(10|127)\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(hostname);
+
+/**
+ * Why a « Lien » cannot be reviewed at this address, or null. The client opens it on their own device, and
+ * the toolbar opens only in https: a site of this computer, or in http, has to be deployed first, or
+ * reviewed at its preview's address. Checked by the forms and by the server (src/db/workspaceActions.ts).
+ */
+export function undeployedSiteProblem(value: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (loopback(url.origin) || privateHost(url.hostname))
+    return "Cette adresse n’existe que sur votre ordinateur : le décideur ne pourra pas l’ouvrir. Déployez le site, ou donnez l’adresse de sa preview (https://…).";
+  if (url.protocol !== "https:") return "Le site doit être en https:// pour que la barre Kora s’y ouvre. Donnez l’adresse de son déploiement ou de sa preview.";
+  return null;
+}
+
 /** The one origin whose pages may frame the panel: the site of a « Lien » deliverable, in https. */
 export function siteOriginOf(deliverable: { type?: unknown; url?: unknown } | undefined) {
   const origin = deliverable?.type === "Link" ? originOf(deliverable.url) : null;
@@ -124,9 +158,24 @@ export type ToolbarMessage =
   /** The capture of the window at the click; null when it could not be made. */
   | { type: "kora:capture"; pick: number; blob: Blob | null }
   | { type: "kora:open"; id: number }
-  | { type: "kora:missing"; ids: number[] };
+  | { type: "kora:missing"; ids: number[] }
+  /** Kora closed from the toolbar: the bubble's comment is put away. */
+  | { type: "kora:dismiss" }
+  /** The list is open on the right: a comment then opens in it, not in a bubble that would take its place. */
+  | { type: "kora:docked"; on: boolean };
 /** From the Kora window that recognised an agency member, to the panel that opened it (same origin). */
 export type TicketMessage = { type: "kora:agency-ticket"; ticket: string };
 /** Between the panel and the review tab it opened, without a second code (src/lib/siteHandoff.ts). */
 export type HandoffMessage = { type: "kora:handoff-ready" } | { type: "kora:handoff-ticket"; ticket: string };
-export type PanelMessage = { type: "kora:ready" } | { type: "kora:pins"; pins: SitePin[] } | { type: "kora:focus"; id: number };
+export type PanelMessage =
+  | { type: "kora:ready" }
+  /** Whether the visitor is in (a verified client with a name, or the agency): the bar then opens without the list. */
+  | { type: "kora:signed"; in: boolean }
+  | { type: "kora:pins"; pins: SitePin[] }
+  | { type: "kora:focus"; id: number }
+  /** The frame as a bubble next to the pin or the click (a comment written or read), or back to the list. */
+  | { type: "kora:bubble"; open: boolean }
+  /** The bubble's height, as tall as what it holds. */
+  | { type: "kora:size"; height: number }
+  /** The list's own close button. */
+  | { type: "kora:close" };

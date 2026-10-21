@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, FolderClosed, LayoutGrid, List, MessageSquare, Pencil, Plus, RotateCcw, Share2, Star, Trash2 } from "lucide-react";
 import { DeliverableCover } from "@/components/DeliverableCover";
 import { Select } from "@/components/Select";
+import { GettingStarted } from "./GettingStarted";
 import { href, hrefForRecord, livrableIdOf, versionsOfLivrable, type AgencyView } from "./routes";
 import { TodoList, isAgencyAction, type TodoItem } from "./TodoList";
 import { StatusMark, type TabStatus } from "./TabBar";
@@ -66,6 +67,8 @@ type BrowserViewProps = {
   overviewFor: (selection: number[] | null) => HomeOverview;
   livrableGroups: LivrableGroup[];
   favorites: string[];
+  /** A version was already shared with someone of a client (« Bien démarrer »). */
+  sharedOnce: boolean;
   error?: string;
   onNewClient: () => void;
   onNewProject: () => void;
@@ -237,6 +240,7 @@ export function BrowserView({
   overviewFor,
   livrableGroups,
   favorites,
+  sharedOnce,
   error,
   onNewClient,
   onNewProject,
@@ -546,7 +550,7 @@ export function BrowserView({
               deleteLocked={!canManage}
             />
             <button className="primary-button" onClick={onNewProject}>
-              <Plus /> Projet
+              <Plus /> Ajouter un projet
             </button>
           </div>
         </header>
@@ -591,7 +595,7 @@ export function BrowserView({
               onMove={(clientId) => onMoveProject(project.id, clientId)}
             />
             <button className="primary-button" onClick={onNewDeliverable}>
-              <Plus /> Livrable
+              <Plus /> Ajouter un livrable
             </button>
           </div>
         </header>
@@ -651,7 +655,7 @@ export function BrowserView({
         <header className="page-header">
           <h1 className="page-title">Tous les espaces</h1>
           <button className="primary-button" onClick={onNewClient}>
-            <Plus /> Espace
+            <Plus /> Ajouter un espace
           </button>
         </header>
         {sorted.length === 0 ? (
@@ -784,6 +788,18 @@ export function BrowserView({
       overviewFor={overviewFor}
       livrableGroups={livrableGroups}
       onNewProject={onNewProject}
+      gettingStarted={
+        <GettingStarted
+          spaces={clients.length}
+          projects={projects.length}
+          deliverables={deliverables.length}
+          shared={sharedOnce}
+          firstDeliverableHref={deliverables[0] ? hrefForRecord(deliverables[0], deliverables) : undefined}
+          onNewClient={onNewClient}
+          onNewProject={onNewProject}
+          onNewDeliverable={onNewDeliverable}
+        />
+      }
     />
   );
 }
@@ -812,10 +828,13 @@ function HomePage({
   overviewFor,
   livrableGroups,
   onNewProject,
+  gettingStarted,
 }: {
   overviewFor: (selection: number[] | null) => HomeOverview;
   livrableGroups: LivrableGroup[];
   onNewProject: () => void;
+  /** « Bien démarrer », in a panel on the right while the agency sets itself up (nothing once done or hidden). */
+  gettingStarted: React.ReactNode;
 }) {
   const [filters, setFilters] = useState<Record<"figures" | "charts" | "register" | "breakdown", number[] | null>>({
     figures: null,
@@ -845,10 +864,13 @@ function HomePage({
       <header className="page-header">
         <h1 className="page-title">Vue d’ensemble</h1>
         <button className="primary-button" onClick={onNewProject}>
-          <Plus /> Projet
+          <Plus /> Ajouter un projet
         </button>
       </header>
 
+      {/* The figures, and « Bien démarrer » beside them; alone, they take the whole width. */}
+      <div className="home-layout">
+      <div className="home-main">
       <section className="browser-section">
         <SectionHeader title="Chiffres clés" filter={filters.figures} onFilter={setFilter("figures")} groups={livrableGroups} />
         <div className="overview">
@@ -923,6 +945,9 @@ function HomePage({
           </div>
         )}
       </section>
+      </div>
+      <div className="home-aside">{gettingStarted}</div>
+      </div>
     </div>
   );
 }

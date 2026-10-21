@@ -3,7 +3,7 @@
 // database with its audit event.
 
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { createAgency, newPerson, seedState, signInPage, signUp, sql } from "./helpers";
+import { call, createAgency, newPerson, seedState, signInPage, signUp, sql, unique } from "./helpers";
 
 const quote = (commentId: number, status: string, extra: Record<string, unknown> = {}) => ({ id: commentId * 10, version: 1, commentId, description: `Devis ${commentId}`, amount: 900, deadline: 3, status, createdAt: "x", ...extra });
 const request = (id: number, title: string) => ({
@@ -22,8 +22,10 @@ const request = (id: number, title: string) => ({
   time: "t",
 });
 
-async function editor(browser: Browser) {
+/** The editor of a version shared with a decider (who receives the proposals), or with a contributor only. */
+async function editor(browser: Browser, role: "decider" | "contributor" = "decider") {
   const alice = await signUp("Alice Martin");
+  const decider = `${unique("claire")}@northwind.test`;
   await createAgency(alice, "Studio Devis");
   await seedState(alice, {
     lists: {
@@ -33,6 +35,10 @@ async function editor(browser: Browser) {
       comments: { upsert: [request(31, "Blog"), request(32, "Carte"), request(33, "Vidéo"), request(34, "Newsletter")], remove: [] },
     },
     maps: {
+      reviewLinks: {
+        upsert: { "1:1": { token: unique("tok-devis"), active: true, expiresAt: "01/01/2099", autoExpire: true, deliverableId: 1, version: 1, invites: [{ email: decider, at: "14/10/2026 10:00", role }] } },
+        remove: [],
+      },
       proposalStates: { upsert: { "31": "draft", "32": "sent", "33": "sent", "34": "sent" }, remove: [] },
       proposalDecisions: { upsert: { "33": "refused" }, remove: [] },
       adaptationRequests: { upsert: { "32": { message: "Moins cher ?", budget: 600, requestedAt: "x" } }, remove: [] },
@@ -50,7 +56,7 @@ async function editor(browser: Browser) {
   await signInPage(page, alice.email);
   await page.goto("/projets/1/livrables/1");
   await expect(page.locator('[data-pin="31"]')).toBeVisible();
-  return { org: alice.organizationId!, page, errors, writes };
+  return { alice, decider, org: alice.organizationId!, page, errors, writes };
 }
 
 /** The open thread's bubble (the side panel shows the same buttons). */
@@ -64,10 +70,14 @@ const events = async (org: string, id: number) =>
   (await sql<{ type: string }>("select type from audit_events where organization_id = $1 and comment_id = $2 order by id", [org, id])).map((row) => row.type);
 
 test("an administrator sends a drafted quote, after confirming it", async ({ browser }) => {
-  const { org, page, errors, writes } = await editor(browser);
+  const { org, page, errors, writes, decider } = await editor(browser);
   await page.locator('[data-pin="31"]').click();
   await thread(page).getByRole("button", { name: "Envoyer la proposition" }).click();
-  await page.getByRole("alertdialog").getByRole("button", { name: "Envoyer la proposition" }).click();
+  // The dialog names who receives it: the version's decider, not the space.
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm).toContainText(`Envoyée à ${decider}`);
+  await expect(confirm).not.toContainText("Northwind");
+  await confirm.getByRole("button", { name: "Envoyer la proposition" }).click();
   await expect.poll(async () => (await proposal(org, 31))?.state).toBe("sent");
   expect(await versions(org, 31)).toEqual([expect.objectContaining({ id: 310, status: "sent", amount: 900, allowCounter: true })]);
   await expect.poll(() => events(org, 31)).toEqual(["proposal.sent"]);
@@ -118,5 +128,26 @@ test("an administrator replaces a quote waiting for the client by a new version"
   expect(await proposal(org, 34)).toMatchObject({ state: "sent" });
   await expect.poll(() => events(org, 34)).toEqual(["proposal.sent"]);
   expect(writes.filter((write) => write === "PATCH /api/state")).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test("with no decider invited on the version, a proposal is not sent: the dialog says so and offers to share the review", async ({ browser }) => {
+  const { alice, org, page, errors } = await editor(browser, "contributor");
+  await page.locator('[data-pin="31"]').click();
+  await thread(page).getByRole("button", { name: "Envoyer la proposition" }).click();
+  const confirm = page.getByRole("alertdialog");
+  // A warning says why; « Envoyer » stays greyed out.
+  await expect(confirm.getByRole("alert")).toContainText("Aucun décideur pour recevoir cette proposition");
+  await expect(confirm.getByRole("button", { name: "Envoyer la proposition" })).toBeDisabled();
+  // The server refuses it too.
+  const refused = await call("/api/comments/31/proposal/send", { method: "POST", person: alice, body: {} });
+  expect(refused.status).toBe(409);
+  expect(refused.json.error).toContain("Aucun décideur");
+  expect(await proposal(org, 31)).toMatchObject({ state: "draft" });
+  expect(await events(org, 31)).toEqual([]);
+
+  await confirm.getByRole("alert").getByRole("button", { name: "Partager la revue" }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Partager la revue" })).toBeVisible();
   expect(errors).toEqual([]);
 });

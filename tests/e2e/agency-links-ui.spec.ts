@@ -31,7 +31,9 @@ const link = async (org: string) =>
 test("sharing creates the link; an invitation is removed; the link is revoked", async ({ browser }) => {
   const { org, page, errors, writes } = await editor(browser);
   await page.getByRole("button", { name: "Partager la revue" }).first().click();
-  await expect(page.getByText("Lien actif")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Partager la revue" }).getByRole("button", { name: "Copier le lien" })).toBeVisible();
+  // The deliverable is named plainly, not by its file name (a long one would fill the sentence).
+  await expect(page.getByRole("dialog", { name: "Partager la revue" })).toContainText("Invitez vos clients à revoir ce livrable (V01)");
   await expect.poll(async () => (await link(org))?.active).toBe(true);
   const created = await link(org);
   expect(created.token).toMatch(/^[0-9a-f-]{36}$/);
@@ -49,6 +51,21 @@ test("sharing creates the link; an invitation is removed; the link is revoked", 
   await expect.poll(async () => (await link(org)).data.invites?.length ?? 0).toBe(0);
   await expect(warning).toBeVisible();
 
+  // Several at once: each address typed (or pasted) becomes a chip; a wrong one shows, and stops the sending.
+  const [lea, max] = [unique("lea"), unique("max")].map((name) => `${name}@client.test`);
+  const field = page.getByLabel("Inviter par e-mail");
+  await field.fill(`${lea} pas-une-adresse, `);
+  await expect(page.locator(".email-chip")).toHaveText([lea, "pas-une-adresse"]);
+  await expect(page.locator(".email-chip.is-invalid")).toHaveText("pas-une-adresse");
+  await page.getByRole("button", { name: "Inviter", exact: true }).click();
+  await expect(page.getByText("Adresse invalide : pas-une-adresse")).toBeVisible();
+  await page.getByRole("button", { name: "Retirer pas-une-adresse de la liste" }).click();
+  await field.fill(max);
+  await field.press("Enter");
+  await expect.poll(async () => (await link(org)).data.invites?.map((invite) => invite.email).sort()).toEqual([lea, max].sort());
+  await expect(page.locator(".email-chip")).toHaveCount(0);
+  await expect(page.getByRole("list", { name: "Personnes invitées" }).getByRole("listitem")).toHaveCount(2);
+
   await page.getByRole("button", { name: "Révoquer ce lien" }).click();
   await expect.poll(async () => (await link(org)).active).toBe(false);
 
@@ -60,12 +77,62 @@ test("sharing creates the link; an invitation is removed; the link is revoked", 
   expect(errors).toEqual([]);
 });
 
-test("the client preview opens the client page of a link created for it", async ({ browser }) => {
+test("a version with no decider says so at the top of the canvas, and a decider is invited from there", async ({ browser }) => {
+  const { org, page, errors } = await editor(browser);
+  const alert = page.getByRole("region", { name: "Canevas" }).getByRole("status").filter({ hasText: "Aucun décideur sur cette version" });
+  await expect(alert).toHaveText(/^Aucun décideur sur cette versionInviter un décideur$/);
+  // An announcement across the top of the canvas, on one line.
+  const [bar, canvasBox] = [(await alert.boundingBox())!, (await page.getByRole("region", { name: "Canevas" }).boundingBox())!];
+  expect(bar.height).toBeLessThan(48);
+  expect(Math.round(bar.width)).toBe(Math.round(canvasBox.width));
+  expect(Math.round(bar.y)).toBe(Math.round(canvasBox.y));
+  await alert.getByRole("button", { name: "Inviter un décideur" }).click();
+  const dialog = page.getByRole("dialog", { name: "Partager la revue" });
+  const email = `${unique("decideur")}@client.test`;
+  await dialog.getByLabel("Inviter par e-mail").fill(email);
+  await dialog.getByRole("button", { name: "Inviter", exact: true }).click();
+  await expect.poll(async () => (await link(org))?.data.invites?.map((invite) => invite.email)).toEqual([email]);
+  await page.keyboard.press("Escape");
+  // A decider now: the alert is gone.
+  await expect(alert).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("the no-decider alert, once closed, stays closed for that version", async ({ browser }) => {
+  const { page, errors } = await editor(browser);
+  const alert = page.getByRole("status").filter({ hasText: "Aucun décideur sur cette version" });
+  await alert.getByRole("button", { name: "Fermer l’alerte" }).click();
+  await expect(alert).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator("[data-page]").first()).toBeVisible();
+  await expect(alert).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("the client preview opens the client page of a link created for it; a member opening it reads it, without the space or project", async ({ browser }) => {
   const { org, page, errors, writes } = await editor(browser);
-  const [preview] = await Promise.all([page.context().waitForEvent("page"), page.getByRole("button", { name: "Aperçu client" }).first().click()]);
-  await expect(preview.getByText("Aperçu agence · lecture seule")).toBeVisible();
+  // The button of the requests panel: the client page, in a new tab, on the version's link.
+  const [preview] = await Promise.all([page.context().waitForEvent("page"), page.getByRole("button", { name: "Aperçu client" }).click()]);
+  await expect.poll(async () => (await link(org))?.token).toBeTruthy();
   expect(new URL(preview.url()).pathname).toBe(`/review/${(await link(org)).token}`);
+  await expect(preview.getByRole("heading", { name: "maquette.png" })).toBeVisible();
+  await expect(preview.getByRole("button", { name: "Valider cette version" })).toHaveCount(0);
+  await preview.close();
   expect(writes.filter((write) => write === "PATCH /api/state")).toEqual([]);
+  // Only the button: the deliverable's menu has no preview.
+  await page.getByRole("button", { name: "Actions du livrable maquette.png" }).click();
+  await expect(page.getByRole("menuitem", { name: "Partager la revue" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Aperçu client" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // Signed in to Kora, the member who opens a link still only reads it; the page names the deliverable alone.
+  await page.getByRole("button", { name: "Partager la revue" }).first().click();
+  await expect.poll(async () => (await link(org))?.active).toBe(true);
+  await page.goto(`/review/${(await link(org)).token}`);
+  await expect(page.getByRole("heading", { name: "maquette.png" })).toBeVisible();
+  await expect(page.getByText("Aperçu agence")).toHaveCount(0);
+  await expect(page.getByText(/Northwind|Refonte/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Valider cette version" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

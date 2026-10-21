@@ -17,7 +17,6 @@ import {
   FileDown,
   Check,
   CircleHelp,
-  Eye,
   FilePlus,
   FolderClosed,
   Keyboard,
@@ -38,20 +37,28 @@ import { BrowserView, type HomeOverview } from "./BrowserView";
 import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
 import { todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
-import { HomeSidebar, ProjectSidebar, type ClientFeedback, type PanelMode, type SidebarLivrable, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
+import { HomeSidebar, Notifications, ProjectSidebar, type ClientFeedback, type NewVersion, type PanelMode, type SidebarLivrable, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
 import { href, hrefForRecord, livrableIdOf, notificationHref, parseAgencyPath, versionsOfLivrable } from "./routes";
-import { MAX_FILE_BYTES, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
+import { MAX_FILE_BYTES, deliverableKinds, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
 import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialog";
+import { LinkVersionDialog } from "./LinkVersionDialog";
+import { NoDeciderBanner } from "./NoDeciderBanner";
+import { NewProjectDialog } from "./NewProjectDialog";
+import { MobileBar, mobileTitle } from "./MobileBar";
+import { useArrivalToast } from "./useArrivalToast";
+import { DeliverableTour } from "./DeliverableTour";
 import {
   Composer,
   ThreadPopover,
+  isAgencyDraft,
   requestKind,
   type ProposalStage,
   type Qualification,
   type Qualified,
   type Area,
   } from "./editor/CanvasComments";
-import { EditorInspector, threadsToMarkdown, type InspectorTab } from "./editor/EditorInspector";
+import { EditorInspector, inspectorTabOf, threadsToMarkdown, type InspectorTab } from "./editor/EditorInspector";
+import { outsideStatusOf, outsideStatusView } from "@/lib/outsideStatus";
 import { NewRequestDialog, type NewRequest } from "./editor/NewRequestDialog";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "./editor/ReviewCanvas";
 import { toast } from "sonner";
@@ -60,23 +67,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { AddonInput, Field, FormError, Modal, selectClassName } from "@/components/modal";
+import { AddonInput, Field, FormError, Modal } from "@/components/modal";
 import { MenuButton, type MenuEntry } from "./editor/MenuButton";
 import { RenameDialog } from "./EntitySettings";
-import { Hint } from "@/components/hint";
 import type { HomeAnalyticsData } from "./HomeAnalytics";
 import type { LivrableGroup } from "./LivrableFilter";
 import { useCurrentUser } from "./CurrentUser";
 import { sideOf, type Side } from "@/lib/authors";
 import { proofHtml } from "./proofDocument";
+import { requestsHtml } from "./requestsDocument";
 import { uploadFile as sendFile, type UploadPlacement } from "@/lib/upload";
 import { agencyAction } from "@/lib/agencyActions";
 import type { ClientRole } from "@/lib/clientRoles";
-import { InviteList, roleOptions, type Invite } from "./InviteList";
+import type { Invite } from "./InviteList";
 import { SiteToolbarSnippet } from "./SiteToolbarSnippet";
 import { previousPeople, ReshareDialog, type ReshareChoice } from "./ReshareDialog";
-import { Select } from "@/components/Select";
 import { loadSharedState, refreshSharedState, subscribeSharedState } from "@/lib/stateSync";
+import { linkDeciders } from "@/lib/linkDeciders";
+import { SendProposalDialog } from "./SendProposalDialog";
+import { ShareDialog } from "./ShareDialog";
 
 
 type Decision = "À qualifier" | "Inclus" | "Hors périmètre";
@@ -232,12 +241,12 @@ const maxTabs = 12;
 const sidebarKey = "kora-sidebar";
 /** Import date stored on a version, e.g. "14 oct. 2026, 10:32". */
 const favoritesKey = "kora-favorites";
-const unsharedClosedKey = "kora-unshared-closed";
 /** Widths of the side panels, set by dragging their edge (per browser). */
 const panelWidthsKey = "kora-panel-widths";
 /** Comments the agency has opened (per browser): the tab alert only counts the others. */
 const seenKey = "kora-seen-comments";
-const defaultWidths = { panel: 248, inspector: 340 };
+// The requests panel shows its four tabs (Brouillons · À clarifier · Inclus · Hors scope) at this width.
+const defaultWidths = { panel: 248, inspector: 384 };
 
 // A new agency starts empty: its first space, project and deliverable are created from the home page.
 const initialProjects: Project[] = [];
@@ -311,6 +320,9 @@ export function AgencyApp() {
   }
   const router = useRouter();
   const pathname = usePathname();
+  // Phones: the sidebar opens as a drawer, for the page it was opened on (leaving the page closes it).
+  const [navOpenAt, setNavOpenAt] = useState<string | null>(null);
+  const navOpen = navOpenAt === pathname;
   const view = parseAgencyPath(pathname);
   const searchParams = useSearchParams();
   const focusedCommentId = Number(searchParams.get("demande")) || null;
@@ -327,24 +339,6 @@ export function AgencyApp() {
   const lastPanelRef = useRef<PanelMode>("livrables");
   /** Starred items, "p:<projectId>" or "l:<livrableId>" (per browser for now). */
   const [favorites, setFavorites] = useState<string[]>([]);
-  /** Versions whose « partagée avec personne » banner was closed (per browser and agency; « À traiter » still lists them). */
-  const [closedUnshared, setClosedUnshared] = useState<number[]>(() => {
-    try {
-      const saved = typeof window === "undefined" ? null : window.localStorage.getItem(scoped(unsharedClosedKey));
-      return saved ? (JSON.parse(saved) as number[]).filter((id) => typeof id === "number") : [];
-    } catch {
-      return [];
-    }
-  });
-  function closeUnshared(versionId: number) {
-    const next = [...closedUnshared.filter((id) => id !== versionId), versionId].slice(-200);
-    setClosedUnshared(next);
-    try {
-      window.localStorage.setItem(scoped(unsharedClosedKey), JSON.stringify(next));
-    } catch {
-      // Closed for this visit only when storage is unavailable.
-    }
-  }
   const [trash, setTrash] = useState<TrashItem[]>([]);
   const [openTabs, setOpenTabs] = useState<{ livrableId: number; href: string }[]>([]);
 
@@ -405,15 +399,14 @@ export function AgencyApp() {
   const [proposalPreviewCommentId, setProposalPreviewCommentId] = useState<number | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
-  const [newProjectName, setNewProjectName] = useState("");
   const [newClientName, setNewClientName] = useState("");
-  const [newProjectClientId, setNewProjectClientId] = useState<number | null>(null);
-  const [projectError, setProjectError] = useState("");
   const [newClientOpen, setNewClientOpen] = useState(false);
   const [newClientEmail, setNewClientEmail] = useState("");
   const [clientError, setClientError] = useState("");
   const [deliverableError, setDeliverableError] = useState("");
   const [pendingImport, setPendingImport] = useState<{ file: File; type: DeliverableType } | null>(null);
+  /** « Nouvelle version » of a « Lien »: its address is asked for. */
+  const [linkVersionOpen, setLinkVersionOpen] = useState(false);
   const [canvasTool, setCanvasTool] = useState<CanvasTool>("remark");
   /** The selected thread is open on the canvas. */
   const [threadOpen, setThreadOpen] = useState(false);
@@ -485,7 +478,6 @@ export function AgencyApp() {
   /** "Partager la V03 ?" with the people of the previous version (ReshareDialog). */
   const [reshare, setReshare] = useState<{ deliverableId: number; version: number; previousVersion: number; people: Invite[] } | null>(null);
   /** Role given to the addresses invited from "Partager la revue" (src/lib/clientRoles.ts). */
-  const [inviteRole, setInviteRole] = useState<ClientRole>("decider");
   const [inviteError, setInviteError] = useState("");
   const [stateHydrated, setStateHydrated] = useState(false);
 
@@ -683,10 +675,6 @@ export function AgencyApp() {
     proposalPreviewCommentId === null
       ? undefined
       : adaptationRequests[proposalPreviewCommentId];
-  const lastReminderAt = reviewLink?.lastReminderAt ?? null;
-  // eslint-disable-next-line react-hooks/purity -- a 24-hour window: a render-time clock is precise enough.
-  const reminderBlocked = lastReminderAt !== null && Date.now() - lastReminderAt < 24 * 60 * 60 * 1000;
-  const nobodyInvited = !(reviewLink?.invites?.length);
 
   // The deliverable dashboard is gone (its analytics are on the home page): old links open the deliverable.
   useEffect(() => {
@@ -905,7 +893,7 @@ export function AgencyApp() {
     setSelectedId(focusedCommentId);
     setThreadOpen(true);
     if (quoteOnFocus) setQuotingId(focusedCommentId);
-    if (focused) setInspectorTab(requestKind(focused));
+    if (focused) setInspectorTab(inspectorTabOf(focused));
     router.replace(pathname, { scroll: false });
     // Bring its pin into view once the canvas has laid out the pages.
     window.setTimeout(() => {
@@ -930,23 +918,6 @@ export function AgencyApp() {
       description: qualified.description,
       quote: qualified.quote,
     });
-  }
-
-  function createProject(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const projectName = newProjectName.trim();
-    const projectClient = clients.find((client) => client.id === (newProjectClientId ?? selectedClientId));
-
-    if (!projectName || !projectClient) {
-      setProjectError("Renseignez le nom du projet et choisissez un espace.");
-      return;
-    }
-
-    void agencyAction("projects", "POST", { clientId: projectClient.id, name: projectName }).then((result) => result?.id && router.push(href.project(result.id)));
-    setNewProjectName("");
-    setNewProjectClientId(null);
-    setProjectError("");
-    setNewProjectOpen(false);
   }
 
   function createClient(event: React.FormEvent<HTMLFormElement>) {
@@ -1078,9 +1049,9 @@ export function AgencyApp() {
     router.push(hrefForRecord(created, [created, ...deliverables]));
   }
 
-  async function confirmImport(mode: ImportMode, source = pendingImport) {
+  async function confirmImport(mode: ImportMode, source: { file?: File; url?: string; type: DeliverableType } | null = pendingImport) {
     if (!source) return;
-    const { file, type } = source;
+    const { file, url, type } = source;
     const activeDeliverable = currentDeliverable;
     const sameDeliverableVersions = deliverables.filter(
       (deliverable) => deliverable.projectId === selectedProjectId && deliverable.name === activeDeliverable?.name,
@@ -1091,19 +1062,20 @@ export function AgencyApp() {
     const id = Date.now();
     // A new version is stored with its deliverable (the id of its first version); a new deliverable is its own.
     const livrableId = mode === "version" && activeDeliverable ? livrableIdOf(activeDeliverable, deliverables) : id;
-    const fileData = await uploadFile(file, { kind: "version", projectId: selectedProjectId, livrableId, version: nextVersion });
-    if (!fileData) return;
+    const fileData = file ? await uploadFile(file, { kind: "version", projectId: selectedProjectId, livrableId, version: nextVersion }) : undefined;
+    if (file && !fileData) return;
+    const content = { id, type, size: file?.size ?? 0, ...(fileData ? { fileData } : {}), ...(url ? { url } : {}) };
     // A new version freezes the earlier ones (src/db/workspaceActions.ts).
     const result =
       mode === "version" && activeDeliverable
-        ? await agencyAction(`deliverables/${activeDeliverable.id}/versions`, "POST", { id, type, size: file.size, fileData })
-        : await agencyAction("deliverables", "POST", { id, projectId: selectedProjectId, name: file.name, type, size: file.size, fileData });
+        ? await agencyAction(`deliverables/${activeDeliverable.id}/versions`, "POST", content)
+        : await agencyAction("deliverables", "POST", { ...content, projectId: selectedProjectId, name: file?.name ?? "" });
     setPendingImport(null);
     if (!result?.id) return;
     // A new version is shared by choice, with one click: the people of the previous one are proposed.
     const previous = mode === "version" && activeDeliverable ? previousPeople(activeDeliverable, nextVersion, deliverables, reviewLinks) : null;
     if (previous) setReshare({ deliverableId: result.id, version: nextVersion, previousVersion: previous.version, people: previous.people });
-    const imported = { id: result.id, projectId: selectedProjectId, name: mode === "version" ? activeDeliverable?.name ?? file.name : file.name, version: nextVersion };
+    const imported = { id: result.id, projectId: selectedProjectId, name: (mode === "version" ? activeDeliverable?.name : undefined) ?? file?.name ?? "", version: nextVersion };
     router.push(hrefForRecord(imported, [imported, ...deliverables]));
   }
 
@@ -1152,22 +1124,27 @@ export function AgencyApp() {
       page: spot?.page ?? 1,
       position: spot ? { x: spot.x, y: spot.y } : undefined,
       area: spot?.area,
+      pinnedOn: spot?.pinnedOn,
     });
     if (!result?.id) return;
     setSelectedId(result.id);
-    setInspectorTab("comment");
+    setInspectorTab("draft");
     setThreadOpen(true);
   }
 
   /** "Livrable — V03": title of copied / exported requests. */
   const exportTitle = currentDeliverable ? `${currentDeliverable.name} — V${String(currentDeliverable.version).padStart(2, "0")}` : "Demandes";
+  /** The version's requests as a printable page, saved as PDF from the browser (as the proof). */
   function exportRequests() {
-    const url = URL.createObjectURL(new Blob([threadsToMarkdown(exportTitle, activeComments)], { type: "text/markdown" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${exportTitle.replace(/[^\p{L}\p{N}]+/gu, "-")}-demandes.md`;
-    link.click();
-    URL.revokeObjectURL(url);
+    const statusOf = (comment: Comment) =>
+      comment.decision === "Hors périmètre"
+        ? outsideStatusView(outsideStatusOf({ state: proposalStateFor(comment.id), decision: proposalDecisionFor(comment.id), adaptation: adaptationRequests[comment.id] }), "agency").label
+        : null;
+    // A page of its own, which prints itself once loaded (src/app/(agency)/requestsDocument.ts).
+    const page = URL.createObjectURL(new Blob([requestsHtml(exportTitle, activeComments, (comment) => statusOf(comment as Comment))], { type: "text/html" }));
+    if (!window.open(page, "_blank")) toast.error("Votre navigateur a bloqué la fenêtre d’export : autorisez les fenêtres pour Kora, puis réessayez.");
+    // Freed once the page has had time to open.
+    window.setTimeout(() => URL.revokeObjectURL(page), 60_000);
   }
 
   function replyTo(commentId: number, message: string) {
@@ -1188,20 +1165,6 @@ export function AgencyApp() {
     }
     setDeliverableError("");
     void confirmImport("version", { file, type });
-  }
-
-  /** A dropped / picked file becomes a new deliverable of the project. */
-  function importLivrableFile(file: File) {
-    const type = kindFromFile(file);
-    if (!type) {
-      toast("Format non pris en charge", { description: "Choisissez une image, un PDF, une vidéo ou un document." });
-      return;
-    }
-    if (file.size > MAX_FILE_BYTES) {
-      toast("Fichier trop lourd", { description: `${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).` });
-      return;
-    }
-    void confirmImport("deliverable", { file, type });
   }
 
   /** Edits one of the agency's messages (0 = the comment itself). */
@@ -1411,18 +1374,6 @@ export function AgencyApp() {
     setShareOpen(true);
   }
 
-  /** The page the client sees, in a new tab, once its link is saved. */
-  async function openClientPreview() {
-    const link = await ensureReviewLink();
-    if (link) window.open(`/review/${link.token}`, "_blank", "noopener");
-  }
-
-  function updateAutoExpire(autoExpire: boolean) {
-    if (!reviewLink) return;
-    setReviewLink({ ...reviewLink, autoExpire });
-    void agencyAction(`deliverables/${reviewLink.deliverableId ?? currentDeliverable.id}/review-link`, "PATCH", { autoExpire });
-  }
-
   function getReviewUrl() {
     return `${window.location.origin}/review/${reviewLink?.token ?? ""}`;
   }
@@ -1456,6 +1407,8 @@ export function AgencyApp() {
               : { kind: "none" };
   }
 
+  /** Client messages of a thread the agency has not opened yet: a dot on its pin, a count on its card. */
+  const unreadIn = (comment: Comment) => [comment, ...(comment.replies ?? [])].filter((message) => sideOf(message) === "client" && !seenIds.includes(message.id)).length;
   /** Unread messages written in the client space on one version: comments, then replies. */
   function unreadOf(recordId: number): ClientFeedback[] {
     const record = deliverables.find((candidate) => candidate.id === recordId);
@@ -1512,6 +1465,7 @@ export function AgencyApp() {
     ...deliverables.flatMap((record) => unreadOf(record.id)).sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0)),
   ];
   const markAllRead = () => markSeen(clientFeedback.filter((item) => item.kind === "message").map((item) => item.id));
+  useArrivalToast(clientFeedback, stateHydrated);
 
   const tabInfos: TabInfo[] = openTabs.flatMap((tab) => {
     const latest = versionsOfLivrable(tab.livrableId, deliverables)[0];
@@ -1792,11 +1746,18 @@ export function AgencyApp() {
   const latestVersionRecord = viewVersions[0];
 
   // Under the deliverable name (panel title): shortcuts for this deliverable only.
+  // Shared with no one yet: first the one-click offer to the previous version's people.
+  const shareThisVersion = () =>
+    currentDeliverable && reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]?.invites?.length ? openShareDialog() : shareCurrentVersion();
+  // A version is of its deliverable's nature: a file of the same kind, or a new address for a « Lien ».
+  const newVersion: NewVersion =
+    currentDeliverable?.type === "Link"
+      ? { onSelect: () => setLinkVersionOpen(true) }
+      : { onFile: importVersionFile, accept: currentDeliverable ? deliverableKinds[currentDeliverable.type]?.accept : undefined };
   const livrableMenu: MenuEntry[] = [
     { kind: "section", label: "Ce livrable" },
-    { label: "Importer une nouvelle version", icon: <Upload />, onFile: importVersionFile, accept: "application/pdf,image/*,video/*" },
+    { label: "Importer une nouvelle version", icon: <Upload />, ...newVersion },
     { label: "Partager la revue", icon: <Share2 />, onSelect: openShareDialog },
-    { label: "Aperçu client", icon: <Eye />, onSelect: () => void openClientPreview() },
     { kind: "section", label: "Suivi" },
     { label: "Rouvrir la validation", icon: <RotateCcw />, onSelect: () => { setChangesMessage(""); setChangesOpen(true); } },
     { label: "Synthèse & export", icon: <FileCheck />, onSelect: () => setProofOpen(true) },
@@ -1815,7 +1776,7 @@ export function AgencyApp() {
   const systemMenu: MenuEntry[] = [
     { kind: "section", label: "Nouveau" },
     { label: "Nouveau livrable", icon: <FilePlus />, onSelect: () => setNewDeliverableOpen(true) },
-    { label: "Nouvelle version", icon: <Upload />, onFile: importVersionFile, accept: "application/pdf,image/*,video/*" },
+    { label: "Nouvelle version", icon: <Upload />, ...newVersion },
     { kind: "section", label: "Fichier" },
     { label: "Synthèse & export", icon: <FileCheck />, onSelect: () => setProofOpen(true) },
     { label: "Historique & journal", icon: <ScrollText />, onSelect: () => setHistoryOpen(true) },
@@ -1858,6 +1819,24 @@ export function AgencyApp() {
 
   return (
     <div className="app-frame">
+    {newProjectOpen && (
+      <NewProjectDialog
+        spaces={clients}
+        defaultSpaceId={selectedClientId}
+        fixedSpace={view.kind === "client" ? clients.find((client) => client.id === view.clientId) : undefined}
+        onClose={() => setNewProjectOpen(false)}
+      />
+    )}
+    {linkVersionOpen && currentDeliverable?.type === "Link" && (
+      <LinkVersionDialog
+        url={currentDeliverable.url ?? ""}
+        onClose={() => setLinkVersionOpen(false)}
+        onCreate={async (url) => {
+          await confirmImport("version", { url, type: "Link" });
+          setLinkVersionOpen(false);
+        }}
+      />
+    )}
     {newDeliverableOpen && (
       <NewDeliverableDialog
         existingNamesFor={(projectId) => deliverables.filter((record) => (record.projectId ?? 1) === projectId).map((record) => record.name)}
@@ -1879,14 +1858,34 @@ export function AgencyApp() {
       homeActive={viewLivrableId === null}
       onClose={closeTab}
       onOpen={() => setPaletteOpen(true)}
+      onAdd={() => setNewDeliverableOpen(true)}
+      recents={recentLivrableIds
+        .filter((livrableId) => !openTabs.some((tab) => tab.livrableId === livrableId))
+        .flatMap((livrableId) => {
+          const latest = versionsOfLivrable(livrableId, deliverables)[0];
+          if (!latest) return [];
+          const project = projects.find((candidate) => candidate.id === (latest.projectId ?? 1));
+          const client = clients.find((candidate) => candidate.id === (project?.clientId ?? 1));
+          return [{ livrableId, href: hrefForRecord(latest, deliverables), name: latest.name, type: latest.type, context: [client?.name, project?.name].filter(Boolean).join(" / ") }];
+        })
+        .slice(0, 6)}
     />
-    <main className="app-shell">
+    <MobileBar
+      title={mobileTitle(view, {
+        space: clients.find((client) => view.kind === "client" && client.id === view.clientId)?.name,
+        project: selectedProject?.name,
+        livrable: viewVersions[0]?.name,
+      })}
+      navOpen={navOpen}
+      onNav={() => setNavOpenAt(navOpen ? null : pathname)}
+      onSearch={() => setPaletteOpen(true)}
+    />
+    <main className="app-shell" data-nav-open={navOpen || undefined}>
+      {navOpen && <div className="mobile-scrim" aria-hidden="true" onClick={() => setNavOpenAt(null)} />}
       {inProject && selectedProject ? (
         <ProjectSidebar
           panelWidth={panelWidths.panel}
           onPanelResize={(width) => resizePanel("panel", width)}
-          project={selectedProject}
-          client={clients.find((client) => client.id === (selectedProject.clientId ?? 1))}
           livrableName={viewVersions[0]?.name ?? "Livrable"}
           livrableMenu={livrableMenu}
           systemMenu={systemMenu}
@@ -1896,12 +1895,9 @@ export function AgencyApp() {
           onPanel={showPanel}
           canvasHref={href.deliverable(selectedProject.id, livrableRootId)}
           onNavigate={(target) => router.push(target)}
-          notifications={bellNotifications}
-          feedback={clientFeedback}
-          onMarkAllRead={markAllRead}
           livrables={projectLivrables}
-          onImportVersion={importVersionFile}
-          onImportLivrable={importLivrableFile}
+          newVersion={newVersion}
+          onNewLivrable={() => setNewDeliverableOpen(true)}
         />
       ) : (
         <HomeSidebar
@@ -1946,6 +1942,7 @@ export function AgencyApp() {
               overviewFor={overviewFor}
               livrableGroups={livrableGroups}
               favorites={favorites}
+              sharedOnce={Object.values(reviewLinks).some((link) => (link.invites?.length ?? 0) > 0)}
               onToggleFavorite={toggleFavorite}
               livrableStatus={(livrableId) => {
                 const latest = versionsOfLivrable(livrableId, deliverables)[0];
@@ -1962,13 +1959,21 @@ export function AgencyApp() {
             null
           ) : (
             <>
-          <div className="editor" style={{ gridTemplateColumns: `minmax(0, 1fr) ${panelWidths.inspector}px` }}>
+          <div className="editor" style={{ "--inspector-width": `${panelWidths.inspector}px` } as React.CSSProperties}>
+            {/* First visit of a deliverable: what each tool is for. */}
+            {!isReadOnlyVersion && <DeliverableTour />}
             {/* Same name as the deliverable card cover: the cover grows into the canvas on open. */}
             <ViewTransition name={`livrable-${livrableRootId}`} share="kora-open" default="none">
             <ReviewCanvas
               deliverable={currentDeliverable}
+              siteSetup={
+                currentDeliverable.type === "Link" && currentDeliverable.url ? (
+                  <SiteToolbarSnippet siteUrl={currentDeliverable.url} deliverableId={currentDeliverable.id} />
+                ) : undefined
+              }
               comments={activeComments}
               selectedId={selectedComment?.id ?? null}
+              isUnread={(comment) => unreadIn(comment as Comment) > 0}
               threadOpen={threadOpen}
               readOnly={isReadOnlyVersion}
               tool={canvasTool}
@@ -1983,7 +1988,7 @@ export function AgencyApp() {
                 setComposer(null);
                 setSelectedId(comment.id);
                 setThreadOpen((open) => !(open && comment.id === selectedComment?.id));
-                setInspectorTab(requestKind(comment));
+                setInspectorTab(inspectorTabOf(comment));
               }}
               onBackgroundClick={() => {
                 setThreadOpen(false);
@@ -1994,7 +1999,6 @@ export function AgencyApp() {
               onMovePin={moveComment}
               toolbarExtra={
                 <>
-                <CanvasImportButton onFile={importVersionFile} disabled={!currentDeliverable} />
                 <MenuButton
                   className="tool-button"
                   label="Copier ou exporter les demandes"
@@ -2009,13 +2013,17 @@ export function AgencyApp() {
                       disabled: activeComments.length === 0,
                       onSelect: () => void navigator.clipboard?.writeText(threadsToMarkdown(exportTitle, activeComments)),
                     },
-                    { label: "Exporter (.md)", icon: <FileDown />, disabled: activeComments.length === 0, onSelect: exportRequests },
+                    { label: "Exporter en PDF", icon: <FileDown />, disabled: activeComments.length === 0, onSelect: exportRequests },
                   ]}
                 />
                 </>
               }
               overlay={
                 <>
+                  {/* No decider on this version yet: told at the top of the canvas, whatever the deliverable. */}
+                  {!isReadOnlyVersion && linkDeciders(reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]).length === 0 && (
+                    <NoDeciderBanner key={`${currentDeliverable.id}:${currentDeliverable.version}`} version={`${currentDeliverable.id}:${currentDeliverable.version}`} onInvite={shareThisVersion} />
+                  )}
                   {isReadOnlyVersion && latestVersionRecord && (
                     <div className="canvas-banner" role="status">
                       <span className="canvas-banner-icon" aria-hidden="true">
@@ -2032,24 +2040,6 @@ export function AgencyApp() {
                           </Link>
                         </Button>
                       )}
-                    </div>
-                  )}
-                  {/* A reminder until the latest version is shared with someone. */}
-                  {!isReadOnlyVersion && latestVersionRecord?.id === currentDeliverable.id && !reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]?.invites?.length && !closedUnshared.includes(currentDeliverable.id) && (
-                    <div className="canvas-banner" role="status">
-                      <span className="canvas-banner-icon" aria-hidden="true">
-                        <Share2 />
-                      </span>
-                      <span className="canvas-banner-text">
-                        <b>La V{String(currentDeliverable.version).padStart(2, "0")} n’est partagée avec personne</b>
-                        <small>Le client ne la voit pas encore.</small>
-                      </span>
-                      <Button size="sm" onClick={shareCurrentVersion}>
-                        Partager
-                      </Button>
-                      <button className="thread-icon-button" onClick={() => closeUnshared(currentDeliverable.id)} aria-label="Fermer ce rappel">
-                        <X />
-                      </button>
                     </div>
                   )}
                   {deliverableError && (
@@ -2090,13 +2080,18 @@ export function AgencyApp() {
                   }
                   onOpenProposal={() => openProposal(comment.id)}
                   onDelete={
-                    sideOf(comment) === "agency" && !isReadOnlyVersion && !isDecisionLocked(comment.id)
+                    sideOf(comment) === "agency" && isAgencyDraft(comment) && !isReadOnlyVersion && !isDecisionLocked(comment.id)
                       ? () => {
                           deleteComment(comment.id);
                           setThreadOpen(false);
                         }
                       : undefined
                   }
+                  // Closed, it moves to « Commentaires · Clôturés »; the client still reads it (agencyActions.ts).
+                  onArchive={(closed) => {
+                    setInspectorTab(closed ? "closed" : inspectorTabOf({ ...comment, closed: false }));
+                    void agencyAction(`comments/${comment.id}/closure`, "PUT", { closed });
+                  }}
                   onClose={() => {
                     setThreadOpen(false);
                     setQuotingId(null);
@@ -2129,22 +2124,31 @@ export function AgencyApp() {
               onSendProposal={setConfirmSendId}
               onOpenProposal={openProposal}
               onRequote={openRequote}
+              notifications={<Notifications notifications={bellNotifications} feedback={clientFeedback} onMarkAllRead={markAllRead} compact />}
+              unread={(comment) => unreadIn(comment as Comment)}
+              outsideStatus={(comment) => outsideStatusOf({ state: proposalStateFor(comment.id), decision: proposalDecisionFor(comment.id), adaptation: adaptationRequests[comment.id] })}
               proposalSummary={(comment) => {
+                // The status is the card's tag (src/lib/outsideStatus.ts): here, what was quoted.
                 if (proposalStateFor(comment.id) === "none") return null;
                 const proposal = activeProposalFor(comment.id);
-                const status = proposalStatusOf(comment.id);
                 return (
                   <span className="client-proposal-line">
-                    <b>{formatProposalAmount(proposal?.amount)} HT</b>
-                    <span>{formatProposalDeadline(proposal?.deadline)}</span>
+                    <span className="proposal-figure">
+                      <small>Montant</small>
+                      <b>{formatProposalAmount(proposal?.amount)} HT</b>
+                    </span>
+                    <span className="proposal-figure">
+                      <small>Délai supplémentaire</small>
+                      <b>{parseNumericDays(proposal?.deadline) ? formatProposalDeadline(proposal?.deadline) : "aucun"}</b>
+                    </span>
                     {(proposalVersions[comment.id]?.length ?? 0) > 1 && <span>V{proposal?.version}</span>}
-                    <span className={`decision-badge ${status.tone}`}>{status.label}</span>
                   </span>
                 );
               }}
               onAddRequest={isReadOnlyVersion ? undefined : setNewRequestKind}
-              onShare={openShareDialog}
-              onPreview={() => void openClientPreview()}
+              onShare={shareThisVersion}
+              // The page the client sees, in a new tab, once its link is saved (read only for a member).
+              onPreview={() => void ensureReviewLink().then((link) => link && window.open(`/review/${link.token}`, "_blank", "noopener"))}
               width={panelWidths.inspector}
               onResize={(width) => resizePanel("inspector", width)}
             />
@@ -2304,7 +2308,7 @@ export function AgencyApp() {
                     </Field>
                     <div className="grid grid-cols-2 gap-3">
                       <Field id="proposal-amount" label="Montant HT">
-                        <AddonInput id="proposal-amount" addon="€" type="number" min="0" step="10" placeholder="850" value={newProposalAmount} onChange={(event) => setNewProposalAmount(event.target.value)} />
+                        <AddonInput id="proposal-amount" addon="€" type="number" min="0" step="0.01" placeholder="850" value={newProposalAmount} onChange={(event) => setNewProposalAmount(event.target.value)} />
                       </Field>
                       <Field id="proposal-deadline" label="Impact planning">
                         <AddonInput id="proposal-deadline" addon="jours" type="number" min="0" step="1" placeholder="3" value={newProposalDeadline} onChange={(event) => setNewProposalDeadline(event.target.value)} />
@@ -2481,43 +2485,6 @@ export function AgencyApp() {
           </Modal>
 
           <Modal
-            open={newProjectOpen}
-            onClose={() => setNewProjectOpen(false)}
-            title="Créer un projet"
-            description={
-              view.kind === "client"
-                ? `Le projet sera créé dans l’espace ${clients.find((client) => client.id === view.clientId)?.name ?? ""}.`
-                : "Un projet regroupe les livrables d’une même mission."
-            }
-            onSubmit={createProject}
-            footer={
-              <>
-                <Button type="button" variant="outline" onClick={() => setNewProjectOpen(false)}>
-                  Annuler
-                </Button>
-                <Button type="submit">Créer le projet</Button>
-              </>
-            }
-          >
-            <Field id="new-project-name" label="Nom du projet">
-              <Input id="new-project-name" autoFocus value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} placeholder="Ex. Refonte du site vitrine" />
-            </Field>
-            {/* Inside a space the space is implied; elsewhere, pick it. */}
-            {view.kind !== "client" && (
-              <Field id="new-project-space" label="Espace">
-                <select id="new-project-space" className={selectClassName} value={newProjectClientId ?? selectedClientId} onChange={(event) => setNewProjectClientId(Number(event.target.value))}>
-                  {clients.map((client) => (
-                    <option value={client.id} key={client.id}>
-                      {client.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            )}
-            {projectError && <FormError>{projectError}</FormError>}
-          </Modal>
-
-          <Modal
             open={newClientOpen}
             onClose={() => setNewClientOpen(false)}
             title="Créer un espace"
@@ -2588,192 +2555,63 @@ export function AgencyApp() {
             </div>
           </Modal>
 
-          <Modal
+          <ShareDialog
             open={shareOpen || shareFromBell}
             onClose={closeShare}
-            title="Partager la revue"
-            description="Le client pourra consulter la version actuelle et déposer ses retours depuis ce lien."
-            footer={
-              reviewLink?.active ? (
-                <>
-                  <Button
-                    variant="destructive"
-                    className="sm:mr-auto"
-                    disabled={!canManage}
-                    title={canManage ? undefined : "Réservé aux administrateurs de l’agence"}
-                    onClick={() => {
-                      if (!adminOnly()) return;
-                      closeShare();
-                      void agencyAction(`deliverables/${reviewLink.deliverableId ?? currentDeliverable.id}/review-link`, "DELETE").then((result) => result && toast("Lien de revue révoqué"));
-                    }}
-                  >
-                    Révoquer ce lien
-                  </Button>
-                  <Button onClick={copyReviewLink}>
-                    {linkCopied ? (
-                      <>
-                        Lien copié <Check />
-                      </>
-                    ) : (
-                      "Copier le lien"
-                    )}
-                  </Button>
-                </>
-              ) : undefined
-            }
-          >
-            {reviewLink?.active ? (
-              <>
-                <Field
-                  id="share-url"
-                  label="Lien sécurisé"
-                  hint={
-                    <>
-                      {reviewLink.autoExpire !== false ? `Expire le ${reviewLink.expiresAt}` : "Aucune expiration automatique"} · <span className="text-status-resolved-text">Lien actif</span>
-                    </>
-                  }
-                >
-                  <Input id="share-url" readOnly value={getReviewUrl()} onFocus={(event) => event.target.select()} />
-                </Field>
-                {currentDeliverable?.type === "Link" && currentDeliverable.url && <SiteToolbarSnippet deliverableId={currentDeliverable.id} siteUrl={currentDeliverable.url} />}
-                {/* A copied link opens to invited addresses only (src/db/reviewAuth.ts): said before it is sent. */}
-                {!(reviewLink.invites?.length) && (
-                  <p role="note" className="rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-sm text-[var(--status-medium-text)]">
-                    <b>Personne n’est encore invité.</b> Ce lien ne s’ouvre qu’aux adresses invitées ci-dessous : invitez d’abord votre client, sinon il ne recevra pas de code.
-                    {currentDeliverable && previousPeople(currentDeliverable, currentDeliverable.version, deliverables, reviewLinks) && (
-                      <Button
-                        variant="link"
-                        size="sm"
-                        className="h-auto px-0"
-                        onClick={() => {
-                          closeShare();
-                          shareCurrentVersion();
-                        }}
-                      >
-                        Reprendre les personnes de la version précédente
-                      </Button>
-                    )}
-                  </p>
-                )}
-                <Field id="share-invite" label="Inviter par e-mail" hint="Plusieurs adresses : séparez-les par une virgule. Un décideur peut valider la version et accepter les devis ; un contributeur commente seulement.">
-                  <div className="flex gap-2">
-                    <Input
-                      id="share-invite"
-                      type="email"
-                      multiple
-                      value={inviteDraft}
-                      placeholder="prenom@client.fr"
-                      onChange={(event) => {
-                        setInviteDraft(event.target.value);
-                        setInviteError("");
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          void inviteByEmail();
-                        }
-                      }}
-                      disabled={isReadOnlyVersion}
-                    />
-                    <Select label="Rôle des personnes invitées" value={inviteRole} options={roleOptions} onChange={setInviteRole} />
-                    <Button variant="outline" className="h-9" onClick={() => void inviteByEmail()} disabled={!inviteDraft.trim() || isReadOnlyVersion}>
-                      Inviter
-                    </Button>
-                  </div>
-                </Field>
-                {inviteError && <FormError>{inviteError}</FormError>}
-                {(reviewLink.invites?.length ?? 0) > 0 && (
-                  <InviteList invites={reviewLink.invites ?? []} onCopy={(invite) => void copyInviteLink(invite)} onRemove={removeInvite} onRole={changeInviteRole} />
-                )}
-                {accessRequests.some((request) => request.linkKey === linkKeyOf(reviewLink)) && (
-                  <div className="grid gap-2">
-                    <Label>Demandes d’accès</Label>
-                    <ul className="invite-list" aria-label="Demandes d’accès">
-                      {accessRequests
-                        .filter((request) => request.linkKey === linkKeyOf(reviewLink))
-                        .map((request) => (
-                          <li key={request.email}>
-                            <span className="grid min-w-0">
-                              <span className="truncate">{request.email}</span>
-                              {request.message && <small className="!ml-0 truncate">« {request.message} »</small>}
-                            </span>
-                            <span className="ml-auto flex shrink-0 gap-1">
-                              <Button variant="outline" size="xs" onClick={() => void decideAccessRequest(request, "refused")}>
-                                Refuser
-                              </Button>
-                              <Button size="xs" onClick={() => void decideAccessRequest(request, "accepted")}>
-                                Accepter
-                              </Button>
-                            </span>
-                          </li>
-                        ))}
-                    </ul>
-                  </div>
-                )}
-                <div className="flex items-center justify-between gap-3">
-                  <Label htmlFor="share-auto-expire" className="text-sm font-normal">
-                    Révoquer automatiquement après 7 jours
-                  </Label>
-                  <Switch id="share-auto-expire" checked={reviewLink.autoExpire !== false} onCheckedChange={updateAutoExpire} />
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs text-muted-foreground">
-                    {nobodyInvited
-                      ? "Invitez le client pour pouvoir le relancer"
-                      : lastReminderAt
-                        ? `Dernière relance : ${new Date(lastReminderAt).toLocaleString("fr-FR")}`
-                        : "Aucune relance envoyée"}
-                  </span>
-                  <Button variant="outline" size="sm" onClick={() => void remindClient()} disabled={reminderBlocked || isReadOnlyVersion || nobodyInvited}>
-                    {reminderBlocked ? "Relance déjà envoyée" : "Relancer le client"}
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <FormError>Ce lien a été révoqué. Fermez cette fenêtre pour en générer un nouveau.</FormError>
-            )}
-          </Modal>
+            // The deliverable, not its file name: a long one would fill the sentence.
+            subject={currentDeliverable ? `ce livrable (V${String(currentDeliverable.version).padStart(2, "0")})` : "cette version"}
+            link={reviewLink}
+            readOnly={isReadOnlyVersion}
+            canManage={canManage}
+            inviteDraft={inviteDraft}
+            onInviteDraft={(value) => {
+              setInviteDraft(value);
+              setInviteError("");
+            }}
+            inviteError={inviteError}
+            onInvite={() => void inviteByEmail()}
+            previousPeople={Boolean(currentDeliverable && previousPeople(currentDeliverable, currentDeliverable.version, deliverables, reviewLinks))}
+            onReusePrevious={() => {
+              closeShare();
+              shareCurrentVersion();
+            }}
+            onCopyInvite={(invite) => void copyInviteLink(invite)}
+            onRemoveInvite={removeInvite}
+            onChangeRole={changeInviteRole}
+            accessRequests={reviewLink ? accessRequests.filter((request) => request.linkKey === linkKeyOf(reviewLink)) : []}
+            onDecideAccess={(request, decision) => {
+              const found = accessRequests.find((candidate) => candidate.email === request.email && reviewLink && candidate.linkKey === linkKeyOf(reviewLink));
+              if (found) void decideAccessRequest(found, decision);
+            }}
+            linkCopied={linkCopied}
+            onCopyLink={() => void copyReviewLink()}
+            onRevoke={() => {
+              if (!adminOnly() || !reviewLink) return;
+              closeShare();
+              void agencyAction(`deliverables/${reviewLink.deliverableId ?? currentDeliverable.id}/review-link`, "DELETE").then((result) => result && toast("Lien de revue révoqué"));
+            }}
+            lastReminderAt={reviewLink?.lastReminderAt ?? null}
+            onRemind={() => void remindClient()}
+          />
 
           {(() => {
             const request = confirmSendId !== null ? comments.find((comment) => comment.id === confirmSendId) : undefined;
             const draft = confirmSendId !== null ? proposalVersions[confirmSendId]?.find((proposal) => proposal.status === "draft") : undefined;
+            const linkKey = currentDeliverable ? `${currentDeliverable.id}:${currentDeliverable.version}` : "";
             return (
-              <Modal
-                open={Boolean(request && draft)}
+              <SendProposalDialog
+                proposal={request && draft ? { title: request.title ?? request.message, amount: draft.amount, deadline: draft.deadline } : null}
+                // The proposal goes to the deciders invited on this version; with none, the server refuses it.
+                deciders={linkDeciders(reviewLinks[linkKey]).map((invite) => invite.email)}
+                canManage={canManage}
                 onClose={() => setConfirmSendId(null)}
-                role="alertdialog"
-                title="Envoyer la proposition au client ?"
-                description={`${selectedClient?.name ?? "Le client"} la recevra sur sa page de revue et pourra l’accepter, la refuser ou demander une adaptation.`}
-                className="confirm-send-modal"
-                footer={
-                  <>
-                    {!canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Envoi réservé aux administrateurs de l’agence</span>}
-                    <Button variant="outline" onClick={() => setConfirmSendId(null)}>
-                      Annuler
-                    </Button>
-                    <Button disabled={!canManage} onClick={() => confirmSendId !== null && sendQuotedProposal(confirmSendId)}>
-                      Envoyer la proposition
-                    </Button>
-                  </>
-                }
-              >
-                {request && draft && (
-                  <div className="proposal-summary">
-                    <div>
-                      <span>Demande</span>
-                      <b>{request.title ?? request.message}</b>
-                    </div>
-                    <div>
-                      <span>Montant HT</span>
-                      <b>{formatProposalAmount(draft.amount)}</b>
-                    </div>
-                    <div>
-                      <span>Délai</span>
-                      <b>{formatProposalDeadline(draft.deadline)}</b>
-                    </div>
-                  </div>
-                )}
-              </Modal>
+                onSend={() => confirmSendId !== null && sendQuotedProposal(confirmSendId)}
+                onShare={() => {
+                  setConfirmSendId(null);
+                  if (reviewLinks[linkKey]?.invites?.length) openShareDialog();
+                  else shareCurrentVersion();
+                }}
+              />
             );
           })()}
           {renameOpen && latestVersionRecord && (
@@ -2871,7 +2709,7 @@ export function AgencyApp() {
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field id="version-amount" label="Montant HT">
-                <AddonInput id="version-amount" addon="€" type="number" min="0" step="10" placeholder="850" value={newProposalAmount} onChange={(event) => setNewProposalAmount(event.target.value)} />
+                <AddonInput id="version-amount" addon="€" type="number" min="0" step="0.01" placeholder="850" value={newProposalAmount} onChange={(event) => setNewProposalAmount(event.target.value)} />
               </Field>
               <Field id="version-deadline" label="Impact planning">
                 <AddonInput id="version-deadline" addon="jours" type="number" min="0" step="1" placeholder="3" value={newProposalDeadline} onChange={(event) => setNewProposalDeadline(event.target.value)} />
@@ -2908,7 +2746,7 @@ export function AgencyApp() {
       setInviteError(typed.length ? "Ces personnes sont déjà invitées." : "");
       return;
     }
-    const result = await callReviewAccess("invite", { linkKey: linkKeyOf(reviewLink), emails: fresh, role: inviteRole });
+    const result = await callReviewAccess("invite", { linkKey: linkKeyOf(reviewLink), emails: fresh, role: "decider" });
     if (!result) return;
     setInviteDraft("");
     setInviteError("");
@@ -2916,6 +2754,15 @@ export function AgencyApp() {
   }
 
   /** Accepts (the address is invited and receives its link) or refuses a request for access. */
+  /** Mails every invited client a reminder with their personal link (once a day per link, checked by the server). */
+  async function remindClient() {
+    if (isReadOnlyVersion || !reviewLink?.invites?.length) return;
+    const result = await callReviewAccess("remind", { linkKey: linkKeyOf(reviewLink) });
+    if (!result) return;
+    const count = reviewLink.invites.length;
+    toast(count > 1 ? `Relance envoyée à ${count} personnes` : `Relance envoyée à ${reviewLink.invites[0]?.email}`);
+  }
+
   async function decideAccessRequest(request: AccessRequest, decision: "accepted" | "refused") {
     const result = await callReviewAccess("requests", { linkKey: request.linkKey, email: request.email, decision });
     if (!result) return;
@@ -2984,40 +2831,5 @@ export function AgencyApp() {
     if (!reviewLink) return;
     void agencyAction(`deliverables/${reviewLink.deliverableId ?? currentDeliverable.id}/review-link/invites/${encodeURIComponent(email)}`, "DELETE");
   }
-
-  /** Mails every invited client a reminder with their personal link (once a day per link, checked by the server). */
-  async function remindClient() {
-    if (isReadOnlyVersion || !reviewLink || reminderBlocked || nobodyInvited) return;
-    const result = await callReviewAccess("remind", { linkKey: linkKeyOf(reviewLink) });
-    if (!result) return;
-    const count = reviewLink.invites?.length ?? 0;
-    toast(count > 1 ? `Relance envoyée à ${count} personnes` : `Relance envoyée à ${reviewLink.invites?.[0]?.email}`);
-  }
 }
 
-/** Canvas toolbar: a file becomes the next version of this deliverable. */
-function CanvasImportButton({ onFile, disabled }: { onFile: (file: File) => void; disabled?: boolean }) {
-  const input = useRef<HTMLInputElement>(null);
-  return (
-    <>
-      <Hint label="Importer une nouvelle version" side="top">
-        <button type="button" className="tool-button" aria-label="Importer une nouvelle version" disabled={disabled} onClick={() => input.current?.click()}>
-          <Upload />
-        </button>
-      </Hint>
-      <input
-        ref={input}
-        type="file"
-        accept="application/pdf,image/*,video/*"
-        className="sr-only"
-        tabIndex={-1}
-        aria-hidden="true"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          event.target.value = "";
-          if (file) onFile(file);
-        }}
-      />
-    </>
-  );
-}

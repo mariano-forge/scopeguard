@@ -1,21 +1,35 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, History, MessageSquare, Plus, Share2 } from "lucide-react";
+import { ChevronUp, Eye, History, MessageSquare, Plus, Share2 } from "lucide-react";
 import type { ProposalStage, Qualification } from "./CanvasComments";
 import { ResizeHandle } from "./ResizeHandle";
-import { itemLabel, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
+import { isAgencyDraft, itemLabel, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
 import { Hint } from "@/components/hint";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { outsideFilters, outsideStatusView, type OutsideStatus, type StatusTone } from "@/lib/outsideStatus";
 import { sideOf } from "@/lib/authors";
 
-export type InspectorTab = RequestKind;
+/** « draft »: the agency's pins with no status yet; « closed »: discussions closed (archived). */
+export type InspectorTab = RequestKind | "draft" | "closed";
 
-const tabs: { kind: RequestKind; label: string; empty: string }[] = [
-  { kind: "comment", label: "À clarifier", empty: "Aucun commentaire. Cliquez sur le livrable pour en ajouter un." },
-  { kind: "correction", label: "Inclus", empty: "Aucune demande incluse. Créez-en une avec « + Demande » ou depuis un commentaire." },
-  { kind: "outside", label: "Hors scope", empty: "Aucune demande hors scope. Créez-en une avec « + Demande » ou depuis un commentaire." },
+/** The tab a request is listed in; drafts only where the panel shows them (the agency's). */
+export const inspectorTabOf = (comment: ThreadComment, drafts = true): InspectorTab =>
+  comment.closed ? "closed" : drafts && isAgencyDraft(comment) ? "draft" : requestKind(comment);
+
+type TabOption = { kind: InspectorTab; label: string; emptyTitle: string; empty: string };
+const requestTabs: TabOption[] = [
+  { kind: "comment", label: "À clarifier", emptyTitle: "Rien à clarifier", empty: "Cliquez sur le livrable pour commenter, ou ajoutez une demande reçue ailleurs avec « + Demande »." },
+  { kind: "correction", label: "Inclus", emptyTitle: "Aucune demande incluse", empty: "Les demandes prévues au devis s’affichent ici, une fois qualifiées « Inclus »." },
+  { kind: "outside", label: "Hors scope", emptyTitle: "Aucun ajout hors scope", empty: "Les ajouts à chiffrer s’affichent ici, une fois qualifiés « Hors scope »." },
 ];
+const commentTabs: TabOption[] = [
+  { kind: "draft", label: "Mes brouillons", emptyTitle: "Aucun brouillon", empty: "Vos commentaires restent ici, internes, tant que vous ne les avez pas qualifiés." },
+  { kind: "closed", label: "Discussions clôturées", emptyTitle: "Aucune discussion clôturée", empty: "Une discussion clôturée s’affiche ici, en lecture seule ; rouvrez-la pour y répondre." },
+];
+const closedTab: TabOption = { kind: "closed", label: "Closes", emptyTitle: "Aucune discussion close", empty: "Les discussions closes par l’agence s’affichent ici." };
 
 /** Markdown summary of every request of the version (copy / export). */
 export function threadsToMarkdown(title: string, comments: ThreadComment[]) {
@@ -35,9 +49,22 @@ export function threadsToMarkdown(title: string, comments: ThreadComment[]) {
   return `# ${title}\n\n${section("correction", "Inclus")}${section("outside", "Hors scope")}${section("comment", "À clarifier")}`.trim() + "\n";
 }
 
+/** A status, small: a colored dot and its words. */
+export function StatusPill({ label, tone }: { label: string; tone: StatusTone }) {
+  return (
+    <span className={`status-pill is-${tone}`}>
+      <i aria-hidden="true" />
+      {label}
+    </span>
+  );
+}
+
+const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "s" : ""}`;
+
 /**
- * Requests of a version in three tabs (À clarifier · Inclus · Hors scope), with a manual comment form.
- * Used by the agency inspector and by the client page.
+ * Requests of a version as cards, by status (À clarifier · Inclus · Hors scope). The agency's panel adds
+ * a second view, « Commentaires », with its drafts and the discussions it closed; the client's lists the
+ * closed ones in their own tab. Used by the agency inspector, the client page and the staging-site panel.
  */
 export function RequestPanel({
   comments,
@@ -56,6 +83,9 @@ export function RequestPanel({
   onAddingChange,
   onAddComment,
   emptyHint,
+  drafts = false,
+  outsideStatus,
+  reader = "client",
 }: {
   comments: ThreadComment[];
   selectedId: number | null;
@@ -63,17 +93,17 @@ export function RequestPanel({
   onTab: (tab: InspectorTab) => void;
   /** Shows that request on the canvas. */
   onFocus: (commentId: number) => void;
-  /** Out-of-scope requests (agency only): where the proposal stands, and its actions. */
+  /** Out-of-scope requests: where the proposal stands, and its actions. */
   proposalStage?: (comment: ThreadComment) => ProposalStage | null;
   onQuote?: (commentId: number) => void;
   onSendProposal?: (commentId: number) => void;
   onOpenProposal?: (commentId: number) => void;
   /** Refused proposal: quote a new version (the refused one stays in the history). */
   onRequote?: (commentId: number) => void;
-  /** Out-of-scope requests: amount, delay and where the decision stands, above the actions. */
+  /** Out-of-scope requests: amount and delay of the proposal, above the actions. */
   proposalSummary?: (comment: ThreadComment) => React.ReactNode;
-  /** Has news the reader hasn't opened yet (a reply, a proposal): dot on the row and its tab. */
-  unread?: (comment: ThreadComment) => boolean;
+  /** Messages of the other side the reader hasn't opened yet (0 or false: none). */
+  unread?: (comment: ThreadComment) => number | boolean;
   /** The manual comment form is open (opened from the panel header's "+"). */
   adding: boolean;
   onAddingChange: (adding: boolean) => void;
@@ -81,21 +111,57 @@ export function RequestPanel({
   onAddComment?: (message: string) => void;
   /** How to add a comment where the panel is used, said when there is none yet (the canvas's by default). */
   emptyHint?: string;
+  /** The agency's panel: « Commentaires » (drafts, closed discussions) beside « Demandes ». */
+  drafts?: boolean;
+  /** Where each out-of-scope request stands (src/lib/outsideStatus.ts): its tag and the tab's filter. */
+  outsideStatus?: (comment: ThreadComment) => OutsideStatus;
+  /** Whose words the statuses use. */
+  reader?: "agency" | "client";
 }) {
   const [draft, setDraft] = useState("");
+  const [statusFilter, setStatusFilter] = useState<OutsideStatus | "all">("all");
   const now = useNow();
-  const count = (kind: RequestKind) => comments.filter((comment) => requestKind(comment) === kind).length;
-  const hasUnread = (kind: RequestKind) => Boolean(unread) && comments.some((comment) => requestKind(comment) === kind && unread?.(comment));
-  const list = comments.filter((comment) => requestKind(comment) === tab).sort((left, right) => right.id - left.id);
-  const current = tabs.find((option) => option.kind === tab) ?? tabs[0];
+  const tabOf = (comment: ThreadComment) => inspectorTabOf(comment, drafts);
+  const count = (kind: InspectorTab) => comments.filter((comment) => tabOf(comment) === kind).length;
+  const unreadCount = (comment: ThreadComment) => Number(unread?.(comment) ?? 0);
+  const hasUnread = (kind: InspectorTab) => comments.some((comment) => tabOf(comment) === kind && unreadCount(comment) > 0);
+  const view: "requests" | "comments" = drafts && (tab === "draft" || tab === "closed") ? "comments" : "requests";
+  const shownTabs = view === "comments" ? commentTabs : drafts || count("closed") === 0 ? requestTabs : [...requestTabs, closedTab];
+  const current = shownTabs.find((option) => option.kind === tab) ?? shownTabs[0];
+  const inTab = comments.filter((comment) => tabOf(comment) === current.kind);
+  const statusOf = (comment: ThreadComment) => (outsideStatus ? outsideStatusView(outsideStatus(comment), reader) : null);
+  // The client sees one status where the agency sees two (not quoted, quoted): counted by their words.
+  const statusCount = (status: OutsideStatus) => inTab.filter((comment) => statusOf(comment)?.label === outsideStatusView(status, reader).label).length;
+  const filtering = current.kind === "outside" && Boolean(outsideStatus) && statusFilter !== "all";
+  const list = inTab
+    .filter((comment) => !filtering || statusOf(comment)?.label === outsideStatusView(statusFilter as OutsideStatus, reader).label)
+    .sort((left, right) => right.id - left.id);
+  const views = [
+    { key: "requests", label: "Demandes", options: requestTabs },
+    { key: "comments", label: "Commentaires", options: commentTabs },
+  ] as const;
 
   return (
     <>
+      {drafts && (
+        <Tabs value={view} onValueChange={(next) => onTab((next === "comments" ? commentTabs : requestTabs)[0].kind)} className="panel-views">
+          <TabsList aria-label="Vue du panneau" className="w-full">
+            {views.map((option) => (
+              <TabsTrigger key={option.key} value={option.key}>
+                {option.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      )}
       <div className="inspector-tabs" role="tablist" aria-label="Demandes">
-        {tabs.map((option) => (
-          <button key={option.kind} role="tab" aria-selected={tab === option.kind} className={tab === option.kind ? "is-active" : ""} onClick={() => onTab(option.kind)}>
-            {option.label} <span>{count(option.kind)}</span>
-            {hasUnread(option.kind) && <i className="unread-dot" aria-label="Nouvelle réponse" />}
+        {shownTabs.map((option) => (
+          <button key={option.kind} role="tab" aria-selected={current.kind === option.kind} className={current.kind === option.kind ? "is-active" : ""} onClick={() => onTab(option.kind)}>
+            {option.label}{" "}
+            <span className="tab-count">
+              {count(option.kind)}
+              {hasUnread(option.kind) && <i className="unread-dot" aria-label="Message non lu" />}
+            </span>
           </button>
         ))}
       </div>
@@ -109,7 +175,7 @@ export function RequestPanel({
             onAddComment(draft.trim());
             setDraft("");
             onAddingChange(false);
-            onTab("comment");
+            onTab(drafts ? "draft" : "comment");
           }}
         >
           <textarea
@@ -135,92 +201,107 @@ export function RequestPanel({
       )}
 
       <div className="inspector-list" role="tabpanel">
+        {current.kind === "outside" && outsideStatus && inTab.length > 0 && (
+          <div className="status-filter">
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as OutsideStatus | "all")}>
+              <SelectTrigger size="sm" className="w-full" aria-label="Filtrer par statut">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="status-filter-menu">
+                <SelectItem value="all">Tous les statuts · {inTab.length}</SelectItem>
+                {outsideFilters(reader).map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {outsideStatusView(status, reader).label} · {statusCount(status)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         {list.length === 0 ? (
           <div className="inspector-empty-state">
-            <MessageSquare aria-hidden="true" />
-            <p>{current.kind === "comment" && emptyHint ? emptyHint : current.empty}</p>
+            <span className="empty-state-mark" aria-hidden="true">
+              <MessageSquare />
+            </span>
+            <b>{filtering ? "Aucune demande avec ce statut" : current.emptyTitle}</b>
+            <p>{filtering ? "Choisissez un autre statut, ou « Tous les statuts »." : current.kind === "comment" && emptyHint ? emptyHint : current.empty}</p>
           </div>
         ) : (
           <ul>
             {list.map((comment) => {
               const kind = requestKind(comment);
+              const status = kind === "outside" ? statusOf(comment) : null;
+              const stage = kind === "outside" ? proposalStage?.(comment) : null;
+              const replies = comment.replies?.length ?? 0;
+              const fresh = unreadCount(comment);
               return (
-                <li key={comment.id} className={`inspector-row ${comment.id === selectedId ? "is-selected" : ""}`}>
+                <li key={comment.id} className={`inspector-row ${comment.id === selectedId ? "is-selected" : ""} ${comment.closed ? "is-closed" : ""}`}>
                   <button
                     className={`thread-row ${comment.id === selectedId ? "is-selected" : ""}`}
                     aria-current={comment.id === selectedId ? "true" : undefined}
                     aria-label={`${itemLabel(comment)} #${comment.id}`}
                     onClick={() => onFocus(comment.id)}
                   >
-                    <span className={`thread-avatar ${sideOf(comment) === "agency" ? "is-agency" : "is-client"}`} aria-hidden="true">
-                      {comment.initials}
-                    </span>
-                    <span className="thread-row-body">
-                      <span className="thread-row-meta">
-                        <span className="inline-flex items-center gap-1.5">
-                          {unread?.(comment) && <i className="unread-dot" aria-label="Nouvelle réponse" />}
-                          {comment.author}
-                        </span>
-                        {timeLabel(comment, now) && <small>{timeLabel(comment, now)}</small>}
+                    {(comment.closed || status) && (
+                      <span className="thread-row-status">
+                        {comment.closed ? <StatusPill label="Close" tone="waiting" /> : status?.label && <StatusPill label={status.label} tone={status.tone} />}
                       </span>
-                      <span className={`thread-row-text ${kind !== "comment" ? "is-title" : ""}`}>{requestText(comment)}</span>
-                      {(comment.replies?.length ?? 0) > 0 && (
-                        <span className="thread-row-tags">
-                          <small>
-                            {comment.replies?.length} réponse{(comment.replies?.length ?? 0) > 1 ? "s" : ""}
-                          </small>
-                        </span>
-                      )}
+                    )}
+                    <span className={`thread-row-text ${kind !== "comment" || comment.title ? "is-title" : ""}`}>{requestText(comment)}</span>
+                    <span className="thread-row-meta">
+                      <span className={`thread-avatar ${sideOf(comment) === "agency" ? "is-agency" : "is-client"}`} aria-hidden="true">
+                        {comment.initials}
+                      </span>
+                      <span>{comment.author}</span>
+                      {timeLabel(comment, now) && <small>· {timeLabel(comment, now)}</small>}
                     </span>
+                    {(replies > 0 || fresh > 0) && (
+                      <span className={`thread-row-replies ${fresh > 0 ? "is-unread" : ""}`}>
+                        <MessageSquare aria-hidden="true" />
+                        {fresh > 0 ? `${plural(fresh, "message")} non lu${fresh > 1 ? "s" : ""}` : plural(replies, "réponse")}
+                      </span>
+                    )}
                   </button>
-                  {kind === "outside" &&
-                    (() => {
-                      const stage = proposalStage?.(comment);
-                      if (!stage) return null;
-                      return (
-                        <div className="row-actions">
-                          {proposalSummary?.(comment)}
-                          {stage.stage === "sent" && stage.retry ? (
-                            <span className="row-buttons">
-                              {onRequote && (
-                                <>
-                                  <button type="button" className="secondary-button small-button" onClick={() => onRequote(comment.id)}>
-                                    Chiffrer
-                                  </button>
-                                  <button type="button" className="secondary-button small-button" disabled title="Chiffrez d’abord la nouvelle proposition">
-                                    Envoyer la proposition
-                                  </button>
-                                </>
-                              )}
-                              <Hint label="Historique de la proposition">
-                                <Button variant="outline" size="icon-sm" className="ml-auto shrink-0" aria-label="Historique de la proposition" onClick={() => onOpenProposal?.(comment.id)}>
-                                  <History />
-                                </Button>
-                              </Hint>
-                            </span>
-                          ) : stage.stage === "sent" ? (
-                            <button type="button" className="secondary-button small-button" onClick={() => onOpenProposal?.(comment.id)}>
-                              {stage.label}
-                            </button>
-                          ) : (
-                            <>
-                              <button type="button" className="secondary-button small-button" onClick={() => onQuote?.(comment.id)}>
-                                {stage.stage === "draft" ? "Modifier" : "Chiffrer"}
-                              </button>
-                              <button
-                                type="button"
-                                className="secondary-button small-button"
-                                disabled={stage.stage !== "draft"}
-                                title={stage.stage === "draft" ? undefined : "Chiffrez d’abord la demande"}
-                                onClick={() => onSendProposal?.(comment.id)}
-                              >
-                                Envoyer la proposition
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      );
-                    })()}
+                  {stage && !comment.closed && (
+                    // A click beside the buttons selects the card, as a click on the card does.
+                    <div className="row-actions" onClick={(event) => !(event.target as Element).closest("button") && onFocus(comment.id)}>
+                      {proposalSummary?.(comment)}
+                      <span className="row-buttons">
+                        {stage.stage === "none" && onQuote && (
+                          <Button variant="outline" size="sm" onClick={() => onQuote(comment.id)}>
+                            Chiffrer
+                          </Button>
+                        )}
+                        {stage.stage === "draft" && onQuote && (
+                          <Button variant="outline" size="sm" onClick={() => onQuote(comment.id)}>
+                            Modifier
+                          </Button>
+                        )}
+                        {stage.stage === "draft" && onSendProposal && (
+                          <Button size="sm" className="cta-ink" onClick={() => onSendProposal(comment.id)}>
+                            Envoyer la proposition
+                          </Button>
+                        )}
+                        {stage.stage === "sent" && stage.retry && onRequote && (
+                          <Button variant="outline" size="sm" onClick={() => onRequote(comment.id)}>
+                            Nouvelle proposition
+                          </Button>
+                        )}
+                        {stage.stage === "sent" && !stage.retry && (
+                          <Button variant="outline" size="sm" onClick={() => onOpenProposal?.(comment.id)}>
+                            {stage.label}
+                          </Button>
+                        )}
+                        {stage.stage === "sent" && stage.retry && (
+                          <Hint label="Historique de la proposition">
+                            <Button variant="outline" size="icon-sm" className="ml-auto shrink-0" aria-label="Historique de la proposition" onClick={() => onOpenProposal?.(comment.id)}>
+                              <History />
+                            </Button>
+                          </Hint>
+                        )}
+                      </span>
+                    </div>
+                  )}
                 </li>
               );
             })}
@@ -252,6 +333,9 @@ export function EditorInspector({
   onPreview,
   width,
   onResize,
+  notifications,
+  unread,
+  outsideStatus,
 }: {
   comments: ThreadComment[];
   selectedId: number | null;
@@ -267,15 +351,34 @@ export function EditorInspector({
   /** Opens the "new request" form, already qualified (no comment first). */
   onAddRequest?: (decision: Qualification) => void;
   onShare: () => void;
+  /** Opens the page the client sees, in a new tab. */
   onPreview: () => void;
   width: number;
   onResize: (width: number) => void;
+  /** The bell, at the head of the panel. */
+  notifications?: React.ReactNode;
+  unread?: (comment: ThreadComment) => number;
+  outsideStatus?: (comment: ThreadComment) => OutsideStatus;
 }) {
+  // Phones: the panel is a sheet at the bottom of the screen, opened by its handle (CSS, max-width 680px).
+  const [sheetOpen, setSheetOpen] = useState(false);
   return (
-    <aside className="inspector editor-inspector" aria-label="Demandes">
-      <ResizeHandle edge="left" width={width} min={300} max={560} defaultWidth={340} label="Largeur du panneau des demandes" onResize={onResize} />
+    <aside className="inspector editor-inspector" aria-label="Demandes" data-sheet-open={sheetOpen || undefined}>
+      <button
+        type="button"
+        className="inspector-sheet-toggle"
+        aria-label={`${sheetOpen ? "Replier" : "Ouvrir"} le panneau des demandes (${comments.length})`}
+        aria-expanded={sheetOpen}
+        onClick={() => setSheetOpen((open) => !open)}
+      >
+        <span>
+          Demandes <b>{comments.length}</b>
+        </span>
+        <ChevronUp aria-hidden="true" />
+      </button>
+      <ResizeHandle edge="left" width={width} min={320} max={560} defaultWidth={384} label="Largeur du panneau des demandes" onResize={onResize} />
       <header className="requests-header">
-        <h2>Demandes</h2>
+        {notifications}
         <div className="requests-actions">
           <Hint label="Aperçu : la page que voit le client">
             <Button variant="outline" size="icon" className="icon-action" onClick={onPreview} aria-label="Aperçu client">
@@ -289,7 +392,8 @@ export function EditorInspector({
           </Hint>
           {onAddRequest && (
             <Hint label="Une demande reçue ailleurs (e-mail, appel, réunion…) ou portant sur tout le livrable">
-              <Button className="requests-add" onClick={() => onAddRequest(tab === "outside" ? "Hors périmètre" : tab === "correction" ? "Inclus" : "À qualifier")}>
+              {/* « + Demande », as the empty list names it: the panel's header keeps room for its four actions. */}
+              <Button className="requests-add" aria-label="Ajouter une demande" onClick={() => onAddRequest(tab === "outside" ? "Hors périmètre" : tab === "correction" ? "Inclus" : "À qualifier")}>
                 <Plus /> Demande
               </Button>
             </Hint>
@@ -309,6 +413,10 @@ export function EditorInspector({
         onOpenProposal={onOpenProposal}
         onRequote={onRequote}
         proposalSummary={proposalSummary}
+        unread={unread}
+        drafts
+        outsideStatus={outsideStatus}
+        reader="agency"
         adding={false}
         onAddingChange={() => undefined}
       />

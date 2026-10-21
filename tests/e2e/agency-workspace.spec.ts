@@ -63,6 +63,36 @@ test("files: a deliverable may only point at the agency's own imports", async ()
   expect(await data(org, "deliverables", link.json.id as number)).toMatchObject({ type: "Link", url: "https://exemple.fr", version: 1 });
 });
 
+test("a version of a « Lien » is a new address of the site, never a file; any other kind keeps a file", async () => {
+  const { alice, org, act } = await agency();
+  const site = await act(alice, "deliverables", "POST", { projectId: 1, name: "recette", type: "Link", size: 0, url: "https://recette.exemple.fr/" });
+  const versions = `deliverables/${site.json.id}/versions`;
+  const pdf = await upload(alice, makePdf("v2"), "v2.pdf", { kind: "version", projectId: 1, livrableId: site.json.id as number, version: 2 });
+  // Refused: a link without its address, with a file, or with an address that is not a web page.
+  expect((await act(alice, versions, "POST", { type: "Link", size: 0 })).status).toBe(400);
+  expect((await act(alice, versions, "POST", { type: "Link", size: 0, url: "https://recette.exemple.fr/v2/", fileData: pdf.json.href })).status).toBe(400);
+  expect((await act(alice, versions, "POST", { type: "Link", size: 0, url: "javascript:alert(1)" })).status).toBe(400);
+  // Nor a file with an address.
+  expect((await act(alice, "deliverables/2/versions", "POST", { type: "PDF", size: 1, fileData: pdf.json.href, url: "https://exemple.fr" })).status).toBe(400);
+  // Refused: a site only on this computer or in http, which the client cannot review (the toolbar needs https).
+  for (const url of ["http://localhost:5173/", "http://127.0.0.1:8080", "http://recette.exemple.fr/"]) {
+    const local = await act(alice, versions, "POST", { type: "Link", size: 0, url });
+    expect([local.status, String(local.json.error)]).toEqual([400, expect.stringMatching(url.startsWith("http://recette") ? /https:\/\// : /votre ordinateur/)]);
+    expect((await act(alice, "deliverables", "POST", { projectId: 1, name: `local ${url}`, type: "Link", size: 0, url })).status).toBe(400);
+  }
+  const version = await act(alice, versions, "POST", { type: "Link", size: 0, url: "https://recette.exemple.fr/v2/" });
+  expect(version.status).toBe(200);
+  const created = await data(org, "deliverables", version.json.id as number);
+  expect(created).toMatchObject({ name: "recette", type: "Link", url: "https://recette.exemple.fr/v2/", version: 2, locked: false });
+  expect(created).not.toHaveProperty("fileData");
+  expect(await data(org, "deliverables", site.json.id as number)).toMatchObject({ status: "Remplacée", locked: true });
+  // The decider's link pasted as the address: the toolbar's ?kora is not kept (their link adds it).
+  const flagged = await act(alice, versions, "POST", { type: "Link", size: 0, url: "https://recette.exemple.fr/v3/?kora&offre=2" });
+  expect((await data(org, "deliverables", flagged.json.id as number)).url).toBe("https://recette.exemple.fr/v3/?offre=2");
+  const pasted = await act(alice, "deliverables", "POST", { projectId: 1, name: "collé", type: "Link", size: 0, url: "https://colle.exemple.fr/?kora" });
+  expect((await data(org, "deliverables", pasted.json.id as number)).url).toBe("https://colle.exemple.fr/");
+});
+
 test("members organise, administrators delete spaces and projects and empty the trash", async () => {
   const { alice, bob, org, act } = await agency();
   const space = await act(bob, "spaces", "POST", { name: "Initech", email: "pas-une-adresse" });

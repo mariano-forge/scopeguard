@@ -1,5 +1,6 @@
-// Agency: POST /api/deliverables/:deliverableId/versions { type, size, fileData, id? } -> { id }
-// A new version of the deliverable; the earlier ones are frozen (src/db/workspaceActions.ts).
+// Agency: POST /api/deliverables/:deliverableId/versions { type, size, fileData | url, id? } -> { id }
+// A new version of the deliverable (a file, or the site's address for a « Lien »); the earlier ones are
+// frozen (src/db/workspaceActions.ts).
 
 import { agencyActionResponse } from "@/lib/agencyActionRoute";
 

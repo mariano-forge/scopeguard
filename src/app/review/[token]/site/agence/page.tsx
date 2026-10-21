@@ -6,6 +6,8 @@ import { getDb } from "@/db/client";
 import { findReviewAccess } from "@/db/reviewAccess";
 import { reviewedDeliverableName } from "@/db/reviewAuth";
 import { AuthShell } from "@/components/AuthShell";
+import { GateHeading } from "@/components/GatePieces";
+import { Button } from "@/components/ui/button";
 import { getCurrentUser, isMemberOf } from "@/lib/session";
 import { AgencyHandoff } from "./AgencyHandoff";
 
@@ -17,19 +19,24 @@ export default async function SiteAgencyPage({ params }: PageProps<"/review/[tok
   const member = Boolean(access && user && (await isMemberOf(user.id, access.organizationId)));
   const back = `/connexion?suite=${encodeURIComponent(`/review/${token}/site/agence`)}`;
   return (
-    <AuthShell>
+    <AuthShell plain>
       {!access ? (
-        <p className="text-sm">Ce lien de revue n’est plus valable.</p>
+        <GateHeading title="Lien indisponible">
+          Ce lien de revue n’est plus valable.
+        </GateHeading>
       ) : !user ? (
-        <div className="grid gap-3 text-sm">
-          <h1 className="font-heading text-lg font-bold">Connectez-vous à Kora</h1>
-          <p className="text-[var(--graphite)]">Pour annoter le site de recette au nom de l’agence, connectez-vous d’abord à votre compte Kora.</p>
-          <a className="font-medium text-[var(--action-text)] underline-offset-2 hover:underline" href={back}>
-            Se connecter
-          </a>
+        <div className="gate-form">
+          <GateHeading title="Connectez-vous à Kora">
+            Pour annoter le site de recette au nom de l’agence, connectez-vous d’abord à votre compte Kora.
+          </GateHeading>
+          <Button asChild size="lg" className="w-full">
+            <a href={back}>Se connecter</a>
+          </Button>
         </div>
       ) : !member ? (
-        <p className="text-sm">Votre compte n’est pas membre de l’agence de cette revue.</p>
+        <GateHeading title="Revue d’une autre agence">
+          Votre compte n’est pas membre de l’agence de cette revue.
+        </GateHeading>
       ) : (
         <AgencyHandoff token={token} name={user.name} deliverable={await reviewedDeliverableName(db, access)} />
       )}

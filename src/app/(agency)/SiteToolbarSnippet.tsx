@@ -1,21 +1,47 @@
 "use client";
 
-// In « Partager la revue » of a « Lien » deliverable: the line to put on the staging site, once for every
-// version (its fixed key, src/lib/siteKey.ts), and the address to send the client, which shows the Kora
-// toolbar on their device (public/kora-toolbar.js).
+// On the agency's « Tableau de recette » of a « Lien » deliverable: how to set up the Kora toolbar, in three
+// steps. The line to put on the staging site, the deliverable's (src/lib/siteKey.ts): one per site, valid
+// for all its versions, so it says nothing of the agency's other sites; the address to send the client,
+// which shows the toolbar on their device (public/kora-toolbar.js); and where their requests then arrive.
 
 import { useEffect, useState } from "react";
-import { Field } from "@/components/modal";
+import { Check, Copy } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { siteClientUrl } from "@/lib/siteReview";
+import { SiteGuideSteps, useLocalAccessNote } from "./editor/SiteGuide";
 
-export function SiteToolbarSnippet({ deliverableId, siteUrl }: { deliverableId: number; siteUrl: string }) {
+/** A value to copy, in one line, with its button that says it was copied. The script reads as code. */
+function CopyField({ id, label, value, copyLabel, code }: { id: string; label: string; value: string; copyLabel?: string; code?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className={`site-copy ${code ? "is-code" : ""}`}>
+      <Label htmlFor={id} className="sr-only">
+        {label}
+      </Label>
+      <Input id={id} readOnly value={value} spellCheck={false} onFocus={(event) => event.target.select()} />
+      {copyLabel && (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={copyLabel}
+          onClick={() => {
+            void navigator.clipboard.writeText(value).then(() => setCopied(true));
+          }}
+        >
+          {copied ? <Check /> : <Copy />} {copied ? "Copié" : "Copier"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** The deliverable's toolbar line, to copy (GET /api/deliverables/:id/site-key): the same for all its versions. */
+function SiteScriptField({ id, deliverableId }: { id: string; deliverableId: number }) {
   const [key, setKey] = useState<string | null>(null);
-  const clientUrl = siteClientUrl({ type: "Link", url: siteUrl });
-
   useEffect(() => {
-    if (!clientUrl) return;
     let cancelled = false;
     fetch(`/api/deliverables/${deliverableId}/site-key`, { cache: "no-store" })
       .then(async (response) => (response.ok ? ((await response.json()) as { key?: string }).key : null))
@@ -24,28 +50,72 @@ export function SiteToolbarSnippet({ deliverableId, siteUrl }: { deliverableId: 
     return () => {
       cancelled = true;
     };
-  }, [deliverableId, clientUrl]);
+  }, [deliverableId]);
+  const line = key ? `<script src="${window.location.origin}/kora-toolbar.js" data-site="${key}" defer></script>` : null;
+  return <CopyField id={id} label="Script de recette" value={line ?? "Préparation du script…"} copyLabel={line ? "Copier le script" : undefined} code />;
+}
+
+/**
+ * The toolbar met for the first time, in « Nouveau livrable » for a « Lien »: an invitation to set it up and
+ * what it does. Its line is the deliverable's: given on its board, once it is created.
+ */
+export function SiteScriptIntro() {
+  return (
+    <section className="script-intro" aria-labelledby="script-intro-title">
+      <div>
+        <h3 id="script-intro-title">Recevoir les retours directement depuis le site ?</h3>
+        <p>
+          Juste après la création, Kora vous donne une ligne à coller dans le code du site, avant <code>&lt;/body&gt;</code>. Le décideur pourra cliquer sur un élément et écrire sa
+          demande : elle arrivera dans Kora, sur ce livrable, avec une capture.
+        </p>
+      </div>
+      <p className="script-intro-note">Une ligne par site, valable pour toutes ses versions.</p>
+    </section>
+  );
+}
+
+export function SiteToolbarSnippet({ siteUrl, deliverableId }: { siteUrl: string; deliverableId: number }) {
+  const clientUrl = siteClientUrl({ type: "Link", url: siteUrl });
+  const localAccess = useLocalAccessNote();
 
   // The panel only opens on a site in https (src/lib/siteReview.ts): said here rather than failing there.
   if (!clientUrl)
     return (
-      <p role="note" className="rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-sm text-[var(--status-medium-text)]">
-        <b>Barre Kora indisponible :</b> le site de recette doit être en <code>https://</code> pour que le client y commente. Changez l’adresse du livrable.
+      <p role="note" className="site-setup-warning">
+        <b>Barre Kora indisponible :</b> le site de recette doit être en <code>https://</code> pour que le décideur y commente. Changez l’adresse du livrable.
       </p>
     );
-  const snippet = key ? `<script src="${window.location.origin}/kora-toolbar.js" data-site="${key}" defer></script>` : "Préparation du script…";
   return (
     <>
-      <Field
-        id="site-snippet"
-        label="Script de recette"
-        hint="À placer une seule fois sur le site de recette, avant </body> : il ouvre toujours la dernière version partagée. La barre Kora ne s’ouvre que sur ce site, et seulement pour qui a le lien ci-dessous."
-      >
-        <Textarea id="site-snippet" readOnly rows={3} className="font-mono text-xs" value={snippet} onFocus={(event) => event.target.select()} />
-      </Field>
-      <Field id="site-client-url" label="Lien du site pour le client" hint="Il est aussi dans les e-mails d’invitation. Le client s’y vérifie par un code, comme pour la revue.">
-        <Input id="site-client-url" readOnly value={clientUrl} onFocus={(event) => event.target.select()} />
-      </Field>
+      <SiteGuideSteps
+        steps={[
+          {
+            title: "Installez la barre Kora",
+            text: (
+              <>
+                Collez cette ligne une fois dans le code de ce site, avant <code>&lt;/body&gt;</code> : elle sert pour toutes ses versions. Déjà en place ? Rien à refaire.
+                {localAccess && ` ${localAccess}`}
+              </>
+            ),
+            children: <SiteScriptField id="site-snippet" deliverableId={deliverableId} />,
+          },
+          {
+            title: "Invitez le décideur",
+            text: "Envoyez-lui ce lien, ou passez par « Partager la revue ».",
+            children: <CopyField id="site-client-url" label="Lien du site pour le décideur" value={clientUrl} copyLabel="Copier le lien pour le décideur" />,
+          },
+          {
+            title: "Qualifiez ses demandes",
+            text: (
+              <>
+                Chacune arrive ci-dessous. Classez-la <span className="decision-badge decision-included">Inclus</span> si elle est prévue au devis,{" "}
+                <span className="decision-badge decision-outside">Hors scope</span> si elle est à chiffrer,{" "}
+                <span className="decision-badge decision-pending">À clarifier</span> s’il faut en parler.
+              </>
+            ),
+          },
+        ]}
+      />
     </>
   );
 }

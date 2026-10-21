@@ -42,7 +42,8 @@ export function CreateAgencyForm() {
       return;
     }
     await authClient.organization.setActive({ organizationId: data.id });
-    router.replace("/");
+    // Then its first client, project and colleagues.
+    router.replace("/demarrer");
     router.refresh();
   }
 

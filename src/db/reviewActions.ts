@@ -105,7 +105,7 @@ async function remarksToClarify(db: Db, access: ReviewAccess) {
     .from(comments)
     .where(and(eq(comments.organizationId, access.organizationId), eq(comments.deliverableId, access.deliverableId)));
   return rows
-    .filter((row) => row.decision !== "Inclus" && row.decision !== "Hors périmètre" && visibleToClient(row.data as Data, []))
+    .filter((row) => row.decision !== "Inclus" && row.decision !== "Hors périmètre" && visibleToClient(row.data as Data))
     .sort((left, right) => left.id - right.id)
     .map((row) => String((row.data as Data).message ?? "").trim())
     .filter(Boolean);
@@ -214,6 +214,8 @@ async function changesFor(db: Db, access: ReviewAccess, action: ReviewAction): P
       break;
     }
     case "reply.create": {
+      // Closed by the agency: read, not answered (it can reopen it).
+      if (comment.closed === true) return refused("Cette discussion est close.");
       const taken = new Set(replies.map((reply) => reply.id));
       const replyId = action.id && !taken.has(action.id) ? action.id : Math.max(Date.now(), ...replies.map((reply) => Number(reply.id) + 1 || 0));
       upsertComment({ ...comment, replies: [...replies, { id: replyId, from: "client", message: action.message, time: "À l'instant", createdAt: Date.now() }] });

@@ -114,7 +114,7 @@ test("a client never sees who else is invited, nor their personal links", async 
   expect(JSON.stringify(acted.json)).not.toContain(other);
 });
 
-test("the client sees what is addressed to them: no agency pin without a status, no unquoted out-of-scope request, never a draft quote", async () => {
+test("the client sees what is addressed to them: every qualified request, none of the agency's drafts, never a draft quote", async () => {
   const { alice, org, token, client } = await reviewWithQuote();
   const quote = (id: number, commentId: number, status: string, amount: number) => ({ id, version: 1, commentId, description: "Devis", amount, deadline: 2, status, createdAt: "x" });
   const request = (id: number, from: "agency" | "client", decision: string, title: string) => ({ id, deliverableId: 1, author: "x", initials: "XX", from, message: title, title, decision, kind: "request", location: "", time: "t" });
@@ -141,36 +141,42 @@ test("the client sees what is addressed to them: no agency pin without a status,
 
   const answer = await call(`/api/review/${token}`, { person: client });
   const state = answer.json.state as { comments: { id: number }[]; proposalStates: Record<string, string>; proposalVersions: Record<string, { id: number }[]> };
-  // 34: « + Demande » with « À clarifier » chosen, shown. 35: a pin of the agency, no status chosen, internal.
-  expect(state.comments.map((comment) => comment.id).sort()).toEqual([10, 30, 32, 33, 34]);
+  // 31: out of scope, its quote still a draft: shown as soon as qualified (« En cours de chiffrage »).
+  // 34: « + Demande » with « À clarifier » chosen, shown. 35: a pin of the agency, no status chosen: its draft.
+  expect(state.comments.map((comment) => comment.id).sort()).toEqual([10, 30, 31, 32, 33, 34]);
+  // Of a draft quote, not even its existence: no state, no version.
   expect(state.proposalStates).toEqual({ "10": "sent" });
+  expect(state.proposalVersions["31"] ?? []).toEqual([]);
   expect(state.proposalVersions["33"].map((entry) => entry.id)).toEqual([330]);
   const raw = JSON.stringify(answer.json);
-  for (const secret of ["Section blog cachée", "4321", "9876", "Repère de l’agence"]) expect(raw).not.toContain(secret);
+  expect(raw).not.toContain("Repère de l’agence");
+  // The draft amounts, as whole numbers: ids made from the clock may contain the same digits.
+  for (const amount of [4321, 9876]) expect(raw).not.toMatch(new RegExp(String.raw`(?<!\d)${amount}(?!\d)`));
   expect((await clientAction(client, token, "comments/35/replies", "POST", { message: "Vu ?" })).status).toBe(404);
-  // Once the agency chooses its status, even « À clarifier », the pin shows, under its title.
+  // Once the agency chooses its status, even « À clarifier », the pin shows, under its title, its whole
+  // thread with it: out of draft, nothing of it is internal any more (decided on 19 October 2026).
   expect((await call("/api/comments/35/qualification", { method: "PUT", person: alice, body: { decision: "À qualifier", title: "Taille du logo ?" } })).status).toBe(200);
   const after = (await call(`/api/review/${token}`, { person: client })).json.state as { comments: { id: number; title?: string }[] };
-  // What the agency wrote for itself stays internal: the pin's words and the replies before it showed.
-  expect(after.comments.find((entry) => entry.id === 35)).toMatchObject({ title: "Taille du logo ?", message: "Taille du logo ?", replies: [] });
-  for (const internal of ["Repère de l’agence", "On le facture ?"]) expect(JSON.stringify(after)).not.toContain(internal);
-  // From now on, the thread is the conversation with the client.
+  expect(after.comments.find((entry) => entry.id === 35)).toMatchObject({ title: "Taille du logo ?", message: "Repère de l’agence", replies: [expect.objectContaining({ message: "On le facture ?" })] });
   expect((await call("/api/comments/35/replies", { method: "POST", person: alice, body: { message: "Pouvez-vous confirmer ?" } })).status).toBe(200);
   expect((await clientAction(client, token, "comments/35/replies", "POST", { message: "Plus grand" })).status).toBe(200);
   const thread = ((await call(`/api/review/${token}`, { person: client })).json.state as { comments: { id: number; replies: { message: string }[] }[] }).comments.find((entry) => entry.id === 35)!;
-  expect(thread.replies.map((reply) => reply.message)).toEqual(["Pouvez-vous confirmer ?", "Plus grand"]);
-  // The proof shows what the client was addressed, not the agency's note.
+  expect(thread.replies.map((reply) => reply.message)).toEqual(["On le facture ?", "Pouvez-vous confirmer ?", "Plus grand"]);
+  // The proof shows the same thread as the client.
   const proof = (await call("/api/proof/1", { person: alice })).json as { requests: { id: number; message: string }[] };
-  expect(proof.requests.find((request) => request.id === 35)?.message).toBe("Taille du logo ?");
-  expect(JSON.stringify(proof)).not.toContain("Repère de l’agence");
+  expect(proof.requests.find((request) => request.id === 35)?.message).toBe("Repère de l’agence");
 
-  // A request the client does not see cannot be reached through the API either.
-  expect((await clientAction(client, token, "comments/31/replies", "POST", { message: "Je l’ai trouvée" })).status).toBe(404);
-  expect((await clientAction(client, token, "proposals/31/decision", "POST", { decision: "accepted" })).status).toBe(404);
+  // A draft of the agency cannot be reached through the API; a quote not sent cannot be decided.
+  expect((await call("/api/comments", { method: "POST", person: alice, body: { deliverableId: 1, message: "Note brouillon", page: 1, position: { x: 10, y: 10 } } })).status).toBe(200);
+  const [draft] = await sql<{ id: string }>("select id from comments where organization_id = $1 and data->>'message' = 'Note brouillon'", [org]);
+  expect((await clientAction(client, token, `comments/${draft.id}/replies`, "POST", { message: "Je l’ai trouvée" })).status).toBe(404);
+  expect((await clientAction(client, token, "proposals/31/decision", "POST", { decision: "accepted" })).status).toBeGreaterThanOrEqual(400);
+  const decided = await sql<{ decision: string | null }>("select decision from comment_proposals where organization_id = $1 and comment_id = 31", [org]);
+  expect(decided[0]?.decision ?? "none").toBe("none");
   // An action's answer carries the same filtered state.
   const replied = await clientAction(client, token, "comments/30/replies", "POST", { message: "Merci" });
   expect(replied.status).toBe(200);
-  expect(JSON.stringify(replied.json)).not.toContain("9876");
-  expect(JSON.stringify(replied.json)).not.toContain("Section blog cachée");
+  expect(JSON.stringify(replied.json)).not.toMatch(/(?<!\d)9876(?!\d)/);
+  expect(JSON.stringify(replied.json)).not.toContain("Note brouillon");
   expect(await comment(org, 31)).toMatchObject({ title: "Section blog cachée" });
 });

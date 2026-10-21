@@ -5,7 +5,7 @@ import { baseURL } from "../../playwright.config";
 import { call, createAgency, makePdf, newIp, seedState, signUp, upload } from "./helpers";
 
 test("every page and API answer carries the security headers, and does not name the framework", async () => {
-  for (const path of ["/connexion", "/api/state", "/review/inconnu"]) {
+  for (const path of ["/", "/connexion", "/api/state", "/review/inconnu"]) {
     const { response } = await call(path);
     const headers = response.headers;
     expect(headers.get("x-powered-by"), path).toBeNull();

@@ -30,10 +30,9 @@ const invitesOf = async (org: string) =>
 
 test("a contributor comments but cannot decide; once made decider by the agency, they can", async () => {
   const { alice, org, token, linkKey } = await reviewWithQuote();
-  // Given the link by a colleague: asks, the agency accepts, they become a contributor.
+  // Invited by the agency as a contributor.
   const email = `${unique("transmis")}@client.test`;
-  await call(`/api/review/${token}/access/request`, { body: { email } });
-  await call("/api/review-access/requests", { person: alice, body: { linkKey, email, decision: "accepted" } });
+  await call("/api/review-access/invite", { person: alice, body: { linkKey, emails: [email], role: "contributor" } });
   expect((await invitesOf(org)).find((invite) => invite.email === email)?.role).toBe("contributor");
   expect(mailsTo(email).at(-1)?.subject).toContain("donner votre avis");
   const contributor = await verifiedClient(token, email, "Paul Stagiaire");
@@ -111,24 +110,29 @@ test("on the page: a contributor sees no approval nor quote decision, and why", 
   expect(errors).toEqual([]);
 });
 
-test("in « Partager la revue », the agency invites a contributor and makes them decider", async ({ browser }) => {
+test("in « Partager la revue », the agency invites someone, then sets them contributor and decider in the list", async ({ browser }) => {
   const { alice, org } = await reviewWithQuote();
   const email = `${unique("equipe")}@client.test`;
   const { page, errors } = await newPerson(browser);
   await signInPage(page, alice.email);
   await page.goto("/projets/1/livrables/1");
   await page.getByRole("button", { name: "Partager la revue" }).first().click();
-  await page.getByRole("button", { name: /^Rôle des personnes invitées/ }).click();
-  await page.getByRole("option", { name: "Contributeur" }).click();
+  // One field and its button: the role is set afterwards, person by person.
+  await expect(page.getByRole("combobox", { name: "Rôle des personnes invitées" })).toHaveCount(0);
   await page.getByLabel("Inviter par e-mail").fill(email);
   await page.getByRole("button", { name: "Inviter", exact: true }).click();
-  await expect.poll(async () => (await invitesOf(org)).find((invite) => invite.email === email)?.role).toBe("contributor");
-  await waitForMail(email, "donner votre avis");
+  await expect.poll(async () => (await invitesOf(org)).find((invite) => invite.email === email)?.role ?? "none").not.toBe("none");
+  await waitForMail(email, "vous invite à valider");
 
-  await page.getByRole("button", { name: new RegExp(`^Rôle de ${email.replace(/[.]/g, "\\.")}`) }).click();
+  const role = page.getByRole("combobox", { name: `Rôle de ${email}` });
+  await expect(role).toHaveText("Décideur");
+  await role.click();
+  await page.getByRole("option", { name: "Contributeur" }).click();
+  await expect.poll(async () => (await invitesOf(org)).find((invite) => invite.email === email)?.role).toBe("contributor");
+  await role.click();
   await page.getByRole("option", { name: "Décideur" }).click();
   await expect.poll(async () => (await invitesOf(org)).find((invite) => invite.email === email)?.role).toBe("decider");
-  const [event] = await sql<{ description: string }>("select data->>'description' as description from audit_events where organization_id = $1 and type = 'review-link.invite-role'", [org]);
-  expect(event.description).toBe(`${email} : décideur`);
+  const events = await sql<{ description: string }>("select data->>'description' as description from audit_events where organization_id = $1 and type = 'review-link.invite-role' order by id", [org]);
+  expect(events.map((event) => event.description)).toEqual([`${email} : contributeur`, `${email} : décideur`]);
   expect(errors).toEqual([]);
 });
