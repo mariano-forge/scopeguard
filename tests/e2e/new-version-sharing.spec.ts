@@ -31,6 +31,8 @@ async function importV2(browser: Browser, alice: Member) {
   const { page, errors } = await newPerson(browser);
   await signInPage(page, alice.email);
   await page.goto("/projets/1/livrables/1");
+  // A version is of the deliverable's kind: the « + » of the versions picks a PDF here.
+  await expect(page.getByRole("region", { name: "Versions" }).locator('input[type="file"]')).toHaveAttribute("accept", "application/pdf,.pdf");
   await page.getByRole("button", { name: "Menu principal" }).first().click();
   const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.getByRole("menuitem", { name: /Nouvelle version/ }).click()]);
   await chooser.setFiles({ name: "maquette-v2.pdf", mimeType: "application/pdf", buffer: makePdf("Version 2") });

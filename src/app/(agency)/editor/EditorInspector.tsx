@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronUp, History, MessageSquare, Plus, Share2 } from "lucide-react";
+import { ChevronUp, Eye, History, MessageSquare, Plus, Share2 } from "lucide-react";
 import type { ProposalStage, Qualification } from "./CanvasComments";
 import { ResizeHandle } from "./ResizeHandle";
 import { isAgencyDraft, itemLabel, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
@@ -330,6 +330,7 @@ export function EditorInspector({
   proposalSummary,
   onAddRequest,
   onShare,
+  onPreview,
   width,
   onResize,
   notifications,
@@ -350,6 +351,8 @@ export function EditorInspector({
   /** Opens the "new request" form, already qualified (no comment first). */
   onAddRequest?: (decision: Qualification) => void;
   onShare: () => void;
+  /** Opens the page the client sees, in a new tab. */
+  onPreview: () => void;
   width: number;
   onResize: (width: number) => void;
   /** The bell, at the head of the panel. */
@@ -377,6 +380,11 @@ export function EditorInspector({
       <header className="requests-header">
         {notifications}
         <div className="requests-actions">
+          <Hint label="Aperçu : la page que voit le client">
+            <Button variant="outline" size="icon" className="icon-action" onClick={onPreview} aria-label="Aperçu client">
+              <Eye />
+            </Button>
+          </Hint>
           <Hint label="Partager la revue avec le client">
             <Button variant="outline" size="icon" className="icon-action" onClick={onShare} aria-label="Partager la revue">
               <Share2 />
@@ -384,8 +392,9 @@ export function EditorInspector({
           </Hint>
           {onAddRequest && (
             <Hint label="Une demande reçue ailleurs (e-mail, appel, réunion…) ou portant sur tout le livrable">
-              <Button className="requests-add" onClick={() => onAddRequest(tab === "outside" ? "Hors périmètre" : tab === "correction" ? "Inclus" : "À qualifier")}>
-                <Plus /> Ajouter une demande
+              {/* « + Demande », as the empty list names it: the panel's header keeps room for its four actions. */}
+              <Button className="requests-add" aria-label="Ajouter une demande" onClick={() => onAddRequest(tab === "outside" ? "Hors périmètre" : tab === "correction" ? "Inclus" : "À qualifier")}>
+                <Plus /> Demande
               </Button>
             </Hint>
           )}

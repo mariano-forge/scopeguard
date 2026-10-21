@@ -24,7 +24,7 @@ import { expired, type ReviewAccess } from "./reviewAccess";
 import { sendMail } from "@/lib/mail";
 import { renderMail } from "@/lib/mailTemplates";
 import { maskEmail } from "@/lib/maskEmail";
-import { agencyHref, managersOf, reviewUrl } from "./mailTargets";
+import { reviewUrl } from "./mailTargets";
 import { roleOfInvite, type ClientRole } from "@/lib/clientRoles";
 import { siteClientUrl } from "@/lib/siteReview";
 
@@ -73,9 +73,12 @@ export { maskEmail };
 export const requestedEmail = (link: Data, body: Record<string, unknown>) =>
   typeof body.invitation === "string" && body.invitation ? (invitationEmail(link, body.invitation) ?? "") : normalizeEmail(body.email);
 
-/** Sends a code to an invited address. Returns false when throttled or not invited (the caller answers the same). */
-export async function sendAccessCode(db: Db, link: Data, email: string, deliverableName: string) {
-  if (!validEmail(email) || !isInvited(link, email)) return false;
+/**
+ * Sends a code to an invited address, or to a member's of the link's agency entering the panel on the
+ * site (`member`, src/lib/siteAgency.ts). Returns false when throttled or not invited (the caller answers the same).
+ */
+export async function sendAccessCode(db: Db, link: Data, email: string, deliverableName: string, member = false) {
+  if (!validEmail(email) || (!member && !isInvited(link, email))) return false;
   const recent = await db
     .select({ createdAt: reviewCodes.createdAt })
     .from(reviewCodes)
@@ -303,79 +306,6 @@ export async function inviteToReview(
     if (!sent) notSent.push(invite.email);
   }
   return { link: updated, notSent };
-}
-
-/** Client: asks for access to a link. Its agency is notified once per address. */
-export async function requestReviewAccess(db: Db, access: ReviewAccess, email: string, message: string, origin: Origin = {}) {
-  const org = access.organizationId;
-  const [existing] = await db
-    .select()
-    .from(reviewAccessRequests)
-    .where(and(requestOf(org, access.key), eq(reviewAccessRequests.email, email)))
-    .limit(1);
-  if (existing?.status === "pending") return;
-  // A link shared too widely must not flood the agency: past 20 pending requests, new ones are dropped.
-  const pending = await db
-    .select({ email: reviewAccessRequests.email })
-    .from(reviewAccessRequests)
-    .where(and(requestOf(org, access.key), eq(reviewAccessRequests.status, "pending")));
-  if (pending.length >= 20) return;
-  await db
-    .insert(reviewAccessRequests)
-    .values({ organizationId: org, linkKey: access.key, email, status: "pending", message: message || null })
-    .onConflictDoUpdate({
-      target: [reviewAccessRequests.organizationId, reviewAccessRequests.linkKey, reviewAccessRequests.email],
-      set: { status: "pending", message: message || null, requestedAt: new Date(), decidedAt: null, decidedBy: null },
-    });
-  const name = await deliverableName(db, org, access.deliverableId);
-  const id = Date.now();
-  await applyChanges(
-    db,
-    org,
-    {
-      lists: {
-        // The bell opens the version with « Partager la revue », where the request is answered.
-        notifications: { upsert: [{ id, message: `${email} demande l'accès à la revue de « ${name} »`, time: "À l'instant", deliverableId: access.deliverableId, open: "share" }], remove: [] },
-        auditEvents: {
-          upsert: [{ id, type: "review.access-requested", actor: email, description: `Demande d'accès de ${email}`, timestamp: now(), deliverableId: access.deliverableId }],
-          remove: [],
-        },
-      },
-      maps: {},
-      settings: { upsert: {}, remove: [] },
-    },
-    { recordedBy: `review-request:${access.key}`, ...origin },
-  );
-  await mailAccessRequest(db, access, email, message, name);
-}
-
-/**
- * The agency's owner and administrators hear of an access request by e-mail: they are the ones who
- * open a review to someone. A failed send only leaves the request in the app (notifications, share dialog).
- */
-async function mailAccessRequest(db: Db, access: ReviewAccess, email: string, message: string, name: string) {
-  const org = access.organizationId;
-  const managers = await managersOf(db, org);
-  if (!managers.length) return;
-  const href = await agencyHref(db, org, access.deliverableId);
-  for (const manager of managers) {
-    await sendMail({
-      to: manager,
-      subject: `${email} demande l’accès à « ${name} »`,
-      replyTo: email,
-      ...renderMail({
-        preheader: `Une personne qui a le lien de « ${name} » demande à participer à la revue`,
-        heading: "Nouvelle demande d’accès",
-        paragraphs: [
-          `${email} a ouvert le lien de la revue « ${name} » et demande à y participer.`,
-          ...(message ? [`Son message : « ${message} »`] : []),
-          "Ouvrez le livrable, puis « Partager la revue » : vous pouvez accepter la demande (la personne reçoit son lien personnel) ou la refuser.",
-        ],
-        action: { label: "Voir la demande", href },
-        footer: `Vous recevez cet e-mail parce que vous êtes propriétaire ou administrateur de l’agence sur Kora. L’adresse ${email} n’est pas encore vérifiée : répondre à cet e-mail lui écrit directement.`,
-      }),
-    }).catch((error) => console.error("[access request mail]", error));
-  }
 }
 
 /**

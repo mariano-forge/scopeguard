@@ -30,10 +30,9 @@ const invitesOf = async (org: string) =>
 
 test("a contributor comments but cannot decide; once made decider by the agency, they can", async () => {
   const { alice, org, token, linkKey } = await reviewWithQuote();
-  // Given the link by a colleague: asks, the agency accepts, they become a contributor.
+  // Invited by the agency as a contributor.
   const email = `${unique("transmis")}@client.test`;
-  await call(`/api/review/${token}/access/request`, { body: { email } });
-  await call("/api/review-access/requests", { person: alice, body: { linkKey, email, decision: "accepted" } });
+  await call("/api/review-access/invite", { person: alice, body: { linkKey, emails: [email], role: "contributor" } });
   expect((await invitesOf(org)).find((invite) => invite.email === email)?.role).toBe("contributor");
   expect(mailsTo(email).at(-1)?.subject).toContain("donner votre avis");
   const contributor = await verifiedClient(token, email, "Paul Stagiaire");

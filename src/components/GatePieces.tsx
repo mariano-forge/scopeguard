@@ -4,8 +4,22 @@
 import { BadgeCheck, CircleAlert, FileText } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
+/**
+ * Kora's panel framed by a page that is not the deliverable's site (src/app/review/site/[key]/page.tsx,
+ * src/app/review/[token]/site/page.tsx). It names that page's own origin, never the deliverable's address:
+ * whoever frames the panel sees only what they already know, and the agency learns what to change.
+ */
+export function WrongSiteNote({ origin }: { origin: string | null }) {
+  return (
+    <GateHeading title="Ce n’est pas le site de ce livrable">
+      Le panneau Kora s’ouvre, pour l’administrateur comme pour le décideur, sur le site enregistré pour ce livrable (en https, ou sur cet ordinateur).
+      {origin ? ` Administrateur : pour commenter sur ${origin}, créez dans Kora une nouvelle version du livrable à cette adresse, puis partagez-la.` : ""}
+    </GateHeading>
+  );
+}
+
 /** A step: the deliverable it opens, a real title and one sentence. */
-export function GateHeading({ deliverable, title, children }: { deliverable?: string; title: string; children?: React.ReactNode }) {
+export function GateHeading({ deliverable, title, children }: { deliverable?: string; title: React.ReactNode; children?: React.ReactNode }) {
   return (
     <div className="gate-heading">
       {deliverable && (

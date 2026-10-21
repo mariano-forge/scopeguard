@@ -59,7 +59,7 @@ export function AuthShell({
             <main className="auth-plain-body">
               <div className="auth-card">{children}</div>
             </main>
-            {showcase && <p className="auth-plain-foot">Seules les personnes invitées par l’agence accèdent à cette revue.</p>}
+            {showcase && <p className="auth-plain-foot">Réservé aux personnes invitées sur cette revue.</p>}
           </div>
         </div>
       </div>

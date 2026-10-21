@@ -37,10 +37,12 @@ import { BrowserView, type HomeOverview } from "./BrowserView";
 import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
 import { todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
-import { HomeSidebar, Notifications, ProjectSidebar, type ClientFeedback, type PanelMode, type SidebarLivrable, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
+import { HomeSidebar, Notifications, ProjectSidebar, type ClientFeedback, type NewVersion, type PanelMode, type SidebarLivrable, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
 import { href, hrefForRecord, livrableIdOf, notificationHref, parseAgencyPath, versionsOfLivrable } from "./routes";
-import { MAX_FILE_BYTES, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
+import { MAX_FILE_BYTES, deliverableKinds, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
 import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialog";
+import { LinkVersionDialog } from "./LinkVersionDialog";
+import { NoDeciderBanner } from "./NoDeciderBanner";
 import { NewProjectDialog } from "./NewProjectDialog";
 import { MobileBar, mobileTitle } from "./MobileBar";
 import { useArrivalToast } from "./useArrivalToast";
@@ -403,6 +405,8 @@ export function AgencyApp() {
   const [clientError, setClientError] = useState("");
   const [deliverableError, setDeliverableError] = useState("");
   const [pendingImport, setPendingImport] = useState<{ file: File; type: DeliverableType } | null>(null);
+  /** « Nouvelle version » of a « Lien »: its address is asked for. */
+  const [linkVersionOpen, setLinkVersionOpen] = useState(false);
   const [canvasTool, setCanvasTool] = useState<CanvasTool>("remark");
   /** The selected thread is open on the canvas. */
   const [threadOpen, setThreadOpen] = useState(false);
@@ -1045,9 +1049,9 @@ export function AgencyApp() {
     router.push(hrefForRecord(created, [created, ...deliverables]));
   }
 
-  async function confirmImport(mode: ImportMode, source = pendingImport) {
+  async function confirmImport(mode: ImportMode, source: { file?: File; url?: string; type: DeliverableType } | null = pendingImport) {
     if (!source) return;
-    const { file, type } = source;
+    const { file, url, type } = source;
     const activeDeliverable = currentDeliverable;
     const sameDeliverableVersions = deliverables.filter(
       (deliverable) => deliverable.projectId === selectedProjectId && deliverable.name === activeDeliverable?.name,
@@ -1058,19 +1062,20 @@ export function AgencyApp() {
     const id = Date.now();
     // A new version is stored with its deliverable (the id of its first version); a new deliverable is its own.
     const livrableId = mode === "version" && activeDeliverable ? livrableIdOf(activeDeliverable, deliverables) : id;
-    const fileData = await uploadFile(file, { kind: "version", projectId: selectedProjectId, livrableId, version: nextVersion });
-    if (!fileData) return;
+    const fileData = file ? await uploadFile(file, { kind: "version", projectId: selectedProjectId, livrableId, version: nextVersion }) : undefined;
+    if (file && !fileData) return;
+    const content = { id, type, size: file?.size ?? 0, ...(fileData ? { fileData } : {}), ...(url ? { url } : {}) };
     // A new version freezes the earlier ones (src/db/workspaceActions.ts).
     const result =
       mode === "version" && activeDeliverable
-        ? await agencyAction(`deliverables/${activeDeliverable.id}/versions`, "POST", { id, type, size: file.size, fileData })
-        : await agencyAction("deliverables", "POST", { id, projectId: selectedProjectId, name: file.name, type, size: file.size, fileData });
+        ? await agencyAction(`deliverables/${activeDeliverable.id}/versions`, "POST", content)
+        : await agencyAction("deliverables", "POST", { ...content, projectId: selectedProjectId, name: file?.name ?? "" });
     setPendingImport(null);
     if (!result?.id) return;
     // A new version is shared by choice, with one click: the people of the previous one are proposed.
     const previous = mode === "version" && activeDeliverable ? previousPeople(activeDeliverable, nextVersion, deliverables, reviewLinks) : null;
     if (previous) setReshare({ deliverableId: result.id, version: nextVersion, previousVersion: previous.version, people: previous.people });
-    const imported = { id: result.id, projectId: selectedProjectId, name: mode === "version" ? activeDeliverable?.name ?? file.name : file.name, version: nextVersion };
+    const imported = { id: result.id, projectId: selectedProjectId, name: (mode === "version" ? activeDeliverable?.name : undefined) ?? file?.name ?? "", version: nextVersion };
     router.push(hrefForRecord(imported, [imported, ...deliverables]));
   }
 
@@ -1119,6 +1124,7 @@ export function AgencyApp() {
       page: spot?.page ?? 1,
       position: spot ? { x: spot.x, y: spot.y } : undefined,
       area: spot?.area,
+      pinnedOn: spot?.pinnedOn,
     });
     if (!result?.id) return;
     setSelectedId(result.id);
@@ -1740,9 +1746,17 @@ export function AgencyApp() {
   const latestVersionRecord = viewVersions[0];
 
   // Under the deliverable name (panel title): shortcuts for this deliverable only.
+  // Shared with no one yet: first the one-click offer to the previous version's people.
+  const shareThisVersion = () =>
+    currentDeliverable && reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]?.invites?.length ? openShareDialog() : shareCurrentVersion();
+  // A version is of its deliverable's nature: a file of the same kind, or a new address for a « Lien ».
+  const newVersion: NewVersion =
+    currentDeliverable?.type === "Link"
+      ? { onSelect: () => setLinkVersionOpen(true) }
+      : { onFile: importVersionFile, accept: currentDeliverable ? deliverableKinds[currentDeliverable.type]?.accept : undefined };
   const livrableMenu: MenuEntry[] = [
     { kind: "section", label: "Ce livrable" },
-    { label: "Importer une nouvelle version", icon: <Upload />, onFile: importVersionFile, accept: "application/pdf,image/*,video/*" },
+    { label: "Importer une nouvelle version", icon: <Upload />, ...newVersion },
     { label: "Partager la revue", icon: <Share2 />, onSelect: openShareDialog },
     { kind: "section", label: "Suivi" },
     { label: "Rouvrir la validation", icon: <RotateCcw />, onSelect: () => { setChangesMessage(""); setChangesOpen(true); } },
@@ -1762,7 +1776,7 @@ export function AgencyApp() {
   const systemMenu: MenuEntry[] = [
     { kind: "section", label: "Nouveau" },
     { label: "Nouveau livrable", icon: <FilePlus />, onSelect: () => setNewDeliverableOpen(true) },
-    { label: "Nouvelle version", icon: <Upload />, onFile: importVersionFile, accept: "application/pdf,image/*,video/*" },
+    { label: "Nouvelle version", icon: <Upload />, ...newVersion },
     { kind: "section", label: "Fichier" },
     { label: "Synthèse & export", icon: <FileCheck />, onSelect: () => setProofOpen(true) },
     { label: "Historique & journal", icon: <ScrollText />, onSelect: () => setHistoryOpen(true) },
@@ -1811,6 +1825,16 @@ export function AgencyApp() {
         defaultSpaceId={selectedClientId}
         fixedSpace={view.kind === "client" ? clients.find((client) => client.id === view.clientId) : undefined}
         onClose={() => setNewProjectOpen(false)}
+      />
+    )}
+    {linkVersionOpen && currentDeliverable?.type === "Link" && (
+      <LinkVersionDialog
+        url={currentDeliverable.url ?? ""}
+        onClose={() => setLinkVersionOpen(false)}
+        onCreate={async (url) => {
+          await confirmImport("version", { url, type: "Link" });
+          setLinkVersionOpen(false);
+        }}
       />
     )}
     {newDeliverableOpen && (
@@ -1872,7 +1896,7 @@ export function AgencyApp() {
           canvasHref={href.deliverable(selectedProject.id, livrableRootId)}
           onNavigate={(target) => router.push(target)}
           livrables={projectLivrables}
-          onImportVersion={importVersionFile}
+          newVersion={newVersion}
           onNewLivrable={() => setNewDeliverableOpen(true)}
         />
       ) : (
@@ -1942,7 +1966,11 @@ export function AgencyApp() {
             <ViewTransition name={`livrable-${livrableRootId}`} share="kora-open" default="none">
             <ReviewCanvas
               deliverable={currentDeliverable}
-              siteSetup={currentDeliverable.type === "Link" && currentDeliverable.url ? <SiteToolbarSnippet deliverableId={currentDeliverable.id} siteUrl={currentDeliverable.url} /> : undefined}
+              siteSetup={
+                currentDeliverable.type === "Link" && currentDeliverable.url ? (
+                  <SiteToolbarSnippet siteUrl={currentDeliverable.url} />
+                ) : undefined
+              }
               comments={activeComments}
               selectedId={selectedComment?.id ?? null}
               isUnread={(comment) => unreadIn(comment as Comment) > 0}
@@ -1992,6 +2020,10 @@ export function AgencyApp() {
               }
               overlay={
                 <>
+                  {/* No decider on this version yet: told at the top of the canvas, whatever the deliverable. */}
+                  {!isReadOnlyVersion && linkDeciders(reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]).length === 0 && (
+                    <NoDeciderBanner key={`${currentDeliverable.id}:${currentDeliverable.version}`} version={`${currentDeliverable.id}:${currentDeliverable.version}`} onInvite={shareThisVersion} />
+                  )}
                   {isReadOnlyVersion && latestVersionRecord && (
                     <div className="canvas-banner" role="status">
                       <span className="canvas-banner-icon" aria-hidden="true">
@@ -2114,8 +2146,9 @@ export function AgencyApp() {
                 );
               }}
               onAddRequest={isReadOnlyVersion ? undefined : setNewRequestKind}
-              // Shared with no one yet: first the one-click offer to the previous version's people.
-              onShare={() => (currentDeliverable && reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]?.invites?.length ? openShareDialog() : shareCurrentVersion())}
+              onShare={shareThisVersion}
+              // The page the client sees, in a new tab, once its link is saved (read only for a member).
+              onPreview={() => void ensureReviewLink().then((link) => link && window.open(`/review/${link.token}`, "_blank", "noopener"))}
               width={panelWidths.inspector}
               onResize={(width) => resizePanel("inspector", width)}
             />
@@ -2525,7 +2558,8 @@ export function AgencyApp() {
           <ShareDialog
             open={shareOpen || shareFromBell}
             onClose={closeShare}
-            subject={currentDeliverable ? `« ${currentDeliverable.name} » (V${String(currentDeliverable.version).padStart(2, "0")})` : "cette version"}
+            // The deliverable, not its file name: a long one would fill the sentence.
+            subject={currentDeliverable ? `ce livrable (V${String(currentDeliverable.version).padStart(2, "0")})` : "cette version"}
             link={reviewLink}
             readOnly={isReadOnlyVersion}
             canManage={canManage}
@@ -2556,6 +2590,8 @@ export function AgencyApp() {
               closeShare();
               void agencyAction(`deliverables/${reviewLink.deliverableId ?? currentDeliverable.id}/review-link`, "DELETE").then((result) => result && toast("Lien de revue révoqué"));
             }}
+            lastReminderAt={reviewLink?.lastReminderAt ?? null}
+            onRemind={() => void remindClient()}
           />
 
           {(() => {
@@ -2718,6 +2754,15 @@ export function AgencyApp() {
   }
 
   /** Accepts (the address is invited and receives its link) or refuses a request for access. */
+  /** Mails every invited client a reminder with their personal link (once a day per link, checked by the server). */
+  async function remindClient() {
+    if (isReadOnlyVersion || !reviewLink?.invites?.length) return;
+    const result = await callReviewAccess("remind", { linkKey: linkKeyOf(reviewLink) });
+    if (!result) return;
+    const count = reviewLink.invites.length;
+    toast(count > 1 ? `Relance envoyée à ${count} personnes` : `Relance envoyée à ${reviewLink.invites[0]?.email}`);
+  }
+
   async function decideAccessRequest(request: AccessRequest, decision: "accepted" | "refused") {
     const result = await callReviewAccess("requests", { linkKey: request.linkKey, email: request.email, decision });
     if (!result) return;

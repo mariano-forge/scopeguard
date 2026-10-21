@@ -5,6 +5,7 @@
 
 import { and, eq, inArray } from "drizzle-orm";
 import type { Entity, ListChange, SharedState, StateChanges } from "@/lib/sharedState";
+import { undeployedSiteProblem, withoutToolbarFlag } from "@/lib/siteReview";
 import { id, noChanges, text, trail, type Data } from "./actions";
 import type { Db } from "./client";
 import { clients, deliverables, projects, storedFiles } from "./schema";
@@ -26,7 +27,8 @@ export type WorkspaceAction =
   | { type: "project.move"; projectId: number; clientId: number }
   | { type: "project.delete"; projectId: number }
   | ({ type: "livrable.create"; id?: number; projectId: number; name: string; url?: string; coverData?: string } & NewFile)
-  | ({ type: "version.import"; livrableId: number; id?: number; fileData: string } & NewFile)
+  // A version is of its deliverable's nature: a « Lien » by its address, any other kind by its file.
+  | ({ type: "version.import"; livrableId: number; id?: number; fileData?: string; url?: string } & NewFile)
   | { type: "livrable.rename"; livrableId: number; name: string }
   | { type: "livrable.move"; livrableId: number; projectId: number }
   | { type: "livrable.delete"; livrableId: number }
@@ -91,7 +93,10 @@ export function readWorkspaceAction(type: WorkspaceAction["type"], body: Data, p
     case "version.import": {
       const kind = deliverableType(body.type);
       const fileData = fileHref(body.fileData);
-      return deliverableId && kind && fileData ? { type, livrableId: deliverableId, id: id(body.id), kind, size: size(body.size), fileData } : null;
+      const url = webAddress(body.url);
+      if (!deliverableId || !kind) return null;
+      if (kind === "Link" ? !url || body.fileData !== undefined : !fileData || body.url !== undefined) return null;
+      return { type, livrableId: deliverableId, id: id(body.id), kind, size: size(body.size), fileData, url };
     }
     case "livrable.rename":
       return deliverableId && name ? { type, livrableId: deliverableId, name } : null;
@@ -250,6 +255,8 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
     }
     case "livrable.create": {
       if (!project(action.projectId)) return refused("Projet introuvable.", 404);
+      const undeployed = action.kind === "Link" && action.url ? undeployedSiteProblem(action.url) : null;
+      if (undeployed) return refused(undeployed, 400);
       const files = [action.fileData, action.coverData].filter((href): href is string => Boolean(href));
       if (!(await ownFiles(db, org, files))) return refused("Fichier introuvable.", 404);
       const recordId = await freeId(db, deliverables, org, action.id);
@@ -265,7 +272,7 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
           importedAt: importedNow(),
           locked: false,
           ...(action.fileData ? { fileData: action.fileData } : {}),
-          ...(action.url ? { url: action.url } : {}),
+          ...(action.url ? { url: action.kind === "Link" ? withoutToolbarFlag(action.url) : action.url } : {}),
           ...(action.coverData ? { coverData: action.coverData } : {}),
         },
       ]);
@@ -274,7 +281,9 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
     case "version.import": {
       const versions = versionsOf(state, action.livrableId);
       if (!versions[0]) return refused("Livrable introuvable.", 404);
-      if (!(await ownFiles(db, org, [action.fileData]))) return refused("Fichier introuvable.", 404);
+      if (action.fileData && !(await ownFiles(db, org, [action.fileData]))) return refused("Fichier introuvable.", 404);
+      const undeployed = action.url ? undeployedSiteProblem(action.url) : null;
+      if (undeployed) return refused(undeployed, 400);
       const recordId = await freeId(db, deliverables, org, action.id);
       const created = {
         id: recordId,
@@ -286,7 +295,8 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
         status: "En attente client",
         importedAt: importedNow(),
         locked: false,
-        fileData: action.fileData,
+        ...(action.fileData ? { fileData: action.fileData } : {}),
+        ...(action.url ? { url: withoutToolbarFlag(action.url) } : {}),
       };
       // The earlier versions are frozen: the client reviews the new one.
       upsert(changes, "deliverables", [created, ...versions.map((record) => ({ ...record, status: "Remplacée", locked: true }))]);

@@ -5,6 +5,8 @@ import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FormError, Modal } from "@/components/modal";
+import { undeployedSiteProblem, withoutToolbarFlag } from "@/lib/siteReview";
+import { SiteScriptIntro } from "./SiteToolbarSnippet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DeliverableCover } from "@/components/DeliverableCover";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
@@ -83,6 +85,8 @@ export function NewDeliverableDialog({
       return setError("Un livrable porte déjà ce nom dans ce projet. Pour le mettre à jour, importez une nouvelle version depuis le livrable.");
     if (type === "Link") {
       if (!isHttpUrl(url.trim())) return setError("Saisissez une adresse complète, par exemple https://exemple.fr.");
+      const undeployed = undeployedSiteProblem(url.trim());
+      if (undeployed) return setError(undeployed);
     } else {
       if (!file) return setError(`Importez le fichier (${kind.hint}).`);
       if (kindFromFile(file) !== type) return setError(`Ce fichier ne correspond pas au type « ${kind.label} ».`);
@@ -93,7 +97,7 @@ export function NewDeliverableDialog({
       return setError(`Couverture trop lourde : ${formatBytes(cover.size)} (maximum ${formatBytes(MAX_COVER_BYTES)}).`);
     setSaving(true);
     try {
-      await onCreate({ name: name.trim(), type, file: type === "Link" ? undefined : (file ?? undefined), url: type === "Link" ? url.trim() : undefined, cover: cover ?? undefined, projectId });
+      await onCreate({ name: name.trim(), type, file: type === "Link" ? undefined : (file ?? undefined), url: type === "Link" ? withoutToolbarFlag(url.trim()) : undefined, cover: cover ?? undefined, projectId });
     } catch {
       setError("Le livrable n’a pas pu être enregistré.");
       setSaving(false);
@@ -162,9 +166,13 @@ export function NewDeliverableDialog({
         </fieldset>
 
         {type === "Link" ? (
-          <Field id="deliverable-url" label="Adresse de la page">
-            <Input id="deliverable-url" type="url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://staging.client.fr/accueil" />
-          </Field>
+          <>
+            <Field id="deliverable-url" label="Adresse de la page">
+              <Input id="deliverable-url" type="url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://staging.client.fr/accueil" />
+            </Field>
+            {/* The toolbar's line before the deliverable, not after: the same for all the agency's sites. */}
+            <SiteScriptIntro />
+          </>
         ) : (
           <div className="upload-field">
             <span className="upload-label">Fichier</span>

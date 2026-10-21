@@ -2,10 +2,13 @@
 //
 //   <script src="https://<kora>/kora-toolbar.js" data-site="<the deliverable's key>" defer></script>
 //
-// and sends its client the site's address with ?kora. The toolbar then shows on that device: a button
-// opens Kora's panel (/review/<token>/site, in a frame on Kora's origin), where the client verifies their
-// address by code and writes. As on Kora's canvas, the bar has two tools: « Naviguer » (V, the site works
-// as usual) and « Commenter » (C, every click on an element opens a request, until « Naviguer » or Escape).
+// and sends its client the site's address with ?kora. The toolbar then shows on that device, with Kora in
+// a frame on Kora's origin (/review/<token>/site), where the visitor verifies their address by code. The
+// frame takes two shapes: a bubble next to a pin or a click, where a comment is written or read, as on
+// Kora's canvas; or the list of the page's comments on the right (the « Commentaires » button). Kora's
+// logo unfolds the bar; once the visitor is in, without the list, which would hide the page. As on the
+// canvas, the bar has two tools: « Naviguer » (V, the site works as usual) and « Commenter » (C, every
+// click on an element opens a comment, until « Naviguer » or Escape); a first-time help says so.
 //
 // This script runs in the agency's page, next to its other scripts: it never receives what the
 // client writes, only where to draw the pins. Every message is checked (origin and window).
@@ -63,22 +66,37 @@
       /* Folded, the bar is the « Kora » pill alone; Kora open, it unfolds with the tools. */
       .tools { display: flex; align-items: center; gap: 2px; max-width: 0; overflow: hidden; opacity: 0; visibility: hidden;
         transition: max-width .2s ease-out, opacity .2s ease-out, visibility .2s; }
-      .bar.expanded .tools { max-width: 120px; opacity: 1; visibility: visible; }
+      .bar.expanded .tools { max-width: 160px; opacity: 1; visibility: visible; }
       .bar button { display: grid; place-items: center; height: 34px; min-width: 34px; padding: 0 12px; border: 0; border-radius: 999px;
         background: transparent; color: ${colors.paper}; }
-      .bar button:hover, .bar button[aria-pressed="true"] { background: rgb(255 255 255 / .16); }
+      .bar button:hover { background: rgb(255 255 255 / .16); }
+      /* The tool in use, the list shown: in Kora's blue, as on Kora's canvas. */
+      .bar button[aria-pressed="true"] { color: ${colors.action}; }
+      .bar .list svg[hidden] { display: none; }
       .bar svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      /* Kora's logo (src/components/KoraMark.tsx): a third of a turn as the bar unfolds, back as it folds. */
+      .bar .launcher { display: inline-flex; align-items: center; gap: 6px; padding: 0 12px 0 9px; }
+      .bar .launcher svg { width: 18px; height: 18px; fill: currentColor; stroke: none; transition: transform .36s cubic-bezier(0.23, 1, 0.32, 1); }
+      .bar.expanded .launcher svg { transform: rotate(120deg); }
+      @media (prefers-reduced-motion: reduce) { .bar .launcher svg { transition: none; } }
       .bar .sep { width: 1px; height: 20px; background: rgb(255 255 255 / .25); }
       .hint { position: fixed; right: 16px; bottom: 64px; display: none; padding: 8px 12px; border-radius: 8px; background: ${colors.ink};
         color: ${colors.paper}; font: 500 13px/1.3 system-ui, sans-serif; box-shadow: 0 4px 16px rgb(0 0 0 / .2); }
       .hint.on { display: block; }
-      .panel { position: fixed; top: 0; right: 0; width: min(380px, 100vw); height: 100vh; display: none; background: ${colors.paper};
+      /* The first-time help: what each tool does, above the bar. */
+      .coach { position: fixed; right: 16px; bottom: 64px; display: none; width: min(300px, calc(100vw - 32px)); padding: 14px 16px; border-radius: 12px;
+        background: ${colors.paper}; color: ${colors.ink}; border: 1px solid ${colors.border}; box-shadow: 0 8px 28px rgb(0 0 0 / .18);
+        font: 400 13px/1.45 system-ui, sans-serif; }
+      .coach.on { display: grid; gap: 8px; }
+      .coach p { margin: 0; }
+      .coach b { font-weight: 650; }
+      .coach button { justify-self: end; height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: ${colors.focus}; color: ${colors.paper}; }
+      /* Kora's frame: the list on the right, or a bubble next to the pin or the click (placed by placeFrame()). */
+      .panel { position: fixed; top: 0; right: 0; box-sizing: border-box; width: min(380px, 100vw); height: 100vh; display: none; background: ${colors.paper};
         border-left: 1px solid ${colors.border}; box-shadow: -8px 0 24px rgb(0 0 0 / .12); }
       .panel.open { display: block; }
+      .panel.bubble { right: auto; border: 1px solid ${colors.border}; border-radius: 12px; overflow: hidden; box-shadow: 0 12px 36px rgb(0 0 0 / .2); }
       .panel iframe { width: 100%; height: 100%; border: 0; }
-      /* Outside the panel, on its left edge: Kora's panel keeps its whole header. */
-      .close { position: absolute; top: 12px; left: -40px; width: 32px; height: 32px; border-radius: 999px; border: 1px solid ${colors.border};
-        background: ${colors.paper}; color: ${colors.ink}; box-shadow: 0 2px 8px rgb(0 0 0 / .15); }
       .highlight { position: fixed; pointer-events: none; outline: 2px solid ${colors.action}; background: rgb(48 168 255 / .12); display: none; }
       /* Kora's pins (globals.css .canvas-pin): a tag pointing at its spot, by status, in a solid color with a
          white ring and a fine dark outline, readable on any page. The agency in blue, the client in coral. */
@@ -95,18 +113,34 @@
     </style>
     <div class="pins"></div>
     <div class="highlight"></div>
-    <p class="hint" role="status">Cliquez sur un élément de la page · V ou Échap pour naviguer</p>
+    <p class="hint" role="status">Cliquez sur l’élément à commenter · Échap pour naviguer</p>
+    <div class="coach" role="dialog" aria-label="Prise en main">
+      <p><b>Naviguer</b> : le site fonctionne normalement, vous pouvez cliquer partout.</p>
+      <p><b>Commenter</b> : cliquez sur un élément de la page pour y laisser un commentaire. Il s’ouvre à côté.</p>
+      <p><b>Commentaires</b> : la liste des commentaires de la page, quand vous voulez la voir.</p>
+      <p><b>Kora</b> : replie la barre.</p>
+      <button class="coach-ok" type="button">Compris</button>
+    </div>
     <div class="bar" role="toolbar" aria-label="Outils Kora">
       <span class="tools">
         <button class="tool" data-tool="move" type="button" aria-label="Naviguer" title="Naviguer · V" aria-pressed="true"></button>
         <button class="tool" data-tool="remark" type="button" aria-label="Commenter" title="Commenter : cliquez sur un élément · C" aria-pressed="false"></button>
+        <button class="list" type="button" aria-label="Commentaires" title="Commentaires de la page" aria-pressed="false"></button>
+        <button class="help" type="button" aria-label="Aide" title="Aide" aria-expanded="false"></button>
         <span class="sep" aria-hidden="true"></span>
       </span>
-      <button class="launcher" type="button" aria-label="Ouvrir Kora" aria-expanded="false" title="Glisser pour déplacer">Kora</button>
+      <button class="launcher" type="button" aria-label="Ouvrir Kora" aria-expanded="false" title="Glisser pour déplacer">
+        <svg viewBox="-300 -300 600 600" aria-hidden="true">
+          <path d="M-228.4 -194.4A300 300 0 0 1 228.4 -194.4L167.8 -145.3A222 222 0 0 0 -167.8 -145.3Z" />
+          <path d="M-98.2 272.9A290 290 0 0 1 -283.7 -60.3L-209.1 -35A212 212 0 0 0 -79.4 196.6Z" />
+          <path d="M283.7 -60.3A290 290 0 0 1 98.2 272.9L79.4 196.6A212 212 0 0 0 209.1 -35Z" />
+          <circle r="100" />
+        </svg>
+        Kora
+      </button>
     </div>
     <div class="panel" role="dialog" aria-label="Kora">
       <iframe title="Kora"></iframe>
-      <button class="close" type="button" aria-label="Fermer Kora">×</button>
     </div>`;
   const panel = root.querySelector(".panel");
   const frame = root.querySelector("iframe");
@@ -125,17 +159,103 @@
   };
   const bar = root.querySelector(".bar");
   const launcher = root.querySelector(".launcher");
-  /** Kora open: the panel, and the bar unfolded with its tools; closed: the « Kora » pill alone, browsing. */
-  const open = (on) => {
-    panel.classList.toggle("open", on);
+
+  // ——— Kora's frame: the list, or a bubble ———
+
+  /** The bar unfolded by Kora's logo. */
+  let barOpen = false;
+  /** The list of the page's comments is shown (the « Commentaires » button). */
+  let listOpen = false;
+  /** The visitor is in (the panel says so): until then, Kora opens on the panel, where they verify their address. */
+  let signedIn = false;
+  /** While Kora writes or shows a comment: where its bubble stands, a pin ({ pin }) or a click (page coordinates). */
+  let bubble = null;
+  /** Where the next bubble goes: set by the click or the pin that asks for it, used when Kora opens it. */
+  let nextAnchor = null;
+  let bubbleHeight = 240;
+  /** The frame as Kora's state wants it: shown, as the list or as a bubble beside its pin or click. */
+  function placeFrame() {
+    panel.classList.toggle("open", listOpen || Boolean(bubble));
+    panel.classList.toggle("bubble", Boolean(bubble));
+    if (!bubble) {
+      panel.removeAttribute("style");
+      return;
+    }
+    let point = null;
+    if (bubble.pin !== undefined) {
+      const pin = pinsLayer.querySelector(`[data-id="${Number(bubble.pin)}"]`);
+      if (pin) {
+        const box = pin.getBoundingClientRect();
+        point = { x: box.right, y: box.top };
+      }
+    } else point = { x: bubble.x - window.scrollX, y: bubble.y - window.scrollY };
+    // An element gone from the page: the bubble stands at the top of the window.
+    if (!point) point = { x: window.innerWidth / 2, y: 72 };
+    const width = Math.min(340, window.innerWidth - 16);
+    const height = Math.min(bubbleHeight, window.innerHeight - 16);
+    let left = point.x + 12;
+    if (left + width > window.innerWidth - 8) left = Math.max(8, point.x - 12 - width);
+    const top = Math.min(Math.max(8, point.y - 16), window.innerHeight - height - 8);
+    Object.assign(panel.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
+  }
+  /** The bar unfolds with its tools while Kora is used: opened, its list, a bubble, or the comment tool. */
+  const unfolded = () => barOpen || listOpen || Boolean(bubble) || tool === "remark";
+  function refreshBar() {
+    const on = unfolded();
     bar.classList.toggle("expanded", on);
-    layout();
     launcher.setAttribute("aria-expanded", String(on));
     launcher.setAttribute("aria-label", on ? "Réduire Kora" : "Ouvrir Kora");
-    if (!on) setTool("move");
-  };
-  launcher.addEventListener("click", () => open(!panel.classList.contains("open")));
+    listButton.setAttribute("aria-pressed", String(listOpen));
+    // Shown, the list's button closes it: its icon says so.
+    listButton.title = listOpen ? "Fermer les commentaires" : "Commentaires de la page";
+    listIcon.toggleAttribute("hidden", listOpen);
+    closeIcon.toggleAttribute("hidden", !listOpen);
+    if (on) showHelpOnce();
+    layout();
+  }
+  /** The list shown or put away; the bar stays as it is. Shown, an open comment moves into it; put away, it closes. */
+  function showList(on) {
+    listOpen = on;
+    if (on) bubble = null;
+    else tell({ type: "kora:dismiss" });
+    tell({ type: "kora:docked", on });
+    placeFrame();
+    refreshBar();
+  }
+  /** Kora's logo: unfolds the bar (with the panel while the visitor is not in), or folds everything back. */
+  function open(on) {
+    barOpen = on;
+    if (on) return showList(listOpen || !signedIn);
+    bubble = null;
+    setTool("move");
+    showList(false);
+  }
+  launcher.addEventListener("click", () => open(!unfolded()));
+  const listButton = root.querySelector(".list");
+  listButton.addEventListener("click", () => showList(!listOpen));
   const hint = root.querySelector(".hint");
+
+  // ——— The first-time help ———
+
+  const coach = root.querySelector(".coach");
+  const helpButton = root.querySelector(".help");
+  const helpKey = "kora-toolbar-help";
+  const showHelp = (on) => {
+    coach.classList.toggle("on", on);
+    helpButton.setAttribute("aria-expanded", String(on));
+    layout();
+  };
+  function showHelpOnce() {
+    try {
+      if (localStorage.getItem(helpKey) === "seen") return;
+      localStorage.setItem(helpKey, "seen");
+    } catch {
+      // No storage (private mode): the help shows at each visit.
+    }
+    showHelp(true);
+  }
+  helpButton.addEventListener("click", () => showHelp(!coach.classList.contains("on")));
+  root.querySelector(".coach-ok").addEventListener("click", () => showHelp(false));
   // Kora's canvas tools (src/app/(agency)/editor/ReviewCanvas.tsx): Lucide's MousePointer2 and MessageCirclePlus.
   const toolIcons = {
     move: [["path", { d: "M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" }]],
@@ -146,7 +266,15 @@
     button.append(svgOf(toolIcons[button.dataset.tool]));
     button.addEventListener("click", () => setTool(button.dataset.tool));
   }
-  root.querySelector(".close").addEventListener("click", () => open(false));
+  // Lucide's MessagesSquare for the list, X once it is shown, CircleHelp for the help: drawn as the tools are.
+  const listIcon = svgOf([
+    ["path", { d: "M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z" }],
+    ["path", { d: "M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1" }],
+  ]);
+  const closeIcon = svgOf([["path", { d: "M18 6 6 18" }], ["path", { d: "m6 6 12 12" }]]);
+  closeIcon.setAttribute("hidden", "");
+  listButton.append(listIcon, closeIcon);
+  helpButton.append(svgOf([["circle", { cx: "12", cy: "12", r: "10" }], ["path", { d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" }], ["path", { d: "M12 17h.01" }]]));
 
   // ——— Picking an element ———
 
@@ -198,6 +326,8 @@
     // The tool stays: the next click comments again, as on Kora's canvas. The frame of the hovered
     // element is not part of the capture.
     highlight.style.display = "none";
+    // Kora's bubble opens beside the click.
+    nextAnchor = { x: event.clientX + window.scrollX, y: event.clientY + window.scrollY };
     // Where the click falls on the capture of the window, which follows once made.
     const pick = ++picks;
     anchor.view = { x: clamp((event.clientX / window.innerWidth) * 100), y: clamp((event.clientY / window.innerHeight) * 100) };
@@ -274,9 +404,10 @@
   function onKey(event) {
     if (event.key === "Escape") setTool("move");
   }
-  /** Switches tools: « Commenter » opens the panel and turns every click into a request, until « Naviguer ». */
+  /** Switches tools: « Commenter » turns every click into a request, until « Naviguer ». Not in yet, Kora asks for the address first. */
   function setTool(next) {
     if (next === tool || !toolIcons[next]) return;
+    if (next === "remark" && !signedIn) return showList(true);
     tool = next;
     const commenting = tool === "remark";
     for (const button of toolButtons) button.setAttribute("aria-pressed", String(button.dataset.tool === tool));
@@ -287,8 +418,8 @@
     if (commenting) {
       savedCursor = document.documentElement.style.cursor;
       document.documentElement.style.cursor = "crosshair";
-      open(true);
     } else document.documentElement.style.cursor = savedCursor;
+    refreshBar();
   }
   // C and V, as on Kora's canvas, unless the visitor is typing.
   document.addEventListener("keydown", (event) => {
@@ -360,7 +491,10 @@
       button.setAttribute("aria-label", `${pin.label} #${pin.id}`);
       button.style.left = `${pin.left}px`;
       button.style.top = `${pin.top}px`;
-      button.addEventListener("click", () => (open(true), tell({ type: "kora:open", id: pin.id })));
+      button.addEventListener("click", () => {
+        nextAnchor = { pin: pin.id };
+        tell({ type: "kora:open", id: pin.id });
+      });
       pinsLayer.append(button);
     }
   }
@@ -372,19 +506,35 @@
       // A panel (re)loaded: it knows nothing yet of the page nor of missing elements.
       reported = "";
       tell({ type: "kora:page", url: pageUrl() });
+      tell({ type: "kora:docked", on: listOpen });
       drawPins();
     }
-    else if (data.type === "kora:pins" && Array.isArray(data.pins)) {
+    else if (data.type === "kora:signed") {
+      signedIn = data.in === true;
+      // Out (a session ended): no comment tool until the address is verified again.
+      if (!signedIn) setTool("move");
+    } else if (data.type === "kora:pins" && Array.isArray(data.pins)) {
       pins = data.pins;
       drawPins();
     } else if (data.type === "kora:focus") {
+      // A comment chosen in the list: its pin comes into view, its bubble opens beside it.
+      nextAnchor = { pin: Number(data.id) };
       const button = pinsLayer.querySelector(`[data-id="${Number(data.id)}"]`);
       if (button) {
         button.scrollIntoView({ block: "center", behavior: "smooth" });
         button.classList.add("flash");
         setTimeout(() => button.classList.remove("flash"), 1500);
       }
-    }
+    } else if (data.type === "kora:bubble") {
+      // The list open, the comment shows in it: no bubble over the page.
+      bubble = data.open && !listOpen ? nextAnchor || bubble || { x: window.innerWidth / 2 + window.scrollX, y: window.scrollY + 72 } : null;
+      if (!data.open) nextAnchor = null;
+      placeFrame();
+      refreshBar();
+    } else if (data.type === "kora:size" && Number.isFinite(data.height)) {
+      bubbleHeight = Math.max(120, Math.min(Number(data.height) + 2, 2000));
+      placeFrame();
+    } else if (data.type === "kora:close") showList(false);
   });
 
   // Pages of a single-page site change without reloading; images move elements as they load.
@@ -395,8 +545,10 @@
       tell({ type: "kora:page", url: lastUrl });
     }
     drawPins();
+    if (bubble) placeFrame();
   }, 1000);
-  window.addEventListener("resize", () => (drawPins(), layout()));
+  window.addEventListener("resize", () => (drawPins(), placeFrame(), layout()));
+  window.addEventListener("scroll", () => bubble && placeFrame(), { passive: true });
 
   // ——— Moving the bar ———
 
@@ -418,9 +570,10 @@
     let right = Math.min(Math.max(place.right, margin), Math.max(margin, window.innerWidth - width - margin));
     const bottom = Math.min(Math.max(place.bottom, margin), Math.max(margin, window.innerHeight - height - margin));
     const panelWidth = Math.min(380, window.innerWidth);
-    if (panel.classList.contains("open") && right < panelWidth + 16) right = panelWidth + 16;
+    if (listOpen && !bubble && right < panelWidth + 16) right = panelWidth + 16;
     Object.assign(bar.style, { right: `${right}px`, bottom: `${bottom}px` });
     Object.assign(hint.style, { right: `${right}px`, bottom: `${bottom + height + 8}px` });
+    Object.assign(coach.style, { right: `${right}px`, bottom: `${bottom + height + 8}px` });
   }
   // Unfolding changes its width: placed again once done.
   bar.addEventListener("transitionend", layout);

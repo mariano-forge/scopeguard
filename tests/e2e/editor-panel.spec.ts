@@ -52,6 +52,45 @@ async function editor(browser: Browser) {
   return { page, errors };
 }
 
+test("the requests panel is resized by its edge, with the keyboard too, and keeps its width", async ({ browser }) => {
+  const { page, errors } = await editor(browser);
+  const handle = page.getByRole("separator", { name: "Largeur du panneau des demandes" });
+  const panel = page.getByRole("complementary", { name: "Demandes" });
+  const before = (await panel.boundingBox())!.width;
+  // Dragged 120 px to the left: the panel grows as much.
+  const box = (await handle.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 120, box.y + 200, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => Math.round((await panel.boundingBox())!.width)).toBe(Math.round(before) + 120);
+  await expect(handle).toHaveAttribute("aria-valuenow", String(Math.round(before) + 120));
+  // The keyboard: 16 px a step.
+  await handle.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(async () => Math.round((await panel.boundingBox())!.width)).toBe(Math.round(before) + 104);
+  // The width is kept for the next visit.
+  await page.reload();
+  await expect.poll(async () => Math.round((await page.getByRole("complementary", { name: "Demandes" }).boundingBox())!.width)).toBe(Math.round(before) + 104);
+  expect(errors).toEqual([]);
+});
+
+test("at its narrowest, the requests panel's header keeps its actions in view, none cut on the right", async ({ browser }) => {
+  const { page, errors } = await editor(browser);
+  const handle = page.getByRole("separator", { name: "Largeur du panneau des demandes" });
+  const panel = page.getByRole("complementary", { name: "Demandes" });
+  await handle.focus();
+  for (let step = 0; step < 30; step++) await page.keyboard.press("ArrowRight");
+  await expect(handle).toHaveAttribute("aria-valuenow", "320");
+  for (const name of ["Aperçu client", "Partager la revue", "Ajouter une demande"]) {
+    const [frame, button] = [(await panel.boundingBox())!, (await panel.getByRole("button", { name }).boundingBox())!];
+    expect(button.x + button.width, name).toBeLessThanOrEqual(frame.x + frame.width);
+  }
+  // « + Demande », as the empty list names it.
+  await expect(panel.getByRole("button", { name: "Ajouter une demande" })).toHaveText("Demande");
+  expect(errors).toEqual([]);
+});
+
 test("drafts and closed discussions sit in « Commentaires »; out-of-scope requests filter by status", async ({ browser }) => {
   // A long scenario (views, qualifying, four statuses): more time when the machine is loaded, same checks.
   test.slow();

@@ -1,7 +1,7 @@
 // A client reaches a review with a personal link, a code by mail and their name; nobody else does.
 
 import { expect, test } from "@playwright/test";
-import { addColleague, call, clientAction, codeFor, createAgency, waitForCode, waitForMail, lastMailTo, linkIn, mailsTo, newIp, newPerson, seedState, readState, seedReview, signUp, unique, verifiedClient } from "./helpers";
+import { addColleague, call, clientAction, codeFor, createAgency, waitForCode, lastMailTo, linkIn, mailsTo, newIp, newPerson, seedState, readState, seedReview, signUp, sql, unique, verifiedClient } from "./helpers";
 
 async function sharedReview() {
   const alice = await signUp("Alice Martin");
@@ -77,66 +77,57 @@ test("codes: five wrong tries end a code, one code a minute, uninvited addresses
   expect(mailsTo(email).length).toBe(before);
 
   const stranger = `${unique("bob")}@client.test`;
-  expect((await call(`/api/review/${token}/access/code`, { body: { email: stranger } })).status).toBe(200);
+  const refused = await call(`/api/review/${token}/access/code`, { body: { email: stranger } });
+  expect([refused.status, refused.json]).toEqual([200, { ok: true, invited: false }]);
   expect(mailsTo(stranger)).toEqual([]);
 });
 
-test("an uninvited person asks for access; the agency accepts and they get their link", async () => {
-  const { alice, token, linkKey } = await sharedReview();
-  const email = `${unique("bob")}@client.test`;
-  await call(`/api/review/${token}/access/request`, { body: { email, message: "Je remplace Claire" } });
-  const state = await readState(alice);
-  const requests = state.accessRequests as { email: string; message: string }[];
-  expect(requests.map((request) => request.email)).toContain(email);
-  expect((state.notifications as { message: string }[])[0].message).toContain(email);
-
-  await call("/api/review-access/requests", { person: alice, body: { linkKey, email, decision: "accepted" } });
-  expect(linkIn(lastMailTo(email))).toContain("invitation=");
-  expect(((await readState(alice)).accessRequests as unknown[]).length).toBe(0);
+test("code requests are limited per address: a link cannot be used to test many addresses", async () => {
+  const { token } = await sharedReview();
+  const ip = newIp();
+  const statuses: number[] = [];
+  for (let index = 0; index < 31; index++)
+    statuses.push((await call(`/api/review/${token}/access/code`, { person: { ip }, body: { email: `${unique("essai")}@client.test` } })).status);
+  expect(statuses.slice(0, 30).every((status) => status === 200)).toBe(true);
+  expect(statuses[30]).toBe(429);
 });
 
-test("a copied link: the uninvited person gets no code, asks for access, and the owner and administrators are e-mailed", async ({ browser }) => {
+test("a copied link: the uninvited person gets no code and cannot ask for access; nothing reaches the agency", async ({ browser }) => {
   const { alice, token } = await sharedReview();
   const admin = await addColleague(alice, "Adam Admin", "admin");
-  const member = await addColleague(alice, "Mia Membre", "member");
   const email = `${unique("transmis")}@client.test`;
 
   const { page, errors } = await newPerson(browser);
   await page.goto(`/review/${token}`);
   await page.getByLabel("Votre e-mail").fill(email);
   await page.getByRole("button", { name: "Recevoir un code" }).click();
-  // No code for an address nobody invited; the page says so and leads to the request.
-  await expect(page.getByRole("heading", { name: "Vérifiez vos e-mails" })).toBeVisible();
-  await expect(page.getByText("Il n’est envoyé qu’aux adresses invitées par l’agence")).toBeVisible();
+  // No code for an address nobody invited: the page says so, who to turn to, and offers no request nor form.
+  // The title names the address that has no access.
+  await expect(page.getByRole("heading", { name: `${email} n’est pas invitée sur cette revue` })).toBeVisible();
+  await expect(page.getByText("Rapprochez-vous de l’administrateur pour être invité")).toBeVisible();
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Demander l’accès/ })).toHaveCount(0);
+  // Another address can be tried.
+  await page.getByRole("button", { name: "Modifier l’adresse" }).click();
+  await expect(page.getByLabel("Votre e-mail")).toHaveValue("");
   expect(mailsTo(email)).toEqual([]);
-  await page.getByRole("button", { name: "Demander l’accès à l’agence" }).click();
-  await expect(page.getByLabel("Votre e-mail")).toHaveValue(email);
-  await page.getByLabel("Message (facultatif)").fill("Je remplace Claire");
-  await page.getByRole("button", { name: "Envoyer la demande" }).click();
-  await expect(page.getByRole("heading", { name: "Demande envoyée" })).toBeVisible();
-
-  // The owner and the administrator, not the member; replying writes to the person.
-  for (const manager of [alice, admin]) {
-    const mail = await waitForMail(manager.email, "demande l’accès");
-    expect(mail.replyTo).toBe(email);
-    expect(mail.text).toContain("Je remplace Claire");
-    expect(linkIn(mail)).toMatch(/\/projets\/1\/livrables\/1$/);
-  }
-  expect(mailsTo(member.email).filter((mail) => mail.subject.includes("demande l’accès"))).toEqual([]);
-  // Asking again while the request is pending sends nothing more.
-  await call(`/api/review/${token}/access/request`, { body: { email, message: "Relance" } });
-  expect(mailsTo(alice.email).filter((mail) => mail.subject.includes("demande l’accès"))).toHaveLength(1);
+  // The route is gone too: an address of /api that no route serves.
+  const asked = await call(`/api/review/${token}/access/request`, { body: { email, message: "Je remplace Claire" } });
+  expect([asked.status, asked.json.error]).toEqual([404, "Route inconnue"]);
+  // Nothing recorded, nobody notified nor e-mailed.
+  expect(((await readState(alice)).accessRequests as unknown[]).length).toBe(0);
+  for (const manager of [alice, admin]) expect(mailsTo(manager.email).filter((mail) => mail.subject.includes("demande l’accès"))).toEqual([]);
   expect(errors).toEqual([]);
 });
 
-test("access requests are limited per address: a widely shared link cannot flood the agency", async () => {
-  const { token } = await sharedReview();
-  const ip = newIp();
-  const statuses: number[] = [];
-  for (let index = 0; index < 11; index++)
-    statuses.push((await call(`/api/review/${token}/access/request`, { person: { ip }, body: { email: `${unique("flot")}@client.test` } })).status);
-  expect(statuses.slice(0, 10).every((status) => status === 200)).toBe(true);
-  expect(statuses[10]).toBe(429);
+test("an access request received before is still settled by the agency: accepted, the person gets their link", async () => {
+  const { alice, linkKey } = await sharedReview();
+  const email = `${unique("bob")}@client.test`;
+  await sql("insert into review_access_requests (organization_id, link_key, email, status, message) values ($1, $2, $3, 'pending', $4)", [alice.organizationId, linkKey, email, "Je remplace Claire"]);
+  expect(((await readState(alice)).accessRequests as { email: string }[]).map((request) => request.email)).toContain(email);
+  await call("/api/review-access/requests", { person: alice, body: { linkKey, email, decision: "accepted" } });
+  expect(linkIn(lastMailTo(email))).toContain("invitation=");
+  expect(((await readState(alice)).accessRequests as unknown[]).length).toBe(0);
 });
 
 test("the agency previews read-only; removing an invitation or revoking the link closes the review", async () => {
@@ -168,10 +159,10 @@ test("a personal link asks the code by its invitation: it reaches the invitee; a
   const ip = newIp();
 
   const unknown = await call(`/api/review/${token}/access/code`, { person: { ip }, body: { invitation: "inventee" } });
-  expect(unknown.status).toBe(200);
+  expect([unknown.status, unknown.json]).toEqual([200, { ok: true, invited: false }]);
   const before = mailsTo(email).length;
   const sent = await call(`/api/review/${token}/access/code`, { person: { ip }, body: { invitation } });
-  expect(sent.json).toEqual(unknown.json);
+  expect(sent.json).toEqual({ ok: true, invited: true });
   const code = await waitForCode(email);
   expect(mailsTo(email).length).toBe(before + 1);
 

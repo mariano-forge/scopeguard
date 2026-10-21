@@ -4,10 +4,10 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import { Hand, Maximize, MessageCirclePlus, Minus, Plus } from "lucide-react";
 import { DeliverableContent } from "@/components/DeliverableContent";
-import { SiteBoard } from "./SiteBoard";
+import { SiteBoard, sitePages } from "./SiteBoard";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { areaFromPin } from "@/lib/pinArea";
-import { CommentPin, TargetHighlight, describeTarget, type Area, type TargetBox, type ThreadComment } from "./CanvasComments";
+import { CommentPin, TargetHighlight, describeTarget, itemLabel, type Area, type TargetBox, type ThreadComment } from "./CanvasComments";
 import { Hint } from "@/components/hint";
 
 /** Canvas tools: move (pan, open threads) and comment (default). Requests are qualified from a comment. */
@@ -19,6 +19,8 @@ export type CanvasComposer = {
   y: number;
   target: string;
   area?: Area;
+  /** On a « Lien »: the request whose capture the comment is dropped on (SiteBoard sitePages). */
+  pinnedOn?: number;
 };
 type CanvasComment = ThreadComment & { page?: number };
 type ViewedDeliverable = { name: string; type: DeliverableType; fileData?: string; url?: string; coverData?: string };
@@ -32,12 +34,12 @@ const areaBox = (area: Area): TargetBox => ({ left: area.x, top: area.y, width: 
  */
 export function ReviewCanvas({
   deliverable,
-  comments,
+  comments: givenComments,
   selectedId,
   threadOpen,
   readOnly,
-  tool,
-  tools,
+  tool: chosenTool,
+  tools: offeredTools,
   onToolChange,
   composer,
   onCompose,
@@ -48,7 +50,7 @@ export function ReviewCanvas({
   transformRef,
   overlay,
   toolbarExtra,
-  canMove,
+  canMove: movable,
   isUnread,
   onMovePin,
   siteSetup,
@@ -82,6 +84,31 @@ export function ReviewCanvas({
   /** A « Lien », for the agency: how to set the staging site's toolbar up. */
   siteSetup?: React.ReactNode;
 }) {
+  // A « Lien » is commented on its staging site, with the toolbar: here, its requests are pages of the
+  // canvas (SiteBoard), their pins where they were placed on the site. The agency (`siteSetup`) may pin a
+  // comment on a capture too, tied to its request; the client comments on the site only.
+  const site = deliverable.type === "Link";
+  const placement = site ? sitePages(givenComments) : null;
+  const comments = placement ? placement.comments : givenComments;
+  const pinning = site && Boolean(siteSetup);
+  const tool: CanvasTool = site && !pinning ? "move" : chosenTool;
+  const tools = site && !pinning ? offeredTools.filter((option) => option === "move") : offeredTools;
+  // On a « Lien », only a pin the agency dropped in Kora moves, on its own capture: one placed on the
+  // site marks where it was clicked there.
+  const canMove = site ? (comment: CanvasComment) => (comment as CanvasComment & { pinnedOn?: number }).pinnedOn !== undefined && Boolean(movable?.(comment)) : movable;
+  const movePin = (commentId: number, page: number, x: number, y: number) => {
+    if (site && comments.find((comment) => comment.id === commentId)?.page !== page) return;
+    onMovePin?.(commentId, page, x, y);
+  };
+  /** The request whose capture is the page `page` of a « Lien »'s canvas. */
+  const requestOnPage = (page: number) => placement?.groups.flatMap((group) => group.items).find((item) => item.page === page)?.comment;
+  const compose = (next: CanvasComposer) => {
+    if (!site) return onCompose(next);
+    const request = requestOnPage(next.page);
+    if (!request) return;
+    const anchor = (request as CanvasComment & { site?: { url: string } }).site;
+    onCompose({ ...next, pinnedOn: request.id, target: anchor ? `${anchor.url} · ${itemLabel(request)} #${request.id}` : next.target });
+  };
   const panelRef = useRef<HTMLElement>(null);
   const [zoom, setZoom] = useState(100);
   const [dragging, setDragging] = useState(false);
@@ -141,9 +168,11 @@ export function ReviewCanvas({
         ? "image"
         : deliverable.type === "Video" && deliverable.fileData
           ? "video"
-          : (deliverable.type === "Link" && deliverable.url) || (deliverable.type === "Doc" && deliverable.fileData)
-            ? "placeholder"
-            : "mock";
+          : site
+            ? "site"
+            : deliverable.type === "Doc" && deliverable.fileData
+              ? "placeholder"
+              : "mock";
 
   /** Page under an event and the point in % of that page. */
   function pagePoint(event: React.MouseEvent) {
@@ -270,7 +299,7 @@ export function ReviewCanvas({
     pinPress.current = null;
     if (press?.dragging && moving) {
       pointerStart.current = null;
-      onMovePin?.(moving.id, moving.page, moving.x, moving.y);
+      movePin(moving.id, moving.page, moving.x, moving.y);
       setMoving(null);
       return;
     }
@@ -280,7 +309,7 @@ export function ReviewCanvas({
     if (drawing && box && box.width > 1 && box.height > 1) {
       const round = (value: number) => Math.round(value * 10) / 10;
       const area = { x: round(box.left), y: round(box.top), w: round(box.width), h: round(box.height) };
-      onCompose({
+      compose({
         page: drawing.page,
         x: area.x,
         y: area.y,
@@ -297,7 +326,7 @@ export function ReviewCanvas({
     if (moving) {
       event.preventDefault();
       event.stopPropagation();
-      onMovePin?.(moving.id, moving.page, moving.x, moving.y);
+      movePin(moving.id, moving.page, moving.x, moving.y);
       setMoving(null);
       return;
     }
@@ -310,6 +339,8 @@ export function ReviewCanvas({
       onBackgroundClick();
       return;
     }
+    // A « Lien »'s sheet (its links, its copies, its guide) stays usable: only its captures take a pin.
+    if (site && !(event.target as Element).closest("[data-page]")) return;
     event.preventDefault();
     event.stopPropagation();
     if (readOnly) return;
@@ -317,7 +348,7 @@ export function ReviewCanvas({
     if (!point) return;
     const element = targetElement(event.target);
     setHover(null);
-    onCompose({
+    compose({
       page: point.page,
       x: point.x,
       y: point.y,
@@ -348,17 +379,59 @@ export function ReviewCanvas({
     remark: { icon: <MessageCirclePlus />, label: "", title: "Commenter : cliquez sur un élément ou dessinez une zone · C" },
   };
 
-  // A « Lien »: its staging site is reviewed there, with the toolbar; here, the requests it got, page by page.
-  if (deliverable.type === "Link")
-    return (
-      <section className="preview-panel site-board-panel" aria-label="Tableau de recette">
-        {overlay}
-        <SiteBoard siteUrl={deliverable.url} comments={comments} selectedId={threadOpen ? selectedId : null} onOpen={onPinClick} renderThread={renderThread} setup={siteSetup} />
-      </section>
-    );
+  /** A page of the deliverable on the canvas: its content, the targeting, the pins, the open thread. */
+  const renderPage = (page: number, content: React.ReactNode) => (
+    <div className="canvas-page" data-page={page}>
+      {deliverable.type === "PDF" && <span className="canvas-page-label">Page {page}</span>}
+      <div className={`canvas-page-content kind-${pageKind}`}>{content}</div>
+      {hover?.page === page && <TargetHighlight box={hover.box} />}
+      {drawing?.page === page && <TargetHighlight box={drawing.box} drawing />}
+      {composer?.page === page && composer.area && <TargetHighlight box={areaBox(composer.area)} drawing />}
+      {threadOpen && !moving && selected?.area && (selected.page ?? 1) === page && <TargetHighlight box={areaBox(selected.area)} drawing />}
+      {comments
+        .filter((comment) => comment.area && (comment.page ?? 1) === page && (comment.id === pinHover || comment.id === moving?.id))
+        .filter((comment) => moving?.id === comment.id || !(threadOpen && comment.id === selectedId))
+        .map((comment) => (
+          <TargetHighlight
+            key={`zone-${comment.id}`}
+            // While its pin moves: the zone as it will be, its far corner kept.
+            box={areaBox(moving?.id === comment.id && comment.position ? areaFromPin(comment.area!, comment.position, moving.x, moving.y) : comment.area!)}
+            drawing={moving?.id === comment.id}
+          />
+        ))}
+      {comments
+        .map((comment) => (moving?.id === comment.id ? { ...comment, page: moving.page, position: { x: moving.x, y: moving.y } } : comment))
+        .filter((comment) => (comment.page ?? 1) === page && comment.position)
+        .filter((comment) => !comment.closed || (threadOpen && comment.id === selectedId))
+        .map((comment) => (
+          <CommentPin
+            key={comment.id}
+            comment={comment}
+            active={threadOpen && comment.id === selectedId}
+            moving={moving?.id === comment.id}
+            onHover={(over) => setPinHover(over ? comment.id : null)}
+            unread={isUnread?.(comment)}
+            onOpen={() => {
+              if (!moved.current && !moving) onPinClick(comment);
+            }}
+            onMove={
+              canMove?.(comment) && !readOnly
+                ? () => setMoving({ id: comment.id, page: comment.page ?? 1, x: comment.position?.x ?? 50, y: comment.position?.y ?? 50 })
+                : undefined
+            }
+          />
+        ))}
+      {threadOpen && !moving && selected?.position && (selected.page ?? 1) === page && renderThread(selected)}
+      {composer?.page === page && renderComposer(composer)}
+    </div>
+  );
 
   return (
-    <section className={`preview-panel canvas tool-${tool} ${moving ? "is-moving-pin" : ""}`} ref={panelRef} aria-label="Canevas">
+    <section
+      className={`preview-panel canvas tool-${tool} ${site ? "is-site" : ""} ${moving ? "is-moving-pin" : ""}`}
+      ref={panelRef}
+      aria-label={site ? "Tableau de recette" : "Canevas"}
+    >
       {overlay}
       {/* No browser autoscroll on a wheel-button press: it pans the canvas. */}
       <div className="artboard-wrap" onMouseDown={(event) => event.button === 1 && event.preventDefault()}>
@@ -394,56 +467,11 @@ export function ReviewCanvas({
                 setDrawing(null);
               }}
             >
-              <DeliverableContent
-                deliverable={deliverable}
-                renderPage={(page, content) => (
-                  <div className="canvas-page" data-page={page}>
-                    {deliverable.type === "PDF" && <span className="canvas-page-label">Page {page}</span>}
-                    <div className={`canvas-page-content kind-${pageKind}`}>{content}</div>
-                    {hover?.page === page && <TargetHighlight box={hover.box} />}
-                    {drawing?.page === page && <TargetHighlight box={drawing.box} drawing />}
-                    {composer?.page === page && composer.area && <TargetHighlight box={areaBox(composer.area)} drawing />}
-                    {threadOpen && !moving && selected?.area && (selected.page ?? 1) === page && <TargetHighlight box={areaBox(selected.area)} drawing />}
-                    {comments
-                      .filter((comment) => comment.area && (comment.page ?? 1) === page && (comment.id === pinHover || comment.id === moving?.id))
-                      .filter((comment) => moving?.id === comment.id || !(threadOpen && comment.id === selectedId))
-                      .map((comment) => (
-                        <TargetHighlight
-                          key={`zone-${comment.id}`}
-                          // While its pin moves: the zone as it will be, its far corner kept.
-                          box={areaBox(moving?.id === comment.id && comment.position ? areaFromPin(comment.area!, comment.position, moving.x, moving.y) : comment.area!)}
-                          drawing={moving?.id === comment.id}
-                        />
-                      ))}
-                    {comments
-                      .map((comment) =>
-                        moving?.id === comment.id ? { ...comment, page: moving.page, position: { x: moving.x, y: moving.y } } : comment,
-                      )
-                      .filter((comment) => (comment.page ?? 1) === page && comment.position)
-                      .filter((comment) => !comment.closed || (threadOpen && comment.id === selectedId))
-                      .map((comment) => (
-                        <CommentPin
-                          key={comment.id}
-                          comment={comment}
-                          active={threadOpen && comment.id === selectedId}
-                          moving={moving?.id === comment.id}
-                          onHover={(over) => setPinHover(over ? comment.id : null)}
-                          unread={isUnread?.(comment)}
-                          onOpen={() => {
-                            if (!moved.current && !moving) onPinClick(comment);
-                          }}
-                          onMove={
-                            canMove?.(comment) && !readOnly
-                              ? () => setMoving({ id: comment.id, page: comment.page ?? 1, x: comment.position?.x ?? 50, y: comment.position?.y ?? 50 })
-                              : undefined
-                          }
-                        />
-                      ))}
-                    {threadOpen && !moving && selected?.position && (selected.page ?? 1) === page && renderThread(selected)}
-                    {composer?.page === page && renderComposer(composer)}
-                  </div>
-                )}
-              />
+              {site ? (
+                <SiteBoard siteUrl={deliverable.url} comments={givenComments} renderPage={renderPage} setup={siteSetup} />
+              ) : (
+                <DeliverableContent deliverable={deliverable} renderPage={renderPage} />
+              )}
             </div>
           </TransformComponent>
         </TransformWrapper>

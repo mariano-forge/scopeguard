@@ -1,14 +1,14 @@
 // An agency member in Kora's panel on the staging site (US-048). The panel is a frame from another
-// site: the member's Kora session (SameSite=Lax) does not reach it. So:
+// site: the member's Kora session (SameSite=Lax) does not reach it. So the member enters as the
+// invited clients do, by the address and a code (src/app/api/review/[token]/access): a verified address
+// of a member of the link's agency opens the panel's session instead of a client's. A partitioned
+// cookie, kept for the staging site only, for 12 hours, bound to the member, the agency and the shared
+// version.
 //
-// 1. « Je suis de l'agence » opens a Kora window (/review/:token/site/agence), where that session is
-//    there; it gets a ticket for this link (2 minutes) and hands it to the panel, Kora to Kora.
-// 2. The panel exchanges it for its own session: a partitioned cookie, kept for the staging site only,
-//    for 12 hours, bound to the member, the agency and the shared version.
-//
-// Both are signed, not stored: membership and the link are read again on every request, so someone
-// removed from the agency, or a link revoked or expired, closes the panel at once. From the panel, the member only does what siteAgencyActions lists:
-// decisions on quotes and the validation stay on Kora's pages (AGENTS.md).
+// It is signed, not stored: membership and the link are read again on every request, so someone removed
+// from the agency, or a link revoked or expired, closes the panel at once. From the panel, the member
+// only does what siteAgencyActions lists: decisions on quotes and the validation stay on Kora's pages
+// (AGENTS.md).
 
 import "server-only";
 import { and, eq } from "drizzle-orm";
@@ -21,17 +21,12 @@ import { expired, type ReviewAccess } from "@/db/reviewAccess";
 import { readClaim, signClaim } from "./signedClaim";
 import { siteAgencyCookie } from "./siteReview";
 
-const ticketMs = 2 * 60 * 1000;
 const sessionMs = 12 * 60 * 60 * 1000;
-const ticketScope = "site-agency-ticket";
 const sessionScope = "site-agency-session";
 
 type Claim = { userId: string; organizationId: string; deliverableId: number; linkKey: string };
 
 const claimFor = (userId: string, access: ReviewAccess): Claim => ({ userId, organizationId: access.organizationId, deliverableId: access.deliverableId, linkKey: access.key });
-
-/** A ticket for this link, handed by the Kora window to the panel. */
-export const siteTicket = (userId: string, access: ReviewAccess) => signClaim(ticketScope, claimFor(userId, access), ticketMs);
 
 /** The member behind `userId` in the link's agency, with their role; null once they left it. */
 async function memberOf(userId: string, organizationId: string): Promise<AgencyMember | null> {
@@ -58,12 +53,20 @@ async function linkStillOpen(claim: Claim) {
   return Boolean(row?.active && link?.active === true && !expired(link) && row.deliverableId === claim.deliverableId);
 }
 
-/** Exchanges a ticket of this link for the panel's session. False when it is not one, or its member left. */
-export async function openSiteAgencySession(ticket: unknown, access: ReviewAccess) {
-  const claim = readClaim<Claim>(ticketScope, ticket);
-  if (!claim || claim.linkKey !== access.key || claim.organizationId !== access.organizationId) return false;
-  if (!(await memberOf(claim.userId, access.organizationId))) return false;
-  (await cookies()).set(siteAgencyCookie, signClaim(sessionScope, claimFor(claim.userId, access), sessionMs), {
+/** The member of the link's agency whose account has this address (lower case), or null. */
+export async function memberIdByEmail(organizationId: string, email: string) {
+  const [row] = await getDb()
+    .select({ id: users.id })
+    .from(members)
+    .innerJoin(users, eq(users.id, members.userId))
+    .where(and(eq(members.organizationId, organizationId), eq(users.email, email)))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+/** Opens the panel's session of the member `userId` on this link, once their address is verified. */
+export async function openSiteAgencySession(userId: string, access: ReviewAccess) {
+  (await cookies()).set(siteAgencyCookie, signClaim(sessionScope, claimFor(userId, access), sessionMs), {
     httpOnly: true,
     secure: true,
     sameSite: "none",
@@ -71,7 +74,6 @@ export async function openSiteAgencySession(ticket: unknown, access: ReviewAcces
     path: "/",
     expires: new Date(Date.now() + sessionMs),
   });
-  return true;
 }
 
 /** The member using the panel, and the version it was opened on; null without a valid session. */

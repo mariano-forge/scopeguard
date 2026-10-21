@@ -34,7 +34,7 @@ import {
 } from "./actions";
 import { canManageAgency, reservedActions } from "./agencyPermissions";
 import type { Db } from "./client";
-import { commentProposals, deliverables, proposalVersions, reviewLinks, storedFiles } from "./schema";
+import { commentProposals, comments, deliverables, proposalVersions, reviewLinks, storedFiles } from "./schema";
 import { visibleToClient } from "./reviewAccess";
 import { mailQuoteToClient, versionDeciders, type AgencyQuoteEvent } from "./reviewMails";
 import { applyChanges, type Writer } from "./state";
@@ -45,7 +45,8 @@ type Quote = { amount: number; days: number; counter: boolean };
 
 export type AgencyAction =
   | WorkspaceAction
-  | { type: "comment.create"; deliverableId: number; id?: number; message: string; location?: string; page?: number; position?: { x: number; y: number }; area?: Area; site?: SiteAnchor }
+  // `pinnedOn`: the request of the staging site whose capture the pin was dropped on, in Kora (src/app/(agency)/editor/SiteBoard.tsx).
+  | { type: "comment.create"; deliverableId: number; id?: number; message: string; location?: string; page?: number; position?: { x: number; y: number }; area?: Area; site?: SiteAnchor; pinnedOn?: number }
   | { type: "request.create"; deliverableId: number; decision: Qualification; title: string; description?: string; quote?: Quote; source?: RequestSource }
   | { type: "comment.restore"; comment: Data }
   | { type: "comment.edit"; commentId: number; message: string }
@@ -101,7 +102,7 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
       const deliverableId = id(body.deliverableId);
       const point = readPoint(body.position);
       return deliverableId && message
-        ? { type, deliverableId, id: id(body.id), message, location: text(body.location, 200), page: id(body.page), position: point, area: point ? readArea(body.area) : undefined, site: readSiteAnchor(body.site) }
+        ? { type, deliverableId, id: id(body.id), message, location: text(body.location, 200), page: id(body.page), position: point, area: point ? readArea(body.area) : undefined, site: readSiteAnchor(body.site), pinnedOn: id(body.pinnedOn) }
         : null;
     }
     case "request.create": {
@@ -326,6 +327,11 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
     const base = { id: commentId, deliverableId, ...signer, time: "À l'instant", createdAt: Date.now() };
     // A capture of the staging site the member sent themselves (src/lib/siteCapture.ts).
     if (action.type === "comment.create" && action.site?.capture && !(await ownCapture(db, org, action.site.capture, member.id))) return refused("Capture introuvable.", 404);
+    // A pin on a capture in Kora: tied to a request placed on the staging site, of this version.
+    if (action.type === "comment.create" && action.pinnedOn) {
+      const [target] = await db.select({ data: comments.data }).from(comments).where(and(eq(comments.organizationId, org), eq(comments.id, action.pinnedOn), eq(comments.deliverableId, deliverableId))).limit(1);
+      if (!(target?.data as Data | undefined)?.site) return refused("Demande introuvable.", 404);
+    }
     if (action.type === "comment.create") {
       upsertComment({
         ...base,
@@ -340,6 +346,7 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
         ...(action.area ? { area: action.area } : {}),
         // Placed on the staging site, from Kora's panel there (src/lib/siteReview.ts).
         ...(action.site ? { site: action.site, location: action.location ?? action.site.url } : {}),
+        ...(action.pinnedOn ? { pinnedOn: action.pinnedOn } : {}),
       });
       log.add("comment.created", "Commentaire agence ajouté", commentId);
     } else {

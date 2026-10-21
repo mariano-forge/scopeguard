@@ -877,7 +877,9 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - À sa première vérification, le client indique son nom complet ; il apparaît sur ses messages (initiales comprises) et dans la preuve.
 - Les commentaires, réponses, acceptations et validations du client sont signés par le serveur avec son nom et son adresse vérifiée.
 
-#### US-043 : demander l'accès à une revue
+#### US-043 : demander l'accès à une revue (retirée le 21 octobre 2026)
+
+> Retirée pour des raisons de sécurité : personne ne demande plus l'accès depuis Kora. L'écran du code dit qu'il n'arrive qu'aux adresses invitées et de demander une invitation à qui a transmis le lien. Les demandes reçues avant se règlent encore dans « Partager la revue ». Les critères ci-dessous décrivent ce qui existait.
 
 **En tant que** personne qui a reçu le lien d'un collègue,  
 **je veux** demander l'accès à l'agence,  
@@ -1163,7 +1165,7 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-040 changer d'agence | ✅ | |
 | US-041 inviter un client sur une revue | ✅ | |
 | US-042 confirmer son identité par un code | ✅ | Nom complet demandé à la première vérification |
-| US-043 demander l'accès à une revue | ✅ | E-mail au propriétaire et aux administrateurs |
+| US-043 demander l'accès à une revue | Retirée | Pour des raisons de sécurité (21 octobre 2026) ; les demandes déjà reçues se règlent encore |
 | US-044 prévisualiser la page client | ✅ | |
 | US-045 périmètre de référence | ⬜ | Prochaine priorité produit |
 | US-046 demande offerte | ⬜ | |

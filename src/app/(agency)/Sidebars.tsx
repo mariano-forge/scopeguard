@@ -302,8 +302,11 @@ export function HomeSidebar({
 /** Deliverables of the project, in the side panel (the open one is active). */
 export type SidebarLivrable = { id: number; name: string; href: string; active: boolean };
 
+/** How a version comes: a file of the deliverable's kind, or an action (the site's address of a « Lien »). */
+export type NewVersion = { onFile: (file: File) => void; accept?: string } | { onSelect: () => void };
+
 /** "+" of a panel section that picks a file (hidden input, like the menus). */
-function FileAddButton({ label, onFile }: { label: string; onFile: (file: File) => void }) {
+function FileAddButton({ label, accept, onFile }: { label: string; accept?: string; onFile: (file: File) => void }) {
   const input = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -315,7 +318,7 @@ function FileAddButton({ label, onFile }: { label: string; onFile: (file: File) 
       <input
         ref={input}
         type="file"
-        accept="application/pdf,image/*,video/*"
+        accept={accept}
         className="sr-only"
         tabIndex={-1}
         aria-hidden="true"
@@ -350,7 +353,7 @@ export function ProjectSidebar({
   panelWidth,
   onPanelResize,
   livrables,
-  onImportVersion,
+  newVersion,
   onNewLivrable,
 }: {
   livrableName: string;
@@ -370,8 +373,8 @@ export function ProjectSidebar({
   panelWidth: number;
   onPanelResize: (width: number) => void;
   livrables: SidebarLivrable[];
-  /** A file becomes the next version of the open deliverable. */
-  onImportVersion: (file: File) => void;
+  /** The « + » of the versions: the next version of the open deliverable, of the same nature. */
+  newVersion: NewVersion;
   /** « + »: the new deliverable dialog, in this project. */
   onNewLivrable: () => void;
 }) {
@@ -448,7 +451,15 @@ export function ProjectSidebar({
             <section className="panel-section" aria-label="Versions">
               <div className="panel-section-header">
                 <h2>Versions</h2>
-                <FileAddButton label="Importer un fichier comme nouvelle version" onFile={onImportVersion} />
+                {"onSelect" in newVersion ? (
+                  <Hint label="Nouvelle version du site">
+                    <button type="button" className="nav-section-action" aria-label="Nouvelle version du site" onClick={newVersion.onSelect}>
+                      <Plus />
+                    </button>
+                  </Hint>
+                ) : (
+                  <FileAddButton label="Importer un fichier comme nouvelle version" accept={newVersion.accept} onFile={newVersion.onFile} />
+                )}
               </div>
               <ul>
                 {versions.map((version) => (

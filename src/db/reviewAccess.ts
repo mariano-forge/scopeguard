@@ -73,13 +73,36 @@ export async function livrableIdOfVersion(db: Db, organizationId: string, delive
 }
 
 /**
- * The staging site of a « Lien » deliverable (its latest version's address), and the token of its latest
- * version shared with an active link, if any (src/lib/siteKey.ts). Null when the deliverable is gone.
+ * The agency's « Lien » deliverables whose latest version is the site `origin`, by their first version's
+ * id, the most recent first: what the agency's line opens on that page (src/lib/siteKey.ts).
+ */
+export async function livrablesOnSite(db: Db, organizationId: string, origin: string) {
+  const rows = await db
+    .select({ id: deliverables.id, projectId: deliverables.projectId, name: deliverables.name, version: deliverables.version, data: deliverables.data })
+    .from(deliverables)
+    .where(eq(deliverables.organizationId, organizationId));
+  const livrables = new Map<string, typeof rows>();
+  for (const row of rows) {
+    if ((row.data as Data).type !== "Link") continue;
+    const key = `${row.projectId ?? 1}|${row.name}`;
+    livrables.set(key, [...(livrables.get(key) ?? []), row]);
+  }
+  return [...livrables.values()]
+    .map((versions) => versions.sort((left, right) => right.version - left.version))
+    .filter((versions) => siteOriginOf(versions[0].data as Data) === origin)
+    .sort((left, right) => right[0].id - left[0].id)
+    .map((versions) => Math.min(...versions.map((version) => version.id)));
+}
+
+/**
+ * A « Lien » deliverable as its toolbar line opens it (src/lib/siteKey.ts): its latest version (site and
+ * number), and its latest version shared with an active link, if any (site, number and token): the one
+ * the panel opens. Null when the deliverable is gone.
  */
 export async function latestSharedSite(db: Db, organizationId: string, livrableId: number) {
   const versions = await versionsOf(db, organizationId, livrableId);
   if (!versions.length) return null;
-  const site = siteOriginOf(versions[0].data as Data);
+  const latest = { site: siteOriginOf(versions[0].data as Data), version: versions[0].version };
   const links = await db
     .select()
     .from(reviewLinks)
@@ -87,9 +110,10 @@ export async function latestSharedSite(db: Db, organizationId: string, livrableI
   for (const version of versions) {
     const row = links.find((link) => link.key === `${version.id}:${version.version}`);
     const link = row?.data as Data | undefined;
-    if (row?.active && link?.active === true && !expired(link)) return { site, token: row.token };
+    if (row?.active && link?.active === true && !expired(link))
+      return { latest, shared: { site: siteOriginOf(version.data as Data), version: version.version, token: row.token } };
   }
-  return { site, token: null };
+  return { latest, shared: null };
 }
 
 /** What the client page needs of its link. */
@@ -133,8 +157,15 @@ export async function readReviewState(db: Db, access: ReviewAccess) {
   const project = state.projects?.find((item) => item.id === ((record?.projectId as number | undefined) ?? 1));
   const client = state.clients?.find((item) => item.id === ((project?.clientId as number | undefined) ?? 1));
   // A request out of draft shows whole: its first words and every reply (decided 19 October 2026).
-  const versionComments = (state.comments ?? []).filter((comment) => comment.deliverableId === access.deliverableId && visibleToClient(comment));
-  const ids = new Set(versionComments.map((comment) => String(comment.id)));
+  const shown = (state.comments ?? []).filter((comment) => comment.deliverableId === access.deliverableId && visibleToClient(comment));
+  const ids = new Set(shown.map((comment) => String(comment.id)));
+  // A pin tied to a request the client does not see (src/db/agencyActions.ts pinnedOn) does not name it.
+  const versionComments = shown.map((comment) => {
+    if (comment.pinnedOn === undefined || ids.has(String(comment.pinnedOn))) return comment;
+    const rest = { ...comment };
+    delete rest.pinnedOn;
+    return rest;
+  });
   const only = (map: Record<string, unknown> | undefined) => Object.fromEntries(Object.entries(map ?? {}).filter(([key]) => ids.has(key)));
   // Draft quotes never leave the server: neither their amounts nor the fact that one is being prepared.
   const sentStates = Object.fromEntries(Object.entries(only(state.proposalStates)).filter(([, value]) => value === "sent"));

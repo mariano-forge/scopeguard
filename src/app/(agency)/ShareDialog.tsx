@@ -5,7 +5,9 @@
 // footer, with its expiry. Built from shadcn pieces; every write goes through the callbacks of AgencyApp
 // (src/db/agencyActions.ts, /api/review-access).
 
-import { Check, Copy, Info, UserPlus, Users } from "lucide-react";
+import { useState } from "react";
+import { BellRing, Check, Copy, Info, UserPlus, Users } from "lucide-react";
+import { Hint } from "@/components/hint";
 import { Field, FormError, Modal } from "@/components/modal";
 import { Button } from "@/components/ui/button";
 import { EmailChipsInput } from "@/components/EmailChipsInput";
@@ -36,6 +38,8 @@ export function ShareDialog({
   linkCopied,
   onCopyLink,
   onRevoke,
+  lastReminderAt,
+  onRemind,
 }: {
   open: boolean;
   onClose: () => void;
@@ -59,8 +63,14 @@ export function ShareDialog({
   linkCopied: boolean;
   onCopyLink: () => void;
   onRevoke: () => void;
+  /** When the invited clients were last reminded (ms), if ever. */
+  lastReminderAt: number | null;
+  onRemind: () => void;
 }) {
   const invites = link?.invites ?? [];
+  // A day between reminders, measured from when the page opened (the server has the last word).
+  const [openedAt] = useState(() => Date.now());
+  const reminderBlocked = lastReminderAt !== null && openedAt - lastReminderAt < 24 * 60 * 60 * 1000;
   return (
     <Modal
       open={open}
@@ -125,9 +135,17 @@ export function ShareDialog({
             </div>
           ) : (
             <section className="share-section">
-              <h3 className="share-heading">
-                Personnes invitées <span>{invites.length}</span>
-              </h3>
+              <div className="share-heading-row">
+                <h3 className="share-heading">
+                  Personnes invitées <span>{invites.length}</span>
+                </h3>
+                {/* Once a day per link (the server says so too, 429): their personal link mailed again. */}
+                <Hint label={lastReminderAt ? `Dernière relance : ${new Date(lastReminderAt).toLocaleString("fr-FR")}` : "Leur renvoyer leur lien personnel par e-mail"}>
+                  <Button variant="outline" size="sm" onClick={onRemind} disabled={reminderBlocked || readOnly}>
+                    <BellRing /> {reminderBlocked ? "Relance déjà envoyée" : "Relancer le client"}
+                  </Button>
+                </Hint>
+              </div>
               <InviteList invites={invites} onCopy={onCopyInvite} onRemove={onRemoveInvite} onRole={onChangeRole} />
             </section>
           )}

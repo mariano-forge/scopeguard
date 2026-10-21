@@ -1,11 +1,14 @@
 // POST /api/review/:token/access/verify { email or invitation, code, site? } -> opens a 30-day session on this device.
-// site: true from Kora's panel on the agency's staging site, whose session is kept for that site only.
+// site: true from Kora's panel on the agency's staging site, whose session is kept for that site only. There,
+// a member of the link's agency verifies the same way: their address opens the panel's agency session
+// (12 hours, src/lib/siteAgency.ts), never a client's.
 
 import { getDb } from "@/db/client";
 import { findReviewAccess } from "@/db/reviewAccess";
 import { checkAccessCode, isInvited, openReviewSession, requestedEmail } from "@/db/reviewAuth";
 import { databaseFailure } from "@/lib/api";
 import { readBody, reviewNotFound, setReviewSessionCookie } from "@/lib/reviewViewer";
+import { memberIdByEmail, openSiteAgencySession } from "@/lib/siteAgency";
 
 export async function POST(request: Request, context: RouteContext<"/api/review/[token]/access/verify">) {
   const { token } = await context.params;
@@ -16,8 +19,13 @@ export async function POST(request: Request, context: RouteContext<"/api/review/
     const access = await findReviewAccess(db, token);
     if (!access) return reviewNotFound();
     const email = requestedEmail(access.link, body);
-    if (!isInvited(access.link, email) || !(await checkAccessCode(db, email, code)))
+    const memberId = body.site === true && email ? await memberIdByEmail(access.organizationId, email) : null;
+    if ((!memberId && !isInvited(access.link, email)) || !(await checkAccessCode(db, email, code)))
       return Response.json({ error: "Code incorrect ou expiré." }, { status: 400 });
+    if (memberId) {
+      await openSiteAgencySession(memberId, access);
+      return Response.json({ ok: true });
+    }
     const session = await openReviewSession(db, email, request);
     await setReviewSessionCookie(session.token, session.expiresAt, body.site === true);
     return Response.json({ ok: true });
