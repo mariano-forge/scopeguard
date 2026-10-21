@@ -6,6 +6,8 @@
 //   mixed, nothing common nor personal), checked here for sign-up and reset whatever the page;
 //   sessions in httpOnly cookies (Secure in production);
 // - an address is confirmed by a mailed link before its first session (Google addresses come verified);
+// - a Microsoft address counts only when Microsoft vouches for it, else it is confirmed by link like any
+//   other; an invitation is accepted only from a confirmed address;
 // - a Google or Microsoft sign-in is never linked to an existing password account automatically: e-mail addresses are
 //   not verified at sign-up (no e-mail provider yet), so someone could have registered with another
 //   person's address before them;
@@ -108,6 +110,9 @@ function createAuth() {
               clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
               tenantId: process.env.MICROSOFT_TENANT_ID || "common",
               prompt: "select_account" as const,
+              // A directory can claim any address without proving it (nOAuth): unless Microsoft vouches for
+              // it (a domain the directory verified), no session before the mailed link confirms it.
+              requireEmailVerification: true,
             },
           }
         : {}),
@@ -143,6 +148,8 @@ function createAuth() {
         organizationLimit: 1,
         invitationExpiresIn: 60 * 60 * 24 * 7,
         cancelPendingInvitationsOnReInvite: true,
+        // Invitations are matched by address: only a confirmed one may accept, whatever the sign-in method.
+        requireEmailVerificationOnInvitation: true,
         sendInvitationEmail: async ({ id, email, organization: agency, inviter }) => {
           await sendMail({
             to: email,
