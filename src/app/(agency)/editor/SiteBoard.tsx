@@ -170,7 +170,7 @@ export function SiteBoard({
               <summary>
                 <span>
                   Paramétrer la barre Kora
-                  <small>3 étapes · une seule ligne pour tous vos sites</small>
+                  <small>3 étapes · une ligne par site</small>
                 </span>
               </summary>
               <div className="site-guide-body">{setup}</div>

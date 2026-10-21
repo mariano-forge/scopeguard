@@ -7,9 +7,9 @@
 // there, holds the comments' text and writes them through the action routes; the site only learns where
 // to draw the pins.
 // - A client verifies their address by code (AccessGate) and writes through src/lib/reviewActions.ts.
-// - A member of the agency enters the same way, by their address and a code: recognised as a member
-//   (src/lib/siteAgency.ts), they comment, reply and qualify through src/lib/agencyActions.ts; quotes are
-//   sent from Kora.
+// - An agency member is recognised by a Kora window, where their Kora session is (« Je suis de l'agence »,
+//   src/lib/siteAgency.ts), never by a code: codes are for clients. They comment, reply and qualify through
+//   src/lib/agencyActions.ts; quotes are sent from Kora.
 // Every message is checked: from the site's origin and the window that framed the panel, or from the
 // review tab the panel opened.
 
@@ -21,7 +21,7 @@ import { itemLabel, requestKind, requestText, ThreadPopover, type ThreadComment 
 import { sideOf } from "@/lib/authors";
 import { siteAgencyAction } from "@/lib/agencyActions";
 import { reviewAction } from "@/lib/reviewActions";
-import { type HandoffMessage, type PanelMessage, type SiteAnchor, type SitePin, type ToolbarMessage } from "@/lib/siteReview";
+import { type HandoffMessage, type PanelMessage, type SiteAnchor, type SitePin, type TicketMessage, type ToolbarMessage } from "@/lib/siteReview";
 import { loadSharedState, subscribeSharedState } from "@/lib/stateSync";
 import { uploadSiteCapture } from "@/lib/upload";
 import { AccessGate, ProfileGate } from "../AccessGate";
@@ -99,6 +99,9 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
   const [docked, setDocked] = useState(false);
   /** The review tab opened from the panel, and the ticket it will be handed (src/lib/siteHandoff.ts). */
   const reviewTab = useRef<{ tab: Window; ticket: Promise<string | null> } | null>(null);
+  const [agencyError, setAgencyError] = useState("");
+  /** The « Je suis de l'agence » window: the only one whose ticket the panel takes. */
+  const agencyWindow = useRef<Window | null>(null);
   const bubbleRef = useRef<HTMLElement>(null);
   const client = viewer?.mode === "client" && Boolean(viewer.name);
   const agency = viewer?.mode === "agency";
@@ -161,6 +164,27 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
     return () => window.removeEventListener("message", receive);
   }, [parent]);
 
+  // The ticket of the Kora window, exchanged for the panel's agency session.
+  useEffect(() => {
+    async function receive(event: MessageEvent<TicketMessage>) {
+      if (event.origin !== window.location.origin || !agencyWindow.current || event.source !== agencyWindow.current) return;
+      if (event.data?.type !== "kora:agency-ticket" || typeof event.data.ticket !== "string") return;
+      // The window waits for the panel to have the ticket before it goes (AgencyHandoff).
+      agencyWindow.current.close();
+      agencyWindow.current = null;
+      const response = await fetch(`/api/review/${encodeURIComponent(token)}/site/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticket: event.data.ticket }),
+      }).catch(() => null);
+      if (!response?.ok) return setAgencyError("La reconnaissance n’a pas abouti. Réessayez.");
+      setViewer(null);
+      setAccessCheck((count) => count + 1);
+    }
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [token]);
+
   // The review tab is ready: it gets its ticket, from this window only.
   useEffect(() => {
     async function receive(event: MessageEvent<HandoffMessage>) {
@@ -215,6 +239,11 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
     return () => watch.disconnect();
   }, [inBubble, docked, openId, draft?.pick, draft?.capture, missing, parent]);
 
+  function openAgencyWindow() {
+    setAgencyError("");
+    agencyWindow.current = window.open(`/review/${encodeURIComponent(token)}/site/agence`, "kora-agence", "popup,width=460,height=600");
+  }
+
   /** Quotes and the validation are decided on the review page, opened in a tab without a second code. */
   function openReview() {
     const tab = window.open(`/review/${encodeURIComponent(token)}/site/ouvrir`, "_blank");
@@ -228,17 +257,25 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
   if (!viewer) return <main className="p-6 text-sm text-[var(--graphite)]">Chargement…</main>;
   if (viewer.mode === "none" || viewer.mode === "preview")
     return (
-      <AccessGate
-        token={token}
-        deliverable={viewer.deliverable}
-        invitation={viewer.invitation}
-        verifiedEmail={viewer.verifiedEmail}
-        site
-        onVerified={() => {
-          setViewer(null);
-          setAccessCheck((count) => count + 1);
-        }}
-      />
+      <div>
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 pt-3 text-sm">
+          {agencyError && <span role="alert" className="text-[var(--status-high-text)]">{agencyError}</span>}
+          <Button type="button" variant="link" size="sm" onClick={openAgencyWindow}>
+            Je suis de l’agence
+          </Button>
+        </div>
+        <AccessGate
+          token={token}
+          deliverable={viewer.deliverable}
+          invitation={viewer.invitation}
+          verifiedEmail={viewer.verifiedEmail}
+          site
+          onVerified={() => {
+            setViewer(null);
+            setAccessCheck((count) => count + 1);
+          }}
+        />
+      </div>
     );
   if (viewer.mode === "client" && !viewer.name && viewer.verifiedEmail)
     return <ProfileGate token={token} deliverable={viewer.deliverable} email={viewer.verifiedEmail} onSaved={(name) => setViewer({ ...viewer, name })} />;

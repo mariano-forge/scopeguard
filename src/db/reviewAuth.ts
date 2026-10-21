@@ -73,12 +73,9 @@ export { maskEmail };
 export const requestedEmail = (link: Data, body: Record<string, unknown>) =>
   typeof body.invitation === "string" && body.invitation ? (invitationEmail(link, body.invitation) ?? "") : normalizeEmail(body.email);
 
-/**
- * Sends a code to an invited address, or to a member's of the link's agency entering the panel on the
- * site (`member`, src/lib/siteAgency.ts). Returns false when throttled or not invited (the caller answers the same).
- */
-export async function sendAccessCode(db: Db, link: Data, email: string, deliverableName: string, member = false) {
-  if (!validEmail(email) || (!member && !isInvited(link, email))) return false;
+/** Sends a code to an invited address. Returns false when throttled or not invited. */
+export async function sendAccessCode(db: Db, link: Data, email: string, deliverableName: string) {
+  if (!validEmail(email) || !isInvited(link, email)) return false;
   const recent = await db
     .select({ createdAt: reviewCodes.createdAt })
     .from(reviewCodes)

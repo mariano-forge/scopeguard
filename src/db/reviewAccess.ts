@@ -73,29 +73,7 @@ export async function livrableIdOfVersion(db: Db, organizationId: string, delive
 }
 
 /**
- * The agency's « Lien » deliverables whose latest version is the site `origin`, by their first version's
- * id, the most recent first: what the agency's line opens on that page (src/lib/siteKey.ts).
- */
-export async function livrablesOnSite(db: Db, organizationId: string, origin: string) {
-  const rows = await db
-    .select({ id: deliverables.id, projectId: deliverables.projectId, name: deliverables.name, version: deliverables.version, data: deliverables.data })
-    .from(deliverables)
-    .where(eq(deliverables.organizationId, organizationId));
-  const livrables = new Map<string, typeof rows>();
-  for (const row of rows) {
-    if ((row.data as Data).type !== "Link") continue;
-    const key = `${row.projectId ?? 1}|${row.name}`;
-    livrables.set(key, [...(livrables.get(key) ?? []), row]);
-  }
-  return [...livrables.values()]
-    .map((versions) => versions.sort((left, right) => right.version - left.version))
-    .filter((versions) => siteOriginOf(versions[0].data as Data) === origin)
-    .sort((left, right) => right[0].id - left[0].id)
-    .map((versions) => Math.min(...versions.map((version) => version.id)));
-}
-
-/**
- * A « Lien » deliverable as its toolbar line opens it (src/lib/siteKey.ts): its latest version (site and
+ * A « Lien » deliverable as its key opens it (src/lib/siteKey.ts): its latest version (site and
  * number), and its latest version shared with an active link, if any (site, number and token): the one
  * the panel opens. Null when the deliverable is gone.
  */

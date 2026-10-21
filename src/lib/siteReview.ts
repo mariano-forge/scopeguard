@@ -163,6 +163,8 @@ export type ToolbarMessage =
   | { type: "kora:dismiss" }
   /** The list is open on the right: a comment then opens in it, not in a bubble that would take its place. */
   | { type: "kora:docked"; on: boolean };
+/** From the Kora window that recognised an agency member, to the panel that opened it (same origin). */
+export type TicketMessage = { type: "kora:agency-ticket"; ticket: string };
 /** Between the panel and the review tab it opened, without a second code (src/lib/siteHandoff.ts). */
 export type HandoffMessage = { type: "kora:handoff-ready" } | { type: "kora:handoff-ticket"; ticket: string };
 export type PanelMessage =

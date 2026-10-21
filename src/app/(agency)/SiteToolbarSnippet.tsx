@@ -1,10 +1,9 @@
 "use client";
 
 // On the agency's « Tableau de recette » of a « Lien » deliverable: how to set up the Kora toolbar, in three
-// steps. The line to put on the staging site, the agency's (src/lib/siteKey.ts): one for all its sites and
-// versions, pasted once, before the first deliverable if need be (it is in « Nouveau livrable » too); the
-// address to send the client, which shows the toolbar on their device (public/kora-toolbar.js); and where
-// their requests then arrive.
+// steps. The line to put on the staging site, the deliverable's (src/lib/siteKey.ts): one per site, valid
+// for all its versions, so it says nothing of the agency's other sites; the address to send the client,
+// which shows the toolbar on their device (public/kora-toolbar.js); and where their requests then arrive.
 
 import { useEffect, useState } from "react";
 import { Check, Copy } from "lucide-react";
@@ -39,26 +38,26 @@ function CopyField({ id, label, value, copyLabel, code }: { id: string; label: s
   );
 }
 
-/** The agency's toolbar line, to copy: the same for all its sites (GET /api/site-key). */
-export function SiteScriptField({ id }: { id: string }) {
+/** The deliverable's toolbar line, to copy (GET /api/deliverables/:id/site-key): the same for all its versions. */
+function SiteScriptField({ id, deliverableId }: { id: string; deliverableId: number }) {
   const [key, setKey] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/site-key", { cache: "no-store" })
+    fetch(`/api/deliverables/${deliverableId}/site-key`, { cache: "no-store" })
       .then(async (response) => (response.ok ? ((await response.json()) as { key?: string }).key : null))
       .then((value) => !cancelled && typeof value === "string" && setKey(value))
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [deliverableId]);
   const line = key ? `<script src="${window.location.origin}/kora-toolbar.js" data-site="${key}" defer></script>` : null;
   return <CopyField id={id} label="Script de recette" value={line ?? "Préparation du script…"} copyLabel={line ? "Copier le script" : undefined} code />;
 }
 
 /**
- * The toolbar met for the first time, in « Nouveau livrable » for a « Lien »: an invitation to set it up,
- * what it does, and its line, once for all the agency's sites.
+ * The toolbar met for the first time, in « Nouveau livrable » for a « Lien »: an invitation to set it up and
+ * what it does. Its line is the deliverable's: given on its board, once it is created.
  */
 export function SiteScriptIntro() {
   return (
@@ -66,17 +65,16 @@ export function SiteScriptIntro() {
       <div>
         <h3 id="script-intro-title">Recevoir les retours directement depuis le site ?</h3>
         <p>
-          Collez cette ligne une fois dans le code du site, avant <code>&lt;/body&gt;</code>. Le décideur pourra cliquer sur un élément et écrire sa demande : elle arrivera dans Kora, sur ce
-          livrable, avec une capture.
+          Juste après la création, Kora vous donne une ligne à coller dans le code du site, avant <code>&lt;/body&gt;</code>. Le décideur pourra cliquer sur un élément et écrire sa
+          demande : elle arrivera dans Kora, sur ce livrable, avec une capture.
         </p>
       </div>
-      <SiteScriptField id="deliverable-script" />
-      <p className="script-intro-note">Une seule fois pour tous vos sites. Déjà fait ? Ajoutez simplement l’adresse.</p>
+      <p className="script-intro-note">Une ligne par site, valable pour toutes ses versions.</p>
     </section>
   );
 }
 
-export function SiteToolbarSnippet({ siteUrl }: { siteUrl: string }) {
+export function SiteToolbarSnippet({ siteUrl, deliverableId }: { siteUrl: string; deliverableId: number }) {
   const clientUrl = siteClientUrl({ type: "Link", url: siteUrl });
   const localAccess = useLocalAccessNote();
 
@@ -95,11 +93,11 @@ export function SiteToolbarSnippet({ siteUrl }: { siteUrl: string }) {
             title: "Installez la barre Kora",
             text: (
               <>
-                Collez cette ligne une seule fois, avant <code>&lt;/body&gt;</code> : la même sert pour tous vos sites et toutes leurs versions. Déjà en place ? Rien à refaire.
+                Collez cette ligne une fois dans le code de ce site, avant <code>&lt;/body&gt;</code> : elle sert pour toutes ses versions. Déjà en place ? Rien à refaire.
                 {localAccess && ` ${localAccess}`}
               </>
             ),
-            children: <SiteScriptField id="site-snippet" />,
+            children: <SiteScriptField id="site-snippet" deliverableId={deliverableId} />,
           },
           {
             title: "Invitez le décideur",

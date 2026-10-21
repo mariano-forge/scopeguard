@@ -170,7 +170,7 @@ export function NewDeliverableDialog({
             <Field id="deliverable-url" label="Adresse de la page">
               <Input id="deliverable-url" type="url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://staging.client.fr/accueil" />
             </Field>
-            {/* The toolbar's line before the deliverable, not after: the same for all the agency's sites. */}
+            {/* What the toolbar does; its line, the deliverable's, comes on its board once created. */}
             <SiteScriptIntro />
           </>
         ) : (

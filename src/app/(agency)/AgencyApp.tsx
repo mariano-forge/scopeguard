@@ -1968,7 +1968,7 @@ export function AgencyApp() {
               deliverable={currentDeliverable}
               siteSetup={
                 currentDeliverable.type === "Link" && currentDeliverable.url ? (
-                  <SiteToolbarSnippet siteUrl={currentDeliverable.url} />
+                  <SiteToolbarSnippet siteUrl={currentDeliverable.url} deliverableId={currentDeliverable.id} />
                 ) : undefined
               }
               comments={activeComments}

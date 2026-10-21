@@ -1,14 +1,14 @@
-// Kora's panel on a staging site, by the key of the toolbar's line (<script … data-site="<key>">,
-// src/lib/siteKey.ts): the agency's key finds the deliverable by the page's address, a deliverable's key
-// names it; then its latest version shared with an active link opens (its panel, /review/:token/site).
+// Kora's panel on a staging site, by the deliverable's fixed key (<script … data-site="<key>">,
+// src/lib/siteKey.ts): its latest version shared with an active link opens (its panel, /review/:token/site).
 // Framed by the deliverable's site only, as the panel (src/proxy.ts); anyone else, or a key not signed by
-// Kora, gets nothing but a sentence saying why.
+// Kora, gets nothing but a sentence saying why. The key names one deliverable: it says nothing of the
+// agency's other sites.
 
 import { redirect } from "next/navigation";
 import { AuthShell } from "@/components/AuthShell";
 import { GateHeading, WrongSiteNote } from "@/components/GatePieces";
 import { getDb } from "@/db/client";
-import { latestSharedSite, livrablesOnSite } from "@/db/reviewAccess";
+import { latestSharedSite } from "@/db/reviewAccess";
 import { readSiteKey } from "@/lib/siteKey";
 import { parentOrigin } from "@/lib/siteReview";
 
@@ -27,26 +27,7 @@ export default async function SiteKeyPage({ params, searchParams }: PageProps<"/
   const { parent } = await searchParams;
   const claim = readSiteKey(key);
   const origin = parentOrigin(typeof parent === "string" ? parent : null);
-  const db = getDb();
-  let found = claim?.livrableId ? await latestSharedSite(db, claim.organizationId, claim.livrableId) : null;
-  // The agency's line: the deliverable whose latest version is this page; of several, the one shared here.
-  if (claim && claim.livrableId === null && origin) {
-    const livrables = await livrablesOnSite(db, claim.organizationId, origin);
-    if (!livrables.length)
-      return note(
-        "Ce site n’est pas encore dans Kora",
-        `Administrateur : dans Kora, ajoutez un livrable « Lien » à l’adresse ${origin}, puis partagez-le : le panneau s’ouvrira ici.`,
-      );
-    const candidates = await Promise.all(livrables.map((livrableId) => latestSharedSite(db, claim.organizationId, livrableId)));
-    found = candidates.find((candidate) => candidate?.shared?.site === origin) ?? candidates[0];
-  }
-  // A line changed by hand, or whose deliverable was deleted: it leads nowhere, whatever the page.
-  if (claim?.livrableId === null && !origin)
-    return (
-      <AuthShell plain>
-        <WrongSiteNote origin={origin} />
-      </AuthShell>
-    );
+  const found = claim ? await latestSharedSite(getDb(), claim.organizationId, claim.livrableId) : null;
   if (!found)
     return note(
       "Cette ligne de script ne mène à aucun livrable",

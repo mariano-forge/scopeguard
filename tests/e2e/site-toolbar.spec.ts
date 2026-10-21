@@ -351,15 +351,15 @@ const anchorOn = (selector: string) => ({ url: "/", selector, x: 10, y: 50, view
 
 /** The panel's agency session of `member`: their address verified by a code in the panel, as an invited client's is, as a cookie. */
 async function siteAgencySession(member: Member, token: string): Promise<Person> {
+  const ticket = await call(`/api/review/${token}/site/ticket`, { person: member, body: {} });
+  expect(ticket.status).toBe(200);
   const ip = newIp();
-  const asked = await fetch(`${baseURL}/api/review/${token}/access/code`, { method: "POST", headers: headers({ ip }), body: JSON.stringify({ email: member.email, site: true }) });
-  expect(asked.status).toBe(200);
-  const opened = await fetch(`${baseURL}/api/review/${token}/access/verify`, { method: "POST", headers: headers({ ip }), body: JSON.stringify({ email: member.email, code: await waitForCode(member.email), site: true }) });
+  const opened = await fetch(`${baseURL}/api/review/${token}/site/session`, { method: "POST", headers: headers({ ip }), body: JSON.stringify({ ticket: ticket.json.ticket }) });
   expect(opened.status).toBe(200);
   return { cookie: opened.headers.getSetCookie().map((cookie) => cookie.split(";")[0]).join("; "), ip };
 }
 
-test("an agency member enters the panel as an invited person does, by a code, then annotates and qualifies on the site", async ({ browser }) => {
+test("an agency member is recognised in the panel by a Kora window, never by a code, then annotates and qualifies on the site", async ({ browser }) => {
   const { alice, org, script } = await siteReview();
   await seedState(alice, {
     lists: {
@@ -374,13 +374,22 @@ test("an agency member enters the panel as an invited person does, by a code, th
   });
   const { page, errors, panel } = await siteVisitor(browser, script);
   await page.goto(`${site}/?kora`);
-  // The same door as the decider's: their address, then the code sent to it; no window, no other path.
   await page.getByRole("button", { name: "Ouvrir Kora" }).click();
-  await expect(panel.getByText("Je suis l’administrateur")).toHaveCount(0);
+  // The clients' door is not the agency's: a member's address is answered as any uninvited one, no code sent.
   await panel.getByLabel("Votre e-mail").fill(alice.email);
   await panel.getByRole("button", { name: "Recevoir un code" }).click();
-  await panel.getByLabel("Code").fill(await waitForCode(alice.email));
-  await panel.getByRole("button", { name: "Accéder à la revue" }).click();
+  await expect(panel.getByText("n’est pas invitée sur cette revue")).toBeVisible();
+  expect(mailsTo(alice.email).some((mail) => /est votre code/.test(mail.subject))).toBe(false);
+  // The agency's door: a Kora window, where the member's Kora session is (signed in, as in another tab).
+  await page.context().addCookies(alice.cookie.split("; ").map((pair) => ({ name: pair.split("=")[0], value: pair.slice(pair.indexOf("=") + 1), url: baseURL })));
+  await page.reload();
+  await page.getByRole("button", { name: "Ouvrir Kora" }).click();
+  const popup = page.waitForEvent("popup");
+  await panel.getByRole("button", { name: "Je suis de l’agence" }).click();
+  const window = await popup;
+  const closed = window.waitForEvent("close");
+  await window.getByRole("button", { name: "Continuer en tant que Alice Martin" }).click();
+  await closed;
   // Recognised as a member of the agency: no name to give, the list of the page's comments, its draft included.
   await expect(panel.getByRole("heading", { name: "Commentaires", exact: true })).toBeVisible();
   await expect(panel.getByRole("list", { name: "Commentaires de la page" }).getByRole("button")).toHaveCount(2);
@@ -457,17 +466,23 @@ test("from the site, the agency only comments and qualifies on its version: quot
   const chloe = await addColleague(alice, "Chloe Martin", "member");
   const otherPanel = await siteAgencySession(chloe, otherToken);
   expect((await call("/api/comments/40/replies", { person: otherPanel, body: { message: "D’ailleurs" } })).status).toBe(404);
-  // A member's address gets a code in the panel on the site only: on the review page, no code, nothing opens.
+  // Codes are for clients: a member's address, in the panel or not, is answered as any uninvited one —
+  // nothing tells it apart, no code goes, nothing opens.
   const dana = await addColleague(alice, "Dana Roux", "member");
-  expect((await call(`/api/review/${token}/access/code`, { body: { email: dana.email } })).status).toBe(200);
-  expect((await call(`/api/review/${token}/access/verify`, { body: { email: dana.email, code: "000000" } })).status).toBe(400);
+  for (const site of [false, true]) {
+    const asked = await call(`/api/review/${token}/access/code`, { body: { email: dana.email, site } });
+    expect(asked.json).toEqual({ ok: true, invited: false });
+    expect((await call(`/api/review/${token}/access/verify`, { body: { email: dana.email, code: "000000", site } })).status).toBe(400);
+  }
+  expect((await call(`/api/review/${token}/access/code`, { body: { email: `${unique("personne")}@ailleurs.test`, site: true } })).json).toEqual({ ok: true, invited: false });
   expect(mailsTo(dana.email).some((mail) => /est votre code/.test(mail.subject))).toBe(false);
-  // Another agency's member is no member of this one: no code, nothing opens.
+  // A ticket opens only its own link, only for a member, only as signed.
+  const ticket = (await call(`/api/review/${token}/site/ticket`, { person: alice, body: {} })).json.ticket as string;
+  expect((await call(`/api/review/${otherToken}/site/session`, { body: { ticket } })).status).toBe(400);
+  expect((await call(`/api/review/${token}/site/session`, { body: { ticket: `${ticket.slice(0, -2)}xx` } })).status).toBe(400);
   const stranger = await signUp("Sam Dehors");
   await createAgency(stranger, "Autre Studio");
-  expect((await call(`/api/review/${token}/access/code`, { body: { email: stranger.email, site: true } })).status).toBe(200);
-  expect((await call(`/api/review/${token}/access/verify`, { body: { email: stranger.email, code: "000000", site: true } })).status).toBe(400);
-  expect(mailsTo(stranger.email).some((mail) => /est votre code/.test(mail.subject))).toBe(false);
+  expect((await call(`/api/review/${token}/site/ticket`, { person: stranger, body: {} })).status).toBe(404);
 
   // Removed from the agency: the panel's session stops at once.
   const bob = await addColleague(alice, "Bob Durand", "member");
@@ -714,35 +729,34 @@ test("the key's panel says why it does not open: a new version not shared yet, a
   expect(String((await call(at(fresh))).json)).toContain("Cette ligne de script ne mène à aucun livrable");
 });
 
-test("the agency's line opens on each of its sites the deliverable at that address, never another agency's", async ({ browser }) => {
-  const { alice, email } = await siteReview();
-  const agencyKey = (await call("/api/site-key", { person: alice })).json.key as string;
-  expect((await call("/api/site-key")).status).toBe(401);
-  const at = (key: string, origin: string) => `/review/site/${encodeURIComponent(key)}?parent=${encodeURIComponent(origin)}`;
-  // On the deliverable's site, the line found by the page's address opens its shared version, as the
-  // deliverable's own line does: the client verifies there.
-  const visitor = await siteVisitor(browser, `data-site="${agencyKey}"`);
-  await visitor.page.goto(`${site}/?kora`);
-  await verifyInPanel(visitor.page, email);
-  // A site Kora does not know yet: said, with what to do.
-  expect(String((await call(at(agencyKey, "https://inconnu.northwind.test"))).json)).toContain("Ce site n’est pas encore dans Kora");
-  // Two deliverables at the same address: the one shared there opens, not the newer one shared nowhere.
+test("a deliverable's line opens on its own site only: it names no other site of the agency, and no line is the agency's", async () => {
+  const { alice, key } = await siteReview();
+  const other = "https://autre.northwind.test";
+  const otherToken = unique("tok-autre");
+  // Another site of the same agency, shared with its client.
   await seedState(alice, {
-    lists: { deliverables: { upsert: [{ ...siteDeliverable(`${site}/`), id: 9, name: "Doublon" }], remove: [] } },
+    lists: { deliverables: { upsert: [{ ...siteDeliverable(`${other}/`), id: 2, name: "Autre site" }], remove: [] } },
+    maps: { reviewLinks: { upsert: { "2:1": { token: otherToken, active: true, expiresAt: "01/01/2099", autoExpire: true, deliverableId: 2, version: 1 } }, remove: [] } },
   });
-  const opened = String((await call(at(agencyKey, site))).json);
-  expect(opened).not.toContain("Rien à revoir");
-  expect(opened).not.toContain("Ce n’est pas le site");
-  // Another agency's line on this site: none of its deliverables is there.
-  const stranger = await signUp("Sam Dehors");
-  await createAgency(stranger, "Autre Studio");
-  const strangerKey = (await call("/api/site-key", { person: stranger })).json.key as string;
-  expect(String((await call(at(strangerKey, site))).json)).toContain("Ce site n’est pas encore dans Kora");
+  const otherKey = (await call("/api/deliverables/2/site-key", { person: alice })).json.key as string;
+  expect(otherKey).not.toBe(key);
+  const at = (line: string, origin: string) => `/review/site/${encodeURIComponent(line)}?parent=${encodeURIComponent(origin)}`;
+  // Its own line opens there; the first site's line, read by any visitor of that site, does not lead there.
+  expect((await call(at(otherKey, other))).response.headers.get("location")).toContain(otherToken);
+  const probed = await call(at(key, other));
+  expect(probed.status).toBe(200);
+  expect(probed.response.headers.get("location")).toBeNull();
+  expect(String(probed.json)).toContain("Ce n’est pas le site de ce livrable");
+  expect(String(probed.json)).not.toContain(otherToken);
+  expect(String(probed.json)).not.toContain("Autre site");
+  // The same answer for an address the agency has no site at: the line tells nothing of the others.
+  expect(String((await call(at(key, "https://inconnu.northwind.test"))).json)).toContain("Ce n’est pas le site de ce livrable");
+  // There is no line for the whole agency.
+  expect((await call("/api/site-key", { person: alice })).status).toBe(404);
 });
 
-test("« Nouveau livrable » gives the toolbar's line with the address of a « Lien »: before the deliverable, not after", async ({ browser }) => {
+test("« Nouveau livrable » says what the toolbar of a « Lien » does; its line, the deliverable's, comes once it is created", async ({ browser }) => {
   const { alice } = await siteReview();
-  const agencyKey = (await call("/api/site-key", { person: alice })).json.key as string;
   const { page, errors } = await newPerson(browser);
   await signInPage(page, alice.email);
   await page.goto("/projets/1");
@@ -760,11 +774,11 @@ test("« Nouveau livrable » gives the toolbar's line with the address of a « L
   await expect.poll(inView).toBe(true);
   // Said for a first time: an invitation to set it up, where to paste it, where requests then arrive.
   const intro = dialog.getByRole("region", { name: "Recevoir les retours directement depuis le site ?" });
-  await expect(intro).toContainText("Collez cette ligne une fois dans le code du site, avant </body>");
+  await expect(intro).toContainText("Juste après la création, Kora vous donne une ligne à coller dans le code du site, avant </body>");
   await expect(intro).toContainText("elle arrivera dans Kora, sur ce livrable, avec une capture");
-  await expect(intro).toContainText("Une seule fois pour tous vos sites");
-  await expect(intro.getByLabel("Script de recette")).toHaveValue(`<script src="${baseURL}/kora-toolbar.js" data-site="${agencyKey}" defer></script>`);
-  await expect(dialog.getByRole("button", { name: "Copier le script" })).toBeVisible();
+  await expect(intro).toContainText("Une ligne par site, valable pour toutes ses versions");
+  // No line before the deliverable: it is the deliverable's own, given on its board.
+  await expect(dialog.getByLabel("Script de recette")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -775,10 +789,9 @@ test("the invitation of a « Lien » leads to the staging site with the toolbar,
   expect(mail.text).toContain(`Les devis et la validation se font sur la page de revue : ${baseURL}/review/${token}?invitation=`);
 });
 
-test("the canvas of a « Lien » says how to set the toolbar up: the agency's line and the client's address", async ({ browser }) => {
-  const { alice } = await siteReview();
-  // The agency's line: one for all its sites.
-  const agencyKey = (await call("/api/site-key", { person: alice })).json.key as string;
+test("the canvas of a « Lien » says how to set the toolbar up: the line with the fixed key and the client's address", async ({ browser }) => {
+  // The deliverable's line: one per site, for all its versions.
+  const { alice, key } = await siteReview();
   const { page, errors } = await newPerson(browser);
   await signInPage(page, alice.email);
   await page.goto("/projets/1/livrables/1");
@@ -792,7 +805,7 @@ test("the canvas of a « Lien » says how to set the toolbar up: the agency's li
   // The long script line wraps in its field: the board never scrolls sideways, « Ouvrir le site » stays in view.
   await expect.poll(() => board.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
   await expect(board.getByRole("link", { name: "Ouvrir le site" })).toBeInViewport();
-  await expect(board.getByLabel("Script de recette")).toHaveValue(`<script src="${baseURL}/kora-toolbar.js" data-site="${agencyKey}" defer></script>`);
+  await expect(board.getByLabel("Script de recette")).toHaveValue(`<script src="${baseURL}/kora-toolbar.js" data-site="${key}" defer></script>`);
   await expect(board.getByLabel("Lien du site pour le décideur")).toHaveValue(`${site}/?kora`);
   // « Partager la revue » is about people only.
   await page.getByRole("button", { name: "Partager la revue" }).first().click();

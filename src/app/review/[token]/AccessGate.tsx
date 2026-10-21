@@ -73,8 +73,7 @@ export function AccessGate({
 
   async function sendCode(event?: React.FormEvent) {
     event?.preventDefault();
-    // In the panel on the site, a member of the agency gets a code too (src/lib/siteAgency.ts).
-    const sent = await post("/code", { ...target(), ...(site ? { site } : {}) });
+    const sent = await post("/code", target());
     if (sent && sent.invited === false) setStep("denied");
     else if (sent) {
       setStep("code");
