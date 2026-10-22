@@ -107,7 +107,7 @@ Le MVP doit permettre de tester ce positionnement avec un flux complet, sans con
 
 - Liens partageables et proteges.
 - Commentaires positionnes sur un point precis du document.
-- Sur une vidéo, commentaires posés sur un moment et un endroit de l'image : la frise montre un repère par commentaire, et ouvrir un commentaire ramène la vidéo à son moment (US-052).
+- Sur une vidéo, commentaires posés sur un moment et un endroit de l'image : la frise montre un repère par commentaire, et ouvrir un commentaire ramène la vidéo à son moment (US-052). À l'import, Kora prévient l'agence, sans bloquer, d'une vidéo que le navigateur ne lit pas ou dont les sauts « baveront » (images clés trop rares, fréquent avec les enregistreurs d'écran).
 - Fils de discussion et resolution de commentaires *(la resolution est a faire)*.
 - Boutons explicites `Demander des modifications` *(regle serveur faite, bouton a ajouter cote client)* et `Approuver la version`.
 - Relances par e-mail pour les validations en attente.

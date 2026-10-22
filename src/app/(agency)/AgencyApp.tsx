@@ -62,6 +62,7 @@ import { outsideStatusOf, outsideStatusView } from "@/lib/outsideStatus";
 import { NewRequestDialog, type NewRequest } from "./editor/NewRequestDialog";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "./editor/ReviewCanvas";
 import { toast } from "sonner";
+import { videoWarning, videoWarningText } from "@/lib/videoCheck";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1166,6 +1167,8 @@ export function AgencyApp() {
     }
     setDeliverableError("");
     void confirmImport("version", { file, type });
+    // Said while it uploads, never in its way (src/lib/videoCheck.ts).
+    if (type === "Video") void videoWarning(file).then((warning) => warning && toast.warning(videoWarningText[warning], { duration: 15000 }));
   }
 
   /** Edits one of the agency's messages (0 = the comment itself). */

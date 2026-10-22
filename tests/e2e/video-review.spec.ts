@@ -185,3 +185,83 @@ test("a video's comments are listed in the order of the film", async ({ browser 
   await expect(rows.nth(1)).toContainText("Fin trop longue");
   expect(errors).toEqual([]);
 });
+
+// ——— What the import says of a video (src/lib/videoCheck.ts) ———
+
+const screenRecording = readFileSync("tests/e2e/fixtures/screen-recording.webm");
+
+test("the import says when a video may smear or not play, and imports it anyway", async ({ browser }) => {
+  const alice = await signUp("Alice Martin");
+  await createAgency(alice, "Studio Import");
+  await seedState(alice, {
+    lists: {
+      clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
+      projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },
+    },
+  });
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1");
+  await page.getByRole("button", { name: "Ajouter un livrable", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Nouveau livrable" });
+  const file = dialog.locator(".dropzone input[type=file]").first();
+  const note = dialog.getByRole("note");
+
+  // A clean export: nothing to say.
+  await file.setInputFiles({ name: "film.webm", mimeType: "video/webm", buffer: film });
+  await expect(dialog.getByRole("status").filter({ hasText: "Vidéo vérifiée." })).toBeAttached();
+  await expect(note).toHaveCount(0);
+  // Not a video this browser plays (a ProRes, say): said, the client may not watch it.
+  await file.setInputFiles({ name: "master.mov", mimeType: "video/quicktime", buffer: Buffer.alloc(4096, 7) });
+  await expect(note).toContainText("Ce navigateur ne sait pas lire cette vidéo");
+  // A screen recording, one key picture for 16 s: said, and imported all the same.
+  await file.setInputFiles({ name: "capture.webm", mimeType: "video/webm", buffer: screenRecording });
+  await expect(note).toContainText("Cette vidéo risque de « baver » quand on saute à un moment précis");
+  await dialog.getByLabel("Nom du livrable").fill("Capture du prototype");
+  await dialog.getByRole("button", { name: "Créer le livrable" }).click();
+  await page.waitForURL(/livrables\/\d+/);
+  await expect(page.locator("[data-page] video")).toBeVisible();
+
+  // A new version that may smear: said while it uploads.
+  await page.getByRole("region", { name: "Versions" }).locator('input[type="file"]').setInputFiles({ name: "capture-2.webm", mimeType: "video/webm", buffer: screenRecording });
+  await expect(page.getByText("Cette vidéo risque de « baver »")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Versions" })).toContainText("V02");
+  expect(errors).toEqual([]);
+});
+
+/** A minimal MP4 index: one video track of `samples` pictures `delta` apart (timescale 1 000), key pictures `keys` (1-based). */
+function mp4(samples: number, delta: number, keys: number[] | null, indexAtEnd = false) {
+  const u32 = (value: number) => {
+    const buffer = Buffer.alloc(4);
+    buffer.writeUInt32BE(value);
+    return buffer;
+  };
+  const box = (type: string, ...parts: Buffer[]) => Buffer.concat([u32(8 + parts.reduce((total, part) => total + part.length, 0)), Buffer.from(type), ...parts]);
+  const full = (type: string, ...parts: Buffer[]) => box(type, u32(0), ...parts);
+  const table = box(
+    "stbl",
+    full("stts", u32(1), u32(samples), u32(delta)),
+    ...(keys ? [full("stss", u32(keys.length), ...keys.map(u32))] : []),
+  );
+  const moov = box(
+    "moov",
+    box("trak", box("mdia", full("mdhd", u32(0), u32(0), u32(1000), u32(samples * delta), u32(0)), full("hdlr", u32(0), Buffer.from("vide"), Buffer.alloc(13)), box("minf", table))),
+  );
+  const ftyp = box("ftyp", Buffer.from("isom"), u32(0));
+  const mdat = box("mdat", Buffer.alloc(64));
+  return Buffer.concat(indexAtEnd ? [ftyp, mdat, moov] : [ftyp, moov, mdat]);
+}
+
+test("the key pictures' longest gap is read from the index alone, in WebM and MP4", async () => {
+  const { keyPictureGap } = await import("../../src/lib/videoCheck");
+  const gap = (content: Buffer, name: string) => keyPictureGap(new File([new Uint8Array(content)], name));
+  expect(await gap(film, "film.webm")).toBe(1);
+  expect(await gap(screenRecording, "capture.webm")).toBe(16);
+  // 30 s at 25 images a second: a key picture every 2 s, or only at 0 and 15 s, its index at the start or the end.
+  expect(await gap(mp4(750, 40, Array.from({ length: 15 }, (_, index) => 1 + index * 50)), "export.mp4")).toBeCloseTo(2);
+  expect(await gap(mp4(750, 40, [1, 376], true), "rare.mp4")).toBeCloseTo(15);
+  // No sync table: every picture is a key picture.
+  expect(await gap(mp4(750, 40, null), "intra.mov")).toBe(0);
+  // Not a video it knows: nothing learnt.
+  expect(await gap(Buffer.alloc(64, 1), "inconnu.mp4")).toBeNull();
+});

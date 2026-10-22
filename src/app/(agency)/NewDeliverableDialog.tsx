@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FormError, Modal } from "@/components/modal";
 import { undeployedSiteProblem, withoutToolbarFlag } from "@/lib/siteReview";
+import { videoWarning, videoWarningText, type VideoWarning } from "@/lib/videoCheck";
 import { SiteScriptIntro } from "./SiteToolbarSnippet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DeliverableCover } from "@/components/DeliverableCover";
@@ -44,6 +45,9 @@ export function NewDeliverableDialog({
   const [name, setName] = useState("");
   const [type, setType] = useState<DeliverableType>("PDF");
   const [file, setFile] = useState<File | null>(null);
+  // What the agency should know of the video chosen (src/lib/videoCheck.ts): said, never in the way.
+  // Checked in a moment, without reading it whole: `done` once known.
+  const [videoCheck, setVideoCheck] = useState<{ file: File; warning: VideoWarning | null; done: boolean } | null>(null);
   const [url, setUrl] = useState("");
   const [cover, setCover] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
@@ -74,6 +78,10 @@ export function NewDeliverableDialog({
     setFile(next);
     if (!next) return;
     const guessed = kindFromFile(next);
+    if (guessed === "Video") {
+      setVideoCheck({ file: next, warning: null, done: false });
+      void videoWarning(next).then((warning) => setVideoCheck({ file: next, warning, done: true }));
+    }
     if (guessed && guessed !== type) setType(guessed);
     if (!name.trim()) setName(next.name);
   }
@@ -191,6 +199,16 @@ export function NewDeliverableDialog({
               </span>
               <input type="file" accept={kind.accept} onChange={(event) => pickFile(event.target.files?.[0] ?? null)} />
             </label>
+            {videoCheck?.file === file && !videoCheck.warning && (
+              <p role="status" className="sr-only">
+                {videoCheck.done ? "Vidéo vérifiée." : "Vérification de la vidéo…"}
+              </p>
+            )}
+            {videoCheck?.file === file && videoCheck.warning && (
+              <p role="note" className="rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-sm text-[var(--status-medium-text)]">
+                {videoWarningText[videoCheck.warning]}
+              </p>
+            )}
           </div>
         )}
 
