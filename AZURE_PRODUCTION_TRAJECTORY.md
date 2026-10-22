@@ -2,14 +2,14 @@
 
 Ce document decrit la trajectoire entre le prototype actuel et une version de production hebergee dans l'organisation Azure. Il ne modifie pas la demo actuelle et sert de reference pour eviter les oublis lors de la migration.
 
-## 1. État actuel (16 octobre 2026)
+## 1. État actuel (22 octobre 2026)
 
 Kora tourne en ligne pour des pilotes, hors d'Azure pour l'application et la base :
 
 - **Application** : Next.js 16 sur Vercel, région Francfort (`fra1`, `vercel.json`).
 - **Base** : PostgreSQL sur Supabase (Francfort), schéma et migrations Drizzle (`drizzle/`), sécurité par ligne sur toutes les tables, journal d'audit en ajout seul garanti par un trigger. Connexion chiffrée et certificat vérifié (`DATABASE_SSL_CA`).
-- **Fichiers** : déjà sur **Azure Blob Storage**, un conteneur privé par agence, envoi direct du navigateur avec une adresse de création seule, empreinte vérifiée par le serveur, lecture par adresse signée de 5 minutes.
-- **Identité agence** : Better Auth (e-mail et mot de passe avec adresse confirmée, Google en option), agences, rôles propriétaire, administrateur et membre.
+- **Fichiers** : déjà sur **Azure Blob Storage**, un conteneur privé par agence, envoi direct du navigateur (par blocs au-delà de 8 Mo, vidéos jusqu'à 1 Go par défaut), fichier verrouillé par un bail permanent puis empreinte vérifiée par le serveur, lecture par adresse signée de 5 minutes (une vidéo : sa durée plus 15 minutes).
+- **Identité agence** : Better Auth (e-mail et mot de passe avec adresse confirmée, Google et Microsoft en option), agences, rôles propriétaire, administrateur et membre.
 - **Identité client** : liens signés Kora, code à 6 chiffres par e-mail, appareil reconnu 30 jours, rôles décideur et contributeur.
 - **E-mails** : Resend.
 - **API** : une route par action, l'état lu en une requête ; limites de débit en base ; en-têtes de sécurité et refus des écritures d'un autre site.
@@ -49,6 +49,7 @@ flowchart LR
 | Reseau | VNet, Private Endpoints, Private DNS Zones | PostgreSQL et Blob non exposes directement sur Internet |
 | Observabilite | Azure Application Insights et Azure Monitor | Logs structures, erreurs, latence et alertes |
 | Protection des fichiers | Managed Identity + User Delegation SAS | Acces temporaire et limite aux blobs |
+| IA (suggestion de qualification, US-045) | Azure OpenAI, deploiement « Data Zone EU » | Donnees traitees en Europe, sous le contrat Microsoft deja en place ; l'agence confirme toujours la suggestion. A decider |
 
 Une application accessible par un client externe aura generalement un point d'entree public protege. L'origine, la base de donnees et le stockage peuvent rester prives dans le VNet. Une application entierement privee imposerait un VPN ou un acces reseau aux clients, ce qui ne correspond pas au parcours actuel par lien partageable.
 

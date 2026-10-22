@@ -4,7 +4,7 @@
 
 > **État du produit.** Kora est en ligne pour des pilotes (Vercel à Francfort, Supabase, Azure, Resend). Les sections qui suivent décrivent le positionnement et le MVP visé ; l'état réel de chaque fonctionnalité est suivi dans [PERSONAS_USER_STORIES.md](PERSONAS_USER_STORIES.md#suivi-de-réalisation). La pile et la sécurité sont décrites dans [TECHNOLOGIES.md](TECHNOLOGIES.md), les règles pour les agents IA dans [AGENTS.md](AGENTS.md).
 
-ScopeGuard est un SaaS destine aux agences web, studios de design et consultants creatifs. Il centralise les retours clients sur des livrables visuels et aide les equipes a transformer chaque demande en une decision claire : incluse dans le perimetre, modification mineure, ou prestation supplementaire a chiffrer.
+Kora est un SaaS destine aux agences web, studios de design et consultants creatifs. Il centralise les retours clients sur des livrables visuels et aide les equipes a transformer chaque demande en une decision claire : incluse dans le perimetre, modification mineure, ou prestation supplementaire a chiffrer.
 
 Le produit ne cherche pas a etre un simple outil de commentaires sur PDF. Son objectif est de proteger la marge des agences, accelerer les validations et fournir une preuve exploitable de ce qui a ete demande, accepte et livre.
 
@@ -30,12 +30,12 @@ Les consequences sont concretes :
 
 ## Notre reponse
 
-ScopeGuard place la discussion directement sur le livrable et structure le parcours de decision.
+Kora place la discussion directement sur le livrable et structure le parcours de decision.
 
-1. L'agence importe un PDF, une image ou une capture de page web dans un projet.
+1. L'agence importe un PDF, une image ou une vidéo dans un projet, ou donne l'adresse de son site de recette (le client commente alors directement le site, avec la barre Kora).
 2. Le client recoit un lien de revue simple, sans devoir apprendre un outil de gestion de projet.
 3. Les commentaires sont attaches a un emplacement precis du livrable.
-4. L'agence qualifie chaque demande : `incluse`, `modification mineure`, `hors perimetre` ou `a clarifier`.
+4. L'agence qualifie chaque demande : `Inclus`, `Hors scope` ou `À clarifier`.
 5. Pour une demande hors perimetre, l'agence cree une proposition complementaire avec un descriptif, un cout, un impact sur le planning et une date limite de validite.
 6. Le client accepte ou refuse explicitement cette proposition.
 7. La version finale est approuvee et verrouillee avec un journal horodate des decisions.
@@ -69,7 +69,7 @@ Le premier segment recommande est celui des agences web de 3 a 30 personnes. Ell
 
 ## Positionnement
 
-ScopeGuard est un **systeme de controle du perimetre client pour agences creatrices de livrables visuels**.
+Kora est un **systeme de controle du perimetre client pour agences creatrices de livrables visuels**.
 
 La validation visuelle est le point d'entree. La valeur distinctive est la transformation d'un retour client en decision operationnelle et commerciale avant que le travail soit engage.
 
@@ -80,16 +80,17 @@ Ce positionnement evite deux erreurs courantes :
 
 ## Comparaison avec les alternatives
 
-| Alternative | Ce qu'elle fait bien | Limite pour notre cas | Difference ScopeGuard |
+| Alternative | Ce qu'elle fait bien | Limite pour notre cas | Difference Kora |
 | --- | --- | --- | --- |
 | Filestage / Ziflow | Relecture, commentaires et circuits de validation de contenu | Oriente production et conformite ; le lien avec le hors perimetre et le devis reste secondaire | Qualification native des demandes et creation de propositions supplementaires |
-| Frame.io | Revue video et collaboration creative | Optimise surtout les workflows de production video | Concu pour PDF, maquettes, captures de site et pilotage du perimetre commercial |
+| Frame.io | Revue video avancee : plages de temps, dessin, image par image, comparaison de versions | Optimise surtout les workflows de production video | La video y est commentee (moment et endroit, US-052), au service du perimetre commercial, comme les PDF, les maquettes et les sites |
+| Marker.io / BugHerd | Retours poses sur le site, contexte technique (navigateur, console), envoi vers Jira, Asana, Linear, Slack | Le retour part en ticket sans etre qualifie ni chiffre | Chaque retour est qualifie, chiffre si besoin et accepte par le client avant d'etre execute |
 | MarkUp.io | Commentaires visuels rapides et simples | Peu de mecanismes pour transformer un retour en accord commercial | Du commentaire a la proposition acceptee, avec une piste d'audit |
 | ClickUp / Asana / Trello | Taches, planification et travail interne | L'experience client est trop lourde et le contexte visuel est limite | Un espace client focalise sur une decision par livrable |
 | CRM / devis / facturation | Devis, contrats, factures et suivi commercial | Le contexte du retour se perd avant le devis | Le devis complementaire part du commentaire visuel exact qui l'a motive |
 | E-mail et messageries | Universels et immediats | Decisions dispersees, aucune traçabilite fiable, pas de garde-fou commercial | Un historique unique, structure et exportable |
 
-La concurrence valide l'existence du besoin de revue et d'approbation. ScopeGuard ne cherche pas a gagner par un plus grand catalogue de fonctionnalites. Il gagne par une question plus proche de la marge : **cette demande etait-elle incluse, et le client a-t-il accepte de payer le supplement avant execution ?**
+La concurrence valide l'existence du besoin de revue et d'approbation. Kora ne cherche pas a gagner par un plus grand catalogue de fonctionnalites. Il gagne par une question plus proche de la marge : **cette demande etait-elle incluse, et le client a-t-il accepte de payer le supplement avant execution ?**
 
 ## Fonctionnalites du MVP
 
@@ -99,8 +100,8 @@ Le MVP doit permettre de tester ce positionnement avec un flux complet, sans con
 
 - Espaces de travail par agence.
 - Projets associes a un client.
-- Import de PDF et d'images.
-- Ajout d'une capture de page web depuis une URL *(à faire : l'URL est enregistrée, sans capture)*.
+- Import de PDF, d'images et de vidéos (jusqu'à `MAX_VIDEO_UPLOAD_MB`, 1 Go par défaut).
+- Revue d'un site de recette : le livrable « Lien » et la barre Kora sur le site (US-048), qui remplacent la capture d'une page depuis une URL.
 - Versions de livrables avec statut clair : brouillon, en revue, modifications demandees, approuve.
 
 ### Revue client
@@ -108,7 +109,7 @@ Le MVP doit permettre de tester ce positionnement avec un flux complet, sans con
 - Liens partageables et proteges.
 - Commentaires positionnes sur un point precis du document.
 - Sur une vidéo, commentaires posés sur un moment et un endroit de l'image : la frise montre un repère par commentaire, et ouvrir un commentaire ramène la vidéo à son moment (US-052). À l'import, Kora prévient l'agence, sans bloquer, d'une vidéo que le navigateur ne lit pas ou dont les sauts « baveront » (images clés trop rares, fréquent avec les enregistreurs d'écran).
-- Fils de discussion et resolution de commentaires *(la resolution est a faire)*.
+- Fils de discussion, et discussion close par l'agence : lecture seule pour tous jusqu'à sa réouverture.
 - Boutons explicites `Demander des modifications` *(regle serveur faite, bouton a ajouter cote client)* et `Approuver la version`.
 - Relances par e-mail pour les validations en attente.
 - Revue d'un site de recette, à la manière de la barre de Vercel : le client commente directement le site *(essai, voir plus bas)*.
@@ -132,19 +133,19 @@ Le MVP doit permettre de tester ce positionnement avec un flux complet, sans con
 
 Les elements suivants sont utiles mais ne doivent pas retarder la validation du besoin principal :
 
-- Annotation et lecture avancee de videos.
+- Lecture video avancee : plages de temps, dessin sur l'image, image par image, comparaison de versions *(la base est faite : moment et endroit, US-052)*.
 - Coedition en temps reel.
 - Edition de documents dans le produit.
 - Connecteurs vers de nombreux outils de gestion de projet.
 - Generation automatique de contrats complexes.
-- Intelligence artificielle de classification des demandes.
+- Classification automatique des demandes par IA *(une suggestion, que l'agence confirme toujours, est prevue avec le perimetre de reference, US-045)*.
 - Gestion comptable complete.
 
 Une integration Stripe, puis des connecteurs vers les outils deja utilises par les agences, seront abordes une fois que le parcours commentaire -> devis complementaire -> acceptation sera valide.
 
 ## Modele economique
 
-ScopeGuard est un produit B2B par abonnement. Sa valeur est liee au chiffre d'affaires protege et au temps administratif evite, et non au volume brut de fichiers importes.
+Kora est un produit B2B par abonnement. Sa valeur est liee au chiffre d'affaires protege et au temps administratif evite, et non au volume brut de fichiers importes.
 
 | Offre | Prix indicatif | Inclut |
 | --- | ---: | --- |
@@ -188,13 +189,13 @@ Le produit doit demontrer un effet concret sur le flux commercial des agences.
 - Delai moyen entre envoi et approbation.
 - Nombre de demandes qualifiees hors perimetre par projet.
 - Taux d'acceptation des propositions complementaires.
-- Montant de chiffre d'affaires supplementaire accepte via ScopeGuard.
+- Montant de chiffre d'affaires supplementaire accepte via Kora.
 - Temps moyen consacre aux relances de validation.
 - Taux de projets disposant d'une preuve de validation complete.
 
 ## Vision
 
-A terme, ScopeGuard doit devenir la source de verite des decisions client sur les projets au forfait : le lieu ou une demande est contextualisee, arbitree, chiffree, acceptee et rattachee a une livraison.
+A terme, Kora doit devenir la source de verite des decisions client sur les projets au forfait : le lieu ou une demande est contextualisee, arbitree, chiffree, acceptee et rattachee a une livraison.
 
 Le produit ne remplace pas un outil de gestion de projet, un CRM ou une solution comptable. Il les relie au moment le plus fragile de la relation agence-client : celui ou une remarque apparemment simple peut se transformer en travail gratuit.
 
@@ -221,9 +222,10 @@ npm run test:e2e             # la suite de tests : base de test kora_test recré
 L'application tourne sur Vercel, dans la région de Francfort (`fra1`, fixée par [vercel.json](vercel.json)), à côté de la base Supabase : une base éloignée multiplie la latence de chaque action. À chaque déploiement :
 
 1. **Migrations d'abord.** Si le déploiement ajoute des fichiers dans `drizzle/`, appliquez-les sur la base en ligne **avant** de déployer le code : `DATABASE_TARGET=remote npm run db:migrate`.
-2. **Variables d'environnement** (Vercel › Settings › Environment Variables), voir [.env.example](.env.example) : `DATABASE_TARGET=remote`, `DATABASE_URL_REMOTE` (pooler Supabase de Francfort), `DATABASE_SSL_CA` (le texte PEM du certificat), `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` (l'adresse publique), `TRUSTED_PROXY_HOPS=1`, `STORAGE_TARGET=remote` et les `STORAGE_*_REMOTE`, `RESEND_API_KEY`, `MAIL_FROM`. Jamais `MAIL_TRANSPORT` en ligne.
+2. **Variables d'environnement** (Vercel › Settings › Environment Variables), voir [.env.example](.env.example) : `DATABASE_TARGET=remote`, `DATABASE_URL_REMOTE` (pooler Supabase de Francfort), `DATABASE_SSL_CA` (le texte PEM du certificat), `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` (l'adresse publique), `TRUSTED_PROXY_HOPS=1`, `STORAGE_TARGET=remote` et les `STORAGE_*_REMOTE`, `RESEND_API_KEY`, `MAIL_FROM` ; selon les besoins, `GOOGLE_*`, `MICROSOFT_*`, `DEMO_REQUESTS_TO`, `MAX_VIDEO_UPLOAD_MB` et `FILE_LINK_SECONDS`. Jamais `MAIL_TRANSPORT` en ligne. Vercel sépare les variables *Production* et *Preview* : cochez aussi *Preview* pour qu'une branche se construise, en sachant que sa préversion utilise alors la vraie base et le vrai Azure.
 3. **E-mails** : le domaine d'envoi doit avoir SPF, DKIM et un enregistrement DMARC, sans quoi les codes d'accès arrivent en spam.
-4. **Après le déploiement**, un onglet resté ouvert sur l'ancienne version doit être rechargé.
+4. **Une dépendance ajoutée** et la build échoue sur un module introuvable : relancez le déploiement sans le cache de build (*Redeploy*, « Use existing Build Cache » décoché).
+5. **Après le déploiement**, un onglet resté ouvert sur l'ancienne version doit être rechargé.
 
 ### Fichiers importés
 
@@ -244,9 +246,9 @@ L'import ne passe pas par l'application (dont l'hébergeur limite la taille des 
 
 ### Connexion
 
-L'espace agence demande un compte (`/connexion`) : e-mail et mot de passe, ou Google si `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` sont renseignés. L'adresse est confirmée par un lien envoyé par e-mail avant la première connexion (les comptes créés avant cette règle sont considérés comme confirmés, migration `0008`).
+Un visiteur non connecté voit à `/` la page d'accueil publique (`/decouvrir`), avec « Réserver une démo » (`/demo`, transmise par e-mail à `DEMO_REQUESTS_TO`) et « Commencer » (`/commencer`, la création du compte). L'espace agence demande un compte (`/connexion`) : e-mail et mot de passe (12 caractères au moins, variés, rien de courant ni de personnel, `src/lib/passwordPolicy.ts`), ou Google et Microsoft si leurs clés sont renseignées. L'adresse est confirmée par un lien envoyé par e-mail avant la première connexion (les comptes créés avant cette règle sont considérés comme confirmés, migration `0008`) ; une adresse Microsoft n'en est dispensée que si Microsoft la garantit, et une invitation d'agence ne s'accepte qu'avec une adresse confirmée.
 
-Chaque compte travaille dans une agence. Après l'inscription, la personne crée la sienne (`/bienvenue`) et en devient propriétaire, ou rejoint celle qui l'a invitée. Le propriétaire et les administrateurs invitent leurs collègues depuis le menu du compte, « Équipe » : l'invité reçoit un lien `/invitation/:id` qu'il ne peut accepter qu'avec l'adresse invitée. Le lien ne montre que le nom de l'agence et l'adresse masquée : l'invité saisit lui-même son adresse. Toutes les données sont rangées par agence (`organization_id` dans chaque clé primaire) et le serveur filtre chaque requête sur l'agence du membre ; retirer quelqu'un de l'équipe lui coupe l'accès immédiatement.
+Chaque compte travaille dans une agence. Après l'inscription, la personne crée la sienne (`/bienvenue`) et en devient propriétaire, puis met en place son premier espace, son premier projet et ses collègues (`/demarrer`), ou rejoint l'agence qui l'a invitée. Le propriétaire et les administrateurs invitent leurs collègues depuis le menu du compte, « Équipe » : l'invité reçoit un lien `/invitation/:id` qu'il ne peut accepter qu'avec l'adresse invitée. Le lien ne montre que le nom de l'agence et l'adresse masquée : l'invité saisit lui-même son adresse. Toutes les données sont rangées par agence (`organization_id` dans chaque clé primaire) et le serveur filtre chaque requête sur l'agence du membre ; retirer quelqu'un de l'équipe lui coupe l'accès immédiatement.
 
 | Rôle | Peut faire |
 | --- | --- |
@@ -287,6 +289,7 @@ Seul le client valide une version, depuis sa page : l'agence n'a aucune route po
 | `POST /api/comments` | Commentaire (`deliverableId`, `message`…), demande saisie par l'agence (`request` : « À clarifier », « Inclus » ou « Hors scope », avec sa source facultative : canal, date, extrait, capture), ou commentaire remis après sa suppression (`restore`) |
 | `PATCH /api/comments/:id` | Modifier un message de l'agence (`message`) ou déplacer un repère (`page`, `x`, `y`) |
 | `DELETE /api/comments/:id` | Supprimer un commentaire de l'agence |
+| `PUT /api/comments/:id/closure` | Clore une discussion (lecture seule pour tous, refusé tant qu'une proposition attend le client) ou la rouvrir |
 | `PUT /api/comments/:id/qualification` | « Inclus », « Hors scope » avec un chiffrage en brouillon, « À clarifier » avec un titre (visible du client), ou retour « À clarifier » sans titre |
 | `POST /api/comments/:id/replies` | Répondre |
 | `PATCH`, `DELETE /api/comments/:id/replies/:replyId` | Modifier ou supprimer une réponse de l'agence |
@@ -312,7 +315,7 @@ Seul le client valide une version, depuis sa page : l'agence n'a aucune route po
 
 ### Revue d'un site de recette (essai, US-048)
 
-Pour un livrable « Lien », dont l'adresse est le site de recette, « Partager la revue » donne une ligne de script à placer **une seule fois** sur le site, et le lien à envoyer au client (l'adresse du site suivie de `?kora`, aussi dans les e-mails d'invitation et de relance) :
+Pour un livrable « Lien », dont l'adresse est le site de recette, le tableau du livrable (« Paramétrer la barre Kora ») donne une ligne de script à placer **une seule fois** sur le site, et le lien à envoyer au client (l'adresse du site suivie de `?kora`, aussi dans les e-mails d'invitation et de relance) :
 
 ```html
 <script src="https://<kora>/kora-toolbar.js" data-site="<clé du livrable>" defer></script>
@@ -323,13 +326,13 @@ Pour un livrable « Lien », dont l'adresse est le site de recette, « Partager 
 - Le script (`public/kora-toolbar.js`) n'affiche la barre qu'à qui a ouvert le site avec `?kora`, puis s'en souvient sur l'appareil. Il ouvre le panneau Kora (`/review/:token/site`) dans un cadre servi par Kora.
 - Le panneau ne s'affiche que sur le site du livrable : le proxy n'autorise que l'origine qu'il nomme (`frame-ancestors`), et la page vérifie que c'est celle du livrable (`reviewedSiteOrigin`). Toutes les autres pages de Kora refusent toujours d'être affichées dans un cadre.
 - Le client s'y vérifie par le même code e-mail. Sa session est un cookie partitionné (`kora_review_site_session`, `SameSite=None; Partitioned`), que le navigateur ne garde que pour ce site.
-- Sur le site, une pastille « Kora » en bas à droite. Un clic ouvre le panneau, qui reste épuré, et déplie la pastille avec les deux outils du canevas de Kora : « Naviguer » (`V`, par défaut : le site fonctionne normalement) et « Commenter » (`C` : chaque clic sur un élément ouvre une demande, jusqu'au retour à « Naviguer » ou Échap). « Réduire Kora » ou la croix du panneau replient tout. La pastille se déplace en la faisant glisser, reste dans l'écran et garde sa place sur l'appareil ; panneau ouvert, elle se range à sa gauche. La demande passe par `POST comments` avec sa place (`site` : page, élément, position dans l'élément, largeur d'écran, `src/lib/siteReview.ts`), puis suit le parcours habituel côté agence.
-- L'agence aussi travaille sur le site : « Je suis de l'agence » ouvre une petite fenêtre Kora, qui voit la session habituelle du membre et remet au panneau un ticket signé (2 minutes, pour ce lien). Le panneau l'échange contre sa propre session (`kora_agency_site_session`, partitionnée, 12 heures, liée au membre, à l'agence et à la version ; l'appartenance et le lien sont relus à chaque requête : un membre retiré, un lien révoqué ou expiré la ferment aussitôt). L'agence y voit toutes les épingles, ses remarques internes en pointillés, pose ses remarques, répond et qualifie. Depuis le site, ses routes n'ouvrent que ces gestes (`siteAgencyActions`) et seulement sur cette version : devis, contre-propositions et partage répondent `403 KORA_ONLY`, à faire dans Kora.
+- Sur le site, le logo Kora en bas à droite, déplaçable, qui garde sa place sur l'appareil. Un clic déplie la barre avec les outils du canevas de Kora : « Naviguer » (`V`, par défaut : le site fonctionne normalement) et « Commenter » (`C` : chaque clic sur un élément ouvre un commentaire, jusqu'au retour à « Naviguer » ou Échap), « Commentaires » (la liste de ceux de la page, à droite) et l'aide ; une aide s'affiche à la première ouverture. Un commentaire s'écrit et se lit dans une bulle à côté de l'épingle ou du clic, comme sur le canevas. Il passe par `POST comments` avec sa place (`site` : page, élément, position dans l'élément, largeur d'écran, `src/lib/siteReview.ts`), puis suit le parcours habituel côté agence.
+- L'agence aussi travaille sur le site : « Je suis de l'agence » ouvre une petite fenêtre Kora, qui voit la session habituelle du membre et remet au panneau un ticket signé (2 minutes, pour ce lien). Le panneau l'échange contre sa propre session (`kora_agency_site_session`, partitionnée, 12 heures, liée au membre, à l'agence et à la version ; l'appartenance et le lien sont relus à chaque requête : un membre retiré, un lien révoqué ou expiré la ferment aussitôt). L'agence y voit toutes les épingles, y compris ses brouillons, pose ses commentaires, répond et qualifie. Depuis le site, ses routes n'ouvrent que ces gestes (`siteAgencyActions`) et seulement sur cette version : devis, contre-propositions et partage répondent `403 KORA_ONLY`, à faire dans Kora.
 - Au clic, la barre capture la fenêtre telle que le client la voit, sans la barre ni le panneau (`modern-screenshot`, chargé depuis Kora au premier clic). Le panneau l'envoie (`POST /api/review/:token/site/capture` : image JPEG ou PNG, 3 Mo au plus), puis la demande la nomme. La barre dessine dans l'image le cadre de l'élément visé et le point du clic : la capture se suffit à elle-même, où qu'on l'ouvre. Elle se voit dans le fil de la demande, côté agence comme côté client, et la preuve garde l'empreinte de cette image annotée. C'est une copie reconstituée, pas une photo de l'écran : une image d'un autre site qui refuse d'être lue y reste blanche. Si la capture échoue (site qui bloque les scripts de Kora, Safari capricieux), la demande part sans.
-- Le panneau a l'apparence de Kora parce qu'il en reprend les composants : le panneau « Demandes » (onglets « À clarifier », « Inclus », « Hors scope »), puis le fil de Kora pour la demande ouverte (réponses, modification, qualification par l'agence). Sur le site, les épingles sont celles de Kora : initiales de l'auteur sur un commentaire, icône et couleur du statut sur une demande.
+- La bulle a l'apparence de Kora parce qu'elle en reprend les composants : le fil de Kora (`ThreadPopover` : réponses, modification, qualification par l'agence). Sur le site, les épingles sont celles de Kora : initiales de l'auteur sur un commentaire, icône et couleur du statut sur une demande.
 - Le site ne reçoit que de quoi dessiner les épingles (élément, position, statut, initiales, libellé), jamais le texte des demandes, leur montant ni l'identité complète de leur auteur, qui restent dans le cadre. Une épingle dont l'élément a disparu est signalée « élément introuvable ».
-- Le site de recette doit être en `https` (sauf `localhost` en développement) : une page en `http` peut être modifiée en chemin. Sinon, « Partager la revue » le dit au lieu de donner le script.
-- Dans Kora, un livrable « Lien » s'affiche en tableau de recette (`src/app/(agency)/editor/SiteBoard.tsx`), côté agence comme côté client : ses demandes page par page, chacune avec sa capture annotée et son statut ; un clic ouvre le fil de la demande à côté. Sans demande, la page explique comment elles arrivent. « Ouvrir le site » ouvre la recette avec la barre.
+- Le livrable « Lien » doit être un site déployé en `https` : Kora refuse, à la création comme pour une nouvelle version, une adresse de cet ordinateur, du réseau local ou en `http` (une page en `http` peut être modifiée en chemin, et le client n'ouvrirait pas une adresse locale). Une nouvelle version demande l'adresse du site, pré-remplie avec celle de la précédente.
+- Dans Kora, un livrable « Lien » s'affiche en tableau de recette (`src/app/(agency)/editor/SiteBoard.tsx`), côté agence comme côté client : une feuille en forme de fenêtre de navigateur qui dit quoi faire (le paramétrage pour l'agence, les étapes pour le client), puis chaque demande comme une page du canevas, sa capture avec son épingle là où le clic a eu lieu. L'agence peut épingler ses propres brouillons sur une capture et les déplacer. « Ouvrir le site » ouvre la recette avec la barre.
 - Les devis et la validation restent sur la page de revue : une page que l'agence contrôle ne doit pas pouvoir piéger un clic sur une décision. Le panneau signale ce qui attend le client (« 1 devis attend votre décision ») et ouvre la revue dans un onglet sans redemander de code : l'onglet reçoit du panneau un ticket signé (2 minutes, cette adresse et ce lien, `src/lib/siteHandoff.ts`), échangé contre la session habituelle tant que l'adresse reste invitée.
 
 Limites de l'essai : testé dans Chrome seulement (Safari et Firefox à vérifier à la main) ; le site de l'agence doit accepter le script et le cadre de Kora s'il a sa propre politique de sécurité ; les numéros des épingles diffèrent entre la vue de l'agence (pins internes compris) et celle du client.
