@@ -15,8 +15,11 @@ import { baseURL, mailOutbox, testDatabaseUrl } from "../../playwright.config";
 export const PASSWORD = "Mot-de-passe-solide-24";
 
 let counter = 0;
-/** "alice-k3x9" : names and addresses never collide between tests of the same run. */
-export const unique = (prefix: string) => `${prefix}-${Date.now().toString(36)}${(counter++).toString(36)}`;
+/**
+ * "alice-k3x9w1a" : names and addresses never collide between tests of the same run. The worker's number
+ * is part of it: workers run side by side, each counting from 0, and two may ask in the same millisecond.
+ */
+export const unique = (prefix: string) => `${prefix}-${Date.now().toString(36)}w${process.env.TEST_PARALLEL_INDEX ?? 0}${(counter++).toString(36)}`;
 /**
  * One address per simulated person: sign-in limits are counted per address (TRUSTED_PROXY_HOPS=1).
  * Each worker draws from a range of its own (workers run side by side), from a random start in it: a
