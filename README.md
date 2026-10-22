@@ -110,6 +110,7 @@ Le MVP doit permettre de tester ce positionnement avec un flux complet, sans con
 - Commentaires positionnes sur un point precis du document.
 - Sur une vidéo, commentaires posés sur un moment et un endroit de l'image : la frise montre un repère par commentaire, et ouvrir un commentaire ramène la vidéo à son moment (US-052). À l'import, Kora prévient l'agence, sans bloquer, d'une vidéo que le navigateur ne lit pas ou dont les sauts « baveront » (images clés trop rares, fréquent avec les enregistreurs d'écran).
 - Fils de discussion, et discussion close par l'agence : lecture seule pour tous jusqu'à sa réouverture.
+- Comparaison de deux versions d'une image ou d'un PDF, côté agence comme côté client (US-053) : la frise des versions, côte à côte avec le zoom synchronisé ou un rideau avant/après, les demandes de l'ancienne version posées dessus, les PDF page par page. Le client ne compare que les versions qui lui sont partagées ; une version non partagée entre elles n'apparaît que par son numéro.
 - Boutons explicites `Demander des modifications` *(regle serveur faite, bouton a ajouter cote client)* et `Approuver la version`.
 - Relances par e-mail pour les validations en attente.
 - Revue d'un site de recette, à la manière de la barre de Vercel : le client commente directement le site *(essai, voir plus bas)*.
@@ -278,6 +279,7 @@ La page du client écrit une action à la fois, chacune sur sa route (`src/db/re
 | `POST proposals/:id/decision` | Accepter ou refuser un devis envoyé, une seule fois |
 | `POST proposals/:id/adaptation` | Demander une adaptation, si l'agence l'a permise |
 | `POST changes-request` | Demander des modifications |
+| `GET versions` | Les versions de ce livrable partagées avec ce client, chacune comme sa page la montrerait, pour les comparer |
 | `POST approval` | Valider la version, ce qui la verrouille ; refusé tant qu'un devis envoyé attend la décision du client (la fenêtre de validation les liste, à accepter ou refuser). Les remarques encore « À clarifier » sont abandonnées en validant : la fenêtre le dit et les liste, le journal les nomme |
 
 Dans la cloche, chaque activité ouvre ce qu'elle concerne : une décision du client ouvre la demande, une demande d'accès reçue avant leur retrait ouvre « Partager la revue » sur le livrable, une relance ouvre la version (`notificationHref`, `src/app/(agency)/routes.ts`). Les notifications plus anciennes, ou dont le livrable a disparu, restent du simple texte.

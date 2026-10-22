@@ -329,6 +329,32 @@ export async function newerSharedVersion(db: Db, access: ReviewAccess, email: st
   return null;
 }
 
+/**
+ * Every version of the same deliverable shared with this client (active link, not expired, address
+ * invited), the oldest first, the one they are on included: what they may compare (US-053). Never a
+ * version not shared with them.
+ */
+export async function sharedVersionsFor(db: Db, access: ReviewAccess, email: string): Promise<ReviewAccess[]> {
+  const org = access.organizationId;
+  const [current] = await db.select({ projectId: deliverables.projectId, name: deliverables.name }).from(deliverables).where(and(eq(deliverables.organizationId, org), eq(deliverables.id, access.deliverableId))).limit(1);
+  if (!current) return [];
+  const versions = await db
+    .select({ id: deliverables.id, version: deliverables.version, projectId: deliverables.projectId })
+    .from(deliverables)
+    .where(and(eq(deliverables.organizationId, org), eq(deliverables.name, current.name)))
+    .orderBy(deliverables.version);
+  const shared: ReviewAccess[] = [];
+  // The same deliverable: same project and name (src/app/(agency)/routes.ts).
+  for (const version of versions.filter((record) => (record.projectId ?? 1) === (current.projectId ?? 1))) {
+    const key = `${version.id}:${version.version}`;
+    const row = await linkRow(db, org, key);
+    const link = row?.data as Data | undefined;
+    if (row?.active && link && link.active === true && !expired(link) && isInvited(link, email))
+      shared.push({ organizationId: org, key, link, deliverableId: version.id, version: version.version });
+  }
+  return shared;
+}
+
 /** Agency: accepts (invites the address) or refuses an access request to one of its links. */
 export async function decideAccessRequest(db: Db, org: string, linkKey: string, email: string, accepted: boolean, user: CurrentUser, origin: Origin = {}) {
   // Someone given the link by a colleague comments; deciding stays with whom the agency chose.

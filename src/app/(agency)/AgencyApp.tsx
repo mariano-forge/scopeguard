@@ -30,9 +30,11 @@ import {
   ScrollText,
   Share2,
   FileCheck,
+  GitCompareArrows,
   Upload,
   X,
 } from "lucide-react";
+import { VersionCompare, agencyCompareVersions } from "./editor/VersionCompare";
 import { BrowserView, type HomeOverview } from "./BrowserView";
 import { TabBar, type TabInfo, type TabStatus } from "./TabBar";
 import { todoOrder, type TodoItem } from "./TodoList";
@@ -408,6 +410,7 @@ export function AgencyApp() {
   const [pendingImport, setPendingImport] = useState<{ file: File; type: DeliverableType } | null>(null);
   /** « Nouvelle version » of a « Lien »: its address is asked for. */
   const [linkVersionOpen, setLinkVersionOpen] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
   const [canvasTool, setCanvasTool] = useState<CanvasTool>("remark");
   /** The selected thread is open on the canvas. */
   const [threadOpen, setThreadOpen] = useState(false);
@@ -1766,9 +1769,12 @@ export function AgencyApp() {
     currentDeliverable?.type === "Link"
       ? { onSelect: () => setLinkVersionOpen(true) }
       : { onFile: importVersionFile, accept: currentDeliverable ? deliverableKinds[currentDeliverable.type]?.accept : undefined };
+  // Its versions to compare (US-053): images and PDFs, each with its requests.
+  const compareVersions = agencyCompareVersions(viewVersions, comments, reviewLinks);
   const livrableMenu: MenuEntry[] = [
     { kind: "section", label: "Ce livrable" },
     { label: "Importer une nouvelle version", icon: <Upload />, ...newVersion },
+    ...(compareVersions.length >= 2 ? [{ label: "Comparer les versions", icon: <GitCompareArrows />, onSelect: () => setCompareOpen(true) }] : []),
     { label: "Partager la revue", icon: <Share2 />, onSelect: openShareDialog },
     { kind: "section", label: "Suivi" },
     { label: "Rouvrir la validation", icon: <RotateCcw />, onSelect: () => { setChangesMessage(""); setChangesOpen(true); } },
@@ -1839,6 +1845,7 @@ export function AgencyApp() {
         onClose={() => setNewProjectOpen(false)}
       />
     )}
+    {compareOpen && <VersionCompare versions={compareVersions} initialAfter={viewRecord?.version} onClose={() => setCompareOpen(false)} />}
     {linkVersionOpen && currentDeliverable?.type === "Link" && (
       <LinkVersionDialog
         url={currentDeliverable.url ?? ""}

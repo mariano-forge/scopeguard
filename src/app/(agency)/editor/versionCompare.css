@@ -1,0 +1,334 @@
+/* Comparing two versions (VersionCompare.tsx): a full window over Kora, the pipeline of versions on top,
+   then the two versions side by side or behind a curtain, the requests of the « avant » one below. */
+
+.version-compare {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+.compare-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4);
+  border-bottom: 1px solid var(--border);
+  padding: var(--s-3) var(--s-4);
+  background: var(--paper);
+}
+.compare-header h2 {
+  margin: 0;
+  font: 600 16px/1.3 var(--font-display);
+}
+
+/* The pipeline: nodes on a line that draws itself from the oldest to the newest. */
+.compare-pipeline {
+  position: relative;
+  display: flex;
+  gap: var(--s-6);
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+}
+/* From the first node's dot to the last one's: each node is as wide, its dot in its middle. */
+.compare-pipeline::before {
+  position: absolute;
+  top: 9px;
+  right: 44px;
+  left: 44px;
+  height: 2px;
+  background: var(--border);
+  content: "";
+  transform-origin: left center;
+  animation: compare-line 600ms ease-out both;
+}
+.compare-node {
+  position: relative;
+  width: 88px;
+  animation: compare-node 300ms ease-out both;
+  animation-delay: calc(var(--i) * 120ms + 150ms);
+}
+.compare-node > button,
+.compare-node > span {
+  display: grid;
+  justify-items: center;
+  width: 100%;
+  gap: 2px;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.compare-node > span {
+  cursor: default;
+}
+.compare-dot {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-input);
+  border-radius: var(--r-full);
+  background: var(--paper);
+  transition:
+    background 150ms,
+    border-color 150ms;
+}
+.compare-node b {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.compare-node small {
+  min-height: 16px;
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+.compare-node.is-before .compare-dot {
+  border-color: var(--graphite);
+  background: var(--graphite);
+}
+.compare-node.is-after .compare-dot {
+  border-color: var(--action-ui);
+  background: var(--action-ui);
+}
+.compare-node.is-before small,
+.compare-node.is-after small {
+  color: var(--ink);
+  font-weight: 600;
+}
+/* A version not shared: for the agency, a dashed ring whatever its role; for the client, its number alone, muted. */
+.compare-node.is-unshared .compare-dot {
+  border-style: dashed;
+}
+.compare-node.is-hidden .compare-dot {
+  border-style: dashed;
+  background: var(--mist);
+}
+.compare-node.is-hidden b,
+.compare-node.is-hidden small {
+  color: var(--graphite);
+  font-weight: 400;
+}
+.compare-node > button:hover .compare-dot {
+  border-color: var(--action-ui);
+}
+.compare-node > button:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 4px;
+  border-radius: var(--r-field);
+}
+
+@keyframes compare-line {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes compare-node {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .compare-pipeline::before,
+  .compare-node {
+    animation: none;
+  }
+}
+
+.compare-modes {
+  display: flex;
+  gap: var(--s-1);
+}
+.compare-modes button,
+.compare-close {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  padding: var(--s-1) var(--s-2);
+  background: var(--paper);
+  color: var(--graphite);
+  font: 500 13px/1.4 var(--font-ui);
+  cursor: pointer;
+}
+.compare-modes button[aria-pressed="true"] {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+.compare-modes .lucide,
+.compare-close .lucide {
+  width: 16px;
+  height: 16px;
+}
+.compare-close {
+  padding: var(--s-1);
+}
+.compare-modes button:focus-visible,
+.compare-close:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 1px;
+}
+
+.compare-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--s-3) var(--s-4) 0;
+  gap: var(--s-2);
+}
+.compare-side {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-3);
+  min-height: 0;
+}
+.compare-pane.is-curtain {
+  flex: 1;
+}
+.compare-pane {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  background: var(--canvas);
+}
+.compare-pane.is-after {
+  border-color: var(--action-ui);
+}
+.compare-tag {
+  position: absolute;
+  top: var(--s-2);
+  left: var(--s-2);
+  z-index: 5;
+  border-radius: var(--r-field);
+  padding: 2px var(--s-2);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  font: 600 12px/1.5 var(--font-ui);
+}
+.compare-pane.is-after .compare-tag {
+  background: var(--action-ui);
+  color: var(--paper);
+}
+.compare-viewport {
+  width: 100% !important;
+  height: 100% !important;
+}
+.compare-content {
+  padding: calc(var(--s-8) + var(--s-4)) var(--s-8) var(--s-8);
+}
+.compare-pages {
+  display: grid;
+  gap: var(--s-6);
+  width: 640px;
+}
+.compare-page img {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+}
+
+/* The curtain: the older version, the newer one over it from the handle to the right. */
+.compare-curtain-tools {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--s-3);
+  max-width: 640px;
+  width: 100%;
+  align-self: center;
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+  font-weight: 600;
+}
+.compare-curtain-tools input {
+  width: 100%;
+  accent-color: var(--action-ui);
+}
+.compare-stage {
+  position: relative;
+}
+.compare-over {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.compare-stage .canvas-pin {
+  z-index: 4;
+}
+.compare-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--action-ui);
+  cursor: ew-resize;
+  touch-action: none;
+}
+.compare-handle::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--paper);
+  border-radius: var(--r-full);
+  background: var(--action-ui);
+  box-shadow: var(--shadow);
+  content: "";
+  transform: translate(-50%, -50%) scale(var(--inv-zoom));
+}
+
+.compare-note {
+  margin: 0;
+  border-radius: var(--r-field);
+  padding: var(--s-2) var(--s-3);
+  background: var(--status-medium-bg);
+  color: var(--status-medium-text);
+  font-size: 13px;
+}
+.compare-empty {
+  place-self: center;
+  color: var(--graphite);
+}
+
+.compare-footer {
+  border-top: 1px solid var(--border);
+  padding: var(--s-3) var(--s-4);
+  background: var(--paper);
+  color: var(--graphite);
+  font-size: 13px;
+}
+.compare-footer p {
+  margin: 0;
+}
+.compare-footer b {
+  color: var(--ink);
+}
+.compare-status {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .compare-side {
+    grid-template-columns: 1fr;
+  }
+  .compare-pipeline {
+    order: 3;
+    flex-basis: 100%;
+    gap: var(--s-4);
+  }
+}
