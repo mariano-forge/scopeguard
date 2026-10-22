@@ -13,8 +13,12 @@ export const mailOutbox = resolve("test-results/outbox.jsonl");
 
 export default defineConfig({
   testDir: "tests/e2e",
-  // One database and one outbox for every test: one worker, tests in order.
-  workers: 1,
+  // Files run side by side, 4 at a time; the tests of a file run in order, in one worker: a file is a
+  // pool. Every test makes its own agency, people and addresses (helpers.ts), so files share nothing;
+  // tests that must share something (a fixed address, a limit counted for everyone) stay in one file.
+  // Measured on 22 October 2026: 2 min 15 instead of 5 min 30; more workers or tests of a file spread
+  // over workers were no faster (one server for all) and made the one-minute limit test fail.
+  workers: 4,
   fullyParallel: false,
   timeout: 60_000,
   expect: { timeout: 10_000 },

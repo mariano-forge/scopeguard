@@ -38,6 +38,7 @@ Pour les tests :
 - Ne supprime, n'affaiblis et n'ignore jamais un test pour le faire passer. Si un test échoue, établis d'abord si c'est le code ou le test qui a tort, et dis-le.
 - Pas d'attente fixe dans les tests : attends une condition (`expect(...).toBeVisible()`, `expect.poll`, `waitForCode`).
 - Les données de test sont uniques par test (`unique()`) et les requêtes SQL des tests filtrent par `organization_id` : plusieurs agences de test partagent les mêmes identifiants.
+- Les fichiers de test tournent 4 à la fois (`playwright.config.ts`), les tests d'un même fichier à la suite : un fichier est un groupe. Un test qui partage quelque chose avec d'autres (une adresse fixe comme `demo@kora.test`, une limite comptée pour tous) reste dans le fichier de ceux-ci ; rien ne doit dépendre de l'ordre des fichiers.
 
 ## Invariants à ne jamais casser
 

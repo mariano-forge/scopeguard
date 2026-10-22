@@ -19,10 +19,11 @@ let counter = 0;
 export const unique = (prefix: string) => `${prefix}-${Date.now().toString(36)}${(counter++).toString(36)}`;
 /**
  * One address per simulated person: sign-in limits are counted per address (TRUSTED_PROXY_HOPS=1).
- * Drawn from a random start: a worker restarted after a failure starts its counter again, and would
- * otherwise reuse the addresses of the run, already at their limit (429 on sign-up).
+ * Each worker draws from a range of its own (workers run side by side), from a random start in it: a
+ * worker restarted after a failure starts its counter again, and would otherwise reuse the addresses of
+ * the run, already at their limit (429 on sign-up).
  */
-const ipStart = Math.floor(Math.random() * 60_000);
+const ipStart = Number(process.env.TEST_PARALLEL_INDEX ?? 0) * 100_000 + Math.floor(Math.random() * 60_000);
 export const newIp = () => {
   const n = ipStart + counter++;
   return `10.${Math.floor(n / 62_500) % 250}.${Math.floor(n / 250) % 250}.${(n % 250) + 1}`;
