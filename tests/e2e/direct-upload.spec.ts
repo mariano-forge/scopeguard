@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { baseURL } from "../../playwright.config";
-import { call, createAgency, makePdf, signUp, sql, type Person } from "./helpers";
+import { call, createAgency, makePdf, newPerson, seedState, signInPage, signUp, sql, type Person } from "./helpers";
 
 const sha = (content: Buffer) => createHash("sha256").update(content).digest("hex");
 const place = { kind: "version", projectId: 3, livrableId: 4, version: 1 };
@@ -99,4 +99,71 @@ test("tokens are signed and bound to their agency; sizes, places, sessions and o
     });
     expect(response.status).toBe(403);
   }
+});
+
+test("a film is read piece by piece and sent in blocks, a failed block sent again; the server checks the whole", async ({ browser }) => {
+  const alice = await signUp("Alice Martin");
+  await createAgency(alice, "Studio Film");
+  await seedState(alice, {
+    lists: {
+      clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
+      projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },
+    },
+  });
+  // 9 MB: more than one block (8 MB), less than the tests' video limit (12 MB).
+  const film = Buffer.alloc(9 * 1024 * 1024);
+  for (let index = 0; index < film.length; index += 4) film.writeUInt32LE(index * 2654435761 >>> 0, index);
+  const { page, errors } = await newPerson(browser);
+  // The storage loses the first try of one block: it is sent again, alone.
+  const blocks: string[] = [];
+  let lost = false;
+  await page.route(/comp=block(&|$)/, async (route) => {
+    blocks.push(new URL(route.request().url()).searchParams.get("blockid")!);
+    if (!lost) {
+      lost = true;
+      return route.fulfill({ status: 500, body: "OperationTimedOut" });
+    }
+    return route.continue();
+  });
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1");
+  await page.getByRole("button", { name: "Ajouter un livrable", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Nouveau livrable" });
+  await dialog.locator(".dropzone input[type=file]").first().setInputFiles({ name: "film.webm", mimeType: "video/webm", buffer: film });
+  await dialog.getByLabel("Nom du livrable").fill("Film de lancement");
+  await dialog.getByRole("button", { name: "Créer le livrable" }).click();
+  await page.waitForURL(/livrables\/\d+/);
+
+  // Two blocks, one of them twice; recorded once, with the fingerprint the server computed of the whole.
+  expect(blocks).toHaveLength(3);
+  expect(new Set(blocks).size).toBe(2);
+  const [stored] = await sql<{ sha256: string; size: number }>("select sha256, size::int as size from stored_files where organization_id = $1 and mime_type = 'video/webm'", [alice.organizationId]);
+  expect(stored).toEqual({ sha256: createHash("sha256").update(film).digest("hex"), size: film.length });
+  expect(errors).toEqual([]);
+});
+
+test("a file sent in blocks, once recorded, cannot be replaced, not even with its own write address", async () => {
+  const alice = await signUp("Alice Martin");
+  await createAgency(alice, "Studio Verrou");
+  const film = Buffer.alloc(9 * 1024 * 1024, 3);
+  const sha256 = createHash("sha256").update(film).digest("hex");
+  const prepared = await call("/api/files/upload", { person: alice, body: { name: "film.webm", type: "video/webm", size: film.length, sha256, kind: "version", projectId: 1, livrableId: 1, version: 1 } });
+  const uploadUrl = prepared.json.uploadUrl as string;
+  // Blocks, as the page sends a film; then assembled.
+  const ids = ["YmxvYy0wMDAwMDA=", "YmxvYy0wMDAwMDE="];
+  const sendBlocks = async (content: Buffer) => {
+    const pieces = [content.subarray(0, 8 * 1024 * 1024), content.subarray(8 * 1024 * 1024)];
+    for (const [index, piece] of pieces.entries()) await fetch(`${uploadUrl}&comp=block&blockid=${encodeURIComponent(ids[index])}`, { method: "PUT", body: new Uint8Array(piece) });
+    const list = `<?xml version="1.0" encoding="utf-8"?><BlockList>${ids.map((id) => `<Latest>${id}</Latest>`).join("")}</BlockList>`;
+    return (await fetch(`${uploadUrl}&comp=blocklist`, { method: "PUT", body: list })).status;
+  };
+  expect(await sendBlocks(film)).toBe(201);
+  const completed = await call("/api/files/complete", { person: alice, body: { token: prepared.json.token } });
+  expect(completed.status).toBe(200);
+
+  // The same address, still valid: refused, the recorded film unchanged.
+  expect(await sendBlocks(Buffer.alloc(film.length, 9))).toBe(412);
+  expect((await fetch(uploadUrl, { method: "PUT", headers: { "x-ms-blob-type": "BlockBlob" }, body: new Uint8Array(film.length) })).status).toBe(412);
+  const served = await fetch(`${baseURL}/api/files/${completed.json.id}`, { headers: { cookie: alice.cookie } });
+  expect(createHash("sha256").update(Buffer.from(await served.arrayBuffer())).digest("hex")).toBe(sha256);
 });

@@ -13,8 +13,12 @@ export const mailOutbox = resolve("test-results/outbox.jsonl");
 
 export default defineConfig({
   testDir: "tests/e2e",
-  // One database and one outbox for every test: one worker, tests in order.
-  workers: 1,
+  // Files run side by side, 4 at a time; the tests of a file run in order, in one worker: a file is a
+  // pool. Every test makes its own agency, people and addresses (helpers.ts), so files share nothing;
+  // tests that must share something (a fixed address, a limit counted for everyone) stay in one file.
+  // Measured on 22 October 2026: 2 min 15 instead of 5 min 30; more workers or tests of a file spread
+  // over workers were no faster (one server for all) and made the one-minute limit test fail.
+  workers: 4,
   fullyParallel: false,
   timeout: 60_000,
   expect: { timeout: 10_000 },
@@ -41,6 +45,10 @@ export default defineConfig({
       BETTER_AUTH_URL: baseURL,
       TRUSTED_PROXY_HOPS: "1",
       MAX_UPLOAD_MB: "1",
+      // A video version has its own limit (tests/e2e/video-review.spec.ts), above one block of an
+      // upload (8 MB, src/lib/upload.ts): a film is sent in blocks (tests/e2e/direct-upload.spec.ts).
+      MAX_VIDEO_UPLOAD_MB: "12",
+      FILE_LINK_SECONDS: process.env.FILE_LINK_SECONDS ?? "300",
       // The landing page's demo requests land in a test inbox (tests/e2e/landing.spec.ts).
       DEMO_REQUESTS_TO: "demo@kora.test",
       DEMO_REQUESTS_PER_HOUR: "5",

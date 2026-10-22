@@ -6,6 +6,7 @@
 import { and, eq } from "drizzle-orm";
 import type { ListChange, StateChanges } from "@/lib/sharedState";
 import { readSiteAnchor, type SiteAnchor } from "@/lib/siteReview";
+import { readTimecode } from "@/lib/timecode";
 import { clientUploader, ownCapture } from "@/lib/siteCapture";
 import { displayedNow, freeCommentId, id, movedComment, noChanges, percent, readArea, readPoint, text, number, type Area, type Data } from "./actions";
 import type { Db } from "./client";
@@ -16,7 +17,7 @@ import { commentProposals, comments } from "./schema";
 import { applyChanges, type Writer } from "./state";
 
 export type ReviewAction =
-  | { type: "comment.create"; id?: number; message: string; location?: string; page?: number; position?: { x: number; y: number }; area?: Area; site?: SiteAnchor; replies?: { id?: number; message: string }[] }
+  | { type: "comment.create"; id?: number; message: string; location?: string; page?: number; position?: { x: number; y: number }; area?: Area; timecode?: number; site?: SiteAnchor; replies?: { id?: number; message: string }[] }
   | { type: "comment.edit"; commentId: number; message: string }
   | { type: "comment.move"; commentId: number; page: number; x: number; y: number }
   | { type: "comment.delete"; commentId: number }
@@ -49,7 +50,7 @@ export function readReviewAction(type: ReviewAction["type"], body: Data, params:
             return replyText ? [{ id: id((reply as Data).id), message: replyText }] : [];
           })
         : undefined;
-      return { type, id: id(body.id), message, location: text(body.location, 200), page: id(body.page), position: point, area: point ? readArea(body.area) : undefined, site: readSiteAnchor(body.site), replies };
+      return { type, id: id(body.id), message, location: text(body.location, 200), page: id(body.page), position: point, area: point ? readArea(body.area) : undefined, timecode: readTimecode(body.timecode), site: readSiteAnchor(body.site), replies };
     }
     case "comment.edit":
       return commentId && message ? { type, commentId, message } : null;
@@ -135,6 +136,8 @@ async function changesFor(db: Db, access: ReviewAccess, action: ReviewAction): P
       page: action.page ?? 1,
       ...(action.position ? { position: action.position } : {}),
       ...(action.area ? { area: action.area } : {}),
+      // On a video: the moment it was paused on (src/lib/timecode.ts).
+      ...(action.timecode !== undefined ? { timecode: action.timecode } : {}),
       // Placed on the agency's staging site (src/lib/siteReview.ts): the page it is on names it.
       ...(action.site ? { site: action.site, location: action.location ?? action.site.url } : {}),
       ...(action.replies?.length

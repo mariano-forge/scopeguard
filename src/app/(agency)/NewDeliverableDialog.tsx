@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FormError, Modal } from "@/components/modal";
 import { undeployedSiteProblem, withoutToolbarFlag } from "@/lib/siteReview";
+import { videoWarning, videoWarningText, type VideoWarning } from "@/lib/videoCheck";
 import { SiteScriptIntro } from "./SiteToolbarSnippet";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DeliverableCover } from "@/components/DeliverableCover";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
 import {
   MAX_COVER_BYTES,
-  MAX_FILE_BYTES,
+  maxBytesOf,
   deliverableKinds,
   deliverableTypes,
   formatBytes,
@@ -44,6 +45,9 @@ export function NewDeliverableDialog({
   const [name, setName] = useState("");
   const [type, setType] = useState<DeliverableType>("PDF");
   const [file, setFile] = useState<File | null>(null);
+  // What the agency should know of the video chosen (src/lib/videoCheck.ts): said, never in the way.
+  // Checked in a moment, without reading it whole: `done` once known.
+  const [videoCheck, setVideoCheck] = useState<{ file: File; warning: VideoWarning | null; done: boolean } | null>(null);
   const [url, setUrl] = useState("");
   const [cover, setCover] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
@@ -74,6 +78,10 @@ export function NewDeliverableDialog({
     setFile(next);
     if (!next) return;
     const guessed = kindFromFile(next);
+    if (guessed === "Video") {
+      setVideoCheck({ file: next, warning: null, done: false });
+      void videoWarning(next).then((warning) => setVideoCheck({ file: next, warning, done: true }));
+    }
     if (guessed && guessed !== type) setType(guessed);
     if (!name.trim()) setName(next.name);
   }
@@ -90,8 +98,8 @@ export function NewDeliverableDialog({
     } else {
       if (!file) return setError(`Importez le fichier (${kind.hint}).`);
       if (kindFromFile(file) !== type) return setError(`Ce fichier ne correspond pas au type « ${kind.label} ».`);
-      if (file.size > MAX_FILE_BYTES)
-        return setError(`Fichier trop lourd : ${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).`);
+      if (file.size > maxBytesOf(type))
+        return setError(`Fichier trop lourd : ${formatBytes(file.size)} (maximum ${formatBytes(maxBytesOf(type))}).`);
     }
     if (cover && cover.size > MAX_COVER_BYTES)
       return setError(`Couverture trop lourde : ${formatBytes(cover.size)} (maximum ${formatBytes(MAX_COVER_BYTES)}).`);
@@ -185,12 +193,22 @@ export function NewDeliverableDialog({
                   </>
                 ) : (
                   <>
-                    <b>Choisir un fichier</b> · {kind.hint}, {formatBytes(MAX_FILE_BYTES)} max.
+                    <b>Choisir un fichier</b> · {kind.hint}, {formatBytes(maxBytesOf(type))} max.
                   </>
                 )}
               </span>
               <input type="file" accept={kind.accept} onChange={(event) => pickFile(event.target.files?.[0] ?? null)} />
             </label>
+            {videoCheck?.file === file && !videoCheck.warning && (
+              <p role="status" className="sr-only">
+                {videoCheck.done ? "Vidéo vérifiée." : "Vérification de la vidéo…"}
+              </p>
+            )}
+            {videoCheck?.file === file && videoCheck.warning && (
+              <p role="note" className="rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-sm text-[var(--status-medium-text)]">
+                {videoWarningText[videoCheck.warning]}
+              </p>
+            )}
           </div>
         )}
 

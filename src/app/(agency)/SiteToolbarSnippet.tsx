@@ -4,14 +4,16 @@
 // steps. The line to put on the staging site, the deliverable's (src/lib/siteKey.ts): one per site, valid
 // for all its versions, so it says nothing of the agency's other sites; the address to send the client,
 // which shows the toolbar on their device (public/kora-toolbar.js); and where their requests then arrive.
+// The first step also asks what the site is built with, and says when the toolbar is seen there (SiteInstall.tsx).
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { siteClientUrl } from "@/lib/siteReview";
 import { SiteGuideSteps, useLocalAccessNote } from "./editor/SiteGuide";
+import { InstallStatus, PlatformPicker, platforms, useSiteInstall } from "./SiteInstall";
 
 /** A value to copy, in one line, with its button that says it was copied. The script reads as code. */
 function CopyField({ id, label, value, copyLabel, code }: { id: string; label: string; value: string; copyLabel?: string; code?: boolean }) {
@@ -38,23 +40,6 @@ function CopyField({ id, label, value, copyLabel, code }: { id: string; label: s
   );
 }
 
-/** The deliverable's toolbar line, to copy (GET /api/deliverables/:id/site-key): the same for all its versions. */
-function SiteScriptField({ id, deliverableId }: { id: string; deliverableId: number }) {
-  const [key, setKey] = useState<string | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/deliverables/${deliverableId}/site-key`, { cache: "no-store" })
-      .then(async (response) => (response.ok ? ((await response.json()) as { key?: string }).key : null))
-      .then((value) => !cancelled && typeof value === "string" && setKey(value))
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [deliverableId]);
-  const line = key ? `<script src="${window.location.origin}/kora-toolbar.js" data-site="${key}" defer></script>` : null;
-  return <CopyField id={id} label="Script de recette" value={line ?? "Préparation du script…"} copyLabel={line ? "Copier le script" : undefined} code />;
-}
-
 /**
  * The toolbar met for the first time, in « Nouveau livrable » for a « Lien »: an invitation to set it up and
  * what it does. Its line is the deliverable's: given on its board, once it is created.
@@ -77,6 +62,10 @@ export function SiteScriptIntro() {
 export function SiteToolbarSnippet({ siteUrl, deliverableId }: { siteUrl: string; deliverableId: number }) {
   const clientUrl = siteClientUrl({ type: "Link", url: siteUrl });
   const localAccess = useLocalAccessNote();
+  const { key, seenAt } = useSiteInstall(deliverableId);
+  const [platformId, setPlatformId] = useState("html");
+  const platform = platforms.find((option) => option.id === platformId) ?? platforms[0];
+  const line = key ? platform.line(`${window.location.origin}/kora-toolbar.js`, key) : null;
 
   // The panel only opens on a site in https (src/lib/siteReview.ts): said here rather than failing there.
   if (!clientUrl)
@@ -91,13 +80,26 @@ export function SiteToolbarSnippet({ siteUrl, deliverableId }: { siteUrl: string
         steps={[
           {
             title: "Installez la barre Kora",
+            lead: <PlatformPicker value={platform.id} onChange={setPlatformId} />,
             text: (
               <>
-                Collez cette ligne une fois dans le code de ce site, avant <code>&lt;/body&gt;</code> : elle sert pour toutes ses versions. Déjà en place ? Rien à refaire.
+                {platform.id === "html" ? (
+                  <>
+                    Collez cette ligne une fois dans le code de ce site, avant <code>&lt;/body&gt;</code> : elle sert pour toutes ses versions.
+                  </>
+                ) : (
+                  <>{platform.where} Elle sert pour toutes ses versions.</>
+                )}{" "}
+                Déjà en place ? Rien à refaire.
                 {localAccess && ` ${localAccess}`}
               </>
             ),
-            children: <SiteScriptField id="site-snippet" deliverableId={deliverableId} />,
+            children: (
+              <>
+                <CopyField id="site-snippet" label="Script de recette" value={line ?? "Préparation du script…"} copyLabel={line ? "Copier le script" : undefined} code />
+                <InstallStatus host={new URL(clientUrl).host} seenAt={seenAt} />
+              </>
+            ),
           },
           {
             title: "Invitez le décideur",

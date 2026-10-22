@@ -1029,6 +1029,29 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 
 **Pas dans cette story** : afficher le site de l'agence dans Kora (relais ou cadre), une extension de navigateur, dessiner sur la capture, les erreurs techniques de la page, l'extension WordPress.
 
+#### US-052 : commenter un moment d'une vidéo
+
+**En tant que** client ou chef de projet,  
+**je veux** poser un commentaire sur un moment précis d'une vidéo, à un endroit de l'image,  
+**afin que** chacun retrouve exactement ce qui est visé, comme sur YouTube ou Frame.io.
+
+> Décidé avec le porteur du produit le 22 octobre 2026 : une épingle a un moment **et** une place sur l'image ; une limite de taille propre aux vidéos (`MAX_VIDEO_UPLOAD_MB`), réglable à part, car une vidéo peut peser un Go.
+
+**Critères d'acceptation**
+
+- Sur le canevas, la vidéo se lit avec une barre de Kora : lecture, pause, temps, son, et une frise.
+- Un clic sur l'image (outil « Commenter ») met la vidéo en pause et pose une épingle à cet endroit, au moment affiché ; une zone dessinée aussi.
+- Le moment est enregistré à la seconde près (au dixième) ; le serveur refuse un moment qui n'en est pas un (négatif, texte, au-delà d'un jour) et ne l'enregistre pas.
+- Une épingle n'apparaît sur l'image qu'autour de son moment ; sur la frise, chaque commentaire a son repère, de la couleur de son épingle.
+- Ouvrir un commentaire (repère de la frise, épingle, ligne du panneau) amène la vidéo à son moment, en pause.
+- Le moment se lit dans le fil, dans la liste du panneau et dans la description du commentaire (« Vidéo · 1:23 »), reprise par l'export et la preuve.
+- Même chose côté agence et côté client ; le client ne change jamais le moment d'un commentaire de l'agence.
+- Une vidéo importée comme version a sa propre limite de taille ; les autres fichiers, et une vidéo en couverture, gardent la limite générale.
+- Une vidéo se lit par morceaux, chacun avec l'adresse signée du fichier : elle dure la longueur de la vidéo plus 15 minutes (longueur lue à l'import, comptée jusqu'à 3 heures). Si elle expire quand même (pause, onglet laissé ouvert), le lecteur en redemande une et reprend au même moment, sans que personne ne le voie.
+- À l'import (nouveau livrable ou nouvelle version), Kora prévient l'agence sans jamais bloquer : une vidéo que ce navigateur ne lit pas (ProRes, HEVC…), ou dont les images clés sont espacées de plus de 10 secondes (enregistreurs d'écran : les sauts « bavent »). La vérification lit l'en-tête, une image et l'index des images clés, jamais le fichier entier. Le client ne voit pas cet avertissement (décidé avec le porteur du produit le 22 octobre 2026).
+
+**Plus tard** : capture de l'image au moment du clic (vignette et preuve), reconversion dans le navigateur des vidéos à images clés rares, envoi par morceaux des très gros fichiers, commentaire sur une plage de temps, dessin sur l'image, image par image.
+
 #### Décisions et pistes notées (16 octobre 2026)
 
 Discutées avec le porteur du produit ; à reprendre telles quelles :
@@ -1170,10 +1193,11 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-045 périmètre de référence | ⬜ | Prochaine priorité produit |
 | US-046 demande offerte | ⬜ | |
 | US-047 envoi vers Jira ou Notion | ⬜ | |
-| US-048 annoter un site web en ligne | 🟡 | Essai du 17 octobre : barre sur le site, vérification par code dans le panneau, demande posée sur un élément, épingles, « élément introuvable » ; testé dans Chrome. Site en `https` obligatoire. L'agence dans la barre (fenêtre Kora, remarques, réponses, qualification ; devis et partage refusés depuis le site). Passage vers la revue Kora sans nouveau code, avec l'appel « devis en attente ». Capture de la fenêtre au clic, dans le fil et la preuve. Ligne de script posée une fois (clé fixe du livrable, dernière version partagée) ; les e-mails d'invitation et de relance mènent au site avec `?kora`. Dans Kora, un tableau de recette : les demandes page par page, avec leurs captures. À faire : Safari et Firefox à vérifier à la main, mobile |
+| US-048 annoter un site web en ligne | 🟡 | Essai du 17 octobre : barre sur le site, vérification par code dans le panneau, demande posée sur un élément, épingles, « élément introuvable » ; testé dans Chrome. Site en `https` obligatoire. L'agence dans la barre (fenêtre Kora, remarques, réponses, qualification ; devis et partage refusés depuis le site). Passage vers la revue Kora sans nouveau code, avec l'appel « devis en attente ». Capture de la fenêtre au clic, dans le fil et la preuve. Ligne de script posée une fois (clé fixe du livrable, dernière version partagée), donnée selon l'outil du site, avec la détection en direct de la barre sur le site ; les e-mails d'invitation et de relance mènent au site avec `?kora`. Dans Kora, un tableau de recette : les demandes page par page, avec leurs captures. À faire : Safari et Firefox à vérifier à la main, mobile |
 | US-049 rôles des personnes invitées | ✅ | Décideur et contributeur, contrôlés par le serveur |
 | US-050 saisir une demande reçue ailleurs | ✅ | Source, date, extrait et capture ; visibles par le client et dans la preuve |
 | US-051 e-mails des devis et des décisions | ✅ | Décideurs côté client, propriétaire et administrateurs côté agence |
+| US-052 commenter un moment d'une vidéo | 🟡 | Épingle au moment et à l'endroit, frise des repères, retour au moment en ouvrant un commentaire ; limite de taille propre aux vidéos ; avertissement à l'import (format illisible, images clés rares). Liens de la durée de la vidéo, renouvelés s'ils expirent. À faire : capture de l'image, reconversion, très gros fichiers |
 
 **Avant les premiers pilotes**, il reste à :
 

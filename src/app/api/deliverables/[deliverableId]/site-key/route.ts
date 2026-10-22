@@ -1,10 +1,12 @@
-// Agency: GET /api/deliverables/:deliverableId/site-key -> { key }
+// Agency: GET /api/deliverables/:deliverableId/site-key -> { key, seenAt }
 // The fixed key of a « Lien » deliverable for the toolbar's script line (src/lib/siteKey.ts), the same
-// for every version. A deliverable of another agency, or not a « Lien », answers 404.
+// for every version, and when the toolbar was last seen on its site (src/db/siteSeen.ts), or null.
+// A deliverable of another agency, or not a « Lien », answers 404.
 
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { livrableIdOfVersion } from "@/db/reviewAccess";
+import { siteSeenAt } from "@/db/siteSeen";
 import { deliverables } from "@/db/schema";
 import { databaseFailure } from "@/lib/api";
 import { requireAgencyUser } from "@/lib/session";
@@ -23,7 +25,7 @@ export async function GET(_request: Request, context: RouteContext<"/api/deliver
     const [record] = await db.select({ data: deliverables.data }).from(deliverables).where(and(eq(deliverables.organizationId, org), eq(deliverables.id, deliverableId))).limit(1);
     if ((record?.data as Record<string, unknown> | undefined)?.type !== "Link") return notFound();
     const livrableId = await livrableIdOfVersion(db, org, deliverableId);
-    return livrableId ? Response.json({ key: siteKeyOf(org, livrableId) }) : notFound();
+    return livrableId ? Response.json({ key: siteKeyOf(org, livrableId), seenAt: await siteSeenAt(db, org, livrableId) }, { headers: { "Cache-Control": "private, no-store" } }) : notFound();
   } catch (error) {
     return databaseFailure("api/deliverables/site-key", error);
   }

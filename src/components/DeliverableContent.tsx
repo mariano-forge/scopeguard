@@ -18,6 +18,9 @@ type ViewedDeliverable = {
 
 const stop = (event: React.SyntheticEvent) => event.stopPropagation();
 
+/** The canvas's video element: its ref and the events its bar follows. */
+export type CanvasVideo = Pick<React.ComponentProps<"video">, "ref" | "onTimeUpdate" | "onLoadedMetadata" | "onDurationChange" | "onPlay" | "onPause" | "onSeeked" | "onVolumeChange" | "onError" | "onWaiting" | "onSeeking" | "onCanPlay">;
+
 /**
  * What the review canvas shows for a version (agency and client pages). Render it inside the artboard.
  * Clicks on media controls and links don't start a comment (they stop propagation).
@@ -30,6 +33,7 @@ export function DeliverableContent({
   onPdfLoad,
   objectUrl,
   renderPage,
+  video,
 }: {
   deliverable: ViewedDeliverable;
   pdfPage?: number;
@@ -37,6 +41,8 @@ export function DeliverableContent({
   /** Just-imported file not yet persisted (agency page). */
   objectUrl?: string | null;
   renderPage?: (page: number, content: React.ReactNode) => React.ReactNode;
+  /** On the review canvas: the video driven by its bar (VideoBar.tsx), without the browser's controls. */
+  video?: CanvasVideo;
 }) {
   // Page count of the file it was read from: another PDF (tab, version, deliverable) starts again at 1,
   // so no page of the previous document is requested from the new one ("Invalid page request").
@@ -82,7 +88,7 @@ export function DeliverableContent({
         </div>
       </PdfDocument>
     );
-  if (renderPage) return <div className="canvas-pages">{renderPage(1, <SinglePage deliverable={deliverable} source={source} objectUrl={objectUrl} />)}</div>;
+  if (renderPage) return <div className="canvas-pages">{renderPage(1, <SinglePage deliverable={deliverable} source={source} objectUrl={objectUrl} video={video} />)}</div>;
 
   return <SinglePage deliverable={deliverable} source={source} objectUrl={objectUrl} pdfPage={pdfPage} onPdfLoad={onPdfLoad} />;
 }
@@ -93,12 +99,14 @@ function SinglePage({
   objectUrl,
   pdfPage = 1,
   onPdfLoad,
+  video,
 }: {
   deliverable: ViewedDeliverable;
   source?: string;
   objectUrl?: string | null;
   pdfPage?: number;
   onPdfLoad?: (pages: number) => void;
+  video?: CanvasVideo;
 }) {
   if (deliverable.type === "Image" && source)
     // eslint-disable-next-line @next/next/no-img-element -- local data URL
@@ -112,6 +120,13 @@ function SinglePage({
     );
   if (deliverable.type === "PDF" && objectUrl) return <iframe className="real-deliverable-pdf" src={objectUrl} title={deliverable.name} />;
 
+  // On the canvas, a click on the picture pins a comment on that moment: the bar plays and seeks.
+  if (deliverable.type === "Video" && source && video)
+    return (
+      <video className="real-deliverable-video" src={source} playsInline preload="metadata" {...video}>
+        Votre navigateur ne lit pas cette vidéo.
+      </video>
+    );
   if (deliverable.type === "Video" && source)
     return (
       <video className="real-deliverable-video" src={source} controls onClick={stop} onPointerDown={stop}>

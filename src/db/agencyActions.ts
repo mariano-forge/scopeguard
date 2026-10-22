@@ -5,6 +5,7 @@
 // The agency's other writes still go through /api/state; they move here one subject at a time.
 
 import { readSiteAnchor, type SiteAnchor } from "@/lib/siteReview";
+import { readTimecode } from "@/lib/timecode";
 import { ownCapture } from "@/lib/siteCapture";
 import { randomUUID } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
@@ -46,7 +47,7 @@ type Quote = { amount: number; days: number; counter: boolean };
 export type AgencyAction =
   | WorkspaceAction
   // `pinnedOn`: the request of the staging site whose capture the pin was dropped on, in Kora (src/app/(agency)/editor/SiteBoard.tsx).
-  | { type: "comment.create"; deliverableId: number; id?: number; message: string; location?: string; page?: number; position?: { x: number; y: number }; area?: Area; site?: SiteAnchor; pinnedOn?: number }
+  | { type: "comment.create"; deliverableId: number; id?: number; message: string; location?: string; page?: number; position?: { x: number; y: number }; area?: Area; timecode?: number; site?: SiteAnchor; pinnedOn?: number }
   | { type: "request.create"; deliverableId: number; decision: Qualification; title: string; description?: string; quote?: Quote; source?: RequestSource }
   | { type: "comment.restore"; comment: Data }
   | { type: "comment.edit"; commentId: number; message: string }
@@ -102,7 +103,7 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
       const deliverableId = id(body.deliverableId);
       const point = readPoint(body.position);
       return deliverableId && message
-        ? { type, deliverableId, id: id(body.id), message, location: text(body.location, 200), page: id(body.page), position: point, area: point ? readArea(body.area) : undefined, site: readSiteAnchor(body.site), pinnedOn: id(body.pinnedOn) }
+        ? { type, deliverableId, id: id(body.id), message, location: text(body.location, 200), page: id(body.page), position: point, area: point ? readArea(body.area) : undefined, timecode: readTimecode(body.timecode), site: readSiteAnchor(body.site), pinnedOn: id(body.pinnedOn) }
         : null;
     }
     case "request.create": {
@@ -344,6 +345,8 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
         page: action.page ?? 1,
         ...(action.position ? { position: action.position } : {}),
         ...(action.area ? { area: action.area } : {}),
+        // On a video: the moment it was paused on (src/lib/timecode.ts).
+        ...(action.timecode !== undefined ? { timecode: action.timecode } : {}),
         // Placed on the staging site, from Kora's panel there (src/lib/siteReview.ts).
         ...(action.site ? { site: action.site, location: action.location ?? action.site.url } : {}),
         ...(action.pinnedOn ? { pinnedOn: action.pinnedOn } : {}),

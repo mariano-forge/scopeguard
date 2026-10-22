@@ -3,12 +3,15 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import { Hand, Maximize, MessageCirclePlus, Minus, Plus } from "lucide-react";
-import { DeliverableContent } from "@/components/DeliverableContent";
+import { DeliverableContent, type CanvasVideo } from "@/components/DeliverableContent";
 import { SiteBoard, sitePages } from "./SiteBoard";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { areaFromPin } from "@/lib/pinArea";
-import { CommentPin, TargetHighlight, describeTarget, itemLabel, type Area, type TargetBox, type ThreadComment } from "./CanvasComments";
+import { CommentPin, TargetHighlight, describeTarget, itemLabel, requestKind, type Area, type TargetBox, type ThreadComment } from "./CanvasComments";
 import { Hint } from "@/components/hint";
+import { sideOf } from "@/lib/authors";
+import { pinWindowSeconds, readTimecode, videoLocation } from "@/lib/timecode";
+import { VideoBar } from "./VideoBar";
 
 /** Canvas tools: move (pan, open threads) and comment (default). Requests are qualified from a comment. */
 export type CanvasTool = "move" | "remark";
@@ -21,6 +24,8 @@ export type CanvasComposer = {
   area?: Area;
   /** On a « Lien »: the request whose capture the comment is dropped on (SiteBoard sitePages). */
   pinnedOn?: number;
+  /** On a video: the moment it was paused on, in seconds (src/lib/timecode.ts). */
+  timecode?: number;
 };
 type CanvasComment = ThreadComment & { page?: number };
 type ViewedDeliverable = { name: string; type: DeliverableType; fileData?: string; url?: string; coverData?: string };
@@ -102,7 +107,81 @@ export function ReviewCanvas({
   };
   /** The request whose capture is the page `page` of a « Lien »'s canvas. */
   const requestOnPage = (page: number) => placement?.groups.flatMap((group) => group.items).find((item) => item.page === page)?.comment;
+  // A video: a comment is pinned on the picture at the moment it is paused on; a pin shows around its
+  // moment, and opening a comment brings the video there (VideoBar.tsx).
+  const video = deliverable.type === "Video" && Boolean(deliverable.fileData);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [playback, setPlayback] = useState({ time: 0, duration: 0, paused: true, muted: false });
+  const follow = () => {
+    const element = videoRef.current;
+    if (element) setPlayback({ time: element.currentTime, duration: element.duration, paused: element.paused, muted: element.muted });
+  };
+  // The video is read piece by piece with the address /api/files gave it, which expires (src/lib/storage.ts):
+  // when a piece is refused, a new address is asked for and the video goes on where it was. A refusal is
+  // not always an error: the browser may retry it quietly, so a video still without what it needs 6 s
+  // after a jump or a wait counts as one (long enough for a slow connection). At most 3 times a minute:
+  // a file really gone stays in error rather than being asked for again and again.
+  const resumeAt = useRef<{ time: number; playing: boolean } | null>(null);
+  const recoveries = useRef<number[]>([]);
+  const recover = () => {
+    const element = videoRef.current;
+    if (!element || !deliverable.fileData) return;
+    const now = Date.now();
+    recoveries.current = recoveries.current.filter((time) => now - time < 60_000);
+    if (recoveries.current.length >= 3) return;
+    recoveries.current.push(now);
+    resumeAt.current = { time: element.currentTime, playing: !element.paused };
+    element.src = deliverable.fileData;
+    element.load();
+  };
+  /** Moves the video; while a new address loads, it is where it will resume. */
+  const goTo = (seconds: number) => {
+    if (resumeAt.current) resumeAt.current = { ...resumeAt.current, time: seconds };
+    if (videoRef.current) videoRef.current.currentTime = seconds;
+  };
+  const stall = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const watchForStall = () => {
+    if (stall.current) clearTimeout(stall.current);
+    stall.current = setTimeout(() => {
+      const element = videoRef.current;
+      if (element && element.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) recover();
+    }, 6000);
+  };
+  const ready = () => {
+    if (stall.current) clearTimeout(stall.current);
+    stall.current = null;
+  };
+  const resume = () => {
+    const element = videoRef.current;
+    const at = resumeAt.current;
+    resumeAt.current = null;
+    if (element && at) {
+      element.currentTime = at.time;
+      if (at.playing) void element.play().catch(() => undefined);
+    }
+    follow();
+  };
+  const videoEvents: CanvasVideo = { ref: videoRef, onTimeUpdate: follow, onLoadedMetadata: resume, onDurationChange: follow, onPlay: follow, onPause: follow, onSeeked: follow, onVolumeChange: follow, onError: recover, onWaiting: watchForStall, onSeeking: watchForStall, onCanPlay: ready };
+  const videoControls = {
+    toggle: () => {
+      const element = videoRef.current;
+      if (element?.paused) void element.play().catch(() => undefined);
+      else element?.pause();
+    },
+    seek: (seconds: number) => goTo(seconds),
+    toggleSound: () => {
+      if (videoRef.current) videoRef.current.muted = !videoRef.current.muted;
+    },
+  };
+  /** Whether a pin shows on the picture now: around its moment (older comments, without one, always). */
+  const inView = (comment: CanvasComment) => !video || comment.timecode === undefined || Math.abs(comment.timecode - playback.time) <= pinWindowSeconds;
   const compose = (next: CanvasComposer) => {
+    if (video) {
+      const element = videoRef.current;
+      element?.pause();
+      const timecode = readTimecode(element?.currentTime) ?? 0;
+      return onCompose({ ...next, timecode, target: videoLocation(timecode, Boolean(next.area)) });
+    }
     if (!site) return onCompose(next);
     const request = requestOnPage(next.page);
     if (!request) return;
@@ -133,6 +212,15 @@ export function ReviewCanvas({
     return () => window.removeEventListener("keydown", cancel);
   }, [moving]);
   const selected = comments.find((comment) => comment.id === selectedId);
+  // An opened comment on a video brings the video to its moment, paused: what was pointed at is there.
+  const openedTimecode = video && threadOpen ? selected?.timecode : undefined;
+  useEffect(() => {
+    const element = videoRef.current;
+    if (!element || openedTimecode === undefined) return;
+    element.pause();
+    if (resumeAt.current) resumeAt.current = { time: openedTimecode, playing: false };
+    element.currentTime = openedTimecode;
+  }, [openedTimecode, selectedId]);
   // An open bubble (or the new-comment form) stays fully visible: when it opens or grows (qualify form),
   // the canvas pans so it sits between the top of the canvas and the toolbar.
   const bubbleKey = `${threadOpen ? `${selectedId}-${selected?.decision}` : ""}|${composer ? `${composer.page}-${composer.x}-${composer.y}` : ""}`;
@@ -249,6 +337,8 @@ export function ReviewCanvas({
     if (!commenting || event.button !== 0 || (event.target as Element).closest(".thread, .canvas-pin")) return;
     const page = (event.target as Element).closest<HTMLElement>("[data-page]");
     if (!page) return;
+    // The picture stops under the pointer: the zone is drawn on the frame the comment will be pinned on.
+    if (video) videoRef.current?.pause();
     const bounds = page.getBoundingClientRect();
     drawStart.current = {
       page: Number(page.dataset.page) || 1,
@@ -389,7 +479,7 @@ export function ReviewCanvas({
       {composer?.page === page && composer.area && <TargetHighlight box={areaBox(composer.area)} drawing />}
       {threadOpen && !moving && selected?.area && (selected.page ?? 1) === page && <TargetHighlight box={areaBox(selected.area)} drawing />}
       {comments
-        .filter((comment) => comment.area && (comment.page ?? 1) === page && (comment.id === pinHover || comment.id === moving?.id))
+        .filter((comment) => comment.area && (comment.page ?? 1) === page && (comment.id === pinHover || comment.id === moving?.id) && inView(comment))
         .filter((comment) => moving?.id === comment.id || !(threadOpen && comment.id === selectedId))
         .map((comment) => (
           <TargetHighlight
@@ -403,6 +493,7 @@ export function ReviewCanvas({
         .map((comment) => (moving?.id === comment.id ? { ...comment, page: moving.page, position: { x: moving.x, y: moving.y } } : comment))
         .filter((comment) => (comment.page ?? 1) === page && comment.position)
         .filter((comment) => !comment.closed || (threadOpen && comment.id === selectedId))
+        .filter((comment) => inView(comment) || (threadOpen && comment.id === selectedId) || moving?.id === comment.id)
         .map((comment) => (
           <CommentPin
             key={comment.id}
@@ -470,7 +561,7 @@ export function ReviewCanvas({
               {site ? (
                 <SiteBoard siteUrl={deliverable.url} comments={givenComments} renderPage={renderPage} setup={siteSetup} />
               ) : (
-                <DeliverableContent deliverable={deliverable} renderPage={renderPage} />
+                <DeliverableContent deliverable={deliverable} renderPage={renderPage} video={video ? videoEvents : undefined} />
               )}
             </div>
           </TransformComponent>
@@ -479,6 +570,20 @@ export function ReviewCanvas({
 
       {/* A request without pin: its bubble by the panel, outside the zoomed pages. */}
       {threadOpen && !moving && selected && !selected.position && <div className="canvas-docked-thread">{renderThread(selected)}</div>}
+      {video && (
+        <VideoBar
+          controls={videoControls}
+          {...playback}
+          marks={comments
+            .filter((comment) => comment.timecode !== undefined && !comment.closed)
+            .map((comment) => ({ id: comment.id, timecode: comment.timecode!, kind: requestKind(comment), agency: sideOf(comment) === "agency", label: itemLabel(comment) }))}
+          selectedId={threadOpen ? selectedId : null}
+          onOpen={(id) => {
+            const comment = comments.find((item) => item.id === id);
+            if (comment) onPinClick(comment);
+          }}
+        />
+      )}
       {moving && (
         <p className="canvas-hint" role="status">
           Cliquez pour déposer le commentaire · <kbd>Échap</kbd> pour annuler

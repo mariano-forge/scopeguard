@@ -15,14 +15,18 @@ import { baseURL, mailOutbox, testDatabaseUrl } from "../../playwright.config";
 export const PASSWORD = "Mot-de-passe-solide-24";
 
 let counter = 0;
-/** "alice-k3x9" : names and addresses never collide between tests of the same run. */
-export const unique = (prefix: string) => `${prefix}-${Date.now().toString(36)}${(counter++).toString(36)}`;
+/**
+ * "alice-k3x9w1a" : names and addresses never collide between tests of the same run. The worker's number
+ * is part of it: workers run side by side, each counting from 0, and two may ask in the same millisecond.
+ */
+export const unique = (prefix: string) => `${prefix}-${Date.now().toString(36)}w${process.env.TEST_PARALLEL_INDEX ?? 0}${(counter++).toString(36)}`;
 /**
  * One address per simulated person: sign-in limits are counted per address (TRUSTED_PROXY_HOPS=1).
- * Drawn from a random start: a worker restarted after a failure starts its counter again, and would
- * otherwise reuse the addresses of the run, already at their limit (429 on sign-up).
+ * Each worker draws from a range of its own (workers run side by side), from a random start in it: a
+ * worker restarted after a failure starts its counter again, and would otherwise reuse the addresses of
+ * the run, already at their limit (429 on sign-up).
  */
-const ipStart = Math.floor(Math.random() * 60_000);
+const ipStart = Number(process.env.TEST_PARALLEL_INDEX ?? 0) * 100_000 + Math.floor(Math.random() * 60_000);
 export const newIp = () => {
   const n = ipStart + counter++;
   return `10.${Math.floor(n / 62_500) % 250}.${Math.floor(n / 250) % 250}.${(n % 250) + 1}`;
@@ -265,7 +269,7 @@ export function makePdf(label: string, pages = 1) {
 /** Uploads a file through POST /api/files, as the agency page does. */
 export async function upload(member: Person, content: Buffer, name: string, placement: Record<string, string | number>) {
   const form = new FormData();
-  form.set("file", new Blob([new Uint8Array(content)], { type: name.endsWith(".pdf") ? "application/pdf" : name.endsWith(".png") ? "image/png" : "application/octet-stream" }), name);
+  form.set("file", new Blob([new Uint8Array(content)], { type: name.endsWith(".pdf") ? "application/pdf" : name.endsWith(".png") ? "image/png" : name.endsWith(".webm") ? "video/webm" : "application/octet-stream" }), name);
   for (const [key, value] of Object.entries(placement)) form.set(key, String(value));
   const response = await fetch(`${baseURL}/api/files`, { method: "POST", headers: { cookie: member.cookie, "x-forwarded-for": member.ip }, body: form });
   return { status: response.status, json: (await response.json()) as { href?: string; sha256?: string; error?: string } };

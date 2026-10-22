@@ -92,6 +92,8 @@ type ClientComment = {
   decision?: "À qualifier" | "À traiter" | "Inclus" | "Hors périmètre";
   position?: { x: number; y: number };
   page?: number;
+  /** On a video: the moment it was pinned on, in seconds (src/lib/timecode.ts). */
+  timecode?: number;
   replies?: Reply[];
   /** Set by the agency: "request" = correction. */
   kind?: "remark" | "request";
@@ -405,6 +407,7 @@ export default function ClientReviewPage() {
       page: spot?.page ?? 1,
       position: spot ? { x: spot.x, y: spot.y } : undefined,
       area: spot?.area,
+      timecode: spot?.timecode,
     };
     setComments((current) => [...current, comment]);
     setComposer(null);
@@ -416,9 +419,9 @@ export default function ClientReviewPage() {
 
   /** Sends a comment (new, or put back after a deletion); the server may give it another id. */
   async function createComment(comment: ClientComment) {
-    const { id, message, location, page, position, area } = comment;
+    const { id, message, location, page, position, area, timecode } = comment;
     const replies = (comment.replies ?? []).filter((reply) => sideOf(reply) === "client").map((reply) => ({ id: reply.id, message: reply.message }));
-    const result = await reviewAction(params.token, "comments", "POST", { id, message, location, page, position, area, replies });
+    const result = await reviewAction(params.token, "comments", "POST", { id, message, location, page, position, area, timecode, replies });
     if (result?.id && result.id !== id) setSelectedCommentId((selected) => (selected === id ? result.id! : selected));
   }
 

@@ -1,16 +1,18 @@
 // An imported file, for whoever may see it: a member of its agency (in Kora, or in the panel on the
 // staging site), or a verified client invited to a review that shows it (its version's file or cover,
-// or the capture of a request they see). Answers with a redirect to a read-only address valid 5 minutes
-// (src/lib/storage.ts); anyone else gets 404, so the address reveals nothing.
+// or the capture of a request they see). Answers with a redirect to a read-only address valid a few
+// minutes, a video's as long as it lasts (src/lib/storage.ts); anyone else gets 404, so the address
+// reveals nothing.
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { getDb } from "@/db/client";
 import { expired, visibleToClient } from "@/db/reviewAccess";
 import { isInvited, reviewSessionCookie, reviewSessionEmail, siteSessionCookie } from "@/db/reviewAuth";
 import { comments, deliverables, reviewLinks, storedFiles } from "@/db/schema";
 import type { Db } from "@/db/client";
-import { fileHref, readableUrl } from "@/lib/storage";
+import { fileHref, fileLinkSeconds, readableUrl, videoLinkSeconds } from "@/lib/storage";
+import { readVideoDuration } from "@/lib/timecode";
 import { getCurrentUser, isMemberOf } from "@/lib/session";
 import { siteAgencyMember } from "@/lib/siteAgency";
 
@@ -44,6 +46,17 @@ async function clientMaySee(db: Db, org: string, id: string) {
   return withCapture.some((comment) => visibleToClient(comment.data as Record<string, unknown>));
 }
 
+/** How long a file's address lasts: a video's, by the longest length its versions state. */
+async function linkSeconds(db: Db, file: { id: string; organizationId: string; mimeType: string }) {
+  if (!file.mimeType.startsWith("video/")) return fileLinkSeconds();
+  const versions = await db
+    .select({ data: deliverables.data })
+    .from(deliverables)
+    .where(and(eq(deliverables.organizationId, file.organizationId), sql`${deliverables.data}->>'fileData' = ${fileHref(file.id)}`));
+  const duration = Math.max(0, ...versions.map(({ data }) => readVideoDuration((data as Record<string, unknown>).duration) ?? 0));
+  return duration ? videoLinkSeconds(duration) : fileLinkSeconds();
+}
+
 export async function GET(_request: Request, context: RouteContext<"/api/files/[id]">) {
   const { id } = await context.params;
   try {
@@ -58,7 +71,7 @@ export async function GET(_request: Request, context: RouteContext<"/api/files/[
     const allowed = member || (await clientMaySee(db, file.organizationId, id));
     if (!allowed) return notFound();
     // The address changes with every request (it expires): never cached.
-    return new Response(null, { status: 302, headers: { Location: await readableUrl(file), "Cache-Control": "private, no-store" } });
+    return new Response(null, { status: 302, headers: { Location: await readableUrl(file, await linkSeconds(db, file)), "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("[api/files]", error);
     return new Response(null, { status: 503 });

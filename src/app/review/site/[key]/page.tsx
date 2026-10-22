@@ -4,11 +4,13 @@
 // Kora, gets nothing but a sentence saying why. The key names one deliverable: it says nothing of the
 // agency's other sites.
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AuthShell } from "@/components/AuthShell";
 import { GateHeading, WrongSiteNote } from "@/components/GatePieces";
 import { getDb } from "@/db/client";
 import { latestSharedSite } from "@/db/reviewAccess";
+import { markSiteSeen } from "@/db/siteSeen";
 import { readSiteKey } from "@/lib/siteKey";
 import { parentOrigin } from "@/lib/siteReview";
 
@@ -34,6 +36,10 @@ export default async function SiteKeyPage({ params, searchParams }: PageProps<"/
       "Son livrable a été supprimé, ou la ligne a été modifiée. Administrateur : dans Kora, copiez la ligne de la barre (« Paramétrer la barre Kora ») et remplacez celle-ci.",
     );
   const { latest, shared } = found;
+  // Asked for in a frame by the deliverable's own site: the toolbar is installed there (src/db/siteSeen.ts),
+  // shared or not yet.
+  if (origin && (origin === latest.site || origin === shared?.site) && (await headers()).get("sec-fetch-dest") === "iframe")
+    await markSiteSeen(getDb(), claim!.organizationId, claim!.livrableId);
   if (origin && shared?.site === origin) redirect(`/review/${encodeURIComponent(shared.token)}/site?parent=${encodeURIComponent(origin)}`);
   if (!origin || latest.site !== origin)
     return (

@@ -39,7 +39,7 @@ import { todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { HomeSidebar, Notifications, ProjectSidebar, type ClientFeedback, type NewVersion, type PanelMode, type SidebarLivrable, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
 import { href, hrefForRecord, livrableIdOf, notificationHref, parseAgencyPath, versionsOfLivrable } from "./routes";
-import { MAX_FILE_BYTES, deliverableKinds, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
+import { maxBytesOf, deliverableKinds, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
 import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialog";
 import { LinkVersionDialog } from "./LinkVersionDialog";
 import { NoDeciderBanner } from "./NoDeciderBanner";
@@ -62,6 +62,7 @@ import { outsideStatusOf, outsideStatusView } from "@/lib/outsideStatus";
 import { NewRequestDialog, type NewRequest } from "./editor/NewRequestDialog";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "./editor/ReviewCanvas";
 import { toast } from "sonner";
+import { videoDuration, videoWarning, videoWarningText } from "@/lib/videoCheck";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1014,7 +1015,10 @@ export function AgencyApp() {
    */
   async function uploadFile(file: File, placement: UploadPlacement) {
     const progress = toast.loading(`Import de « ${file.name} »…`);
-    const result = await sendFile(file, placement).catch(() => ({ error: "L’import n’a pas abouti. Réessayez." }));
+    // A large file says how far it is: read first (its fingerprint), then sent.
+    const result = await sendFile(file, placement, (step, done) =>
+      toast.loading(`${step === "reading" ? "Lecture" : "Envoi"} de « ${file.name} » : ${Math.round(done * 100)} %`, { id: progress }),
+    ).catch(() => ({ error: "L’import n’a pas abouti. Réessayez." }));
     toast.dismiss(progress);
     if ("error" in result) {
       toast.error(result.error);
@@ -1027,9 +1031,10 @@ export function AgencyApp() {
   async function createDeliverable(input: NewDeliverable) {
     const id = Date.now();
     const projectId = input.projectId ?? selectedProjectId;
-    const [fileData, coverData] = await Promise.all([
+    const [fileData, coverData, duration] = await Promise.all([
       input.file ? uploadFile(input.file, { kind: "version", projectId, livrableId: id, version: 1 }) : Promise.resolve(undefined),
       input.cover ? uploadFile(input.cover, { kind: "cover", projectId, livrableId: id }) : Promise.resolve(undefined),
+      input.type === "Video" && input.file ? videoDuration(input.file) : Promise.resolve(null),
     ]);
     if (fileData === null || coverData === null) return;
     const result = await agencyAction("deliverables", "POST", {
@@ -1041,6 +1046,7 @@ export function AgencyApp() {
       ...(fileData ? { fileData } : {}),
       ...(input.url ? { url: input.url } : {}),
       ...(coverData ? { coverData } : {}),
+      ...(duration ? { duration } : {}),
     });
     if (!result?.id) return;
     setNewDeliverableOpen(false);
@@ -1062,9 +1068,12 @@ export function AgencyApp() {
     const id = Date.now();
     // A new version is stored with its deliverable (the id of its first version); a new deliverable is its own.
     const livrableId = mode === "version" && activeDeliverable ? livrableIdOf(activeDeliverable, deliverables) : id;
-    const fileData = file ? await uploadFile(file, { kind: "version", projectId: selectedProjectId, livrableId, version: nextVersion }) : undefined;
+    const [fileData, duration] = await Promise.all([
+      file ? uploadFile(file, { kind: "version", projectId: selectedProjectId, livrableId, version: nextVersion }) : Promise.resolve(undefined),
+      file && type === "Video" ? videoDuration(file) : Promise.resolve(null),
+    ]);
     if (file && !fileData) return;
-    const content = { id, type, size: file?.size ?? 0, ...(fileData ? { fileData } : {}), ...(url ? { url } : {}) };
+    const content = { id, type, size: file?.size ?? 0, ...(fileData ? { fileData } : {}), ...(url ? { url } : {}), ...(duration ? { duration } : {}) };
     // A new version freezes the earlier ones (src/db/workspaceActions.ts).
     const result =
       mode === "version" && activeDeliverable
@@ -1124,6 +1133,7 @@ export function AgencyApp() {
       page: spot?.page ?? 1,
       position: spot ? { x: spot.x, y: spot.y } : undefined,
       area: spot?.area,
+      timecode: spot?.timecode,
       pinnedOn: spot?.pinnedOn,
     });
     if (!result?.id) return;
@@ -1159,12 +1169,14 @@ export function AgencyApp() {
       setDeliverableError("Format non pris en charge. Choisissez une image, un PDF, une vidéo ou un document.");
       return;
     }
-    if (file.size > MAX_FILE_BYTES) {
-      setDeliverableError(`Fichier trop lourd : ${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).`);
+    if (file.size > maxBytesOf(type)) {
+      setDeliverableError(`Fichier trop lourd : ${formatBytes(file.size)} (maximum ${formatBytes(maxBytesOf(type))}).`);
       return;
     }
     setDeliverableError("");
     void confirmImport("version", { file, type });
+    // Said while it uploads, never in its way (src/lib/videoCheck.ts).
+    if (type === "Video") void videoWarning(file).then((warning) => warning && toast.warning(videoWarningText[warning], { duration: 15000 }));
   }
 
   /** Edits one of the agency's messages (0 = the comment itself). */
