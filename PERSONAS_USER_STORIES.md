@@ -1029,6 +1029,25 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 
 **Pas dans cette story** : afficher le site de l'agence dans Kora (relais ou cadre), une extension de navigateur, dessiner sur la capture, les erreurs techniques de la page, l'extension WordPress.
 
+#### US-053 : comparer deux versions
+
+**En tant que** client ou chef de projet,  
+**je veux** comparer deux versions d'une maquette ou d'un PDF,  
+**afin de** vérifier que chaque demande a été traitée avant d'envoyer, ou avant de valider.
+
+> Décidé avec le porteur du produit le 22 octobre 2026 : des deux côtés ; une frise des versions, animée de la plus ancienne à la plus récente ; côté client, une version non partagée entre deux des siennes apparaît comme un nœud avec son numéro seul.
+
+**Critères d'acceptation**
+
+- « Comparer les versions » s'ouvre depuis le menu du livrable (agence) ou l'en-tête de la revue (client), dès qu'il y a deux versions image ou PDF à comparer.
+- La frise montre les versions de la plus ancienne à la plus récente ; on y choisit « avant » et « après » (par défaut, la précédente et l'actuelle).
+- Côte à côte, le zoom et le déplacement sont synchronisés ; le rideau superpose les deux, une poignée passant de l'une à l'autre.
+- Les demandes de la version « avant » restent dessus, en lecture seule ; un clic sur une épingle en affiche le texte.
+- Un PDF se compare page par page ; un nombre de pages différent est signalé.
+- Le client ne reçoit que les versions qui lui sont partagées, chacune comme sa page la montrerait ; une version non partagée n'est jamais envoyée, ni son contenu ni ses demandes.
+
+**Plus tard** : surbrillance automatique des différences.
+
 #### US-052 : commenter un moment d'une vidéo
 
 **En tant que** client ou chef de projet,  
@@ -1203,6 +1222,7 @@ Si ce scénario fonctionne avec trois agences pilotes, Kora possède une base pr
 | US-049 rôles des personnes invitées | ✅ | Décideur et contributeur, contrôlés par le serveur |
 | US-050 saisir une demande reçue ailleurs | ✅ | Source, date, extrait et capture ; visibles par le client et dans la preuve |
 | US-051 e-mails des devis et des décisions | ✅ | Décideurs côté client, propriétaire et administrateurs côté agence |
+| US-053 comparer deux versions | ✅ | Images et PDF, côté agence et client : frise des versions, côte à côte synchronisé, rideau, demandes de l'ancienne version ; le client ne compare que ses versions partagées |
 | US-052 commenter un moment d'une vidéo | 🟡 | Épingle au moment et à l'endroit, frise des repères, retour au moment en ouvrant un commentaire ; limite de taille propre aux vidéos ; avertissement à l'import (format illisible, images clés rares). Liens de la durée de la vidéo, renouvelés s'ils expirent ; fichiers de plusieurs Go envoyés par blocs. À faire : capture de l'image, reconversion des captures d'écran, plages de temps |
 
 **Avant les premiers pilotes**, il reste à :
