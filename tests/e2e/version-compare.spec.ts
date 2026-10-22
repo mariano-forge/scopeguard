@@ -149,6 +149,19 @@ test("the agency compares any two of its versions, unshared ones and its drafts 
   const before = compare.getByRole("region", { name: "Avant : V01" });
   await expect(before.getByRole("button", { name: /Commentaire #10/ })).toBeVisible();
   await expect(before.getByRole("button", { name: /#11/ })).toBeVisible();
+  // The canvas's gestures: the wheel moves the pages, Ctrl + wheel zooms by a small step, both sides together.
+  const scale = (side: "Avant : V01" | "Après : V03") =>
+    compare.getByRole("region", { name: side }).locator(".compare-content").evaluate((element) => Number(/scale\(([\d.]+)\)/.exec((element as HTMLElement).style.transform)?.[1] ?? 1));
+  const start = await scale("Avant : V01");
+  await before.hover();
+  await page.mouse.wheel(0, 200);
+  expect(await scale("Avant : V01")).toBe(start);
+  await page.keyboard.down("Control");
+  await page.mouse.wheel(0, -100);
+  await page.keyboard.up("Control");
+  await expect.poll(() => scale("Avant : V01")).toBeGreaterThan(start);
+  expect(await scale("Avant : V01")).toBeLessThan(start * 1.2);
+  await expect.poll(() => scale("Après : V03")).toBe(await scale("Avant : V01"));
   await compare.getByRole("button", { name: "Fermer la comparaison" }).click();
   await expect(compare).toHaveCount(0);
   expect(errors).toEqual([]);

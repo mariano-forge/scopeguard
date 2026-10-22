@@ -52,6 +52,22 @@ const pageWidth = 640;
 
 type Node = { version: number; record?: CompareVersion };
 
+/**
+ * The canvas's gestures (ReviewCanvas.tsx), so that comparing feels the same: the wheel and the trackpad
+ * move the pages, a pinch or Ctrl + wheel zooms by small steps, nothing glides on after a drag.
+ */
+const gestures = {
+  centerOnInit: true,
+  minScale: 0.25,
+  maxScale: 4,
+  limitToBounds: false,
+  smooth: false,
+  doubleClick: { disabled: true },
+  wheel: { step: 0.08, wheelDisabled: true },
+  trackPadPanning: { disabled: false, velocityDisabled: true },
+  panning: { velocityDisabled: true },
+} as const;
+
 export function VersionCompare({ versions, initialAfter, onClose }: { versions: CompareVersion[]; initialAfter?: number; onClose: () => void }) {
   const ordered = [...versions].sort((left, right) => left.version - right.version);
   const numbers = ordered.map((record) => record.version);
@@ -212,7 +228,7 @@ function SideBySide({ older, newer, selected, onPin }: { older: CompareVersion; 
       <span className="compare-tag">
         {side === "before" ? "Avant" : "Après"} · {label(version.version)}
       </span>
-      <TransformWrapper ref={ref} centerOnInit minScale={0.25} maxScale={6} limitToBounds={false} doubleClick={{ disabled: true }} wheel={{ step: 0.08 }} onTransform={follow(other)}>
+      <TransformWrapper ref={ref} {...gestures} onTransform={follow(other)}>
         <TransformComponent wrapperClass="compare-viewport" contentClass="compare-content">
           <Pages version={version} pins={side === "before"} selected={selected} onPin={onPin} zoom={zoom} count={counts[version.version] ?? 1} onCount={(pages) => setCounts((current) => ({ ...current, [version.version]: pages }))} />
         </TransformComponent>
@@ -252,7 +268,7 @@ function Curtain({ older, newer, selected, onPin }: { older: CompareVersion; new
         <span>Après · {label(newer.version)}</span>
       </div>
       <section className="compare-pane is-curtain" aria-label={`Rideau entre la ${label(older.version)} et la ${label(newer.version)}`}>
-        <TransformWrapper centerOnInit minScale={0.25} maxScale={6} limitToBounds={false} doubleClick={{ disabled: true }} wheel={{ step: 0.08 }} panning={{ excluded: ["compare-handle", "canvas-pin"] }} onTransform={(_, state) => setZoom(state.scale)}>
+        <TransformWrapper {...gestures} panning={{ ...gestures.panning, excluded: ["compare-handle", "canvas-pin"] }} onTransform={(_, state) => setZoom(state.scale)}>
           <TransformComponent wrapperClass="compare-viewport" contentClass="compare-content">
             <div className="compare-stage" ref={stage} onPointerMove={move} onPointerUp={() => (dragging.current = false)} onPointerLeave={() => (dragging.current = false)}>
               <Pages version={older} pins selected={selected} onPin={onPin} zoom={zoom} count={counts[older.version] ?? 1} onCount={count(older)} />
