@@ -80,6 +80,7 @@ export function SiteToolbarSnippet({ siteUrl, deliverableId }: { siteUrl: string
         steps={[
           {
             title: "Installez la barre Kora",
+            lead: <PlatformPicker value={platform.id} onChange={setPlatformId} />,
             text: (
               <>
                 {platform.id === "html" ? (
@@ -96,7 +97,6 @@ export function SiteToolbarSnippet({ siteUrl, deliverableId }: { siteUrl: string
             children: (
               <>
                 <CopyField id="site-snippet" label="Script de recette" value={line ?? "Préparation du script…"} copyLabel={line ? "Copier le script" : undefined} code />
-                <PlatformPicker value={platform.id} onChange={setPlatformId} />
                 <InstallStatus host={new URL(clientUrl).host} seenAt={seenAt} />
               </>
             ),

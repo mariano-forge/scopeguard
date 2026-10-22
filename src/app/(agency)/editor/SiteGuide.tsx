@@ -5,7 +5,8 @@
 import { useSyncExternalStore } from "react";
 import { Hand, MessageCirclePlus, MousePointer2 } from "lucide-react";
 
-export type GuideStep = { title: string; text: React.ReactNode; children?: React.ReactNode };
+/** `lead`: a choice that shapes the step, read right after its title (the site's tool, SiteInstall.tsx). */
+export type GuideStep = { title: string; lead?: React.ReactNode; text: React.ReactNode; children?: React.ReactNode };
 
 const noChange = () => () => undefined;
 /** Kora served from this computer (development): a public site that loads its toolbar from here makes the browser ask first. */
@@ -34,6 +35,7 @@ export function SiteGuideSteps({ steps }: { steps: GuideStep[] }) {
           </span>
           <div className="site-step-text">
             <h4>{step.title}</h4>
+            {step.lead}
             <p>{step.text}</p>
           </div>
           {step.children && <div className="site-step-value">{step.children}</div>}

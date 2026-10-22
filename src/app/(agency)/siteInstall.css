@@ -1,22 +1,22 @@
-/* In the first step of a « Lien »'s board (SiteInstall.tsx): the site's tool, as small choices under the
-   line to copy, and whether the toolbar was seen, in the step's own sizes and Kora's status colours. */
+/* In the first step of a « Lien »'s board (SiteInstall.tsx): the site's tool, as small choices right under
+   the step's title, and whether the toolbar was seen, in the step's own sizes and Kora's status colours. */
 
 .site-platforms {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s-1);
-  margin-top: var(--s-2);
+  margin: var(--s-1) 0 var(--s-2);
   color: var(--graphite);
   font-size: var(--t-caption-size);
 }
 .site-platforms > span {
-  margin-right: var(--s-1);
+  margin-right: 2px;
 }
 .site-platform {
   border: 1px solid var(--border);
   border-radius: var(--r-field);
-  padding: 2px var(--s-2);
+  padding: 1px 6px;
   background: var(--paper);
   color: var(--graphite);
   font: inherit;

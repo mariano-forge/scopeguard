@@ -60,7 +60,7 @@ export function useSiteInstall(deliverableId: number) {
 export function PlatformPicker({ value, onChange }: { value: string; onChange: (id: string) => void }) {
   return (
     <div className="site-platforms" role="group" aria-label="Votre site est fait avec">
-      <span aria-hidden="true">Votre site est fait avec :</span>
+      <span aria-hidden="true">Votre site :</span>
       {platforms.map((platform) => (
         <button key={platform.id} type="button" className="site-platform" aria-pressed={platform.id === value} onClick={() => onChange(platform.id)}>
           {platform.label}
