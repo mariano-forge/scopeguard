@@ -82,22 +82,38 @@ export function VersionCompare({ versions, initialAfter, onClose }: { versions: 
   const [before, setBefore] = useState(() => numbers.filter((version) => version < after0).at(-1) ?? numbers[0] ?? 0);
   const [mode, setMode] = useState<"side" | "curtain">("side");
   const [selected, setSelected] = useState<number | null>(null);
+  /** Which end the next node chosen sets: « avant » first, then « après », or as the visitor picks. */
+  const [picking, setPicking] = useState<"before" | "after">("before");
   const older = ordered.find((record) => record.version === before);
   const newer = ordered.find((record) => record.version === after);
+  const indexOf = (version: number) => nodes.findIndex((node) => node.version === version);
 
-  /** A node chosen: newer than « avant », it becomes « après »; otherwise « avant ». */
+  /** A node chosen for the end being picked; the two swap rather than run backwards. Then the other end. */
   function choose(version: number) {
-    if (version === before || version === after) return;
+    const [from, to] = picking === "before" ? [version, after] : [before, version];
+    if (from === to) return;
     setSelected(null);
-    if (version > before) setAfter(version);
-    else setBefore(version);
+    setBefore(Math.min(from, to));
+    setAfter(Math.max(from, to));
+    setPicking(picking === "before" ? "after" : "before");
   }
 
   return (
     <div className="version-compare" role="dialog" aria-modal="true" aria-label="Comparer les versions" onKeyDown={(event) => event.key === "Escape" && onClose()}>
       <header className="compare-header">
         <h2>Comparer les versions</h2>
-        <ol className="compare-pipeline" aria-label="Versions">
+        <div className="compare-picking" role="group" aria-label="Choisir la version">
+          <span aria-hidden="true">Choisir :</span>
+          <button type="button" className="is-before" aria-pressed={picking === "before"} onClick={() => setPicking("before")}>
+            Avant
+          </button>
+          <button type="button" className="is-after" aria-pressed={picking === "after"} onClick={() => setPicking("after")}>
+            Après
+          </button>
+        </div>
+        <ol className="compare-pipeline" aria-label="Versions" style={{ "--from": indexOf(before), "--to": indexOf(after) } as React.CSSProperties}>
+          {/* The stretch compared, lit between « avant » and « après », sliding when they change. */}
+          <li className="compare-span" aria-hidden="true" />
           {nodes.map((node, index) => {
             const role = node.version === before ? "avant" : node.version === after ? "après" : null;
             return (

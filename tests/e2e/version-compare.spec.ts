@@ -148,8 +148,23 @@ test("the agency compares any two of its versions, unshared ones and its drafts 
   // The previous version and the one open; V2 said unshared, but the agency's to choose.
   await expect(pipeline.getByRole("button", { name: /^V02, avant · non partagée/ })).toBeVisible();
   await expect(pipeline.getByRole("button", { name: /^V03, après/ })).toBeVisible();
+  // « Avant » chosen first, then « après »: any two versions.
+  const picking = compare.getByRole("group", { name: "Choisir la version" });
+  await expect(picking.getByRole("button", { name: "Avant" })).toHaveAttribute("aria-pressed", "true");
   await pipeline.getByRole("button", { name: /^V01/ }).click();
   await expect(pipeline.getByRole("button", { name: /^V01, avant/ })).toBeVisible();
+  await expect(picking.getByRole("button", { name: "Après" })).toHaveAttribute("aria-pressed", "true");
+  await pipeline.getByRole("button", { name: /^V02/ }).click();
+  await expect(compare.getByRole("region", { name: "Après : V02" })).toBeVisible();
+  // A choice that would run backwards swaps the two: always the older « avant ».
+  await picking.getByRole("button", { name: "Avant" }).click();
+  await pipeline.getByRole("button", { name: /^V03/ }).click();
+  await expect(compare.getByRole("region", { name: "Avant : V02" })).toBeVisible();
+  await expect(compare.getByRole("region", { name: "Après : V03" })).toBeVisible();
+  // Back to V1 and V3 for what follows.
+  await picking.getByRole("button", { name: "Avant" }).click();
+  await pipeline.getByRole("button", { name: /^V01/ }).click();
+  await expect(compare.getByRole("region", { name: "Avant : V01" })).toBeVisible();
   // On V1, the client's request and the agency's own draft.
   const before = compare.getByRole("region", { name: "Avant : V01" });
   await expect(before.getByRole("button", { name: /Commentaire #10/ })).toBeVisible();

@@ -122,6 +122,54 @@
   border-radius: var(--r-field);
 }
 
+/* The stretch between « avant » and « après »: lit, and gliding to its new ends. */
+.compare-span {
+  position: absolute;
+  top: 9px;
+  left: calc(44px + var(--from) * (88px + var(--s-6)));
+  width: calc((var(--to) - var(--from)) * (88px + var(--s-6)));
+  height: 2px;
+  background: linear-gradient(90deg, var(--graphite), var(--action-ui));
+  transition:
+    left 300ms ease,
+    width 300ms ease;
+  animation: compare-line 600ms ease-out both;
+  animation-delay: 300ms;
+  transform-origin: left center;
+}
+
+/* « Choisir : Avant | Après »: the end the next node sets. */
+.compare-picking {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+.compare-picking button {
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  padding: 2px var(--s-2);
+  background: var(--paper);
+  color: var(--graphite);
+  font: 600 12px/1.5 var(--font-ui);
+  cursor: pointer;
+}
+.compare-picking button.is-before[aria-pressed="true"] {
+  border-color: var(--graphite);
+  background: var(--graphite);
+  color: var(--paper);
+}
+.compare-picking button.is-after[aria-pressed="true"] {
+  border-color: var(--action-ui);
+  background: var(--action-ui);
+  color: var(--paper);
+}
+.compare-picking button:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 1px;
+}
+
 @keyframes compare-line {
   from {
     transform: scaleX(0);
@@ -135,8 +183,10 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .compare-pipeline::before,
+  .compare-span,
   .compare-node {
     animation: none;
+    transition: none;
   }
 }
 
