@@ -111,6 +111,12 @@ test("the client compares their versions: the pipeline, V2 a number alone, their
   const pipeline = compare.getByRole("list", { name: "Versions" });
   await expect(pipeline.getByRole("button", { name: "V01, avant" })).toHaveAttribute("aria-pressed", "true");
   await expect(pipeline.getByRole("button", { name: "V03, après" })).toHaveAttribute("aria-pressed", "true");
+  // The pipeline flows from « avant » to « après »; still, for whoever asks for less motion.
+  const flow = () => pipeline.locator(".compare-span").evaluate((span) => getComputedStyle(span, "::after").animationName);
+  expect(await flow()).toBe("compare-flow");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  expect(await flow()).toBe("none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   // V2 is not hers: its number, nothing to choose, nothing of it loaded.
   await expect(pipeline.getByLabel("V02, non partagée avec vous")).toBeVisible();
   await expect(pipeline.getByRole("button", { name: /^V02/ })).toHaveCount(0);

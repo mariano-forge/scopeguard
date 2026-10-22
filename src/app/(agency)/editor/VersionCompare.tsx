@@ -111,7 +111,7 @@ export function VersionCompare({ versions, initialAfter, onClose }: { versions: 
             Après
           </button>
         </div>
-        <ol className="compare-pipeline" aria-label="Versions" style={{ "--from": indexOf(before), "--to": indexOf(after) } as React.CSSProperties}>
+        <ol className="compare-pipeline" aria-label="Versions" style={{ "--from": indexOf(before), "--to": indexOf(after), "--n": nodes.length } as React.CSSProperties}>
           {/* The stretch compared, lit between « avant » and « après », sliding when they change. */}
           <li className="compare-span" aria-hidden="true" />
           {nodes.map((node, index) => {
