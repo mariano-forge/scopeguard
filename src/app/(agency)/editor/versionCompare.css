@@ -317,9 +317,9 @@
 .compare-footer b {
   color: var(--ink);
 }
-.compare-status {
-  color: var(--ink);
-  font-weight: 600;
+/* The thread opened on a pin stands above the curtain's newer layer and handle. */
+.compare-page .thread {
+  z-index: 6;
 }
 
 @media (max-width: 760px) {

@@ -119,7 +119,12 @@ test("the client compares their versions: the pipeline, V2 a number alone, their
   await expect(compare.getByRole("img", { name: "maquette.png, V03" })).toBeVisible();
   const before = compare.getByRole("region", { name: "Avant : V01" });
   await before.getByRole("button", { name: /Commentaire #10/ }).click();
-  await expect(compare.locator("footer")).toContainText("Agrandir le logo");
+  // Its thread beside the pin, as on the canvas, to read only.
+  const thread = before.getByRole("dialog", { name: "Commentaire #10" });
+  await expect(thread).toContainText("Agrandir le logo");
+  await expect(thread.getByRole("textbox")).toHaveCount(0);
+  await thread.getByRole("button", { name: "Fermer" }).click();
+  await expect(thread).toHaveCount(0);
   await expect(compare.getByRole("button", { name: /#11/ })).toHaveCount(0);
   // The curtain: V3 over V1 from the handle to the right.
   await compare.getByRole("button", { name: "Rideau" }).click();
@@ -214,7 +219,7 @@ test("two PDFs are compared page by page; a different number of pages is said", 
   await expect(compare.getByRole("region", { name: "Après : V02" }).locator(".react-pdf__Page")).toHaveCount(3);
   await expect(compare.getByRole("note")).toContainText("La V02 a 3 pages, la V01 en avait 2");
   await compare.getByRole("region", { name: "Avant : V01" }).getByRole("button", { name: /Commentaire #20/ }).click();
-  await expect(compare.locator("footer")).toContainText("Revoir le sommaire");
+  await expect(compare.getByRole("dialog", { name: "Commentaire #20" })).toContainText("Revoir le sommaire");
   // Behind the curtain too.
   await compare.getByRole("button", { name: "Rideau" }).click();
   await expect(compare.getByRole("region", { name: /Rideau/ }).locator(".react-pdf__Page")).toHaveCount(5);

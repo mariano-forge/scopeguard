@@ -10,11 +10,11 @@
 // 22 October 2026): their page already tells it from the numbers, and nothing more is sent.
 
 import { useRef, useState } from "react";
-import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
+import { TransformComponent, TransformWrapper, type ReactZoomPanPinchProps, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import { Columns2, SplitSquareHorizontal, X } from "lucide-react";
 import { PdfDocument, PdfPage } from "@/components/Pdf";
 import type { DeliverableType } from "@/components/deliverableKinds";
-import { CommentPin, itemLabel, requestKind, requestText, type ThreadComment } from "./CanvasComments";
+import { CommentPin, ThreadPopover, type ThreadComment } from "./CanvasComments";
 import "./versionCompare.css";
 
 export type CompareComment = ThreadComment & { page?: number };
@@ -56,17 +56,18 @@ type Node = { version: number; record?: CompareVersion };
  * The canvas's gestures (ReviewCanvas.tsx), so that comparing feels the same: the wheel and the trackpad
  * move the pages, a pinch or Ctrl + wheel zooms by small steps, nothing glides on after a drag.
  */
-const gestures = {
+const gestures: Omit<ReactZoomPanPinchProps, "children" | "ref"> = {
   centerOnInit: true,
   minScale: 0.25,
   maxScale: 4,
   limitToBounds: false,
   smooth: false,
   doubleClick: { disabled: true },
-  wheel: { step: 0.08, wheelDisabled: true },
-  trackPadPanning: { disabled: false, velocityDisabled: true },
-  panning: { velocityDisabled: true },
-} as const;
+  // A thread opened on a pin scrolls and is read as on the canvas: the gestures leave it alone.
+  wheel: { step: 0.08, wheelDisabled: true, excluded: ["thread"] },
+  trackPadPanning: { disabled: false, velocityDisabled: true, excluded: ["thread"] },
+  panning: { velocityDisabled: true, excluded: ["thread", "canvas-pin"] },
+};
 
 export function VersionCompare({ versions, initialAfter, onClose }: { versions: CompareVersion[]; initialAfter?: number; onClose: () => void }) {
   const ordered = [...versions].sort((left, right) => left.version - right.version);
@@ -91,8 +92,6 @@ export function VersionCompare({ versions, initialAfter, onClose }: { versions: 
     if (version > before) setAfter(version);
     else setBefore(version);
   }
-
-  const opened = older?.comments.find((comment) => comment.id === selected);
 
   return (
     <div className="version-compare" role="dialog" aria-modal="true" aria-label="Comparer les versions" onKeyDown={(event) => event.key === "Escape" && onClose()}>
@@ -143,20 +142,10 @@ export function VersionCompare({ versions, initialAfter, onClose }: { versions: 
         <p className="compare-empty">Il faut deux versions pour comparer.</p>
       )}
 
-      <footer className="compare-footer" aria-live="polite">
-        {opened ? (
-          <p>
-            <b>
-              {itemLabel(opened)} #{opened.id}
-            </b>{" "}
-            · {requestText(opened)}
-            {requestKind(opened) !== "comment" && <span className="compare-status"> · {opened.decision === "Inclus" ? "Inclus" : "Hors scope"}</span>}
-          </p>
-        ) : (
-          <p>
-            Les demandes de la {label(before)} restent sur elle : cliquez sur une épingle pour la relire, et vérifiez le même endroit dans la {label(after)}.
-          </p>
-        )}
+      <footer className="compare-footer">
+        <p>
+          Les demandes de la {label(before)} restent sur elle : cliquez sur une épingle pour relire son fil, et vérifiez le même endroit dans la {label(after)}.
+        </p>
       </footer>
     </div>
   );
@@ -175,6 +164,11 @@ function Page({ version, page, pins, selected, onPin, zoom }: { version: Compare
         version.comments
           .filter((comment) => comment.position && (comment.page ?? 1) === page)
           .map((comment) => <CommentPin key={comment.id} comment={comment} active={comment.id === selected} onOpen={() => onPin(comment.id === selected ? null : comment.id)} />)}
+      {/* The thread of the pin opened, beside it, as on the canvas: read only, nothing is written here. */}
+      {pins &&
+        version.comments
+          .filter((comment) => comment.id === selected && comment.position && (comment.page ?? 1) === page)
+          .map((comment) => <ThreadPopover key={comment.id} comment={comment} readOnly locked onReply={() => undefined} onClose={() => onPin(null)} />)}
     </div>
   );
 }
@@ -268,7 +262,7 @@ function Curtain({ older, newer, selected, onPin }: { older: CompareVersion; new
         <span>Après · {label(newer.version)}</span>
       </div>
       <section className="compare-pane is-curtain" aria-label={`Rideau entre la ${label(older.version)} et la ${label(newer.version)}`}>
-        <TransformWrapper {...gestures} panning={{ ...gestures.panning, excluded: ["compare-handle", "canvas-pin"] }} onTransform={(_, state) => setZoom(state.scale)}>
+        <TransformWrapper {...gestures} panning={{ ...gestures.panning, excluded: ["compare-handle", "canvas-pin", "thread"] }} onTransform={(_, state) => setZoom(state.scale)}>
           <TransformComponent wrapperClass="compare-viewport" contentClass="compare-content">
             <div className="compare-stage" ref={stage} onPointerMove={move} onPointerUp={() => (dragging.current = false)} onPointerLeave={() => (dragging.current = false)}>
               <Pages version={older} pins selected={selected} onPin={onPin} zoom={zoom} count={counts[older.version] ?? 1} onCount={count(older)} />
