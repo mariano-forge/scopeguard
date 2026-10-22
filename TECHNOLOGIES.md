@@ -71,6 +71,12 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 | --- | --- |
 | **Resend** (API HTTP) | Invitations, codes d'accès, relances, réinitialisations, devis envoyés, décisions du client et demandes de démo. Domaine `gmmforge.com` vérifié (SPF, DKIM, DMARC). Chaque e-mail part en HTML et en texte, avec « Répondre à » vers le membre de l'agence concerné (`src/lib/mail.ts`, `src/lib/mailTemplates.ts`). |
 
+### IA
+
+| Technologie | Rôle |
+| --- | --- |
+| **Claude** (API Messages d'Anthropic, Haiku 5.5 par défaut) | Suggestion de qualification d'une demande par rapport au périmètre vendu (US-045, `src/lib/ai/`) : décision, ligne du devis citée, une phrase de raison, que l'agence confirme toujours. Un simple appel HTTP, sans SDK ; la réponse est imposée par un outil au schéma fixé, puis vérifiée. Choisi par `AI_PROVIDER` : un autre fournisseur (Claude ou OpenAI sur Azure) s'ajoute sans rien réécrire. Sans réglage, Kora ne suggère rien. Les données partent chez Anthropic (États-Unis par défaut) : à mentionner aux agences (registre des traitements). |
+
 ### Tests et qualité
 
 | Technologie | Version | Rôle |

@@ -84,6 +84,11 @@ Pour les tests :
 - `readState` (`src/db/state.ts`) lit tout l'état d'une agence en **une seule requête SQL**. Une nouvelle collection s'y ajoute dans la même requête ; ne la remplace pas par une suite de requêtes : chacune coûte un aller-retour vers la base en ligne.
 - Une migration ne s'applique sur la base en ligne (`DATABASE_TARGET=remote npm run db:migrate`) qu'avec l'accord explicite de l'utilisateur, et avant le déploiement du code qui en dépend.
 
+**IA**
+- Une suggestion de qualification (`src/lib/ai/`) ne s'applique jamais seule : elle pré-remplit, l'agence décide. Le client ne la voit jamais (elle n'entre pas dans `readReviewState`), et la preuve garde la décision de l'agence, pas l'avis du modèle.
+- Le modèle s'appelle côté serveur seulement ; sa clé n'est jamais une variable `NEXT_PUBLIC_*`. Sa réponse passe par `readSuggestion` (décision connue, ligne parmi celles du périmètre) avant d'être montrée. Le texte du client lui est donné comme une donnée, entre balises, jamais comme une consigne.
+- Les tests n'appellent jamais un vrai modèle : `AI_PROVIDER=fake`, ou un faux serveur local à la place de l'API (`tests/e2e/ai-suggestion.spec.ts`).
+
 **Fichiers**
 - Les fichiers passent par `src/lib/upload.ts` (envoi direct au stockage, par blocs au-delà de 8 Mo, vérifié par le serveur, qui verrouille le fichier par un bail permanent avant de le relire : aucune adresse d'écriture ne peut plus le remplacer), `storeFile()` et `/api/files` (`src/lib/storage.ts`) : conteneurs privés, accès vérifié, adresse signée courte (`FILE_LINK_SECONDS`, 5 minutes) ; celle d'une vidéo dure sa longueur plus 15 minutes, longueur plafonnée à 3 heures (`videoLinkSeconds`), car elle se lit par morceaux, et le canevas en redemande une si elle expire. Jamais de conteneur public, jamais de fichier en base64 dans l'état.
 
