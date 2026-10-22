@@ -7,7 +7,7 @@ export const listCollections = ["clients", "projects", "deliverables", "comments
 /** Records keyed by a string (review links) or a comment id (proposals). */
 export const mapCollections = ["reviewLinks", "proposalStates", "proposalDecisions", "adaptationRequests", "proposalVersions"] as const;
 /** Single values. */
-export const settingKeys = ["reviewLink"] as const;
+export const settingKeys = ["reviewLink", "siteSeen"] as const;
 
 export type ListCollection = (typeof listCollections)[number];
 export type MapCollection = (typeof mapCollections)[number];

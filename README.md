@@ -318,6 +318,7 @@ Pour un livrable « Lien », dont l'adresse est le site de recette, « Partager 
 <script src="https://<kora>/kora-toolbar.js" data-site="<clé du livrable>" defer></script>
 ```
 
+- Le tableau du livrable donne la ligne selon l'outil du site (HTML, Next.js avec `<Script>` dans `app/layout.tsx`, WordPress, Webflow, Shopify, Tag Manager) et dit, en direct, quand la barre a été vue sur le site : son panneau demandé dans un cadre par le site du livrable lui-même (`src/db/siteSeen.ts`, un réglage de l'agence, écrit au plus toutes les 5 minutes, jamais envoyé au client).
 - La clé est fixe pour le livrable, signée par Kora (`src/lib/siteKey.ts`, `GET /api/deliverables/:id/site-key`) : `/review/site/<clé>` ouvre la dernière version partagée avec un lien actif, ou dit qu'aucune ne l'est. La ligne ne change donc ni avec les versions ni avec les liens, et le jeton du lien n'apparaît plus sur le site. Une ligne plus ancienne, avec `data-review="<jeton>"`, ouvre toujours sa version.
 - Le script (`public/kora-toolbar.js`) n'affiche la barre qu'à qui a ouvert le site avec `?kora`, puis s'en souvient sur l'appareil. Il ouvre le panneau Kora (`/review/:token/site`) dans un cadre servi par Kora.
 - Le panneau ne s'affiche que sur le site du livrable : le proxy n'autorise que l'origine qu'il nomme (`frame-ancestors`), et la page vérifie que c'est celle du livrable (`reviewedSiteOrigin`). Toutes les autres pages de Kora refusent toujours d'être affichées dans un cadre.

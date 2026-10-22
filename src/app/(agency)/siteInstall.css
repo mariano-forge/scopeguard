@@ -1,0 +1,66 @@
+/* In the first step of a « Lien »'s board (SiteInstall.tsx): the site's tool, as small choices under the
+   line to copy, and whether the toolbar was seen, in the step's own sizes and Kora's status colours. */
+
+.site-platforms {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1);
+  margin-top: var(--s-2);
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+}
+.site-platforms > span {
+  margin-right: var(--s-1);
+}
+.site-platform {
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+  padding: 2px var(--s-2);
+  background: var(--paper);
+  color: var(--graphite);
+  font: inherit;
+  cursor: pointer;
+}
+.site-platform:hover {
+  border-color: var(--border-input);
+  color: var(--ink);
+}
+.site-platform[aria-pressed="true"] {
+  border-color: var(--ink);
+  color: var(--ink);
+  font-weight: 600;
+}
+.site-platform:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 1px;
+}
+
+.site-install-status {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  margin: var(--s-2) 0 0;
+  border-radius: var(--r-field);
+  padding: var(--s-2) var(--s-3);
+  background: var(--canvas);
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+  line-height: 1.5;
+}
+.site-install-status .lucide {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+}
+.site-install-status b {
+  color: var(--ink);
+}
+.site-install-status.is-seen {
+  background: var(--status-resolved-bg);
+  color: var(--status-resolved-text);
+}
+.site-install-status.is-seen b {
+  color: inherit;
+}
