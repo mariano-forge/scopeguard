@@ -25,6 +25,10 @@ export const deliverableTypes = Object.keys(deliverableKinds) as DeliverableType
 
 /** Largest import (MAX_UPLOAD_MB, exposed by next.config.ts); the server checks it again. */
 export const MAX_FILE_BYTES = (Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB) || 50) * 1024 * 1024;
+/** Largest video (MAX_VIDEO_UPLOAD_MB): a film weighs far more than a mock-up. */
+export const MAX_VIDEO_BYTES = (Number(process.env.NEXT_PUBLIC_MAX_VIDEO_UPLOAD_MB) || 1024) * 1024 * 1024;
+/** The import limit of a kind of deliverable. */
+export const maxBytesOf = (type: DeliverableType) => (type === "Video" ? MAX_VIDEO_BYTES : MAX_FILE_BYTES);
 export const MAX_COVER_BYTES = 5 * 1024 * 1024;
 
 export const formatBytes = (bytes: number) => `${(bytes / (1024 * 1024)).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Mo`;

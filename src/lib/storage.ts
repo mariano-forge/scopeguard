@@ -32,6 +32,16 @@ function storageConfig() {
 /** Largest file an agency can import (MAX_UPLOAD_MB, 50 by default). */
 export const maxUploadBytes = () => Math.max(1, Number(process.env.MAX_UPLOAD_MB) || 50) * 1024 * 1024;
 
+/** Largest video a version can be (MAX_VIDEO_UPLOAD_MB, 1 024 by default): a film weighs far more than a mock-up. */
+export const maxVideoUploadBytes = () => Math.max(1, Number(process.env.MAX_VIDEO_UPLOAD_MB) || 1024) * 1024 * 1024;
+
+/** The import limit of a file, by what it says it is and where it goes: a version's video has its own. */
+export const uploadLimit = (mimeType: string, placement: { kind: string } | null) =>
+  placement?.kind === "version" && mimeType.startsWith("video/") ? maxVideoUploadBytes() : maxUploadBytes();
+
+/** « Fichier trop lourd : 50 Mo au maximum. », answered 413. */
+export const tooLargeResponse = (limit: number) => Response.json({ error: `Fichier trop lourd : ${Math.round(limit / 1024 / 1024)} Mo au maximum.` }, { status: 413 });
+
 // The account's CORS rule is set once per process (kept across reloads); the client and its key stay
 // with this copy of the module. The SDK itself is not bundled (next.config.ts serverExternalPackages):
 // a reload that brought a second copy of it refused the key made by the first (« Invalid

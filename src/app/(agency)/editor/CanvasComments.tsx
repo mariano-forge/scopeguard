@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { sideOf, type Side } from "@/lib/authors";
 import { sourceLine, type RequestSource } from "@/lib/requestSource";
+import { formatTimecode } from "@/lib/timecode";
 
 /**
  * One request, three states:
@@ -78,6 +79,8 @@ export type ThreadComment = {
   site?: SiteAnchor;
   position?: { x: number; y: number };
   area?: Area;
+  /** On a video: the moment it was pinned on, in seconds (src/lib/timecode.ts). */
+  timecode?: number;
   replies?: ThreadReply[];
   /** Closed (archived) by the agency: read-only for everyone until reopened. */
   closed?: boolean;
@@ -97,6 +100,15 @@ export function RequestSourceNote({ source, enteredBy }: { source: RequestSource
     </aside>
   );
 }
+
+/** The moment of a comment on a video, as its thread and the panel's list show it. */
+export const TimecodeChip = ({ seconds }: { seconds: number }) => (
+  <span className="timecode-chip">
+    <span className="sr-only">À </span>
+    {formatTimecode(seconds)}
+    <span className="sr-only"> dans la vidéo</span>
+  </span>
+);
 
 export const requestKind = (comment: Pick<ThreadComment, "decision">): RequestKind =>
   comment.decision === "Inclus" ? "correction" : comment.decision === "Hors périmètre" ? "outside" : "comment";
@@ -439,6 +451,7 @@ export function ThreadPopover({
         <span className="thread-title">
           <b>{comment.author}</b>
           {timeLabel(comment, now) && <small>{timeLabel(comment, now)}</small>}
+          {comment.timecode !== undefined && <TimecodeChip seconds={comment.timecode} />}
         </span>
         <span className="thread-header-actions">
           {!asRequest && onQualify && canWrite && !qualifying && (

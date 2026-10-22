@@ -1,0 +1,163 @@
+/* The bar of a video on the review canvas (VideoBar.tsx): above the canvas's tools, as wide as it can be
+   on a phone. Its marks are the pins' colours (.canvas-pin in globals.css). */
+
+.video-bar {
+  position: absolute;
+  bottom: 76px;
+  left: 50%;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  width: min(720px, calc(100% - 2 * var(--s-4)));
+  height: 44px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+}
+
+.video-bar-button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--r-button);
+  background: transparent;
+  color: var(--ink);
+}
+.video-bar-button:hover {
+  background: var(--mist);
+}
+.video-bar-button:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 1px;
+}
+.video-bar-button .lucide {
+  width: 18px;
+  height: 18px;
+}
+
+.video-bar-time {
+  flex: none;
+  min-width: 84px;
+  color: var(--graphite);
+  font-size: var(--t-caption-size);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The track: the played part, the slider over it, the marks above both. */
+.video-bar-track {
+  position: relative;
+  flex: 1;
+  height: 32px;
+}
+.video-bar-track::before,
+.video-bar-progress {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 4px;
+  border-radius: 2px;
+  transform: translateY(-50%);
+  content: "";
+}
+.video-bar-track::before {
+  right: 0;
+  background: var(--mist);
+}
+.video-bar-progress {
+  background: var(--ink);
+}
+.video-bar-track input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+}
+.video-bar-track input[type="range"]::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--r-full);
+  background: var(--ink);
+  appearance: none;
+}
+.video-bar-track input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--ink);
+}
+.video-bar-track input[type="range"]:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 2px;
+}
+
+.video-bar-marks {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  pointer-events: none;
+}
+/* Each mark sits on the line, centred on its moment. */
+.video-bar-marks li {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.video-mark {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--paper);
+  border-radius: var(--r-full);
+  box-shadow: 0 0 0 1px var(--graphite);
+  pointer-events: auto;
+  cursor: pointer;
+}
+.video-mark.is-comment {
+  background: var(--attention-fill);
+}
+.video-mark.is-comment.is-agency {
+  background: var(--action-ui);
+}
+.video-mark.is-correction {
+  background: var(--status-resolved-text);
+}
+.video-mark.is-outside {
+  background: var(--status-scope-text);
+}
+.video-mark.is-active {
+  width: 16px;
+  height: 16px;
+  box-shadow: 0 0 0 2px var(--ink);
+}
+.video-mark:focus-visible {
+  outline: 2px solid var(--action-ui);
+  outline-offset: 2px;
+}
+
+/* The moment of a comment on a video, in its thread and in the panel's list. */
+.timecode-chip {
+  display: inline-flex;
+  justify-self: start;
+  width: fit-content;
+  align-items: center;
+  border-radius: var(--r-field);
+  padding: 0 var(--s-1);
+  background: var(--mist);
+  color: var(--ink);
+  font-size: var(--t-caption-size);
+  font-variant-numeric: tabular-nums;
+}

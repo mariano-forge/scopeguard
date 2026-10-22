@@ -39,7 +39,7 @@ import { todoOrder, type TodoItem } from "./TodoList";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { HomeSidebar, Notifications, ProjectSidebar, type ClientFeedback, type NewVersion, type PanelMode, type SidebarLivrable, type SidebarFavorite, type SidebarVersion } from "./Sidebars";
 import { href, hrefForRecord, livrableIdOf, notificationHref, parseAgencyPath, versionsOfLivrable } from "./routes";
-import { MAX_FILE_BYTES, deliverableKinds, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
+import { maxBytesOf, deliverableKinds, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
 import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialog";
 import { LinkVersionDialog } from "./LinkVersionDialog";
 import { NoDeciderBanner } from "./NoDeciderBanner";
@@ -1124,6 +1124,7 @@ export function AgencyApp() {
       page: spot?.page ?? 1,
       position: spot ? { x: spot.x, y: spot.y } : undefined,
       area: spot?.area,
+      timecode: spot?.timecode,
       pinnedOn: spot?.pinnedOn,
     });
     if (!result?.id) return;
@@ -1159,8 +1160,8 @@ export function AgencyApp() {
       setDeliverableError("Format non pris en charge. Choisissez une image, un PDF, une vidéo ou un document.");
       return;
     }
-    if (file.size > MAX_FILE_BYTES) {
-      setDeliverableError(`Fichier trop lourd : ${formatBytes(file.size)} (maximum ${formatBytes(MAX_FILE_BYTES)}).`);
+    if (file.size > maxBytesOf(type)) {
+      setDeliverableError(`Fichier trop lourd : ${formatBytes(file.size)} (maximum ${formatBytes(maxBytesOf(type))}).`);
       return;
     }
     setDeliverableError("");

@@ -7,7 +7,7 @@ import { requestLimit, tooManyRequests, withinLimit } from "@/db/requestLimits";
 import { crossSiteRefusal, crossSiteWrite, databaseFailure } from "@/lib/api";
 import { readBody } from "@/lib/reviewViewer";
 import { requireAgencyUser } from "@/lib/session";
-import { maxUploadBytes, prepareUpload, readPlacement } from "@/lib/storage";
+import { prepareUpload, readPlacement, tooLargeResponse, uploadLimit } from "@/lib/storage";
 
 const integer = (value: unknown) => (typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null);
 
@@ -25,8 +25,7 @@ export async function POST(request: Request) {
   const [projectId, livrableId, version] = [integer(body.projectId), integer(body.livrableId), integer(body.version)];
   const placement = readPlacement(body.kind, projectId, livrableId, version);
   if (!size || !sha256 || !placement) return Response.json({ error: "Envoi invalide" }, { status: 400 });
-  if (size > maxUploadBytes())
-    return Response.json({ error: `Fichier trop lourd : ${Math.round(maxUploadBytes() / 1024 / 1024)} Mo au maximum.` }, { status: 413 });
+  if (size > uploadLimit(mimeType, placement)) return tooLargeResponse(uploadLimit(mimeType, placement));
 
   try {
     const db = getDb();

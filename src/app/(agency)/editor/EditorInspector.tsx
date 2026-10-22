@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ChevronUp, Eye, History, MessageSquare, Plus, Share2 } from "lucide-react";
 import type { ProposalStage, Qualification } from "./CanvasComments";
 import { ResizeHandle } from "./ResizeHandle";
-import { isAgencyDraft, itemLabel, requestKind, requestText, timeLabel, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
+import { isAgencyDraft, itemLabel, requestKind, requestText, timeLabel, TimecodeChip, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
 import { Hint } from "@/components/hint";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -135,7 +135,8 @@ export function RequestPanel({
   const filtering = current.kind === "outside" && Boolean(outsideStatus) && statusFilter !== "all";
   const list = inTab
     .filter((comment) => !filtering || statusOf(comment)?.label === outsideStatusView(statusFilter as OutsideStatus, reader).label)
-    .sort((left, right) => right.id - left.id);
+    // A video's comments in the order of the film; anything else, the newest first.
+    .sort((left, right) => (inTab.every((comment) => comment.timecode !== undefined) ? left.timecode! - right.timecode! : right.id - left.id));
   const views = [
     { key: "requests", label: "Demandes", options: requestTabs },
     { key: "comments", label: "Commentaires", options: commentTabs },
@@ -254,6 +255,7 @@ export function RequestPanel({
                       </span>
                       <span>{comment.author}</span>
                       {timeLabel(comment, now) && <small>· {timeLabel(comment, now)}</small>}
+                      {comment.timecode !== undefined && <TimecodeChip seconds={comment.timecode} />}
                     </span>
                     {(replies > 0 || fresh > 0) && (
                       <span className={`thread-row-replies ${fresh > 0 ? "is-unread" : ""}`}>

@@ -208,7 +208,7 @@ function repliesAllowed(before: Reply[], after: Reply[]) {
 }
 
 const qualificationFields = ["id", "deliverableId", "author", "initials", "from", "authorEmail", "decision", "kind", "title", "description", "sourceId", "createdAt"];
-const placementFields = ["message", "edited", "location", "page", "position", "area"];
+const placementFields = ["message", "edited", "location", "page", "position", "area", "timecode"];
 
 function commentAllowed(before: Data | undefined, after: Data, deliverableId: number) {
   if (after.deliverableId !== deliverableId) return false;

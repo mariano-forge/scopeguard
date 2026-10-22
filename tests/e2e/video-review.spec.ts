@@ -1,0 +1,187 @@
+// A video deliverable on the review canvas: it plays in Kora, and a comment is pinned on a moment of it,
+// at a place in the picture (US-052).
+//
+// fixtures/eight-seconds.webm: 8 seconds, one colour and its second's number per second (WebM, which the
+// tests' Chromium plays; it has no H.264).
+
+import { readFileSync } from "node:fs";
+import { expect, test, type Browser } from "@playwright/test";
+import { baseURL } from "../../playwright.config";
+import { call, clientAction, createAgency, newPerson, seedState, signInPage, signUp, sql, unique, upload, verifiedClient, type Member } from "./helpers";
+
+const film = readFileSync("tests/e2e/fixtures/eight-seconds.webm");
+
+async function videoDeliverable() {
+  const alice = await signUp("Alice Martin");
+  await createAgency(alice, "Studio Image");
+  const { href } = (await upload(alice, film, "film.webm", { kind: "version", projectId: 1, livrableId: 1, version: 1 })).json;
+  const token = unique("tok-video");
+  await seedState(alice, {
+    maps: { reviewLinks: { upsert: { "1:1": { token, active: true, expiresAt: "01/01/2099", autoExpire: true, deliverableId: 1, version: 1 } }, remove: [] } },
+    lists: {
+      clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
+      projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },
+      deliverables: {
+        upsert: [{ id: 1, projectId: 1, name: "film.webm", type: "Video", fileData: href, version: 1, status: "En attente client", importedAt: "22/10/2026 10:00", locked: false }],
+        remove: [],
+      },
+    },
+  });
+  return { alice, org: alice.organizationId!, token };
+}
+
+async function openEditor(browser: Browser, member: Member) {
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, member.email);
+  await page.goto("/projets/1/livrables/1");
+  const video = page.locator("[data-page] video");
+  await expect(video).toBeVisible();
+  return { page, errors, video };
+}
+
+test("a video deliverable plays on the canvas", async ({ browser }) => {
+  const { alice } = await videoDeliverable();
+  const { page, errors, video } = await openEditor(browser, alice);
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.duration)).toBeCloseTo(8, 0);
+  await video.evaluate((element: HTMLVideoElement) => {
+    element.muted = true;
+    return element.play();
+  });
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeGreaterThan(0.5);
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+const commentsOf = (org: string, from: string) =>
+  sql<{ id: string; data: Record<string, unknown> }>("select id, data from comments where organization_id = $1 and data->>'from' = $2 order by id", [org, from]);
+const timeOf = (video: ReturnType<Awaited<ReturnType<typeof openEditor>>["page"]["locator"]>) => video.evaluate((element: HTMLVideoElement) => element.currentTime);
+
+test("the agency pins a comment on a moment of the video; its mark on the timeline brings the video back there", async ({ browser }) => {
+  const { alice, org } = await videoDeliverable();
+  const { page, errors, video } = await openEditor(browser, alice);
+  const bar = page.getByRole("group", { name: "Lecture de la vidéo" });
+  await expect(bar.getByRole("slider", { name: "Position dans la vidéo" })).toBeEnabled();
+  // Played, then paused on the picture by the comment: the moment is the one shown.
+  await bar.getByRole("slider", { name: "Position dans la vidéo" }).fill("3");
+  await expect.poll(() => timeOf(video)).toBeCloseTo(3, 1);
+  await page.locator("[data-page]").first().click({ position: { x: 120, y: 60 } });
+  await page.getByRole("textbox", { name: "Commentaire" }).fill("Le logo arrive trop tard");
+  await page.getByRole("button", { name: "Publier" }).click();
+  await expect.poll(async () => (await commentsOf(org, "agency"))[0]?.data).toMatchObject({ message: "Le logo arrive trop tard", timecode: 3, location: "Vidéo · 0:03", page: 1 });
+  const [created] = await commentsOf(org, "agency");
+  expect(created.data.position).toBeTruthy();
+  const id = Number(created.id);
+  // Its thread and its row in the panel say when.
+  const thread = page.getByRole("dialog", { name: `Commentaire #${id}` });
+  await expect(thread.getByText("À 0:03 dans la vidéo")).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Demandes" }).getByRole("button", { name: `Commentaire #${id}` })).toContainText("0:03");
+  await thread.getByRole("button", { name: "Fermer" }).click();
+
+  // Elsewhere in the video, the pin leaves the picture; its mark stays on the timeline.
+  await bar.getByRole("slider", { name: "Position dans la vidéo" }).fill("7");
+  await expect.poll(() => timeOf(video)).toBeCloseTo(7, 1);
+  await expect(page.locator(`[data-pin="${id}"]`)).toHaveCount(0);
+  const mark = bar.getByRole("button", { name: `Commentaire #${id} à 0:03` });
+  await mark.click();
+  // The mark opens the comment, the video at its moment, paused: the pin is back.
+  await expect(thread).toBeVisible();
+  await expect.poll(() => timeOf(video)).toBeCloseTo(3, 1);
+  expect(await video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
+  await expect(page.locator(`[data-pin="${id}"]`)).toBeVisible();
+  await expect(mark).toHaveAttribute("aria-current", "true");
+
+  // The same from the panel's list, from anywhere in the video.
+  await thread.getByRole("button", { name: "Fermer" }).click();
+  await bar.getByRole("slider", { name: "Position dans la vidéo" }).fill("6");
+  await expect.poll(() => timeOf(video)).toBeCloseTo(6, 1);
+  await page.getByRole("complementary", { name: "Demandes" }).getByRole("button", { name: `Commentaire #${id}` }).click();
+  await expect.poll(() => timeOf(video)).toBeCloseTo(3, 1);
+  expect(errors).toEqual([]);
+});
+
+test("the client pins a comment on a moment of the video, which the agency sees there", async ({ browser }) => {
+  const { alice, org, token } = await videoDeliverable();
+  const email = `${unique("claire")}@client.test`;
+  await call("/api/review-access/invite", { person: alice, body: { linkKey: "1:1", emails: [email] } });
+  const client = await verifiedClient(token, email, "Claire Dubois");
+  const { page, errors } = await newPerson(browser);
+  const [name, value] = client.cookie.split(";")[0].split("=");
+  await page.context().addCookies([{ name, value, url: baseURL }]);
+  await page.goto(`/review/${token}`);
+  const video = page.locator("[data-page] video");
+  await expect(video).toBeVisible();
+  const bar = page.getByRole("group", { name: "Lecture de la vidéo" });
+  await bar.getByRole("slider", { name: "Position dans la vidéo" }).fill("5");
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeCloseTo(5, 1);
+  await page.locator("[data-page]").first().click({ position: { x: 100, y: 50 } });
+  await page.getByRole("textbox", { name: "Commentaire" }).fill("Une coquille dans le sous-titre");
+  await page.getByRole("button", { name: "Publier" }).click();
+  await expect.poll(async () => (await commentsOf(org, "client"))[0]?.data).toMatchObject({ message: "Une coquille dans le sous-titre", timecode: 5, location: "Vidéo · 0:05", authorEmail: email });
+  const id = Number((await commentsOf(org, "client"))[0].id);
+  expect(errors).toEqual([]);
+
+  // In Kora, the agency finds it at its moment.
+  const agency = await openEditor(browser, alice);
+  await agency.page.getByRole("group", { name: "Lecture de la vidéo" }).getByRole("button", { name: `Commentaire #${id} à 0:05` }).click();
+  await expect.poll(() => agency.video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeCloseTo(5, 1);
+  await expect(agency.page.getByRole("dialog", { name: `Commentaire #${id}` })).toBeVisible();
+  expect(agency.errors).toEqual([]);
+});
+
+test("a moment that is not one is not kept, on either side; the client never changes the agency's", async () => {
+  const { alice, org, token } = await videoDeliverable();
+  for (const timecode of [-1, "12", 1e9, null]) {
+    const created = await call("/api/comments", { person: alice, body: { deliverableId: 1, message: `Moment ${String(timecode)}`, page: 1, position: { x: 10, y: 10 }, timecode } });
+    expect(created.status).toBe(200);
+  }
+  expect((await commentsOf(org, "agency")).every((row) => row.data.timecode === undefined)).toBe(true);
+  // To the tenth, as the canvas sends it.
+  await call("/api/comments", { person: alice, body: { deliverableId: 1, message: "Au dixième", page: 1, position: { x: 10, y: 10 }, timecode: 2.345 } });
+  const precise = (await commentsOf(org, "agency")).find((row) => row.data.message === "Au dixième")!;
+  expect(precise.data.timecode).toBe(2.3);
+
+  const email = `${unique("claire")}@client.test`;
+  await call("/api/review-access/invite", { person: alice, body: { linkKey: "1:1", emails: [email] } });
+  const client = await verifiedClient(token, email);
+  expect((await clientAction(client, token, "comments", "POST", { message: "Trop loin", page: 1, position: { x: 5, y: 5 }, timecode: -3 })).status).toBe(200);
+  expect((await commentsOf(org, "client"))[0].data.timecode).toBeUndefined();
+  // Moving an agency's pin, or a field it does not own: refused, its moment unchanged.
+  expect((await clientAction(client, token, `comments/${precise.id}`, "PATCH", { page: 1, x: 50, y: 50 })).status).toBe(404);
+  expect((await commentsOf(org, "agency")).find((row) => row.id === precise.id)!.data.timecode).toBe(2.3);
+});
+
+test("a video has its own size limit, for a version only", async () => {
+  const alice = await signUp("Alice Martin");
+  await createAgency(alice, "Studio Poids");
+  // In the tests, 1 MB for a file (MAX_UPLOAD_MB) and 2 MB for a video (MAX_VIDEO_UPLOAD_MB).
+  const prepare = (type: string, size: number, kind = "version") =>
+    call("/api/files/upload", { person: alice, body: { name: "film", type, size, sha256: "a".repeat(64), kind, projectId: 1, livrableId: 1, version: 1 } });
+  expect((await prepare("video/mp4", 1.5 * 1024 * 1024)).status).toBe(200);
+  const tooLarge = await prepare("video/mp4", 2.5 * 1024 * 1024);
+  expect(tooLarge.status).toBe(413);
+  expect(tooLarge.json.error).toContain("2 Mo");
+  // Another file, or a video as a cover: the general limit.
+  expect((await prepare("image/png", 1.5 * 1024 * 1024)).status).toBe(413);
+  expect((await prepare("video/mp4", 1.5 * 1024 * 1024, "cover")).status).toBe(413);
+  // Through the server too.
+  expect((await upload(alice, Buffer.alloc(1_500_000, 1), "lourd.webm", { kind: "version", projectId: 1, livrableId: 1, version: 2 })).status).toBe(200);
+  expect((await upload(alice, Buffer.alloc(1_500_000, 1), "lourd.png", { kind: "version", projectId: 1, livrableId: 1, version: 3 })).status).toBe(413);
+});
+
+test("a video's comments are listed in the order of the film", async ({ browser }) => {
+  const { alice } = await videoDeliverable();
+  const pinned = (id: number, timecode: number, title: string) => ({
+    id, deliverableId: 1, author: "Claire Dubois", initials: "CD", from: "client", message: title, title, decision: "Inclus", kind: "request",
+    location: `Vidéo · 0:0${timecode}`, page: 1, position: { x: 20, y: 20 }, timecode, time: "t",
+  });
+  // Written last, seen first in the film.
+  await seedState(alice, { lists: { comments: { upsert: [pinned(50, 6, "Fin trop longue"), pinned(51, 1, "Titre trop rapide")], remove: [] } } });
+  const { page, errors } = await openEditor(browser, alice);
+  const panel = page.getByRole("complementary", { name: "Demandes" });
+  await panel.getByRole("tab", { name: /^Inclus/ }).click();
+  const rows = panel.getByRole("listitem");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("Titre trop rapide");
+  await expect(rows.nth(1)).toContainText("Fin trop longue");
+  expect(errors).toEqual([]);
+});
