@@ -62,7 +62,7 @@ import { outsideStatusOf, outsideStatusView } from "@/lib/outsideStatus";
 import { NewRequestDialog, type NewRequest } from "./editor/NewRequestDialog";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "./editor/ReviewCanvas";
 import { toast } from "sonner";
-import { videoWarning, videoWarningText } from "@/lib/videoCheck";
+import { videoDuration, videoWarning, videoWarningText } from "@/lib/videoCheck";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1028,9 +1028,10 @@ export function AgencyApp() {
   async function createDeliverable(input: NewDeliverable) {
     const id = Date.now();
     const projectId = input.projectId ?? selectedProjectId;
-    const [fileData, coverData] = await Promise.all([
+    const [fileData, coverData, duration] = await Promise.all([
       input.file ? uploadFile(input.file, { kind: "version", projectId, livrableId: id, version: 1 }) : Promise.resolve(undefined),
       input.cover ? uploadFile(input.cover, { kind: "cover", projectId, livrableId: id }) : Promise.resolve(undefined),
+      input.type === "Video" && input.file ? videoDuration(input.file) : Promise.resolve(null),
     ]);
     if (fileData === null || coverData === null) return;
     const result = await agencyAction("deliverables", "POST", {
@@ -1042,6 +1043,7 @@ export function AgencyApp() {
       ...(fileData ? { fileData } : {}),
       ...(input.url ? { url: input.url } : {}),
       ...(coverData ? { coverData } : {}),
+      ...(duration ? { duration } : {}),
     });
     if (!result?.id) return;
     setNewDeliverableOpen(false);
@@ -1063,9 +1065,12 @@ export function AgencyApp() {
     const id = Date.now();
     // A new version is stored with its deliverable (the id of its first version); a new deliverable is its own.
     const livrableId = mode === "version" && activeDeliverable ? livrableIdOf(activeDeliverable, deliverables) : id;
-    const fileData = file ? await uploadFile(file, { kind: "version", projectId: selectedProjectId, livrableId, version: nextVersion }) : undefined;
+    const [fileData, duration] = await Promise.all([
+      file ? uploadFile(file, { kind: "version", projectId: selectedProjectId, livrableId, version: nextVersion }) : Promise.resolve(undefined),
+      file && type === "Video" ? videoDuration(file) : Promise.resolve(null),
+    ]);
     if (file && !fileData) return;
-    const content = { id, type, size: file?.size ?? 0, ...(fileData ? { fileData } : {}), ...(url ? { url } : {}) };
+    const content = { id, type, size: file?.size ?? 0, ...(fileData ? { fileData } : {}), ...(url ? { url } : {}), ...(duration ? { duration } : {}) };
     // A new version freezes the earlier ones (src/db/workspaceActions.ts).
     const result =
       mode === "version" && activeDeliverable

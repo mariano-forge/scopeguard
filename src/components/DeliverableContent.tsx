@@ -19,7 +19,7 @@ type ViewedDeliverable = {
 const stop = (event: React.SyntheticEvent) => event.stopPropagation();
 
 /** The canvas's video element: its ref and the events its bar follows. */
-export type CanvasVideo = Pick<React.ComponentProps<"video">, "ref" | "onTimeUpdate" | "onLoadedMetadata" | "onDurationChange" | "onPlay" | "onPause" | "onSeeked" | "onVolumeChange">;
+export type CanvasVideo = Pick<React.ComponentProps<"video">, "ref" | "onTimeUpdate" | "onLoadedMetadata" | "onDurationChange" | "onPlay" | "onPause" | "onSeeked" | "onVolumeChange" | "onError" | "onWaiting" | "onSeeking" | "onCanPlay">;
 
 /**
  * What the review canvas shows for a version (agency and client pages). Render it inside the artboard.

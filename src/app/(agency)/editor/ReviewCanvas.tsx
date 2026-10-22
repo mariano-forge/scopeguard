@@ -116,16 +116,59 @@ export function ReviewCanvas({
     const element = videoRef.current;
     if (element) setPlayback({ time: element.currentTime, duration: element.duration, paused: element.paused, muted: element.muted });
   };
-  const videoEvents: CanvasVideo = { ref: videoRef, onTimeUpdate: follow, onLoadedMetadata: follow, onDurationChange: follow, onPlay: follow, onPause: follow, onSeeked: follow, onVolumeChange: follow };
+  // The video is read piece by piece with the address /api/files gave it, which expires (src/lib/storage.ts):
+  // when a piece is refused, a new address is asked for and the video goes on where it was. A refusal is
+  // not always an error: the browser may retry it quietly, so a video still without what it needs 6 s
+  // after a jump or a wait counts as one (long enough for a slow connection). At most 3 times a minute:
+  // a file really gone stays in error rather than being asked for again and again.
+  const resumeAt = useRef<{ time: number; playing: boolean } | null>(null);
+  const recoveries = useRef<number[]>([]);
+  const recover = () => {
+    const element = videoRef.current;
+    if (!element || !deliverable.fileData) return;
+    const now = Date.now();
+    recoveries.current = recoveries.current.filter((time) => now - time < 60_000);
+    if (recoveries.current.length >= 3) return;
+    recoveries.current.push(now);
+    resumeAt.current = { time: element.currentTime, playing: !element.paused };
+    element.src = deliverable.fileData;
+    element.load();
+  };
+  /** Moves the video; while a new address loads, it is where it will resume. */
+  const goTo = (seconds: number) => {
+    if (resumeAt.current) resumeAt.current = { ...resumeAt.current, time: seconds };
+    if (videoRef.current) videoRef.current.currentTime = seconds;
+  };
+  const stall = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const watchForStall = () => {
+    if (stall.current) clearTimeout(stall.current);
+    stall.current = setTimeout(() => {
+      const element = videoRef.current;
+      if (element && element.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) recover();
+    }, 6000);
+  };
+  const ready = () => {
+    if (stall.current) clearTimeout(stall.current);
+    stall.current = null;
+  };
+  const resume = () => {
+    const element = videoRef.current;
+    const at = resumeAt.current;
+    resumeAt.current = null;
+    if (element && at) {
+      element.currentTime = at.time;
+      if (at.playing) void element.play().catch(() => undefined);
+    }
+    follow();
+  };
+  const videoEvents: CanvasVideo = { ref: videoRef, onTimeUpdate: follow, onLoadedMetadata: resume, onDurationChange: follow, onPlay: follow, onPause: follow, onSeeked: follow, onVolumeChange: follow, onError: recover, onWaiting: watchForStall, onSeeking: watchForStall, onCanPlay: ready };
   const videoControls = {
     toggle: () => {
       const element = videoRef.current;
       if (element?.paused) void element.play().catch(() => undefined);
       else element?.pause();
     },
-    seek: (seconds: number) => {
-      if (videoRef.current) videoRef.current.currentTime = seconds;
-    },
+    seek: (seconds: number) => goTo(seconds),
     toggleSound: () => {
       if (videoRef.current) videoRef.current.muted = !videoRef.current.muted;
     },
@@ -175,6 +218,7 @@ export function ReviewCanvas({
     const element = videoRef.current;
     if (!element || openedTimecode === undefined) return;
     element.pause();
+    if (resumeAt.current) resumeAt.current = { time: openedTimecode, playing: false };
     element.currentTime = openedTimecode;
   }, [openedTimecode, selectedId]);
   // An open bubble (or the new-comment form) stays fully visible: when it opens or grows (qualify form),

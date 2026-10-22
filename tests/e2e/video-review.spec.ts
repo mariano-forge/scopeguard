@@ -265,3 +265,86 @@ test("the key pictures' longest gap is read from the index alone, in WebM and MP
   // Not a video it knows: nothing learnt.
   expect(await gap(Buffer.alloc(64, 1), "inconnu.mp4")).toBeNull();
 });
+
+// ——— How long a video's link lasts (src/lib/storage.ts videoLinkSeconds) ———
+
+/** Seconds from now until the read-only address /api/files answers expires. */
+async function linkLifetime(member: Member, href: string) {
+  const answer = await call(href, { person: member });
+  expect(answer.status).toBe(302);
+  const expires = new URL(answer.response.headers.get("location")!).searchParams.get("se")!;
+  return (new Date(expires).getTime() - Date.now()) / 1000;
+}
+
+test("a video's link lasts its length and a quarter of an hour, 3 hours of video at most; any other file's, 5 minutes", async () => {
+  const alice = await signUp("Alice Martin");
+  await createAgency(alice, "Studio Durée");
+  await seedState(alice, {
+    lists: {
+      clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
+      projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },
+    },
+  });
+  const { href } = (await upload(alice, film, "film.webm", { kind: "version", projectId: 1, livrableId: 1, version: 1 })).json;
+  // The length the agency's browser read, kept with the version, to the tenth.
+  const created = await call("/api/deliverables", { person: alice, body: { id: 1, projectId: 1, name: "Film", type: "Video", size: film.length, fileData: href, duration: 8.04 } });
+  expect(created.status).toBe(200);
+  const duration = async (id: number) => (await sql<{ data: Record<string, unknown> }>("select data from deliverables where organization_id = $1 and id = $2", [alice.organizationId, id]))[0].data.duration;
+  expect(await duration(Number(created.json.id))).toBe(8);
+  expect(await linkLifetime(alice, href!)).toBeGreaterThan(8 + 15 * 60 - 60);
+  expect(await linkLifetime(alice, href!)).toBeLessThan(8 + 15 * 60 + 60);
+
+  // A length that is not one is not kept; nor one stated for something else than a video.
+  for (const [index, stated] of ([-1, "8", 1e9, null] as unknown[]).entries()) {
+    const other = await call("/api/deliverables", { person: alice, body: { projectId: 1, name: `Film ${index}`, type: "Video", size: film.length, fileData: href, duration: stated } });
+    expect(await duration(Number(other.json.id))).toBeUndefined();
+  }
+  const pdf = await call("/api/deliverables", { person: alice, body: { projectId: 1, name: "Devis", type: "PDF", size: 10, fileData: href, duration: 60 } });
+  expect(await duration(Number(pdf.json.id))).toBeUndefined();
+
+  // A new version states its own.
+  const recording = (await upload(alice, screenRecording, "capture.webm", { kind: "version", projectId: 1, livrableId: 1, version: 2 })).json.href!;
+  const version = await call(`/api/deliverables/${created.json.id}/versions`, { person: alice, body: { type: "Video", size: screenRecording.length, fileData: recording, duration: 16 } });
+  expect(await duration(Number(version.json.id))).toBe(16);
+
+  // A film stated longer than 3 hours: its link stops at 3 hours and a quarter.
+  await seedState(alice, { lists: { deliverables: { upsert: [{ id: Number(version.json.id), projectId: 1, name: "Film", type: "Video", version: 2, fileData: recording, duration: 50_000, status: "En attente client", importedAt: "x", locked: false }], remove: [] } } });
+  expect(await linkLifetime(alice, recording)).toBeLessThan(3 * 3600 + 15 * 60 + 60);
+  expect(await linkLifetime(alice, recording)).toBeGreaterThan(3 * 3600 + 15 * 60 - 60);
+
+  // Any other file: 5 minutes, as before.
+  const png = Buffer.from("89504e470d0a1a0a0000000d4948445200000001000000010806000000", "hex");
+  const image = (await upload(alice, png, "logo.png", { kind: "cover", projectId: 1, livrableId: 1 })).json.href!;
+  expect(await linkLifetime(alice, image)).toBeLessThan(5 * 60 + 60);
+});
+
+// An expired link is refused by the storage; the browser either says so (an error) or retries quietly
+// (Azure's refusal, blocked by the browser: the video only waits). Both end the same way.
+for (const refusal of ["refused", "never answered"] as const) test(`a video whose link expired goes on where it was, the rest ${refusal}: the canvas asks for a new link`, async ({ browser }) => {
+  const { alice } = await videoDeliverable();
+  const { page, errors } = await newPerson(browser);
+  // The first link gives what a video needs to show (its header and its index, at both ends of the file),
+  // then has expired: no piece of the film itself. A new request from the start (the canvas asking for a
+  // new link) is answered as usual.
+  let links = 0;
+  await page.route(/\/api\/files\//, async (route) => {
+    const start = Number(/bytes=(\d+)/.exec(route.request().headers()["range"] ?? "")?.[1] ?? 0);
+    if (start === 0 && ++links > 1) return route.continue();
+    // Its first seconds and its last bytes (the index); 6 s into the film is past 40 kB of its 55.
+    const ends = start < 20480 || start >= film.length - 4096;
+    if (!ends) return refusal === "refused" ? route.fulfill({ status: 403, body: "AuthenticationFailed" }) : new Promise<void>(() => undefined);
+    const answer = await route.fetch({ headers: { ...route.request().headers(), range: `bytes=${start}-${start + 16383}` } });
+    const body = await answer.body();
+    await route.fulfill({ status: 206, body, headers: { "content-type": "video/webm", "accept-ranges": "bytes", "content-range": `bytes ${start}-${start + body.length - 1}/${film.length}` } });
+  });
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1/livrables/1");
+  const video = page.locator("[data-page] video");
+  const bar = page.getByRole("group", { name: "Lecture de la vidéo" });
+  await expect(bar.getByRole("slider", { name: "Position dans la vidéo" })).toBeEnabled();
+  // Further in the film: the piece is not given, a new link is asked for, the video is there.
+  await bar.getByRole("slider", { name: "Position dans la vidéo" }).fill("6");
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => ({ ready: element.readyState >= 3, time: Math.round(element.currentTime) })), { timeout: 20_000 }).toEqual({ ready: true, time: 6 });
+  expect(links).toBeGreaterThanOrEqual(2);
+  expect(errors).toEqual([]);
+});

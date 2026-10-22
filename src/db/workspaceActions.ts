@@ -4,6 +4,7 @@
 // members' reserved actions (deleting a space or a project, emptying the trash).
 
 import { and, eq, inArray } from "drizzle-orm";
+import { readVideoDuration } from "@/lib/timecode";
 import type { Entity, ListChange, SharedState, StateChanges } from "@/lib/sharedState";
 import { undeployedSiteProblem, withoutToolbarFlag } from "@/lib/siteReview";
 import { id, noChanges, text, trail, type Data } from "./actions";
@@ -16,7 +17,8 @@ type DeliverableType = (typeof deliverableTypes)[number];
 /** Items stay restorable this long; then an administrator's page has them purged. */
 export const trashDays = 30;
 
-type NewFile = { kind: DeliverableType; size: number; fileData?: string };
+/** `duration`: a video's length in seconds, read by the agency's browser; its files' links last that long (src/lib/storage.ts). */
+type NewFile = { kind: DeliverableType; size: number; fileData?: string; duration?: number };
 
 export type WorkspaceAction =
   | { type: "space.create"; id?: number; name: string; email?: string }
@@ -88,7 +90,8 @@ export function readWorkspaceAction(type: WorkspaceAction["type"], body: Data, p
       if (!target || !name || !kind) return null;
       if ((body.fileData !== undefined && !fileHref(body.fileData)) || (body.coverData !== undefined && !fileHref(body.coverData))) return null;
       if (body.url !== undefined && !webAddress(body.url)) return null;
-      return { type, id: id(body.id), projectId: target, name, kind, size: size(body.size), fileData: fileHref(body.fileData), url: webAddress(body.url), coverData: fileHref(body.coverData) };
+      const duration = kind === "Video" ? readVideoDuration(body.duration) : undefined;
+      return { type, id: id(body.id), projectId: target, name, kind, size: size(body.size), fileData: fileHref(body.fileData), url: webAddress(body.url), coverData: fileHref(body.coverData), duration };
     }
     case "version.import": {
       const kind = deliverableType(body.type);
@@ -96,7 +99,7 @@ export function readWorkspaceAction(type: WorkspaceAction["type"], body: Data, p
       const url = webAddress(body.url);
       if (!deliverableId || !kind) return null;
       if (kind === "Link" ? !url || body.fileData !== undefined : !fileData || body.url !== undefined) return null;
-      return { type, livrableId: deliverableId, id: id(body.id), kind, size: size(body.size), fileData, url };
+      return { type, livrableId: deliverableId, id: id(body.id), kind, size: size(body.size), fileData, url, duration: kind === "Video" ? readVideoDuration(body.duration) : undefined };
     }
     case "livrable.rename":
       return deliverableId && name ? { type, livrableId: deliverableId, name } : null;
@@ -274,6 +277,7 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
           ...(action.fileData ? { fileData: action.fileData } : {}),
           ...(action.url ? { url: action.kind === "Link" ? withoutToolbarFlag(action.url) : action.url } : {}),
           ...(action.coverData ? { coverData: action.coverData } : {}),
+          ...(action.duration ? { duration: action.duration } : {}),
         },
       ]);
       return { changes, id: recordId };
@@ -297,6 +301,7 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
         locked: false,
         ...(action.fileData ? { fileData: action.fileData } : {}),
         ...(action.url ? { url: withoutToolbarFlag(action.url) } : {}),
+        ...(action.duration ? { duration: action.duration } : {}),
       };
       // The earlier versions are frozen: the client reviews the new one.
       upsert(changes, "deliverables", [created, ...versions.map((record) => ({ ...record, status: "Remplacée", locked: true }))]);

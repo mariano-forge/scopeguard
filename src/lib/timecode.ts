@@ -9,6 +9,12 @@ export function readTimecode(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= maxSeconds ? Math.round(value * 10) / 10 : undefined;
 }
 
+/** A video's length as a version may hold it: seconds, > 0, within a day, to the tenth; undefined otherwise. */
+export function readVideoDuration(value: unknown) {
+  const seconds = readTimecode(value);
+  return seconds ? seconds : undefined;
+}
+
 /** "0:07", "1:23", "1:02:03": as video players write it, to the second. */
 export function formatTimecode(seconds: number) {
   const total = Math.floor(Math.max(0, seconds));

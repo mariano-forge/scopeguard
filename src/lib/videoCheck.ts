@@ -29,6 +29,26 @@ export async function videoWarning(file: File): Promise<VideoWarning | null> {
   return gap !== null && gap > sparseGapSeconds ? "sparse" : null;
 }
 
+/** The video's length in seconds, from its header only; null when this browser cannot tell. */
+export function videoDuration(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    const url = URL.createObjectURL(file);
+    const done = (seconds: number | null) => {
+      clearTimeout(timer);
+      video.removeAttribute("src");
+      video.load();
+      URL.revokeObjectURL(url);
+      resolve(seconds);
+    };
+    const timer = setTimeout(() => done(null), 8000);
+    video.preload = "metadata";
+    video.onloadedmetadata = () => done(Number.isFinite(video.duration) && video.duration > 0 ? video.duration : null);
+    video.onerror = () => done(null);
+    video.src = url;
+  });
+}
+
 /** Whether this browser shows the first picture of the file; null when it could not tell in time. */
 function decodesAPicture(file: File): Promise<boolean | null> {
   return new Promise((resolve) => {

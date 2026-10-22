@@ -181,8 +181,18 @@ export async function storeFile(
 
 export const fileHref = (id: string) => `/api/files/${id}`;
 
-/** Read-only address of a stored file, valid 5 minutes, opened in the page (not downloaded). */
-export async function readableUrl(file: { container: string; path: string; originalName: string | null }) {
+/** How long a read-only address of a file stays valid (FILE_LINK_SECONDS, 5 minutes by default). */
+export const fileLinkSeconds = () => Math.max(1, Number(process.env.FILE_LINK_SECONDS) || 300);
+
+/**
+ * A video is read piece by piece as it plays, each piece with the address it was first given: that
+ * address lasts its length and a quarter of an hour more (the length counted up to 3 hours, which only
+ * the agency's browser stated), never less than any file's. Past it, the canvas asks for a new one.
+ */
+export const videoLinkSeconds = (duration: number) => Math.max(fileLinkSeconds(), Math.min(duration, 3 * 60 * 60) + 15 * 60);
+
+/** Read-only address of a stored file, valid `seconds`, opened in the page (not downloaded). */
+export async function readableUrl(file: { container: string; path: string; originalName: string | null }, seconds = fileLinkSeconds()) {
   const { service, credential, ready } = storage();
   await ready;
   const blob = service.getContainerClient(file.container).getBlobClient(file.path);
@@ -193,7 +203,7 @@ export async function readableUrl(file: { container: string; path: string; origi
       blobName: file.path,
       permissions: BlobSASPermissions.parse("r"),
       startsOn: new Date(now - 60 * 1000),
-      expiresOn: new Date(now + 5 * 60 * 1000),
+      expiresOn: new Date(now + seconds * 1000),
       contentDisposition: file.originalName ? `inline; filename*=UTF-8''${encodeURIComponent(file.originalName)}` : "inline",
     },
     credential,

@@ -82,7 +82,7 @@ Pour les tests :
 - Une migration ne s'applique sur la base en ligne (`DATABASE_TARGET=remote npm run db:migrate`) qu'avec l'accord explicite de l'utilisateur, et avant le déploiement du code qui en dépend.
 
 **Fichiers**
-- Les fichiers passent par `src/lib/upload.ts` (envoi direct au stockage, vérifié par le serveur), `storeFile()` et `/api/files` (`src/lib/storage.ts`) : conteneurs privés, accès vérifié, adresse signée courte. Jamais de conteneur public, jamais de fichier en base64 dans l'état.
+- Les fichiers passent par `src/lib/upload.ts` (envoi direct au stockage, vérifié par le serveur), `storeFile()` et `/api/files` (`src/lib/storage.ts`) : conteneurs privés, accès vérifié, adresse signée courte (`FILE_LINK_SECONDS`, 5 minutes) ; celle d'une vidéo dure sa longueur plus 15 minutes, longueur plafonnée à 3 heures (`videoLinkSeconds`), car elle se lit par morceaux, et le canevas en redemande une si elle expire. Jamais de conteneur public, jamais de fichier en base64 dans l'état.
 
 **Routes API**
 - Un fichier `route.ts` n'exporte que des méthodes HTTP. Les helpers vont dans `src/lib/`.

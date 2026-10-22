@@ -1047,9 +1047,10 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - Le moment se lit dans le fil, dans la liste du panneau et dans la description du commentaire (« Vidéo · 1:23 »), reprise par l'export et la preuve.
 - Même chose côté agence et côté client ; le client ne change jamais le moment d'un commentaire de l'agence.
 - Une vidéo importée comme version a sa propre limite de taille ; les autres fichiers, et une vidéo en couverture, gardent la limite générale.
+- Une vidéo se lit par morceaux, chacun avec l'adresse signée du fichier : elle dure la longueur de la vidéo plus 15 minutes (longueur lue à l'import, comptée jusqu'à 3 heures). Si elle expire quand même (pause, onglet laissé ouvert), le lecteur en redemande une et reprend au même moment, sans que personne ne le voie.
 - À l'import (nouveau livrable ou nouvelle version), Kora prévient l'agence sans jamais bloquer : une vidéo que ce navigateur ne lit pas (ProRes, HEVC…), ou dont les images clés sont espacées de plus de 10 secondes (enregistreurs d'écran : les sauts « bavent »). La vérification lit l'en-tête, une image et l'index des images clés, jamais le fichier entier. Le client ne voit pas cet avertissement (décidé avec le porteur du produit le 22 octobre 2026).
 
-**Plus tard** : capture de l'image au moment du clic (vignette et preuve), liens de fichier assez longs pour une longue vidéo, reconversion dans le navigateur des vidéos à images clés rares, envoi par morceaux des très gros fichiers, commentaire sur une plage de temps, dessin sur l'image, image par image.
+**Plus tard** : capture de l'image au moment du clic (vignette et preuve), reconversion dans le navigateur des vidéos à images clés rares, envoi par morceaux des très gros fichiers, commentaire sur une plage de temps, dessin sur l'image, image par image.
 
 #### Décisions et pistes notées (16 octobre 2026)
 
@@ -1196,7 +1197,7 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-049 rôles des personnes invitées | ✅ | Décideur et contributeur, contrôlés par le serveur |
 | US-050 saisir une demande reçue ailleurs | ✅ | Source, date, extrait et capture ; visibles par le client et dans la preuve |
 | US-051 e-mails des devis et des décisions | ✅ | Décideurs côté client, propriétaire et administrateurs côté agence |
-| US-052 commenter un moment d'une vidéo | 🟡 | Épingle au moment et à l'endroit, frise des repères, retour au moment en ouvrant un commentaire ; limite de taille propre aux vidéos ; avertissement à l'import (format illisible, images clés rares). À faire : capture de l'image, liens longs, reconversion, très gros fichiers |
+| US-052 commenter un moment d'une vidéo | 🟡 | Épingle au moment et à l'endroit, frise des repères, retour au moment en ouvrant un commentaire ; limite de taille propre aux vidéos ; avertissement à l'import (format illisible, images clés rares). Liens de la durée de la vidéo, renouvelés s'ils expirent. À faire : capture de l'image, reconversion, très gros fichiers |
 
 **Avant les premiers pilotes**, il reste à :
 
