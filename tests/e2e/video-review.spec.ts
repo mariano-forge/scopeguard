@@ -153,13 +153,13 @@ test("a moment that is not one is not kept, on either side; the client never cha
 test("a video has its own size limit, for a version only", async () => {
   const alice = await signUp("Alice Martin");
   await createAgency(alice, "Studio Poids");
-  // In the tests, 1 MB for a file (MAX_UPLOAD_MB) and 2 MB for a video (MAX_VIDEO_UPLOAD_MB).
+  // In the tests, 1 MB for a file (MAX_UPLOAD_MB) and 12 MB for a video (MAX_VIDEO_UPLOAD_MB).
   const prepare = (type: string, size: number, kind = "version") =>
     call("/api/files/upload", { person: alice, body: { name: "film", type, size, sha256: "a".repeat(64), kind, projectId: 1, livrableId: 1, version: 1 } });
   expect((await prepare("video/mp4", 1.5 * 1024 * 1024)).status).toBe(200);
-  const tooLarge = await prepare("video/mp4", 2.5 * 1024 * 1024);
+  const tooLarge = await prepare("video/mp4", 12.5 * 1024 * 1024);
   expect(tooLarge.status).toBe(413);
-  expect(tooLarge.json.error).toContain("2 Mo");
+  expect(tooLarge.json.error).toContain("12 Mo");
   // Another file, or a video as a cover: the general limit.
   expect((await prepare("image/png", 1.5 * 1024 * 1024)).status).toBe(413);
   expect((await prepare("video/mp4", 1.5 * 1024 * 1024, "cover")).status).toBe(413);

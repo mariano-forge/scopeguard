@@ -41,8 +41,9 @@ export default defineConfig({
       BETTER_AUTH_URL: baseURL,
       TRUSTED_PROXY_HOPS: "1",
       MAX_UPLOAD_MB: "1",
-      // A video version has its own limit (tests/e2e/video-review.spec.ts).
-      MAX_VIDEO_UPLOAD_MB: "2",
+      // A video version has its own limit (tests/e2e/video-review.spec.ts), above one block of an
+      // upload (8 MB, src/lib/upload.ts): a film is sent in blocks (tests/e2e/direct-upload.spec.ts).
+      MAX_VIDEO_UPLOAD_MB: "12",
       FILE_LINK_SECONDS: process.env.FILE_LINK_SECONDS ?? "300",
       // The landing page's demo requests land in a test inbox (tests/e2e/landing.spec.ts).
       DEMO_REQUESTS_TO: "demo@kora.test",

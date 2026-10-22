@@ -9,6 +9,7 @@
 // account of its own later. Authentication is the account key for now; Managed Identity in production.
 
 import "server-only";
+import { uploadPieceBytes } from "./upload";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { BlobSASPermissions, BlobServiceClient, generateBlobSASQueryParameters, StorageSharedKeyCredential } from "@azure/storage-blob";
 import { and, eq } from "drizzle-orm";
@@ -214,14 +215,15 @@ export async function readableUrl(file: { container: string; path: string; origi
 // ——— Direct uploads: the browser sends the file to the storage itself ———
 //
 // 1. prepareUpload: the page states the file (name, type, size, SHA-256) and where it belongs; the
-//    server answers a write address valid 15 minutes, which may only create that one file (never
-//    overwrite one), and a signed token describing it.
+//    server answers a write address valid 15 minutes (longer for a large file), which may only create
+//    that one file (never overwrite one), and a signed token describing it.
 // 2. The browser PUTs the file to that address.
 // 3. completeUpload: the server reads the file back from the storage and computes its SHA-256 itself;
 //    a file that does not match what was stated is deleted and refused. Only then is it recorded.
 // Large files never pass through the app's servers (hosts such as Vercel cap a request at 4.5 MB).
 
-const uploadWindowMs = 15 * 60 * 1000;
+/** How long the write address lasts: 15 minutes, and a minute more per 25 MB (a film on a slow line), 6 hours at most. */
+const uploadWindowMs = (size: number) => Math.min(6 * 3600, 15 * 60 + Math.ceil(size / (25 * 1024 * 1024)) * 60) * 1000;
 
 type UploadClaim = {
   org: string;
@@ -269,7 +271,7 @@ export async function prepareUpload(
   const { credential } = storage();
   const container = await containerFor(db, org);
   const path = pathOf(placement, file.sha256, extensionOf(file.name, file.mimeType));
-  const claim: UploadClaim = { org, container: container.containerName, path, ...file, expires: Date.now() + uploadWindowMs };
+  const claim: UploadClaim = { org, container: container.containerName, path, ...file, expires: Date.now() + uploadWindowMs(file.size) };
   const blob = container.getBlockBlobClient(path);
   // Already stored (the same file imported again at the same place): nothing to send.
   if (await blob.exists()) return { token: signClaim(claim), uploadUrl: null };
@@ -277,8 +279,10 @@ export async function prepareUpload(
     {
       containerName: container.containerName,
       blobName: path,
-      // Create only: a write address can never replace a stored file (an approved version's, say).
-      permissions: BlobSASPermissions.parse("c"),
+      // Create only for a file sent at once. One sent in blocks needs write too (the emulator, at least,
+      // asks for it to stage and assemble blocks): its address could then replace it, so completeUpload
+      // locks the file before checking it, and no address can change a recorded file.
+      permissions: BlobSASPermissions.parse(file.size > uploadPieceBytes ? "cw" : "c"),
       startsOn: new Date(Date.now() - 60 * 1000),
       expiresOn: new Date(claim.expires),
     },
@@ -293,14 +297,28 @@ export async function completeUpload(db: Db, org: string, token: string) {
   const { service, ready } = storage();
   await ready;
   const blob = service.getContainerClient(claim.container).getBlobClient(claim.path);
-  const properties = await blob.getProperties().catch(() => null);
-  if (!properties) return { error: "Le fichier n’a pas été reçu par le stockage.", status: 400 } as const;
+  if (!(await blob.exists())) return { error: "Le fichier n’a pas été reçu par le stockage.", status: 400 } as const;
 
+  // Locked first, then checked: from now on no write address can change it (an infinite lease, whose
+  // id no one keeps). Already locked: the same file, recorded before.
+  const lease = blob.getBlobLeaseClient();
+  const locked = await lease.acquireLease(-1).then(
+    () => true,
+    (error: { statusCode?: number }) => {
+      if (error.statusCode === 409) return false;
+      throw error;
+    },
+  );
+  const properties = await blob.getProperties();
   const hash = createHash("sha256");
   const download = await blob.download();
   for await (const chunk of download.readableStreamBody as AsyncIterable<Buffer>) hash.update(chunk);
   if (properties.contentLength !== claim.size || hash.digest("hex") !== claim.sha256) {
-    await blob.deleteIfExists();
+    if (locked) await blob.deleteIfExists({ conditions: { leaseId: lease.leaseId } });
+    else {
+      await lease.breakLease(0);
+      await blob.deleteIfExists();
+    }
     return { error: "Le fichier reçu ne correspond pas à celui annoncé.", status: 400 } as const;
   }
 

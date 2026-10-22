@@ -60,7 +60,7 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 
 | Technologie | Version | Rôle |
 | --- | --- | --- |
-| **Azure Blob Storage** | SDK 12.34 | Fichiers importés : un conteneur privé par agence, rangé par projet, livrable et version, fichiers nommés par leur empreinte SHA-256 (`src/lib/storage.ts`). Lecture par adresse signée valable 5 minutes (`FILE_LINK_SECONDS`) ; pour une vidéo, sa durée plus 15 minutes (durée plafonnée à 3 heures), et le lecteur en redemande une si elle expire. Import envoyé directement par le navigateur avec une adresse de création seule (15 minutes), puis relu et vérifié par le serveur (`src/lib/upload.ts`). |
+| **Azure Blob Storage** | SDK 12.34 | Fichiers importés : un conteneur privé par agence, rangé par projet, livrable et version, fichiers nommés par leur empreinte SHA-256 (`src/lib/storage.ts`). Lecture par adresse signée valable 5 minutes (`FILE_LINK_SECONDS`) ; pour une vidéo, sa durée plus 15 minutes (durée plafonnée à 3 heures), et le lecteur en redemande une si elle expire. Import envoyé directement par le navigateur avec une adresse de création seule (15 minutes, plus pour un gros fichier ; création et écriture pour un fichier envoyé en blocs), puis verrouillé par un bail Azure permanent, relu et vérifié par le serveur : plus aucune adresse ne peut le remplacer (`src/lib/upload.ts`, `completeUpload`). Empreinte calculée dans le navigateur par morceaux avec `@noble/hashes`, déjà dépendance de Better Auth (pas de WebAssembly : la politique de sécurité des pages le ferme). |
 | **Azurite** | 3.35 | Émulateur officiel d'Azure Storage, dans Docker, pour le développement et les tests. |
 
 ### E-mails

@@ -1015,7 +1015,10 @@ export function AgencyApp() {
    */
   async function uploadFile(file: File, placement: UploadPlacement) {
     const progress = toast.loading(`Import de « ${file.name} »…`);
-    const result = await sendFile(file, placement).catch(() => ({ error: "L’import n’a pas abouti. Réessayez." }));
+    // A large file says how far it is: read first (its fingerprint), then sent.
+    const result = await sendFile(file, placement, (step, done) =>
+      toast.loading(`${step === "reading" ? "Lecture" : "Envoi"} de « ${file.name} » : ${Math.round(done * 100)} %`, { id: progress }),
+    ).catch(() => ({ error: "L’import n’a pas abouti. Réessayez." }));
     toast.dismiss(progress);
     if ("error" in result) {
       toast.error(result.error);
