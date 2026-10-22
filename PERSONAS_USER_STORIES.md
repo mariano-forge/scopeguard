@@ -1,8 +1,8 @@
-# Personas et user stories de ScopeGuard
+# Personas et user stories de Kora
 
-Ce document définit les utilisateurs prioritaires et les besoins fonctionnels du MVP de ScopeGuard. Il complète le cadrage produit de [README.md](README.md) et le plan d'exécution de [PLAN_EXECUTION.md](PLAN_EXECUTION.md).
+Ce document définit les utilisateurs prioritaires et les besoins fonctionnels du MVP de Kora (nom de code ScopeGuard). Il complète le cadrage produit de [README.md](README.md) et le plan d'exécution de [PLAN_EXECUTION.md](PLAN_EXECUTION.md).
 
-ScopeGuard ne doit pas être conçu comme un simple outil d'annotation. Le produit doit aider les agences à transformer chaque retour client en décision claire : travail inclus, demande à clarifier ou prestation supplémentaire acceptée.
+Kora ne doit pas être conçu comme un simple outil d'annotation. Le produit doit aider les agences à transformer chaque retour client en décision claire : travail inclus, demande à clarifier ou prestation supplémentaire acceptée.
 
 > **Mise à jour du 15 octobre 2026.** Le prototype s'appelle désormais **Kora** dans l'interface. Il dispose d'une base de données PostgreSQL, de comptes agence (e-mail et mot de passe, Google en option), d'agences isolées avec équipe et rôles, et d'un accès client vérifié par code e-mail. Les stories existantes ont été mises à jour en conséquence, les nouvelles stories sont regroupées dans les Epics 14 à 16, et la section [Suivi de réalisation](#suivi-de-réalisation) donne l'état de chaque story.
 >
@@ -49,7 +49,7 @@ Il n'achète pas simplement un outil de commentaires. Il achète la possibilité
 - Gère plusieurs projets en parallèle.
 - Fait le lien entre le client, les designers et les développeurs.
 - Relance les clients et centralise les retours.
-- Est généralement l'utilisateur principal de ScopeGuard.
+- Est généralement l'utilisateur principal de Kora.
 
 **Problèmes**
 
@@ -69,7 +69,7 @@ Il n'achète pas simplement un outil de commentaires. Il achète la possibilité
 
 **Pourquoi il utilise le produit**
 
-ScopeGuard lui fait gagner du temps et lui donne une procédure claire pour traiter les demandes délicates.
+Kora lui fait gagner du temps et lui donne une procédure claire pour traiter les demandes délicates.
 
 > Je veux pouvoir répondre à chaque commentaire client sans fouiller dans trois outils différents.
 
@@ -106,7 +106,7 @@ Pour obtenir des demandes exploitables, contextualisées et validées.
 **Profil**
 
 - Responsable marketing, fondateur, directeur de communication ou représentant métier.
-- N'utilise pas ScopeGuard tous les jours.
+- N'utilise pas Kora tous les jours.
 - Reçoit un lien envoyé par l'agence.
 - N'a ni compte ni mot de passe : il confirme son adresse e-mail avec un code à usage unique.
 - Peut valider une maquette, demander une modification ou accepter un supplément.
@@ -153,7 +153,7 @@ Le décideur économique est le dirigeant d'agence, mais l'utilisateur quotidien
 | Rôle | Fonction dans l'achat |
 | --- | --- |
 | Dirigeant | Paie et évalue le retour financier ; propriétaire de l'agence dans Kora |
-| Chef de projet | Utilise ScopeGuard chaque jour ; administrateur dans Kora |
+| Chef de projet | Utilise Kora chaque jour ; administrateur de l'agence |
 | Designer ou développeur | Produit le livrable et traite les demandes ; membre dans Kora |
 | Client final | Commente, accepte ou refuse |
 | Finance | Exploite les preuves et les factures plus tard |
@@ -773,7 +773,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 
 **Hors périmètre de cette story**
 
-- Modifier le site directement depuis ScopeGuard.
+- Modifier le site directement depuis Kora.
 - Afficher une page dynamique interactive comme source de preuve principale.
 - Maintenir une synchronisation en temps réel avec le site source.
 - Gérer les comptes utilisateurs du site client.
@@ -1050,7 +1050,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - Une vidéo se lit par morceaux, chacun avec l'adresse signée du fichier : elle dure la longueur de la vidéo plus 15 minutes (longueur lue à l'import, comptée jusqu'à 3 heures). Si elle expire quand même (pause, onglet laissé ouvert), le lecteur en redemande une et reprend au même moment, sans que personne ne le voie.
 - À l'import (nouveau livrable ou nouvelle version), Kora prévient l'agence sans jamais bloquer : une vidéo que ce navigateur ne lit pas (ProRes, HEVC…), ou dont les images clés sont espacées de plus de 10 secondes (enregistreurs d'écran : les sauts « bavent »). La vérification lit l'en-tête, une image et l'index des images clés, jamais le fichier entier. Le client ne voit pas cet avertissement (décidé avec le porteur du produit le 22 octobre 2026).
 
-**Plus tard** : capture de l'image au moment du clic (vignette et preuve), reconversion dans le navigateur des vidéos à images clés rares, envoi par morceaux des très gros fichiers, commentaire sur une plage de temps, dessin sur l'image, image par image.
+**Plus tard** : capture de l'image au moment du clic (vignette et preuve), reconversion dans le navigateur des vidéos à images clés rares, commentaire sur une plage de temps, dessin sur l'image, image par image.
 
 #### Décisions et pistes notées (16 octobre 2026)
 
@@ -1068,14 +1068,20 @@ Discutées avec le porteur du produit ; à reprendre telles quelles :
 - **Jira / Notion** (US-047) : aucune licence requise ; jeton API pour les pilotes (chiffré en base, jamais renvoyé à la page), OAuth ensuite.
 - **E-mails groupés** : un e-mail par action pour l'instant ; un récapitulatif seulement si les pilotes s'en plaignent.
 
+#### Décisions notées (21 et 22 octobre 2026)
+
+- **Barre du site de recette** *(21 octobre)* : une ligne de script par livrable, jamais une clé de toute l'agence (lisible par tout visiteur, elle permettrait de sonder ses autres sites) ; l'agence entre dans la barre par sa session Kora, les codes sont aux clients ; la demande de code ne distingue jamais l'adresse d'un membre. Acceptés : plus de demandes d'accès (US-043), un « Lien » doit être un site déployé en `https`.
+- **Vidéo** *(22 octobre)* : une épingle a un moment et une place sur l'image ; la limite de taille des vidéos se règle à part (`MAX_VIDEO_UPLOAD_MB`) ; à l'import, Kora prévient sans bloquer d'une vidéo illisible ou dont les sauts « baveront ».
+- **IA** *(22 octobre)* : une suggestion de qualification (« Inclus » ou « Hors scope », la ligne du devis citée, une phrase de raison), que l'agence confirme toujours ; le client ne la voit jamais, la preuve garde la décision de l'agence. Elle se branche sur le périmètre de référence (US-045), que le designer prépare. Fournisseur à choisir : Azure OpenAI en Europe recommandé (RGPD, déjà sur Azure), Claude possible ; le code reste indépendant du fournisseur.
+
 ## User stories à reporter
 
 Ces stories sont pertinentes mais ne doivent pas entrer dans le premier parcours :
 
-- En tant qu'agence, je veux connecter ScopeGuard à Stripe.
+- En tant qu'agence, je veux connecter Kora à Stripe.
 - En tant qu'agence, je veux synchroniser les demandes avec ClickUp *(remplacé par l'envoi vers Jira ou Notion, US-047)*.
 - En tant qu'agence, je veux générer automatiquement une facture.
-- En tant qu'agence, je veux que l'IA détecte le hors périmètre.
+- En tant qu'agence, je veux que l'IA détecte le hors périmètre *(une suggestion, que l'agence confirme, est prévue avec le périmètre de référence, US-045)*.
 - En tant que client, je veux commenter une vidéo image par image.
 - En tant qu'agence, je veux utiliser un domaine entièrement personnalisé.
 - En tant que dirigeant, je veux analyser tous les projets dans un tableau de bord financier.
@@ -1128,8 +1134,8 @@ Elles répondent à des besoins réels, mais elles ne servent pas à vérifier l
 ### Won't have dans le premier MVP
 
 - Application mobile native
-- Vidéo
-- IA
+- Vidéo avancée : plages de temps, dessin, image par image *(la base est faite : US-052)*
+- IA qui décide seule *(une suggestion de qualification, que l'agence confirme toujours, est prévue avec US-045)*
 - Coédition en temps réel
 - CRM complet
 - Comptabilité
@@ -1141,11 +1147,11 @@ Le prototype doit se concentrer sur cette séquence :
 
 > Un client commente une maquette. Le chef de projet identifie que la demande est hors périmètre. Il transforme le commentaire en proposition complémentaire. Le client accepte le prix et le délai. L'agence dispose ensuite d'une preuve claire de l'accord.
 
-Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une base produit crédible. Si les utilisateurs contournent encore le flux par e-mail ou n'osent pas qualifier les demandes, il faudra revoir le positionnement avant de développer davantage.
+Si ce scénario fonctionne avec trois agences pilotes, Kora possède une base produit crédible. Si les utilisateurs contournent encore le flux par e-mail ou n'osent pas qualifier les demandes, il faudra revoir le positionnement avant de développer davantage.
 
 ## Suivi de réalisation
 
-État au 17 octobre 2026. ✅ réalisé · 🟡 partiel · ⬜ à faire · ⛔ abandonné.
+État au 22 octobre 2026. ✅ réalisé · 🟡 partiel · ⬜ à faire · ⛔ abandonné.
 
 | Story | État | Remarque |
 | --- | :-: | --- |
@@ -1157,7 +1163,7 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-006 créer une nouvelle version | ✅ | Les versions remplacées sont verrouillées |
 | US-007 envoyer le livrable en revue | ✅ | Lien par version au jeton tiré par le serveur, expiration 7 jours, révocation |
 | US-008 commenter un emplacement précis | ✅ | Épingle, zone, page ; auteur client signé par le serveur |
-| US-009 répondre à un commentaire | 🟡 | Fil de réponses fait ; pas de statut « résolu » |
+| US-009 répondre à un commentaire | ✅ | Fil de réponses ; l'agence clôt une discussion, en lecture seule pour tous jusqu'à sa réouverture |
 | US-010 demander des modifications | 🟡 | Règle et route serveur faites ; pas de bouton sur la page client |
 | US-011 qualifier une demande | 🟡 | Trois états au lieu de quatre ; pas de justification interne |
 | US-012 demander une clarification | 🟡 | État « À qualifier » ; pas de blocage ni de notification dédiés |
@@ -1166,7 +1172,7 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-015 refuser une proposition | ✅ | |
 | US-016 approuver une version | ✅ | Par le client seulement ; verrouillage contrôlé par le serveur ; réouverture par l'agence avec sa raison |
 | US-017 consulter la preuve de validation | ✅ | Construite par le serveur : identités vérifiées, heures du serveur, IP, empreintes du fichier et du récapitulatif |
-| US-018 notifier le client | ✅ | Resend, HTML et texte, « Répondre à » ; DMARC à publier pour la délivrabilité |
+| US-018 notifier le client | ✅ | Resend, HTML et texte, « Répondre à » ; SPF, DKIM et DMARC publiés |
 | US-019 relancer une validation | ✅ | E-mail à chaque invité ; une relance par jour et par revue |
 | US-020 ouvrir une revue client | ✅ | Après vérification par code |
 | US-021 commenter depuis la revue client | ✅ | |
@@ -1181,27 +1187,26 @@ Si ce scénario fonctionne avec trois agences pilotes, ScopeGuard possède une b
 | US-030 à US-033 contexte et isolation | ✅ | |
 | US-034 viewer de revue interactif | ✅ | |
 | US-035 PDF multi-pages | ✅ | Pages à la suite sur le plan de travail ; navigation page à page abandonnée |
-| US-036 capturer une page web | ⬜ | L'URL est enregistrée, pas de capture |
-| US-037 se connecter à l'espace agence | ✅ | Adresse confirmée par e-mail ; Google à configurer |
+| US-036 capturer une page web | ⬜ | L'URL est enregistrée, pas de capture ; remplacée en pratique par le livrable « Lien » et la barre sur le site (US-048) |
+| US-037 se connecter à l'espace agence | ✅ | Adresse confirmée par e-mail ; mots de passe selon les règles de la CNIL ; Google et Microsoft dès que leurs clés sont renseignées |
 | US-038 rejoindre une agence sur invitation | ✅ | |
 | US-039 droits selon le rôle | ✅ | |
 | US-040 changer d'agence | ✅ | |
 | US-041 inviter un client sur une revue | ✅ | |
 | US-042 confirmer son identité par un code | ✅ | Nom complet demandé à la première vérification |
-| US-043 demander l'accès à une revue | Retirée | Pour des raisons de sécurité (21 octobre 2026) ; les demandes déjà reçues se règlent encore |
+| US-043 demander l'accès à une revue | ⛔ | Pour des raisons de sécurité (21 octobre 2026) ; les demandes déjà reçues se règlent encore |
 | US-044 prévisualiser la page client | ✅ | |
 | US-045 périmètre de référence | ⬜ | Prochaine priorité produit |
 | US-046 demande offerte | ⬜ | |
 | US-047 envoi vers Jira ou Notion | ⬜ | |
-| US-048 annoter un site web en ligne | 🟡 | Essai du 17 octobre : barre sur le site, vérification par code dans le panneau, demande posée sur un élément, épingles, « élément introuvable » ; testé dans Chrome. Site en `https` obligatoire. L'agence dans la barre (fenêtre Kora, remarques, réponses, qualification ; devis et partage refusés depuis le site). Passage vers la revue Kora sans nouveau code, avec l'appel « devis en attente ». Capture de la fenêtre au clic, dans le fil et la preuve. Ligne de script posée une fois (clé fixe du livrable, dernière version partagée), donnée selon l'outil du site, avec la détection en direct de la barre sur le site ; les e-mails d'invitation et de relance mènent au site avec `?kora`. Dans Kora, un tableau de recette : les demandes page par page, avec leurs captures. À faire : Safari et Firefox à vérifier à la main, mobile |
+| US-048 annoter un site web en ligne | 🟡 | Essai du 17 octobre : barre sur le site, vérification par code dans le panneau, demande posée sur un élément, épingles, « élément introuvable » ; testé dans Chrome. Site en `https` obligatoire. L'agence dans la barre (fenêtre Kora, commentaires, réponses, qualification ; devis et partage refusés depuis le site). Passage vers la revue Kora sans nouveau code, avec l'appel « devis en attente ». Capture de la fenêtre au clic, dans le fil et la preuve. Ligne de script posée une fois (clé fixe du livrable, dernière version partagée), donnée selon l'outil du site, avec la détection en direct de la barre sur le site ; les e-mails d'invitation et de relance mènent au site avec `?kora`. Dans Kora, un tableau de recette : chaque demande en page du canevas, sa capture avec son épingle. À faire : Safari et Firefox à vérifier à la main, mobile |
 | US-049 rôles des personnes invitées | ✅ | Décideur et contributeur, contrôlés par le serveur |
 | US-050 saisir une demande reçue ailleurs | ✅ | Source, date, extrait et capture ; visibles par le client et dans la preuve |
 | US-051 e-mails des devis et des décisions | ✅ | Décideurs côté client, propriétaire et administrateurs côté agence |
-| US-052 commenter un moment d'une vidéo | 🟡 | Épingle au moment et à l'endroit, frise des repères, retour au moment en ouvrant un commentaire ; limite de taille propre aux vidéos ; avertissement à l'import (format illisible, images clés rares). Liens de la durée de la vidéo, renouvelés s'ils expirent. À faire : capture de l'image, reconversion, très gros fichiers |
+| US-052 commenter un moment d'une vidéo | 🟡 | Épingle au moment et à l'endroit, frise des repères, retour au moment en ouvrant un commentaire ; limite de taille propre aux vidéos ; avertissement à l'import (format illisible, images clés rares). Liens de la durée de la vidéo, renouvelés s'ils expirent ; fichiers de plusieurs Go envoyés par blocs. À faire : capture de l'image, reconversion des captures d'écran, plages de temps |
 
 **Avant les premiers pilotes**, il reste à :
 
 - décider du bouton « Demander des modifications » côté client (US-010) ;
-- publier un enregistrement DMARC sur le domaine d'envoi, pour que les e-mails n'arrivent pas en spam ;
 - brancher un suivi des erreurs en production et vérifier les sauvegardes de la base ;
 - nettoyer les fichiers envoyés au stockage mais jamais validés.
