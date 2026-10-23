@@ -45,10 +45,14 @@ test("request limits: uploads per hour and saves per minute (lowered for tests)"
   expect(uploads).toEqual([200, 200, 200, 200, 200, 429]);
 
   await seedState(alice, { lists: { clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] } } });
+  // The limit is per minute: the 120 saves go 12 at a time, so that a loaded machine does not spread them
+  // past the minute (the oldest would leave the window and the 121st pass). The server counts each in one
+  // statement, side by side as one after the other.
+  const save = async (index: number) => (await call("/api/spaces/1", { method: "PATCH", person: alice, body: { name: `Northwind ${index}` } })).status;
   const saves: number[] = [];
-  for (let index = 0; index < 121; index++) saves.push((await call("/api/spaces/1", { method: "PATCH", person: alice, body: { name: `Northwind ${index}` } })).status);
-  expect(saves.slice(0, 120).every((status) => status === 200)).toBe(true);
-  expect(saves[120]).toBe(429);
+  for (let start = 0; start < 120; start += 12) saves.push(...(await Promise.all(Array.from({ length: 12 }, (_, offset) => save(start + offset)))));
+  expect(saves.filter((status) => status === 200)).toHaveLength(120);
+  expect(await save(120)).toBe(429);
 });
 
 test("an /api address no route answers is a JSON 404, whatever the method; existing routes keep theirs", async () => {
