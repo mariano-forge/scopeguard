@@ -303,7 +303,7 @@ export function HomeSidebar({
 export type SidebarLivrable = { id: number; name: string; href: string; active: boolean };
 
 /** How a version comes: a file of the deliverable's kind, or an action (the site's address of a « Lien »). */
-export type NewVersion = { onFile: (file: File) => void; accept?: string } | { onSelect: () => void };
+export type NewVersion = { onFile: (file: File) => void; accept?: string } | { onSelect: () => void; label: string };
 
 /** "+" of a panel section that picks a file (hidden input, like the menus). */
 function FileAddButton({ label, accept, onFile }: { label: string; accept?: string; onFile: (file: File) => void }) {
@@ -452,8 +452,8 @@ export function ProjectSidebar({
               <div className="panel-section-header">
                 <h2>Versions</h2>
                 {"onSelect" in newVersion ? (
-                  <Hint label="Nouvelle version du site">
-                    <button type="button" className="nav-section-action" aria-label="Nouvelle version du site" onClick={newVersion.onSelect}>
+                  <Hint label={newVersion.label}>
+                    <button type="button" className="nav-section-action" aria-label={newVersion.label} onClick={newVersion.onSelect}>
                       <Plus />
                     </button>
                   </Hint>

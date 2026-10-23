@@ -7,18 +7,23 @@ import { and, eq, inArray } from "drizzle-orm";
 import { readVideoDuration } from "@/lib/timecode";
 import type { Entity, ListChange, SharedState, StateChanges } from "@/lib/sharedState";
 import { undeployedSiteProblem, withoutToolbarFlag } from "@/lib/siteReview";
+import { figmaFileKey, figmaFileUrl, readFigmaChoice, type FigmaChoice, type FigmaRound } from "@/lib/figmaLink";
 import { id, noChanges, text, trail, type Data } from "./actions";
 import type { Db } from "./client";
 import { clients, deliverables, projects, storedFiles } from "./schema";
 import { readState } from "./state";
+import { loadFigmaFile } from "./figmaConnection";
 
-const deliverableTypes = ["PDF", "Image", "Video", "Link", "Doc"] as const;
+const deliverableTypes = ["PDF", "Image", "Video", "Link", "Doc", "Figma"] as const;
 type DeliverableType = (typeof deliverableTypes)[number];
 /** Items stay restorable this long; then an administrator's page has them purged. */
 export const trashDays = 30;
 
-/** `duration`: a video's length in seconds, read by the agency's browser; its files' links last that long (src/lib/storage.ts). */
-type NewFile = { kind: DeliverableType; size: number; fileData?: string; duration?: number };
+/**
+ * `duration`: a video's length in seconds, read by the agency's browser; its files' links last that long (src/lib/storage.ts).
+ * `figma`: a « Figma » round, the pages up for review and the saved version of the file (src/lib/figmaLink.ts).
+ */
+type NewFile = { kind: DeliverableType; size: number; fileData?: string; duration?: number; figma?: FigmaChoice };
 
 export type WorkspaceAction =
   | { type: "space.create"; id?: number; name: string; email?: string }
@@ -29,7 +34,7 @@ export type WorkspaceAction =
   | { type: "project.move"; projectId: number; clientId: number }
   | { type: "project.delete"; projectId: number }
   | ({ type: "livrable.create"; id?: number; projectId: number; name: string; url?: string; coverData?: string } & NewFile)
-  // A version is of its deliverable's nature: a « Lien » by its address, any other kind by its file.
+  // A version is of its deliverable's nature: a « Lien » by its address, a « Figma » by its round, any other kind by its file.
   | ({ type: "version.import"; livrableId: number; id?: number; fileData?: string; url?: string } & NewFile)
   | { type: "livrable.rename"; livrableId: number; name: string }
   | { type: "livrable.move"; livrableId: number; projectId: number }
@@ -91,13 +96,21 @@ export function readWorkspaceAction(type: WorkspaceAction["type"], body: Data, p
       if ((body.fileData !== undefined && !fileHref(body.fileData)) || (body.coverData !== undefined && !fileHref(body.coverData))) return null;
       if (body.url !== undefined && !webAddress(body.url)) return null;
       const duration = kind === "Video" ? readVideoDuration(body.duration) : undefined;
-      return { type, id: id(body.id), projectId: target, name, kind, size: size(body.size), fileData: fileHref(body.fileData), url: webAddress(body.url), coverData: fileHref(body.coverData), duration };
+      // A « Figma » is a file of Figma's, never one of Kora's, with its first round.
+      const figma = kind === "Figma" ? readFigmaChoice(body.figma) : undefined;
+      if (kind === "Figma" && (!figma || !figmaFileKey(String(body.url ?? "")) || body.fileData !== undefined)) return null;
+      return { type, id: id(body.id), projectId: target, name, kind, size: size(body.size), fileData: fileHref(body.fileData), url: webAddress(body.url), coverData: fileHref(body.coverData), duration, ...(figma ? { figma } : {}) };
     }
     case "version.import": {
       const kind = deliverableType(body.type);
       const fileData = fileHref(body.fileData);
       const url = webAddress(body.url);
       if (!deliverableId || !kind) return null;
+      if (kind === "Figma") {
+        // The same file, another round: its file is the deliverable's.
+        const figma = readFigmaChoice(body.figma);
+        return figma && body.fileData === undefined && body.url === undefined ? { type, livrableId: deliverableId, id: id(body.id), kind, size: 0, figma } : null;
+      }
       if (kind === "Link" ? !url || body.fileData !== undefined : !fileData || body.url !== undefined) return null;
       return { type, livrableId: deliverableId, id: id(body.id), kind, size: size(body.size), fileData, url, duration: kind === "Video" ? readVideoDuration(body.duration) : undefined };
     }
@@ -260,6 +273,8 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
       if (!project(action.projectId)) return refused("Projet introuvable.", 404);
       const undeployed = action.kind === "Link" && action.url ? undeployedSiteProblem(action.url) : null;
       if (undeployed) return refused(undeployed, 400);
+      const round = action.figma ? await figmaRound(db, org, figmaFileKey(action.url ?? "")!, action.figma) : null;
+      if (round && !("fileKey" in round)) return round;
       const files = [action.fileData, action.coverData].filter((href): href is string => Boolean(href));
       if (!(await ownFiles(db, org, files))) return refused("Fichier introuvable.", 404);
       const recordId = await freeId(db, deliverables, org, action.id);
@@ -276,6 +291,7 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
           locked: false,
           ...(action.fileData ? { fileData: action.fileData } : {}),
           ...(action.url ? { url: action.kind === "Link" ? withoutToolbarFlag(action.url) : action.url } : {}),
+          ...(round ? { url: figmaFileUrl(round.fileKey), figma: round } : {}),
           ...(action.coverData ? { coverData: action.coverData } : {}),
           ...(action.duration ? { duration: action.duration } : {}),
         },
@@ -285,6 +301,13 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
     case "version.import": {
       const versions = versionsOf(state, action.livrableId);
       if (!versions[0]) return refused("Livrable introuvable.", 404);
+      if ((versions[0].type === "Figma") !== (action.kind === "Figma")) return refused("Une version est de la nature de son livrable.", 400);
+      const previousRound = versions[0].figma as FigmaRound | undefined;
+      const round = action.figma && previousRound ? await figmaRound(db, org, previousRound.fileKey, action.figma) : null;
+      if (action.figma && !round) return refused("Livrable introuvable.", 404);
+      if (round && !("fileKey" in round)) return round;
+      if (round && round.version.id === previousRound?.version.id)
+        return refused(`« ${round.version.label} » est déjà la version de la tournée en cours. Enregistrez la nouvelle dans Figma.`, 400);
       if (action.fileData && !(await ownFiles(db, org, [action.fileData]))) return refused("Fichier introuvable.", 404);
       const undeployed = action.url ? undeployedSiteProblem(action.url) : null;
       if (undeployed) return refused(undeployed, 400);
@@ -301,6 +324,7 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
         locked: false,
         ...(action.fileData ? { fileData: action.fileData } : {}),
         ...(action.url ? { url: withoutToolbarFlag(action.url) } : {}),
+        ...(round ? { url: figmaFileUrl(round.fileKey), figma: round } : {}),
         ...(action.duration ? { duration: action.duration } : {}),
       };
       // The earlier versions are frozen: the client reviews the new one.
@@ -371,6 +395,21 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
   }
   log.into(changes);
   return { changes };
+}
+
+/**
+ * A round of a « Figma » deliverable, as Figma tells it now: the pages chosen must be the file's, and the
+ * version one saved in its history. Nothing the page sends of the file (its name, its pages' names) is kept.
+ */
+async function figmaRound(db: Db, org: string, fileKey: string, choice: FigmaChoice): Promise<FigmaRound | Refusal> {
+  const loaded = await loadFigmaFile(db, org, fileKey);
+  if (!loaded.ok) return refused(loaded.error, loaded.status);
+  const { file } = loaded;
+  const version = file.versions.find((candidate) => candidate.id === choice.versionId);
+  if (!version) return refused("Cette version n’est pas dans l’historique du fichier Figma. Enregistrez-la dans Figma, puis choisissez-la.", 400);
+  const known = new Set(file.pages.map((page) => page.id));
+  if (!choice.pages.every((page) => known.has(page))) return refused("Une page choisie n’est plus dans le fichier Figma. Rouvrez la fenêtre pour relire ses pages.", 400);
+  return { fileKey, fileName: file.name, pages: file.pages, reviewed: choice.pages, version };
 }
 
 /** Files the agency imported itself (src/lib/storage.ts): a page cannot point at another's. */

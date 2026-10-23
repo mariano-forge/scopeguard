@@ -6,6 +6,7 @@
 import "server-only";
 import { appUrl } from "./mail";
 import { canSeal } from "./sealed";
+import type { FigmaPage, FigmaVersion } from "./figmaLink";
 
 const apiUrl = () => (process.env.FIGMA_API_URL || "https://api.figma.com").replace(/\/$/, "");
 const oauthUrl = () => process.env.FIGMA_OAUTH_URL || "https://www.figma.com/oauth";
@@ -41,12 +42,22 @@ export type FigmaUser = { id: string; handle: string };
 
 const basicAuth = () => `Basic ${Buffer.from(`${process.env.FIGMA_CLIENT_ID}:${process.env.FIGMA_CLIENT_SECRET}`).toString("base64")}`;
 
-async function figmaJson(path: string, init: RequestInit): Promise<Record<string, unknown> | null> {
+type Answer = { status: number; body: Record<string, unknown> | null };
+
+/** Figma's answer: its status (0 when unreachable) and its body when it is an object. */
+async function figmaAnswer(path: string, init: RequestInit = {}): Promise<Answer> {
   const response = await fetch(apiUrl() + path, { ...init, signal: AbortSignal.timeout(10_000), cache: "no-store" }).catch(() => null);
-  if (!response?.ok) return null;
+  if (!response) return { status: 0, body: null };
   const body = (await response.json().catch(() => null)) as unknown;
-  return body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
+  return { status: response.status, body: body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : null };
 }
+
+async function figmaJson(path: string, init: RequestInit = {}) {
+  const answer = await figmaAnswer(path, init);
+  return answer.status >= 200 && answer.status < 300 ? answer.body : null;
+}
+
+const bearer = (accessToken: string) => ({ authorization: `Bearer ${accessToken}` });
 
 const text = (value: unknown) => (typeof value === "string" && value ? value : null);
 
@@ -67,8 +78,52 @@ export async function exchangeFigmaCode(code: string, codeVerifier: string): Pro
 
 /** Who the token belongs to, or null. */
 export async function figmaMe(accessToken: string): Promise<FigmaUser | null> {
-  const body = await figmaJson("/v1/me", { headers: { authorization: `Bearer ${accessToken}` } });
+  const body = await figmaJson("/v1/me", { headers: bearer(accessToken) });
   const id = text(body?.id);
   const handle = text(body?.handle);
   return id && handle ? { id, handle: handle.slice(0, 100) } : null;
+}
+
+/** A new access token for the refresh token (Figma keeps the same refresh token), or null when Figma refuses it. */
+export async function refreshFigmaToken(refreshToken: string): Promise<{ accessToken: string; expiresAt: Date } | null> {
+  const body = await figmaJson("/v1/oauth/refresh", {
+    method: "POST",
+    headers: { authorization: basicAuth(), "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ refresh_token: refreshToken }),
+  });
+  const accessToken = text(body?.access_token);
+  const expiresIn = Number(body?.expires_in);
+  return accessToken && Number.isFinite(expiresIn) && expiresIn > 0 ? { accessToken, expiresAt: new Date(Date.now() + expiresIn * 1000) } : null;
+}
+
+export type FigmaFile = { name: string; pages: FigmaPage[]; versions: FigmaVersion[] };
+
+const list = (value: unknown) => (Array.isArray(value) ? (value as Record<string, unknown>[]).filter((item) => item && typeof item === "object") : []);
+
+/**
+ * The file's name, its pages and its saved versions, latest first: only the named ones (Figma also keeps
+ * unnamed autosaves, which no one sends to a client). "missing" when the connected account cannot open
+ * the file (unknown, or not shared with it); null when Figma does not answer.
+ */
+export async function readFigmaFile(accessToken: string, key: string): Promise<FigmaFile | "missing" | null> {
+  const [file, history] = await Promise.all([
+    figmaAnswer(`/v1/files/${encodeURIComponent(key)}?depth=1`, { headers: bearer(accessToken) }),
+    figmaAnswer(`/v1/files/${encodeURIComponent(key)}/versions`, { headers: bearer(accessToken) }),
+  ]);
+  if ([file.status, history.status].some((status) => status === 403 || status === 404)) return "missing";
+  const name = text(file.body?.name);
+  const document = file.body?.document as Record<string, unknown> | undefined;
+  if (!name || !document || history.status !== 200) return null;
+  const pages = list(document.children)
+    .filter((page) => page.type === "CANVAS" && text(page.id) && typeof page.name === "string")
+    .map((page) => ({ id: String(page.id), name: String(page.name).slice(0, 200) }));
+  const versions = list(history.body?.versions)
+    .filter((version) => text(version.id) && text(version.label))
+    .map((version) => ({
+      id: String(version.id),
+      label: String(version.label).slice(0, 200),
+      createdAt: text(version.created_at) ?? "",
+      author: text((version.user as Record<string, unknown> | undefined)?.handle) ?? "",
+    }));
+  return { name: name.slice(0, 200), pages, versions };
 }

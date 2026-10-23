@@ -5,6 +5,8 @@ import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from 
 import { Hand, Maximize, MessageCirclePlus, Minus, Plus } from "lucide-react";
 import { DeliverableContent, type CanvasVideo } from "@/components/DeliverableContent";
 import { SiteBoard, sitePages } from "./SiteBoard";
+import { FigmaBoard } from "./FigmaBoard";
+import type { FigmaRound } from "@/lib/figmaLink";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { areaFromPin } from "@/lib/pinArea";
 import { CommentPin, TargetHighlight, describeTarget, itemLabel, requestKind, type Area, type TargetBox, type ThreadComment } from "./CanvasComments";
@@ -28,7 +30,7 @@ export type CanvasComposer = {
   timecode?: number;
 };
 type CanvasComment = ThreadComment & { page?: number };
-type ViewedDeliverable = { name: string; type: DeliverableType; fileData?: string; url?: string; coverData?: string };
+type ViewedDeliverable = { name: string; type: DeliverableType; fileData?: string; url?: string; coverData?: string; figma?: FigmaRound };
 
 const areaBox = (area: Area): TargetBox => ({ left: area.x, top: area.y, width: area.w, height: area.h, label: "" });
 
@@ -59,6 +61,7 @@ export function ReviewCanvas({
   isUnread,
   onMovePin,
   siteSetup,
+  agency,
 }: {
   deliverable: ViewedDeliverable;
   comments: CanvasComment[];
@@ -88,16 +91,21 @@ export function ReviewCanvas({
   onMovePin?: (commentId: number, page: number, x: number, y: number) => void;
   /** A « Lien », for the agency: how to set the staging site's toolbar up. */
   siteSetup?: React.ReactNode;
+  /** The agency's page (a « Figma »'s board speaks to the agency or to the client). */
+  agency?: boolean;
 }) {
   // A « Lien » is commented on its staging site, with the toolbar: here, its requests are pages of the
   // canvas (SiteBoard), their pins where they were placed on the site. The agency (`siteSetup`) may pin a
   // comment on a capture too, tied to its request; the client comments on the site only.
   const site = deliverable.type === "Link";
+  // A « Figma » is commented in Figma: its requests come without a pin, their thread docked.
+  const figma = deliverable.type === "Figma";
   const placement = site ? sitePages(givenComments) : null;
-  const comments = placement ? placement.comments : givenComments;
+  const comments = placement ? placement.comments : figma ? givenComments.map((comment) => ({ ...comment, page: undefined, position: undefined, area: undefined })) : givenComments;
   const pinning = site && Boolean(siteSetup);
-  const tool: CanvasTool = site && !pinning ? "move" : chosenTool;
-  const tools = site && !pinning ? offeredTools.filter((option) => option === "move") : offeredTools;
+  const handOnly = (site && !pinning) || figma;
+  const tool: CanvasTool = handOnly ? "move" : chosenTool;
+  const tools = handOnly ? offeredTools.filter((option) => option === "move") : offeredTools;
   // On a « Lien », only a pin the agency dropped in Kora moves, on its own capture: one placed on the
   // site marks where it was clicked there.
   const canMove = site ? (comment: CanvasComment) => (comment as CanvasComment & { pinnedOn?: number }).pinnedOn !== undefined && Boolean(movable?.(comment)) : movable;
@@ -521,7 +529,7 @@ export function ReviewCanvas({
     <section
       className={`preview-panel canvas tool-${tool} ${site ? "is-site" : ""} ${moving ? "is-moving-pin" : ""}`}
       ref={panelRef}
-      aria-label={site ? "Tableau de recette" : "Canevas"}
+      aria-label={site ? "Tableau de recette" : figma ? "Tableau Figma" : "Canevas"}
     >
       {overlay}
       {/* No browser autoscroll on a wheel-button press: it pans the canvas. */}
@@ -560,6 +568,8 @@ export function ReviewCanvas({
             >
               {site ? (
                 <SiteBoard siteUrl={deliverable.url} comments={givenComments} renderPage={renderPage} setup={siteSetup} />
+              ) : figma ? (
+                <FigmaBoard url={deliverable.url} round={deliverable.figma} comments={givenComments} agency={Boolean(agency)} />
               ) : (
                 <DeliverableContent deliverable={deliverable} renderPage={renderPage} video={video ? videoEvents : undefined} />
               )}

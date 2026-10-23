@@ -1,5 +1,5 @@
 /** The kinds of deliverable an agency can submit for review. */
-export type DeliverableType = "PDF" | "Image" | "Video" | "Link" | "Doc";
+export type DeliverableType = "PDF" | "Image" | "Video" | "Link" | "Doc" | "Figma";
 
 /** Tone = a Kora status pair (background + text, all ≥ 7:1), used for the default cover. */
 export type KindTone = "resolved" | "clarify" | "scope" | "low" | "medium";
@@ -19,6 +19,7 @@ export const deliverableKinds: Record<
     accept: ".doc,.docx,.odt,.pptx,.key,.xlsx,.txt,.md,.rtf",
     hint: "Word, PowerPoint, Excel, texte",
   },
+  Figma: { label: "Figma", badge: "FIG", tone: "low", hint: "Lien d’un fichier Figma" },
 };
 
 export const deliverableTypes = Object.keys(deliverableKinds) as DeliverableType[];

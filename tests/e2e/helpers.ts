@@ -274,3 +274,22 @@ export async function upload(member: Person, content: Buffer, name: string, plac
   const response = await fetch(`${baseURL}/api/files`, { method: "POST", headers: { cookie: member.cookie, "x-forwarded-for": member.ip }, body: form });
   return { status: response.status, json: (await response.json()) as { href?: string; sha256?: string; error?: string } };
 }
+
+// ——— Figma (US-054) ———
+
+/**
+ * The agency of `owner` connected to an account of the Figma stand-in (figmaStandIn.ts), through the OAuth
+ * flow as a browser goes through it: Figma's consent is the code the stand-in accepts for this attempt.
+ */
+export async function connectFigma(owner: Member, handle = unique("figma")) {
+  const started = await call("/api/integrations/figma/connect", { person: owner });
+  const consent = new URL(started.response.headers.get("location") ?? "");
+  const attempt = started.response.headers.getSetCookie().find((cookie) => cookie.startsWith("kora_figma_attempt="))?.split(";")[0] ?? "";
+  const query = new URLSearchParams({ code: `ok:${handle}:${consent.searchParams.get("code_challenge")}`, state: consent.searchParams.get("state") ?? "" });
+  const done = await call(`/api/integrations/figma/callback?${query}`, { person: { ...owner, cookie: `${owner.cookie}; ${attempt}` } });
+  if (!done.response.headers.get("location")?.includes("figma=connected")) throw new Error(`Figma connection of ${owner.email} failed`);
+  return handle;
+}
+
+/** A link to a file of the Figma stand-in, as Figma's « Copier le lien » gives it. */
+export const figmaLink = (key: string) => `https://www.figma.com/design/${key}/Maquette-accueil?node-id=1-2&t=AbCdEf-1`;

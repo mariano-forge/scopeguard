@@ -8,6 +8,8 @@ import { Field, FormError, Modal } from "@/components/modal";
 import { undeployedSiteProblem, withoutToolbarFlag } from "@/lib/siteReview";
 import { videoWarning, videoWarningText, type VideoWarning } from "@/lib/videoCheck";
 import { SiteScriptIntro } from "./SiteToolbarSnippet";
+import { FigmaRoundFields, roundChoice, useFigmaFile } from "./FigmaRoundFields";
+import { figmaFileKey, figmaFileUrl, type FigmaChoice } from "@/lib/figmaLink";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DeliverableCover } from "@/components/DeliverableCover";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
@@ -22,9 +24,9 @@ import {
   type DeliverableType,
 } from "@/components/deliverableKinds";
 
-export type NewDeliverable = { name: string; type: DeliverableType; file?: File; url?: string; cover?: File; projectId?: number };
+export type NewDeliverable = { name: string; type: DeliverableType; file?: File; url?: string; cover?: File; projectId?: number; figma?: FigmaChoice };
 
-/** "+ Livrable": name, kind, the file (or the address for a link) and an optional cover. */
+/** "+ Livrable": name, kind, the file (or the address for a link, the file and its round for a Figma) and an optional cover. */
 export function NewDeliverableDialog({
   existingNamesFor,
   defaultProjectId,
@@ -49,6 +51,12 @@ export function NewDeliverableDialog({
   // Checked in a moment, without reading it whole: `done` once known.
   const [videoCheck, setVideoCheck] = useState<{ file: File; warning: VideoWarning | null; done: boolean } | null>(null);
   const [url, setUrl] = useState("");
+  // A « Figma »: the file named by the link, read by the server; its pages and version chosen here.
+  const figmaKey = type === "Figma" ? figmaFileKey(url) : null;
+  const figma = useFigmaFile(figmaKey);
+  const [figmaPages, setFigmaPages] = useState<string[] | null>(null);
+  const [figmaVersion, setFigmaVersion] = useState<string | null>(null);
+  const round = figma.file ? roundChoice(figma.file, figmaPages, figmaVersion) : null;
   const [cover, setCover] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -88,10 +96,17 @@ export function NewDeliverableDialog({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!name.trim()) return setError("Donnez un nom au livrable.");
-    if (existingNames.some((existing) => existing.toLowerCase() === name.trim().toLowerCase()))
+    // A « Figma » is named after its file unless the agency names it.
+    const chosenName = name.trim() || (type === "Figma" ? (figma.file?.name ?? "") : "");
+    if (type === "Figma" && !figmaKey) return setError("Collez le lien d’un fichier Figma, par exemple https://www.figma.com/design/…");
+    if (!chosenName) return setError(type === "Figma" ? (figma.error ?? "Le fichier Figma est en cours de lecture.") : "Donnez un nom au livrable.");
+    if (existingNames.some((existing) => existing.toLowerCase() === chosenName.toLowerCase()))
       return setError("Un livrable porte déjà ce nom dans ce projet. Pour le mettre à jour, importez une nouvelle version depuis le livrable.");
-    if (type === "Link") {
+    if (type === "Figma") {
+      if (!round) return setError(figma.error ?? "Le fichier Figma est en cours de lecture.");
+      if (!round.reviewed.length) return setError("Cochez au moins une page en revue.");
+      if (!round.version) return setError("Enregistrez dans Figma la version que vous envoyez au client, puis relisez le fichier.");
+    } else if (type === "Link") {
       if (!isHttpUrl(url.trim())) return setError("Saisissez une adresse complète, par exemple https://exemple.fr.");
       const undeployed = undeployedSiteProblem(url.trim());
       if (undeployed) return setError(undeployed);
@@ -105,7 +120,16 @@ export function NewDeliverableDialog({
       return setError(`Couverture trop lourde : ${formatBytes(cover.size)} (maximum ${formatBytes(MAX_COVER_BYTES)}).`);
     setSaving(true);
     try {
-      await onCreate({ name: name.trim(), type, file: type === "Link" ? undefined : (file ?? undefined), url: type === "Link" ? withoutToolbarFlag(url.trim()) : undefined, cover: cover ?? undefined, projectId });
+      const byAddress = type === "Link" || type === "Figma";
+      await onCreate({
+        name: chosenName,
+        type,
+        file: byAddress ? undefined : (file ?? undefined),
+        url: type === "Link" ? withoutToolbarFlag(url.trim()) : figmaKey ? figmaFileUrl(figmaKey) : undefined,
+        figma: figmaKey && round?.version ? { pages: round.reviewed, versionId: round.version.id } : undefined,
+        cover: cover ?? undefined,
+        projectId,
+      });
     } catch {
       setError("Le livrable n’a pas pu être enregistré.");
       setSaving(false);
@@ -148,7 +172,7 @@ export function NewDeliverableDialog({
           </Field>
         )}
         <Field id="deliverable-name" label="Nom du livrable">
-          <Input id="deliverable-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex. Maquette page d’accueil" />
+          <Input id="deliverable-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={type === "Figma" && figma.file ? figma.file.name : "Ex. Maquette page d’accueil"} />
         </Field>
 
         <fieldset className="kind-picker">
@@ -173,7 +197,28 @@ export function NewDeliverableDialog({
           </div>
         </fieldset>
 
-        {type === "Link" ? (
+        {type === "Figma" ? (
+          <>
+            <Field id="deliverable-figma" label="Lien du fichier Figma" hint="Dans Figma : Partager › Copier le lien. Le fichier est lu avec le compte Figma de l’agence.">
+              <Input
+                id="deliverable-figma"
+                inputMode="url"
+                value={url}
+                onChange={(event) => (setUrl(event.target.value), setFigmaPages(null), setFigmaVersion(null), setError(""))}
+                placeholder="https://www.figma.com/design/…"
+              />
+            </Field>
+            {figmaKey && (
+              <FigmaRoundFields
+                {...figma}
+                reviewed={round?.reviewed ?? []}
+                version={round?.version ?? null}
+                onPages={(next) => (setFigmaPages(next), setError(""))}
+                onVersion={(next) => (setFigmaVersion(next), setError(""))}
+              />
+            )}
+          </>
+        ) : type === "Link" ? (
           <>
             <Field id="deliverable-url" label="Adresse de la page">
               <Input id="deliverable-url" type="url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://staging.client.fr/accueil" />

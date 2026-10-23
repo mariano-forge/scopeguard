@@ -4846,7 +4846,7 @@ a.page-nav-label:hover {
 }
 .kind-options {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: var(--s-2);
 }
 .kind-option {
@@ -10315,4 +10315,43 @@ body.is-resizing {
   color: var(--graphite);
   font: 400 var(--t-caption) var(--font-ui);
   text-align: right;
+}
+
+/* « Figma » deliverable (US-054): the round chosen in the dialogs, and the board's sheet. */
+.figma-pages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.figma-pages legend {
+  margin-bottom: var(--s-1);
+  padding: 0;
+  font-weight: 600;
+}
+.figma-page {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.figma-page input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--action-ui);
+}
+.figma-sheet .site-hero {
+  grid-template-columns: minmax(0, 1fr);
+}
+.figma-round {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+}
+.figma-round dt {
+  color: var(--graphite);
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.figma-round dd {
+  margin: 0;
+  font: 400 var(--t-body) var(--font-ui);
 }

@@ -44,6 +44,8 @@ import { href, hrefForRecord, livrableIdOf, notificationHref, parseAgencyPath, v
 import { maxBytesOf, deliverableKinds, formatBytes, kindFromFile, type DeliverableType } from "@/components/deliverableKinds";
 import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialog";
 import { LinkVersionDialog } from "./LinkVersionDialog";
+import { FigmaVersionDialog } from "./FigmaVersionDialog";
+import type { FigmaChoice, FigmaRound } from "@/lib/figmaLink";
 import { NoDeciderBanner } from "./NoDeciderBanner";
 import { NewProjectDialog } from "./NewProjectDialog";
 import { MobileBar, mobileTitle } from "./MobileBar";
@@ -160,8 +162,10 @@ type Deliverable = {
   importedAt: string;
   locked: boolean;
   fileData?: string;
-  /** Web page address (type "Link"). */
+  /** Web page address (type "Link"), or the Figma file's (type "Figma"). */
   url?: string;
+  /** A « Figma »'s file and round (src/lib/figmaLink.ts). */
+  figma?: FigmaRound;
   /** Optional cover image shown on cards instead of the default template. */
   coverData?: string;
   /** Client decision on this version (each version has its own review). */
@@ -1048,6 +1052,7 @@ export function AgencyApp() {
       size: input.file?.size ?? 0,
       ...(fileData ? { fileData } : {}),
       ...(input.url ? { url: input.url } : {}),
+      ...(input.figma ? { figma: input.figma } : {}),
       ...(coverData ? { coverData } : {}),
       ...(duration ? { duration } : {}),
     });
@@ -1058,9 +1063,9 @@ export function AgencyApp() {
     router.push(hrefForRecord(created, [created, ...deliverables]));
   }
 
-  async function confirmImport(mode: ImportMode, source: { file?: File; url?: string; type: DeliverableType } | null = pendingImport) {
+  async function confirmImport(mode: ImportMode, source: { file?: File; url?: string; figma?: FigmaChoice; type: DeliverableType } | null = pendingImport) {
     if (!source) return;
-    const { file, url, type } = source;
+    const { file, url, figma, type } = source;
     const activeDeliverable = currentDeliverable;
     const sameDeliverableVersions = deliverables.filter(
       (deliverable) => deliverable.projectId === selectedProjectId && deliverable.name === activeDeliverable?.name,
@@ -1076,7 +1081,7 @@ export function AgencyApp() {
       file && type === "Video" ? videoDuration(file) : Promise.resolve(null),
     ]);
     if (file && !fileData) return;
-    const content = { id, type, size: file?.size ?? 0, ...(fileData ? { fileData } : {}), ...(url ? { url } : {}), ...(duration ? { duration } : {}) };
+    const content = { id, type, size: file?.size ?? 0, ...(fileData ? { fileData } : {}), ...(url ? { url } : {}), ...(figma ? { figma } : {}), ...(duration ? { duration } : {}) };
     // A new version freezes the earlier ones (src/db/workspaceActions.ts).
     const result =
       mode === "version" && activeDeliverable
@@ -1764,11 +1769,13 @@ export function AgencyApp() {
   // Shared with no one yet: first the one-click offer to the previous version's people.
   const shareThisVersion = () =>
     currentDeliverable && reviewLinks[`${currentDeliverable.id}:${currentDeliverable.version}`]?.invites?.length ? openShareDialog() : shareCurrentVersion();
-  // A version is of its deliverable's nature: a file of the same kind, or a new address for a « Lien ».
+  // A version is of its deliverable's nature: a file of the same kind, a new address for a « Lien », a new round for a « Figma ».
   const newVersion: NewVersion =
     currentDeliverable?.type === "Link"
-      ? { onSelect: () => setLinkVersionOpen(true) }
-      : { onFile: importVersionFile, accept: currentDeliverable ? deliverableKinds[currentDeliverable.type]?.accept : undefined };
+      ? { onSelect: () => setLinkVersionOpen(true), label: "Nouvelle version du site" }
+      : currentDeliverable?.type === "Figma"
+        ? { onSelect: () => setLinkVersionOpen(true), label: "Nouvelle tournée Figma" }
+        : { onFile: importVersionFile, accept: currentDeliverable ? deliverableKinds[currentDeliverable.type]?.accept : undefined };
   // Its versions to compare (US-053): images and PDFs, each with its requests.
   const compareVersions = agencyCompareVersions(viewVersions, comments, reviewLinks);
   const livrableMenu: MenuEntry[] = [
@@ -1846,6 +1853,16 @@ export function AgencyApp() {
       />
     )}
     {compareOpen && <VersionCompare versions={compareVersions} initialAfter={viewRecord?.version} onClose={() => setCompareOpen(false)} />}
+    {linkVersionOpen && currentDeliverable?.type === "Figma" && currentDeliverable.figma && (
+      <FigmaVersionDialog
+        round={currentDeliverable.figma}
+        onClose={() => setLinkVersionOpen(false)}
+        onCreate={async (figma) => {
+          await confirmImport("version", { figma, type: "Figma" });
+          setLinkVersionOpen(false);
+        }}
+      />
+    )}
     {linkVersionOpen && currentDeliverable?.type === "Link" && (
       <LinkVersionDialog
         url={currentDeliverable.url ?? ""}
@@ -1985,6 +2002,7 @@ export function AgencyApp() {
             <ViewTransition name={`livrable-${livrableRootId}`} share="kora-open" default="none">
             <ReviewCanvas
               deliverable={currentDeliverable}
+              agency
               siteSetup={
                 currentDeliverable.type === "Link" && currentDeliverable.url ? (
                   <SiteToolbarSnippet siteUrl={currentDeliverable.url} deliverableId={currentDeliverable.id} />
