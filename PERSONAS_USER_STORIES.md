@@ -1079,16 +1079,17 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 
 > Demandé par le porteur du produit le 23 octobre 2026 : un bouton « Qualifier » sur les commentaires de Figma. **Impossible tel quel** : un plugin Figma n'a pas le droit de toucher à l'interface de Figma, ni même de lire les commentaires. Seule l'API web de Figma lit et écrit les commentaires. Retenu : Kora se connecte à Figma, importe les commentaires et répond dans leur fil ; un plugin, plus tard, montre la même liste dans un panneau à côté du fichier.
 >
-> Décidé avec le porteur du produit le 23 octobre 2026 : **comme pour un site de recette** : le livrable est le fichier entier, chaque commentaire arrive avec la capture de son écran, une version est une tournée de revue déclarée par l'agence ; le compte connecté et les personnes cochées « équipe » sont de l'agence, leurs commentaires ne sont pas importés ; Kora répond toujours dans le fil Figma à la qualification.
+> Décidé avec le porteur du produit le 23 octobre 2026 : **comme pour un site de recette** : le livrable est le fichier entier, chaque commentaire arrive avec la capture de son écran, une version est une tournée de revue déclarée par l'agence, liée à une version enregistrée dans l'historique de Figma ; seules les pages cochées par l'agence sont en revue ; le compte connecté et les personnes cochées « équipe » sont de l'agence, leurs commentaires ne sont pas importés ; Kora répond toujours dans le fil Figma à la qualification.
 
 **Comment ça marche**
 
 1. L'agence connecte son compte Figma à Kora, une seule fois (OAuth Figma). Kora garde la clé de connexion chiffrée en base, ne la renvoie jamais à la page, et la connexion se retire depuis les réglages.
-2. Elle crée un livrable « Figma » à partir du lien du fichier, comme un « Lien » à partir de l'adresse du site. Une version est une tournée de revue qu'elle déclare (« V3 envoyée »).
-3. Les commentaires du fichier arrivent dans Kora : à l'ouverture du livrable, par « Actualiser », et dès qu'ils sont postés quand Figma prévient Kora.
-4. Chaque commentaire du client devient une demande de la version en cours, avec la capture de l'écran Figma où il a été posté (le point visé marqué), comme la capture prise au clic sur un site, et sa source « Figma » (auteur Figma, date, lien vers le commentaire). Ses réponses dans Figma forment son fil. Les commentaires de l'agence (compte connecté, personnes cochées « équipe ») restent dans Figma.
-5. L'agence qualifie dans Kora comme toute demande. Kora répond dans le fil Figma (« Kora · Hors scope : un devis va vous être proposé », avec le lien de la revue).
-6. Les devis et la validation se décident sur la page de revue Kora, par les décideurs invités, comme pour le site de recette.
+2. Elle crée un livrable « Figma » à partir du lien du fichier, comme un « Lien » à partir de l'adresse du site, et coche les pages soumises à la revue (toutes par défaut ; elle décoche « Brouillons », « Archive »…).
+3. Une version est une tournée de revue qu'elle déclare en choisissant une version enregistrée dans l'historique de Figma (« V3 envoyée au client ») ; Kora lui rappelle d'en enregistrer une avant d'envoyer au client.
+4. Les commentaires des pages en revue arrivent dans Kora : à l'ouverture du livrable, par « Actualiser », et dès qu'ils sont postés quand Figma prévient Kora.
+5. Chaque commentaire du client devient une demande de la version en cours, avec la capture de l'écran Figma où il a été posté, prise **dans la version Figma de la tournée** (ce qui a été soumis, pas le fichier modifié depuis), le point visé marqué, comme la capture prise au clic sur un site, et sa source « Figma » (auteur Figma, date, lien vers le commentaire). Ses réponses dans Figma forment son fil. Les commentaires de l'agence (compte connecté, personnes cochées « équipe ») restent dans Figma.
+6. L'agence qualifie dans Kora comme toute demande. Kora répond dans le fil Figma (« Kora · Hors scope : un devis va vous être proposé », avec le lien de la revue).
+7. Les devis et la validation se décident sur la page de revue Kora, par les décideurs invités, comme pour le site de recette. La preuve nomme la version Figma validée (« fichier Accueil, version “V3 envoyée au client” du 22 octobre »).
 
 **Critères d'acceptation**
 
@@ -1104,9 +1105,9 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 **Étapes de réalisation**, chacune livrable seule, avec ses tests :
 
 1. **Connexion** : OAuth Figma, clé chiffrée (nouvelle table réservée à l'agence), déconnexion, droits du propriétaire et des administrateurs.
-2. **Livrable « Figma » et import** : création depuis le lien du fichier, import des commentaires du client et de leurs réponses, source « Figma », « Actualiser », liste « équipe ».
+2. **Livrable « Figma » et import** : création depuis le lien du fichier, pages en revue, tournée liée à une version Figma, import des commentaires du client et de leurs réponses, source « Figma », « Actualiser », liste « équipe ».
 3. **Réponse dans Figma et notifications** : réponse à la qualification, webhook `FILE_COMMENT` et relecture.
-4. **Captures** : l'image de l'écran de chaque commentaire, le point visé marqué, demandées par lot à Figma, conservées et reprises dans la preuve.
+4. **Captures** : l'image de l'écran de chaque commentaire dans la version Figma de la tournée, le point visé marqué, demandées par lot à Figma, conservées et reprises dans la preuve.
 5. **Plugin Figma** : un panneau dans Figma qui liste les demandes du fichier et permet de les qualifier, connecté par la session Kora de l'agence, jamais par une clé collée.
 
 **Contraintes de Figma** (relevées le 23 octobre 2026) :
