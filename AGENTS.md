@@ -77,7 +77,9 @@ Pour les tests :
 - Un plugin Figma ne lit ni ne touche les commentaires de Figma : tout passe par l'API web de Figma, côté serveur.
 - Les clés d'un service tiers sont scellées par `seal` (`src/lib/sealed.ts`, `TOKEN_ENCRYPTION_KEY`) et ne sortent jamais du serveur : ni dans l'état, ni dans une page, une adresse ou un journal. `GET /api/integrations/figma` n'en dit que le nom du compte.
 - La connexion Figma se fait et se retire par le propriétaire ou un administrateur. Son code n'est enregistré que pour la tentative de ce membre dans ce navigateur (`state` signé, cookie, PKCE : `src/lib/figmaOAuth.ts`) ; n'en retire aucun des trois.
-- Les tests n'appellent jamais Figma : `tests/e2e/figmaStandIn.ts`, démarré par `global-setup.ts`, sur le port 3197.
+- Un livrable « Figma » (`src/lib/figmaLink.ts`) : le serveur relit le fichier auprès de Figma avant de créer le livrable ou une tournée (`figmaRound`, `src/db/workspaceActions.ts`), et ne garde du navigateur que les identifiants choisis (pages, version). Une tournée porte une version **nommée** de l'historique de Figma, jamais un enregistrement automatique, et jamais celle de la tournée en cours.
+- Une réponse d'erreur Figma n'est jamais un `403` : `agencyAction` renvoie alors la page à l'accueil. Non connecté : `409 FIGMA_NOT_CONNECTED`.
+- Les tests n'appellent jamais Figma : `tests/e2e/figmaStandIn.ts`, démarré par `global-setup.ts`, sur le port 3197 (connexion avec `connectFigma`, `tests/e2e/helpers.ts`).
 
 **Preuve et journal**
 - `audit_events` est en ajout seul : jamais d'`UPDATE` ni de `DELETE`. Ne supprime ni ne désactive le trigger. Toute nouvelle colonne s'ajoute au trigger dans une migration.

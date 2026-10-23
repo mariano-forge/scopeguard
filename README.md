@@ -341,13 +341,18 @@ Limites de l'essai : testé dans Chrome seulement (Safari et Firefox à vérifie
 
 ### Commentaires Figma (en cours, US-054)
 
-Kora lira les commentaires des fichiers Figma de l'agence pour les qualifier. Un plugin Figma ne peut ni toucher à l'interface de Figma ni lire ses commentaires : seule l'API web de Figma le permet. Étape 1, faite : la connexion.
+Kora lira les commentaires des fichiers Figma de l'agence pour les qualifier. Un plugin Figma ne peut ni toucher à l'interface de Figma ni lire ses commentaires : seule l'API web de Figma le permet. Faits : la connexion (étape 1) et le livrable « Figma » (étape 2a).
 
 - Dans « Paramètres de l'agence », le propriétaire ou un administrateur clique sur « Connecter Figma ». Figma demande son accord, puis revient sur Kora (`GET /api/integrations/figma/connect`, puis `/callback`). Un membre voit l'état de la connexion, sans pouvoir la changer.
 - La tentative est liée au membre, à l'agence et au navigateur : un `state` signé (10 minutes), un cookie de ce navigateur avec la même valeur et le vérificateur PKCE (`src/lib/figmaOAuth.ts`). Le code de Figma n'est enregistré que si les trois correspondent, et si le membre peut encore gérer l'agence.
 - Les clés de Figma sont scellées en base (AES-256-GCM, `TOKEN_ENCRYPTION_KEY`, `src/lib/sealed.ts`), dans `figma_connections`, une ligne par agence. Elles ne sont jamais envoyées à une page : `GET /api/integrations/figma` ne donne que le nom du compte Figma et qui l'a connecté.
 - « Déconnecter Figma » efface les clés (`DELETE /api/integrations/figma`). Figma ne permet pas de les révoquer : on retire aussi Kora dans les paramètres du compte Figma.
 - À configurer : une application OAuth sur figma.com/developers, avec l'adresse de retour `<BETTER_AUTH_URL>/api/integrations/figma/callback` et les autorisations de `figmaScopes` (`src/lib/figma.ts`). Puis `FIGMA_CLIENT_ID`, `FIGMA_CLIENT_SECRET` et `TOKEN_ENCRYPTION_KEY` (voir [.env.example](.env.example)). Sans eux, la section Figma n'apparaît pas. Une application privée ne sert qu'à l'équipe Figma qui l'a créée : pour d'autres agences, Figma doit l'approuver.
+- Un livrable « Figma » se crée depuis le lien du fichier (« Partager › Copier le lien » dans Figma, `src/lib/figmaLink.ts`). Kora lit le fichier avec le compte Figma de l'agence (`GET /api/integrations/figma/files/:clé`) : son nom, ses pages et les versions **nommées** de son historique (les enregistrements automatiques sans nom sont écartés). L'agence coche les pages en revue (les commentaires des autres resteront dans Figma) et choisit la version Figma envoyée au client.
+- Le serveur relit le fichier auprès de Figma à la création : les pages doivent être celles du fichier, la version une de son historique. Il ne garde rien de ce que la page dit du fichier (nom, pages) : `figma` dans le livrable (`fileKey`, `fileName`, `pages`, `reviewed`, `version`) vient de Figma.
+- Une nouvelle version d'un « Figma » est une **tournée** (« Nouvelle tournée Figma ») : le même fichier, une autre version enregistrée dans Figma, refusée si c'est celle de la tournée en cours.
+- Sur le canevas, côté agence comme côté client, le tableau Figma (`src/app/(agency)/editor/FigmaBoard.tsx`) dit quel fichier, quelle version et quelles pages sont en revue, avec « Ouvrir dans Figma ». Le client y lit comment commenter dans Figma.
+- La clé Figma de l'agence est renouvelée un jour avant son expiration (`figmaAccessToken`, `src/db/figmaConnection.ts`). Si Figma la refuse, l'agence reconnecte Figma.
 - Les tests n'appellent jamais Figma : un faux serveur local (`tests/e2e/figmaStandIn.ts`) tient sa place.
 
 ### Preuve de validation
