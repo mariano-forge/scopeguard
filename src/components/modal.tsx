@@ -6,7 +6,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const sizes = { sm: "sm:max-w-sm", md: "sm:max-w-md", lg: "sm:max-w-lg", xl: "sm:max-w-2xl" } as const;
+// "full": as wide as the window allows, up to 1200 px (laying screens out, src/app/(agency)/ScreensLayoutDialog.tsx).
+const sizes = { sm: "sm:max-w-sm", md: "sm:max-w-md", lg: "sm:max-w-lg", xl: "sm:max-w-2xl", full: "sm:max-w-[min(1200px,calc(100vw-4rem))]" } as const;
 
 /**
  * Every Kora modal: shadcn Dialog with a title, an optional description, the body and the actions.

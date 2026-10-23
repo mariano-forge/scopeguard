@@ -12,6 +12,7 @@ import { FigmaRoundFields, roundChoice, useFigmaFile } from "./FigmaRoundFields"
 import { figmaFileKey, figmaFileUrl, type FigmaChoice } from "@/lib/figmaLink";
 import { FigmaScreensFields, useFigmaScreens } from "./FigmaScreensFields";
 import { copyFigmaScreens } from "@/lib/figmaScreensImport";
+import { ScreensLayoutDialog, type LaidScreen } from "./ScreensLayoutDialog";
 import type { ScreenFormat } from "@/lib/figmaScreens";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DeliverableCover } from "@/components/DeliverableCover";
@@ -76,6 +77,8 @@ export function NewDeliverableDialog({
   const [picked, setPicked] = useState<string[]>([]);
   const [screenFormat, setScreenFormat] = useState<ScreenFormat>("image");
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  // The screens copied, laid out next (« Disposer les écrans ») before the deliverable is made from them.
+  const [laid, setLaid] = useState<{ id: number; screens: LaidScreen[]; receipt: string; name: string } | null>(null);
   // A Figma deliverable is named after its file unless the agency names it.
   const figmaName = type === "Figma" ? (inKora ? screensRead.file : figma.file)?.name : undefined;
   const [figmaPages, setFigmaPages] = useState<string[] | null>(null);
@@ -148,31 +151,25 @@ export function NewDeliverableDialog({
       return setError(`Couverture trop lourde : ${formatBytes(cover.size)} (maximum ${formatBytes(MAX_COVER_BYTES)}).`);
     setSaving(true);
     if (inKora && figmaKey && screensRead.file) {
-      // The screens copied first, under the deliverable's id; the deliverable is made from them.
+      // The screens copied first, under the deliverable's id; laid out next, then the deliverable is made of them.
       const id = Date.now();
+      const read = screensRead.file;
       try {
         const copied = await copyFigmaScreens({
           fileKey: figmaKey,
-          receipt: screensRead.file.receipt,
+          receipt: read.receipt,
           ids: picked,
           format: screenFormat,
           placement: { projectId, livrableId: id, version: 1 },
           onProgress: (done, total) => setProgress({ done, total }),
         });
-        await onCreate({
-          name: chosenName,
-          type: "Screens",
-          id,
-          url: figmaFileUrl(figmaKey),
-          screens: { picked: copied.map(({ id: screenId, fileData }) => ({ id: screenId, fileData })), receipt: screensRead.file.receipt, columns: 3 },
-          cover: cover ?? undefined,
-          projectId,
-        });
+        const screens = copied.map((copy) => ({ ...copy, name: read.screens.find((screen) => screen.id === copy.id)?.name ?? "", pageName: read.screens.find((screen) => screen.id === copy.id)?.pageName ?? "" }));
+        setLaid({ id, screens, receipt: read.receipt, name: chosenName });
       } catch (failure) {
-        setError(failure instanceof Error ? failure.message : "Le livrable n’a pas pu être enregistré.");
-        setProgress(null);
-        setSaving(false);
+        setError(failure instanceof Error ? failure.message : "Les écrans n’ont pas pu être importés.");
       }
+      setProgress(null);
+      setSaving(false);
       return;
     }
     try {
@@ -192,6 +189,31 @@ export function NewDeliverableDialog({
     }
   }
 
+  /** « Importer », from the layout: the deliverable, its screens in the order chosen. */
+  async function importLaid(order: string[], columns: number) {
+    if (!laid || !figmaKey) return;
+    setSaving(true);
+    try {
+      await onCreate({
+        name: laid.name,
+        type: "Screens",
+        id: laid.id,
+        url: figmaFileUrl(figmaKey),
+        screens: { picked: order.map((screenId) => ({ id: screenId, fileData: laid.screens.find((screen) => screen.id === screenId)!.fileData })), receipt: laid.receipt, columns },
+        cover: cover ?? undefined,
+        projectId,
+      });
+      // Refused by the server (its message shown): the layout stays, to try again.
+      setSaving(false);
+    } catch {
+      setLaid(null);
+      setError("Le livrable n’a pas pu être enregistré.");
+      setSaving(false);
+    }
+  }
+
+  if (laid) return <ScreensLayoutDialog screens={laid.screens} saving={saving} onBack={() => setLaid(null)} onImport={(order, columns) => void importLaid(order, columns)} />;
+
   return (
     <Modal
       open
@@ -206,7 +228,7 @@ export function NewDeliverableDialog({
             Annuler
           </Button>
           <Button type="submit" disabled={saving}>
-            {saving ? "Enregistrement…" : "Créer le livrable"}
+            {saving ? (inKora ? "Import des écrans…" : "Enregistrement…") : inKora ? "Disposer les écrans" : "Créer le livrable"}
           </Button>
         </>
       }

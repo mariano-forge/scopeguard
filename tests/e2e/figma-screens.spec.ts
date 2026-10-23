@@ -59,49 +59,65 @@ test("the agency picks Figma screens, page by page; they are copied into Kora an
   await home.getByRole("checkbox", { name: /Accueil desktop/ }).check();
   await dialog.getByRole("group", { name: "Page Contact" }).getByRole("checkbox", { name: /Formulaire/ }).check();
   await expect(dialog.getByRole("group", { name: "Format" }).getByRole("radio", { name: /^Image/ })).toBeChecked();
-  await dialog.getByRole("button", { name: "Créer le livrable" }).click();
+  await dialog.getByRole("button", { name: "Disposer les écrans" }).click();
+
+  // Laid out: thumbnails in Figma's order, whatever order they were ticked in; moved by keyboard and by dragging.
+  const layout = page.getByRole("dialog", { name: "Disposer les écrans" });
+  const tiles = layout.getByRole("list", { name: "Ordre des écrans" }).getByRole("listitem");
+  const names = async () => (await tiles.evaluateAll((items) => items.map((item) => item.getAttribute("aria-label"))));
+  await expect.poll(names).toEqual(["1. Accueil desktop", "2. Accueil mobile", "3. Formulaire"]);
+  // Each thumbnail is the copy in Kora (its name, written under it, is its text).
+  await expect.poll(() => layout.locator(".screens-layout-thumb img").first().evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  await layout.getByRole("button", { name: "Déplacer « Formulaire » avant" }).click();
+  await expect.poll(names).toEqual(["1. Accueil desktop", "2. Formulaire", "3. Accueil mobile"]);
+  await tiles.nth(2).dragTo(tiles.nth(0));
+  await expect.poll(names).toEqual(["1. Accueil mobile", "2. Accueil desktop", "3. Formulaire"]);
+  await layout.getByRole("combobox", { name: "Écrans par ligne" }).click();
+  await page.getByRole("option", { name: "2", exact: true }).click();
+  await layout.getByRole("button", { name: "Importer 3 écrans" }).click();
 
   await page.waitForURL(/livrables\/\d+/);
   const canvas = page.getByRole("region", { name: "Canevas" });
   // In Figma's order, whatever order they were ticked in, each with its name.
   await expect(canvas.getByRole("figure")).toHaveCount(3);
-  await expect(canvas.locator("figcaption")).toHaveText(["Accueil desktop", "Accueil mobile", "Formulaire"]);
+  await expect(canvas.locator("figcaption")).toHaveText(["Accueil mobile", "Accueil desktop", "Formulaire"]);
+  await expect(canvas.locator(".canvas-screens")).toHaveCSS("grid-template-columns", /^\S+ \S+$/);
   await expect.poll(() => canvas.getByRole("img", { name: "Accueil mobile" }).evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
   const [record] = await records(org);
   expect(record.data).toMatchObject({
     type: "Screens",
     name: `Maquette ${key}`,
     url: `https://www.figma.com/design/${key}`,
-    columns: 3,
+    columns: 2,
     figmaFile: { fileKey: key, fileName: `Maquette ${key}` },
     screens: [
-      { id: "1:1", name: "Accueil desktop", pageName: "Accueil", width: 1440, height: 900, mimeType: "image/png" },
       { id: "1:5", name: "Accueil mobile", pageName: "Accueil", width: 375, height: 812, mimeType: "image/png" },
+      { id: "1:1", name: "Accueil desktop", pageName: "Accueil", width: 1440, height: 900, mimeType: "image/png" },
       { id: "2:1", name: "Formulaire", pageName: "Contact", width: 1440, height: 900, mimeType: "image/png" },
     ],
   });
   // Figma's tightest reads: the screens once, their drawing once.
   expect((await figmaReads(key)).file).toBe(2);
 
-  // A pin on the second screen: its place names the screen.
+  // A pin on the second screen (Accueil desktop, moved there): its place names the screen.
   await page.locator("[data-page]").nth(1).click({ position: { x: 60, y: 60 } });
   await page.getByRole("textbox", { name: "Commentaire" }).fill("Le menu est trop haut");
   await page.getByRole("button", { name: "Publier" }).click();
   await expect
     .poll(async () => (await sql<{ data: Record<string, unknown> }>("select data from comments where organization_id = $1", [org]))[0]?.data)
-    .toMatchObject({ page: 2, location: expect.stringMatching(/^Écran « Accueil mobile »/) });
+    .toMatchObject({ page: 2, location: expect.stringMatching(/^Écran « Accueil desktop »/) });
 
   // A new version: the same screens copied again, in the same order, as they are in Figma now; never a file.
   const versions = page.getByRole("region", { name: "Versions" });
   await expect(versions.locator('input[type="file"]')).toHaveCount(0);
   await versions.getByRole("button", { name: "Réimporter depuis Figma" }).click();
   const again = page.getByRole("dialog", { name: "Réimporter depuis Figma" });
-  await expect(again.getByRole("listitem")).toHaveText([/Accueil desktop/, /Accueil mobile/, /Formulaire/]);
+  await expect(again.getByRole("listitem")).toHaveText([/Accueil mobile/, /Accueil desktop/, /Formulaire/]);
   await again.getByRole("button", { name: "Réimporter" }).click();
   await expect(again).toHaveCount(0);
   await expect.poll(async () => (await records(org)).map((row) => [row.version, row.data.status, (row.data.screens as { name: string }[]).map((screen) => screen.name).join(", ")])).toEqual([
-    [1, "Remplacée", "Accueil desktop, Accueil mobile, Formulaire"],
-    [2, "En attente client", "Accueil desktop, Accueil mobile, Formulaire"],
+    [1, "Remplacée", "Accueil mobile, Accueil desktop, Formulaire"],
+    [2, "En attente client", "Accueil mobile, Accueil desktop, Formulaire"],
   ]);
   expect((await figmaReads(key)).file).toBe(4);
   expect(errors).toEqual([]);

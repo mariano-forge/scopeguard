@@ -10413,3 +10413,53 @@ body.is-resizing {
 .figma-screen-page + .figma-screen-page {
   border-top: 1px solid var(--border);
 }
+/* « Disposer les écrans »: the grid of thumbnails the agency reorders. */
+.screens-layout {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.screens-layout-tile {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--paper);
+  cursor: grab;
+}
+.screens-layout-tile.is-dragged {
+  opacity: 0.5;
+}
+.screens-layout-thumb {
+  display: grid;
+  place-items: center;
+  height: 140px;
+  overflow: hidden;
+  border-radius: calc(var(--r-field) - 2px);
+  background: var(--mist);
+}
+.screens-layout-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.screens-layout-name {
+  display: grid;
+  min-width: 0;
+}
+.screens-layout-name b,
+.screens-layout-name small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.screens-layout-name small {
+  color: var(--graphite);
+}
+.screens-layout-moves {
+  display: flex;
+  justify-content: flex-end;
+}
