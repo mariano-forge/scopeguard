@@ -339,6 +339,17 @@ Pour un livrable « Lien », dont l'adresse est le site de recette, le tableau d
 
 Limites de l'essai : testé dans Chrome seulement (Safari et Firefox à vérifier à la main) ; le site de l'agence doit accepter le script et le cadre de Kora s'il a sa propre politique de sécurité ; les numéros des épingles diffèrent entre la vue de l'agence (pins internes compris) et celle du client.
 
+### Commentaires Figma (en cours, US-054)
+
+Kora lira les commentaires des fichiers Figma de l'agence pour les qualifier. Un plugin Figma ne peut ni toucher à l'interface de Figma ni lire ses commentaires : seule l'API web de Figma le permet. Étape 1, faite : la connexion.
+
+- Dans « Paramètres de l'agence », le propriétaire ou un administrateur clique sur « Connecter Figma ». Figma demande son accord, puis revient sur Kora (`GET /api/integrations/figma/connect`, puis `/callback`). Un membre voit l'état de la connexion, sans pouvoir la changer.
+- La tentative est liée au membre, à l'agence et au navigateur : un `state` signé (10 minutes), un cookie de ce navigateur avec la même valeur et le vérificateur PKCE (`src/lib/figmaOAuth.ts`). Le code de Figma n'est enregistré que si les trois correspondent, et si le membre peut encore gérer l'agence.
+- Les clés de Figma sont scellées en base (AES-256-GCM, `TOKEN_ENCRYPTION_KEY`, `src/lib/sealed.ts`), dans `figma_connections`, une ligne par agence. Elles ne sont jamais envoyées à une page : `GET /api/integrations/figma` ne donne que le nom du compte Figma et qui l'a connecté.
+- « Déconnecter Figma » efface les clés (`DELETE /api/integrations/figma`). Figma ne permet pas de les révoquer : on retire aussi Kora dans les paramètres du compte Figma.
+- À configurer : une application OAuth sur figma.com/developers, avec l'adresse de retour `<BETTER_AUTH_URL>/api/integrations/figma/callback` et les autorisations de `figmaScopes` (`src/lib/figma.ts`). Puis `FIGMA_CLIENT_ID`, `FIGMA_CLIENT_SECRET` et `TOKEN_ENCRYPTION_KEY` (voir [.env.example](.env.example)). Sans eux, la section Figma n'apparaît pas. Une application privée ne sert qu'à l'équipe Figma qui l'a créée : pour d'autres agences, Figma doit l'approuver.
+- Les tests n'appellent jamais Figma : un faux serveur local (`tests/e2e/figmaStandIn.ts`) tient sa place.
+
 ### Preuve de validation
 
 « Synthèse & export » produit, depuis la base et non depuis la page, la preuve d'une version : empreinte SHA-256 du fichier validé, chaque demande avec sa qualification et ses devis, chaque décision avec l'identité constatée par le serveur (membre de l'agence ou adresse e-mail vérifiée du client), l'heure du serveur et l'adresse IP, puis le journal complet de la version et l'empreinte du récapitulatif (`src/db/proof.ts`). Le journal est en ajout seul, IP et navigateur compris.

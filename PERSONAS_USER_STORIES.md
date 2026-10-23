@@ -1115,6 +1115,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - Une application OAuth privée ne sert qu'à l'équipe Figma qui l'a créée ; pour d'autres agences, il faut la publier et la faire approuver par Figma : à demander dès les premiers pilotes.
 - Les commentaires sont limités à 25, 50 ou 100 lectures par minute selon l'offre Figma du fichier ; l'image d'un cadre, bien moins, et presque pas avec une place « lecteur » : le compte connecté doit avoir une place d'éditeur.
 - L'API ne sait pas marquer un commentaire comme résolu.
+- Figma ne garde qu'une clé active par compte Figma et par application : un même compte Figma connecté à deux agences Kora déconnecterait la première. Chaque agence connecte son propre compte.
 - Les notifications de Figma (`FILE_COMMENT`) se créent sur un fichier par quelqu'un qui peut le modifier ; une offre minimale est peut-être exigée, à vérifier sur un vrai compte. À défaut, Kora relit à l'ouverture et sur « Actualiser ».
 
 **Pas dans cette story** : écrire dans Figma autre chose qu'une réponse, résoudre un commentaire Figma, prendre une décision (devis, validation) depuis Figma, importer les fichiers FigJam.
@@ -1271,6 +1272,7 @@ Si ce scénario fonctionne avec trois agences pilotes, Kora possède une base pr
 | US-050 saisir une demande reçue ailleurs | ✅ | Source, date, extrait et capture ; visibles par le client et dans la preuve |
 | US-051 e-mails des devis et des décisions | ✅ | Décideurs côté client, propriétaire et administrateurs côté agence |
 | US-053 comparer deux versions | ✅ | Images et PDF, côté agence et client : frise animée des versions, « avant » puis « après » choisis librement, côte à côte synchronisé, rideau, fil en lecture seule des demandes de l'ancienne version ; le client ne compare que ses versions partagées |
+| US-054 qualifier les commentaires Figma | 🟡 | Étape 1 faite : connexion de l'agence à Figma (OAuth avec PKCE, clés scellées en base, déconnexion ; propriétaire et administrateurs). À faire : livrable « Figma » et import, réponse dans Figma, captures, plugin |
 | US-052 commenter un moment d'une vidéo | 🟡 | Épingle au moment et à l'endroit, frise des repères, retour au moment en ouvrant un commentaire ; limite de taille propre aux vidéos ; avertissement à l'import (format illisible, images clés rares). Liens de la durée de la vidéo, renouvelés s'ils expirent ; fichiers de plusieurs Go envoyés par blocs. À faire : capture de l'image, reconversion des captures d'écran, plages de temps |
 
 **Avant les premiers pilotes**, il reste à :
@@ -1285,5 +1287,5 @@ Si ce scénario fonctionne avec trois agences pilotes, Kora possède une base pr
 2. **Essai sur une préversion Vercel**, avec le vrai Azure : une vidéo de plusieurs centaines de Mo à 1 Go envoyée par blocs, une vraie vidéo MP4 (aucun avertissement, sauts nets), la capture GNOME (avertissement), la barre détectée sur le site de démo Café Boréal, Safari et Firefox.
 3. **Notes internes** : le designer revient sur le fait de montrer tout le fil d'une demande qualifiée au client. Le README décrit encore l'ancien comportement (notes internes, « Hors scope » visible une fois le devis envoyé), AGENTS.md le nouveau : aligner l'un sur l'autre une fois son retour fait.
 4. **Test instable du designer** : glisser une épingle sur une capture d'un « Lien » (`site-toolbar.spec.ts`) échoue parfois dans la suite complète. Cause probable : `ReviewCanvas.tsx` lit au relâchement un état `moving` pas encore rendu ; le corriger par une référence (`useRef`).
-5. **Commentaires Figma (US-054)**, demandé et cadré le 23 octobre 2026. Prêt pour l'étape 1 (connexion), testée avec un faux serveur Figma. Pour un essai réel : l'application Figma, créée par le porteur du produit sur figma.com/developers (identifiant et secret dans `.env.local`).
+5. **Commentaires Figma (US-054)**, demandé et cadré le 23 octobre 2026. Étape 1 (connexion) faite, testée avec un faux serveur Figma ; ensuite l'étape 2 (livrable « Figma » et import). Pour un essai réel : l'application Figma, créée par le porteur du produit sur figma.com/developers (identifiant et secret dans `.env.local`).
 6. **Propositions en attente d'un oui** : un bouton « Comparer » dans le panneau « Versions », des boutons de zoom dans la comparaison, la surbrillance automatique des différences ; vidéo : capture de l'image au clic, reconversion des captures d'écran, plages de temps ; Jira (US-047) ; la page « Pilotage » (branche locale `feat/dashboard`, jamais poussée).

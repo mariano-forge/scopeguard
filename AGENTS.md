@@ -73,6 +73,12 @@ Pour les tests :
 - Les tickets (agence, passage vers la revue) sont signés par `src/lib/signedClaim.ts`, chacun avec sa portée, courts, liés au lien, et ne passent que d'une fenêtre Kora à une autre par `postMessage` vérifié : jamais dans une adresse, jamais vers la page du site.
 - Les sessions du panneau (`siteSessionCookie` du client, `siteAgencyCookie` de l'agence) sont `SameSite=None` toujours avec `Partitioned` ; la session de la page de revue reste `SameSite=Lax`.
 
+**Figma** (US-054, `src/lib/figma.ts`)
+- Un plugin Figma ne lit ni ne touche les commentaires de Figma : tout passe par l'API web de Figma, côté serveur.
+- Les clés d'un service tiers sont scellées par `seal` (`src/lib/sealed.ts`, `TOKEN_ENCRYPTION_KEY`) et ne sortent jamais du serveur : ni dans l'état, ni dans une page, une adresse ou un journal. `GET /api/integrations/figma` n'en dit que le nom du compte.
+- La connexion Figma se fait et se retire par le propriétaire ou un administrateur. Son code n'est enregistré que pour la tentative de ce membre dans ce navigateur (`state` signé, cookie, PKCE : `src/lib/figmaOAuth.ts`) ; n'en retire aucun des trois.
+- Les tests n'appellent jamais Figma : `tests/e2e/figmaStandIn.ts`, démarré par `global-setup.ts`, sur le port 3197.
+
 **Preuve et journal**
 - `audit_events` est en ajout seul : jamais d'`UPDATE` ni de `DELETE`. Ne supprime ni ne désactive le trigger. Toute nouvelle colonne s'ajoute au trigger dans une migration.
 - L'IP d'une requête se lit avec `requestOrigin()` (`src/lib/api.ts`), jamais directement dans `x-forwarded-for`.
