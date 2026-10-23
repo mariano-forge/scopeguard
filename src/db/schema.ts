@@ -320,20 +320,24 @@ export const reviewAccessRequests = pgTable(
 );
 
 /**
- * An agency's connection to Figma (US-054, src/lib/figma.ts): the account that lets Kora read the comments
- * of its files and answer them. The tokens are sealed (src/lib/sealed.ts): never sent to a page, never
- * readable from a database copy without TOKEN_ENCRYPTION_KEY.
+ * A member's connection to Figma (US-054, src/lib/figma.ts): the account they read Figma files with, and
+ * that relies a « Figma » deliverable's comments. One per member and agency. The tokens are sealed
+ * (src/lib/sealed.ts): never sent to a page, never readable from a database copy without TOKEN_ENCRYPTION_KEY.
  */
-export const figmaConnections = pgTable("figma_connections", {
-  organizationId: organizationId().primaryKey(),
-  figmaUserId: text("figma_user_id").notNull(),
-  handle: text("handle").notNull(),
-  accessToken: text("access_token").notNull(),
-  refreshToken: text("refresh_token").notNull(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  /** The member who connected it. */
-  connectedBy: text("connected_by").notNull(),
-  connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const figmaConnections = pgTable(
+  "figma_connections",
+  {
+    organizationId: organizationId(),
+    /** The member (users.id) whose Figma account it is. */
+    userId: text("user_id").notNull(),
+    figmaUserId: text("figma_user_id").notNull(),
+    handle: text("handle").notNull(),
+    accessToken: text("access_token").notNull(),
+    refreshToken: text("refresh_token").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.organizationId, table.userId] }), index("figma_connections_figma_user_idx").on(table.figmaUserId)],
+);
 
 export * from "./auth-schema";

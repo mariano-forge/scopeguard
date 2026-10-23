@@ -13,6 +13,7 @@ import type { Db } from "./client";
 import { clients, deliverables, projects, storedFiles } from "./schema";
 import { readState } from "./state";
 import { loadFigmaVersions } from "./figmaConnection";
+import type { FigmaImports } from "./figmaImport";
 import { readFigmaReceipt } from "@/lib/figmaReceipt";
 import type { FigmaFileTree } from "@/lib/figma";
 
@@ -206,7 +207,8 @@ const upsert = (changes: StateChanges, list: "clients" | "projects" | "deliverab
 };
 
 /** Changes for the action, and the id it created or touched. */
-export async function workspaceChanges(db: Db, org: string, actor: string, action: WorkspaceAction): Promise<{ changes: StateChanges; id?: number } | Refusal> {
+/** `memberId`: who acts, whose Figma account reads a « Figma » file (src/db/figmaConnection.ts). */
+export async function workspaceChanges(db: Db, org: string, actor: string, action: WorkspaceAction, memberId = ""): Promise<{ changes: StateChanges; id?: number } | Refusal> {
   const changes = noChanges();
   const { state: stored } = await readState(db, org);
   const state: SharedState = stored ?? ({} as SharedState);
@@ -279,7 +281,7 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
       // The file's pages as the server read them for the dialog, signed: Figma is not asked again.
       const tree = action.figma && fileKey ? readFigmaReceipt(action.figma.receipt, org, fileKey) : null;
       if (action.figma && !tree) return refused("La lecture du fichier Figma a expiré : rouvrez « Nouveau livrable » et collez le lien à nouveau.", 400);
-      const round = action.figma && fileKey && tree ? await figmaRound(db, org, fileKey, tree, action.figma) : null;
+      const round = action.figma && fileKey && tree ? await figmaRound(db, org, memberId, fileKey, tree, action.figma) : null;
       if (round && !("fileKey" in round)) return round;
       const files = [action.fileData, action.coverData].filter((href): href is string => Boolean(href));
       if (!(await ownFiles(db, org, files))) return refused("Fichier introuvable.", 404);
@@ -302,6 +304,7 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
           ...(action.duration ? { duration: action.duration } : {}),
         },
       ]);
+      if (round) ownRound(state, changes, recordId, memberId);
       return { changes, id: recordId };
     }
     case "version.import": {
@@ -310,7 +313,7 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
       if ((versions[0].type === "Figma") !== (action.kind === "Figma")) return refused("Une version est de la nature de son livrable.", 400);
       const previousRound = versions[0].figma as FigmaRound | undefined;
       // Its pages are the ones read for the deliverable: a round reads only the file's history.
-      const round = action.figma && previousRound ? await figmaRound(db, org, previousRound.fileKey, { name: previousRound.fileName, pages: previousRound.pages }, action.figma) : null;
+      const round = action.figma && previousRound ? await figmaRound(db, org, memberId, previousRound.fileKey, { name: previousRound.fileName, pages: previousRound.pages }, action.figma) : null;
       if (action.figma && !round) return refused("Livrable introuvable.", 404);
       if (round && !("fileKey" in round)) return round;
       if (round && round.version.id === previousRound?.version.id)
@@ -336,6 +339,7 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
       };
       // The earlier versions are frozen: the client reviews the new one.
       upsert(changes, "deliverables", [created, ...versions.map((record) => ({ ...record, status: "Remplacée", locked: true }))]);
+      if (round) ownRound(state, changes, recordId, memberId);
       return { changes, id: recordId };
     }
     case "livrable.rename":
@@ -404,13 +408,20 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
   return { changes };
 }
 
+/** The round's comments are read with its maker's Figma account (src/db/figmaImport.ts): an agency setting, never the client's. */
+function ownRound(state: SharedState, changes: StateChanges, recordId: number, memberId: string) {
+  const imports = { ...((state.figmaImports ?? {}) as FigmaImports) };
+  imports[String(recordId)] = { ...imports[String(recordId)], ownerId: memberId };
+  changes.settings.upsert.figmaImports = imports;
+}
+
 /**
  * A round of a « Figma » deliverable: the pages chosen must be the file's (`tree`, as the server read it),
  * and the version one saved in its history, read from Figma now. Nothing the page says of the file (its
  * name, its pages' names) is kept.
  */
-async function figmaRound(db: Db, org: string, fileKey: string, tree: FigmaFileTree, choice: FigmaChoice): Promise<FigmaRound | Refusal> {
-  const loaded = await loadFigmaVersions(db, org, fileKey);
+async function figmaRound(db: Db, org: string, memberId: string, fileKey: string, tree: FigmaFileTree, choice: FigmaChoice): Promise<FigmaRound | Refusal> {
+  const loaded = await loadFigmaVersions(db, org, memberId, fileKey);
   if (!loaded.ok) return refused(loaded.error, loaded.status);
   const version = loaded.versions.find((candidate) => candidate.id === choice.versionId);
   if (!version) return refused("Cette version n’est pas dans l’historique du fichier Figma. Enregistrez-la dans Figma, puis choisissez-la.", 400);

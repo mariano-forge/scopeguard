@@ -307,8 +307,8 @@ async function versionChanges(db: Db, member: AgencyMember, action: Extract<Agen
 }
 
 async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): Promise<{ changes: StateChanges; id?: number; data?: Data } | AgencyActionResult> {
-  if (isWorkspace(action)) return workspaceChanges(db, member.organizationId, member.name, action);
-  if (action.type === "figma.import") return figmaImportChanges(db, member.organizationId, member.name, action.deliverableId);
+  if (isWorkspace(action)) return workspaceChanges(db, member.organizationId, member.name, action, member.id);
+  if (action.type === "figma.import") return figmaImportChanges(db, member.organizationId, { id: member.id, name: member.name }, action.deliverableId);
   if (action.type === "figma.team") return figmaTeamChanges(db, member.organizationId, member.name, action.figmaUserId, action.handle, action.member);
   if (action.type === "version.reopen" || action.type === "link.share" || action.type === "link.revoke" || action.type === "invite.remove" || action.type === "invite.role")
     return versionChanges(db, member, action);

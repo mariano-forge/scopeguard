@@ -1,9 +1,8 @@
 // Figma sends the member back here with a code. It is stored only for the attempt this browser started
-// (src/lib/figmaOAuth.ts), by a member still allowed to manage the agency; anything else changes nothing.
+// (src/lib/figmaOAuth.ts), by that member, still in that agency; anything else changes nothing.
 
 import { NextResponse, type NextRequest } from "next/server";
 import { getDb } from "@/db/client";
-import { canManageAgency } from "@/db/agencyPermissions";
 import { saveFigmaConnection } from "@/db/figmaConnection";
 import { databaseFailure } from "@/lib/api";
 import { exchangeFigmaCode, figmaAvailable, figmaMe } from "@/lib/figma";
@@ -25,7 +24,6 @@ export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const attempt = finishFigmaAttempt(params.get("state"), request.cookies.get(figmaAttemptCookie)?.value);
   if (!attempt || attempt.userId !== auth.user.id || attempt.organizationId !== auth.user.organizationId) return back("invalid");
-  if (!canManageAgency(auth.user.role)) return back("forbidden");
   const code = params.get("code");
   if (!code || code.length > 500) return back("refused");
 

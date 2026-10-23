@@ -1,7 +1,7 @@
 "use client";
 
 // « Paramètres de l’agence »: its name, changed by its owner or an administrator (Better Auth refuses the
-// others on the server). The new name shows at once: the page reads it again. Below, the Figma connection.
+// others on the server). The new name shows at once: the page reads it again.
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FormError, Modal } from "@/components/modal";
 import { useCurrentUser } from "./CurrentUser";
-import { FigmaSettings } from "./FigmaSettings";
 
 export function AgencyDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const user = useCurrentUser();
@@ -56,7 +55,6 @@ export function AgencyDialog({ open, onClose }: { open: boolean; onClose: () => 
         <Input id="agency-name" maxLength={80} value={name} onChange={(event) => (setName(event.target.value), setError(""))} />
       </Field>
       {error && <FormError>{error}</FormError>}
-      <FigmaSettings />
     </Modal>
   );
 }

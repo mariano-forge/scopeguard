@@ -2,10 +2,9 @@
 // the agency's page says in a toast (src/app/(agency)/FigmaReturn.tsx). Shared by the routes and the page.
 
 export const figmaOutcomes = {
-  connected: "Figma est connecté : Kora pourra lire les commentaires de vos fichiers.",
-  refused: "Figma n’a pas confirmé la connexion. Réessayez depuis « Paramètres de l’agence ».",
-  invalid: "Cette connexion à Figma a expiré ou n’a pas été lancée depuis ce navigateur. Recommencez depuis « Paramètres de l’agence ».",
-  forbidden: "Seuls le propriétaire et les administrateurs de l’agence connectent Figma.",
+  connected: "Votre compte Figma est connecté : Kora pourra lire vos fichiers et leurs commentaires.",
+  refused: "Figma n’a pas confirmé la connexion. Réessayez depuis « Compte Figma », dans le menu de votre compte.",
+  invalid: "Cette connexion à Figma a expiré ou n’a pas été lancée depuis ce navigateur. Recommencez depuis « Compte Figma ».",
   unavailable: "La connexion à Figma n’est pas configurée sur ce serveur.",
 } as const;
 

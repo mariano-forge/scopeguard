@@ -1,7 +1,7 @@
-// Connecting an agency to Figma (US-054, step 1): its owner or an administrator connects the agency's Figma
-// account from « Paramètres de l’agence », by OAuth; the tokens are sealed in the database, never sent to a
-// page. A code is only stored for the attempt this member started in this browser: every other way in is
-// refused. Figma is the run's stand-in (figmaStandIn.ts); its consent page is intercepted here.
+// Connecting a member's Figma account (US-054, step 1): each member of an agency connects their own Figma
+// account from « Compte Figma » in the account menu, by OAuth; the tokens are sealed in the database, never
+// sent to a page. A code is only stored for the attempt this member started in this browser: every other
+// way in is refused. Figma is the run's stand-in (figmaStandIn.ts); its consent page is intercepted here.
 
 import { expect, test, type Page } from "@playwright/test";
 import { addColleague, call, createAgency, newPerson, signInPage, signUp, sql, unique, type Member } from "./helpers";
@@ -9,8 +9,10 @@ import { figmaClient } from "./figmaStandIn";
 import { baseURL } from "../../playwright.config";
 
 const callback = `${baseURL}/api/integrations/figma/callback`;
-const connectionOf = async (org: string) =>
-  (await sql<{ handle: string; figma_user_id: string; access_token: string; refresh_token: string }>("select * from figma_connections where organization_id = $1", [org]))[0];
+type Row = { user_id: string; handle: string; figma_user_id: string; access_token: string; refresh_token: string };
+const connectionsOf = (org: string) => sql<Row>("select * from figma_connections where organization_id = $1 order by handle", [org]);
+const connectionOf = async (org: string) => (await connectionsOf(org))[0];
+const userIdOf = async (email: string) => (await sql<{ id: string }>("select id from users where email = $1", [email]))[0].id;
 
 /**
  * Figma's consent page, accepted at once: back to Kora with a code for `handle`, bound to the PKCE challenge
@@ -30,10 +32,10 @@ async function figmaAccepts(page: Page, handle: string) {
   return asked;
 }
 
-async function openAgencySettings(page: Page, name: string) {
+async function openFigmaAccount(page: Page, name: string) {
   await page.getByRole("button", { name: `Compte de ${name}` }).first().click();
-  await page.getByRole("menu").getByRole("menuitem", { name: "Paramètres de l’agence" }).click();
-  return page.getByRole("dialog", { name: "Paramètres de l’agence" });
+  await page.getByRole("menu").getByRole("menuitem", { name: "Compte Figma" }).click();
+  return page.getByRole("dialog", { name: "Compte Figma" });
 }
 
 /** Starts an attempt through the API: Figma's address Kora sends to, and the attempt's cookie. */
@@ -50,20 +52,20 @@ const finish = (member: Member, query: Record<string, string>, attempt = "") =>
 
 const outcomeOf = (response: Response) => new URL(response.headers.get("location")!).searchParams.get("figma");
 
-test("the owner connects Figma from the agency settings, sees the account, and disconnects it", async ({ browser }) => {
+test("a member connects their own Figma account from the account menu, sees it, and disconnects it", async ({ browser }) => {
   const owner = await signUp("Alice Martin");
   const org = await createAgency(owner, "Studio Figma");
-  const handle = unique("studio");
+  const member = await addColleague(owner, "Bruno Petit", "member");
+  const handle = unique("bruno");
 
   const { page, errors } = await newPerson(browser);
-  await signInPage(page, owner.email);
+  await signInPage(page, member.email);
   const asked = await figmaAccepts(page, handle);
-  let dialog = await openAgencySettings(page, "Alice Martin");
-  await expect(dialog.getByRole("heading", { name: "Figma" })).toBeVisible();
-  await dialog.getByRole("button", { name: "Connecter Figma" }).click();
+  let dialog = await openFigmaAccount(page, "Bruno Petit");
+  await dialog.getByRole("button", { name: "Connecter mon compte Figma" }).click();
 
   // Back in Kora, connected.
-  await expect(page.getByText("Figma est connecté")).toBeVisible();
+  await expect(page.getByText("Votre compte Figma est connecté")).toBeVisible();
   await expect(page).not.toHaveURL(/figma=/);
   const consent = asked[0];
   expect(consent.searchParams.get("client_id")).toBe(figmaClient.id);
@@ -72,40 +74,47 @@ test("the owner connects Figma from the agency settings, sees the account, and d
   expect(consent.searchParams.get("code_challenge_method")).toBe("S256");
   expect(consent.searchParams.get("scope")!.split(" ")).toEqual(expect.arrayContaining(["file_comments:read", "file_comments:write", "file_versions:read"]));
 
-  // Stored for the agency, the tokens sealed: neither readable in the database nor sent to the page.
+  // Stored as the member's, the tokens sealed: neither readable in the database nor sent to the page.
   const stored = await connectionOf(org);
-  expect(stored).toMatchObject({ handle, figma_user_id: `fig-${handle}` });
+  expect(stored).toMatchObject({ user_id: await userIdOf(member.email), handle, figma_user_id: `fig-${handle}` });
   expect(stored.access_token).toMatch(/^v1\./);
   expect(stored.access_token).not.toContain("figma-access");
   expect(stored.refresh_token).not.toContain("figma-refresh");
-  const status = await call("/api/integrations/figma", { person: owner });
-  expect(status.json).toMatchObject({ available: true, canManage: true, connection: { handle, connectedBy: "Alice Martin" } });
+  const status = await call("/api/integrations/figma", { person: member });
+  expect(status.json).toMatchObject({ available: true, connection: { handle } });
   expect(JSON.stringify(status.json)).not.toMatch(/figma-access|figma-refresh|v1\./);
 
-  dialog = await openAgencySettings(page, "Alice Martin");
-  await expect(dialog).toContainText(`Connecté au compte Figma ${handle}, par Alice Martin`);
-  await dialog.getByRole("button", { name: "Déconnecter Figma" }).click();
-  await expect(dialog.getByRole("button", { name: "Connecter Figma" })).toBeVisible();
+  dialog = await openFigmaAccount(page, "Bruno Petit");
+  await expect(dialog).toContainText(`Connecté au compte Figma ${handle}`);
+  await dialog.getByRole("button", { name: "Déconnecter mon compte Figma" }).click();
+  await expect(dialog.getByRole("button", { name: "Connecter mon compte Figma" })).toBeVisible();
   await expect.poll(() => connectionOf(org)).toBeUndefined();
   expect(errors).toEqual([]);
 });
 
-test("a member cannot connect or disconnect Figma; without a session, nothing is said", async () => {
+test("each member has their own connection: sees only theirs, disconnects only theirs; one Figma account serves one member", async () => {
   const owner = await signUp("Alice Martin");
-  const org = await createAgency(owner, "Studio Rôles");
+  const org = await createAgency(owner, "Studio Comptes");
   const member = await addColleague(owner, "Bruno Petit", "member");
+  const [alice, bruno] = [unique("alice"), unique("bruno")];
+  const connect = async (person: Member, handle: string) => {
+    const attempt = await startAttempt(person);
+    return outcomeOf((await finish(person, { code: `ok:${handle}:${attempt.challenge}`, state: attempt.state }, attempt.attempt)).response);
+  };
+  expect(await connect(owner, alice)).toBe("connected");
+  expect(await connect(member, bruno)).toBe("connected");
+  expect((await call("/api/integrations/figma", { person: owner })).json).toMatchObject({ connection: { handle: alice } });
+  expect((await call("/api/integrations/figma", { person: member })).json).toMatchObject({ connection: { handle: bruno } });
 
-  const started = await call("/api/integrations/figma/connect", { person: member });
-  expect(outcomeOf(started.response)).toBe("forbidden");
-  expect(started.response.headers.getSetCookie().join()).not.toContain("kora_figma_attempt");
-  expect((await call("/api/integrations/figma", { person: member })).json).toMatchObject({ canManage: false, connection: null });
+  // Bruno disconnects his: Alice's stays.
+  expect((await call("/api/integrations/figma", { method: "DELETE", person: member })).status).toBe(200);
+  expect((await connectionsOf(org)).map((row) => row.handle)).toEqual([alice]);
+  expect((await call("/api/integrations/figma", { person: member })).json).toMatchObject({ connection: null });
 
-  // The owner connects; the member can neither disconnect it nor finish an attempt of their own.
-  const attempt = await startAttempt(owner);
-  expect(outcomeOf((await finish(owner, { code: `ok:${unique("roles")}:${attempt.challenge}`, state: attempt.state }, attempt.attempt)).response)).toBe("connected");
-  const refused = await call("/api/integrations/figma", { method: "DELETE", person: member });
-  expect(refused.status).toBe(403);
-  expect(await connectionOf(org)).toBeDefined();
+  // Bruno connects Alice's Figma account: Figma keeps one live token per account, so hers goes.
+  expect(await connect(member, alice)).toBe("connected");
+  const rows = await connectionsOf(org);
+  expect(rows.map((row) => [row.handle, row.user_id])).toEqual([[alice, await userIdOf(member.email)]]);
 
   expect((await call("/api/integrations/figma")).status).toBe(401);
   expect((await call("/api/integrations/figma/connect")).status).toBe(401);
@@ -122,8 +131,10 @@ test("a code is stored only for the attempt this member started in this browser"
   const attempt = await startAttempt(owner);
   expect(outcomeOf((await finish(owner, { code: code(attempt), state: attempt.state })).response)).toBe("invalid");
   expect(outcomeOf((await finish(owner, { code: code(attempt), state: `${attempt.state}x` }, attempt.attempt)).response)).toBe("invalid");
-  // Another agency's member with this attempt (its state and its cookie): nothing, in either agency.
+  // Another agency's member, or a colleague, with this attempt (its state and its cookie): nothing.
   expect(outcomeOf((await finish(other, { code: code(attempt), state: attempt.state }, attempt.attempt)).response)).toBe("invalid");
+  const colleague = await addColleague(owner, "Bruno Petit", "admin");
+  expect(outcomeOf((await finish(colleague, { code: code(attempt), state: attempt.state }, attempt.attempt)).response)).toBe("invalid");
   // Figma refuses the code (unknown, or not bound to this attempt's PKCE verifier): nothing.
   expect(outcomeOf((await finish(owner, { code: "inconnu", state: attempt.state }, attempt.attempt)).response)).toBe("refused");
   const someoneElses = await startAttempt(other);

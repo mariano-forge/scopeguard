@@ -23,7 +23,7 @@ import type { FigmaRound } from "@/lib/figmaLink";
 import type { Entity, ListChange, SharedState, StateChanges } from "@/lib/sharedState";
 import { noChanges, trail, versionClosed, type Data } from "./actions";
 import type { Db } from "./client";
-import { figmaAccessToken, figmaConnectedUser, figmaRefused, isRefusal, notConnected } from "./figmaConnection";
+import { figmaAccessToken, figmaAgencyAccounts, figmaRefused, isRefusal, notConnected } from "./figmaConnection";
 import { withinLimit } from "./requestLimits";
 import { comments } from "./schema";
 import { readState } from "./state";
@@ -33,8 +33,11 @@ type Built = { changes: StateChanges; data: Data };
 
 /** The agency's people in Figma, by Figma user id: their comments are the agency's, not the client's. */
 export type FigmaTeam = Record<string, string>;
-/** Per deliverable version: when it was last brought in, and when its screens were last asked for. */
-type Imports = Record<string, { at: string; framesTriedAt?: string }>;
+/**
+ * Per deliverable version: when it was last brought in, when its screens were last asked for, and whose
+ * Figma account reads it (who made the round, or the colleague who took it over).
+ */
+export type FigmaImports = Record<string, { at?: string; framesTriedAt?: string; ownerId?: string }>;
 
 /** A file's comments are read again at most this often: « Actualiser » clicked twice reads Figma once. */
 const quietSeconds = () => Math.max(1, Number(process.env.FIGMA_IMPORT_QUIET_SECONDS) || 15);
@@ -79,7 +82,7 @@ function reply(comment: FigmaComment, id: number, agency: boolean) {
 }
 
 /** Changes that bring the file's new comments into the round `deliverableId`, and what was brought. */
-export async function figmaImportChanges(db: Db, org: string, actor: string, deliverableId: number): Promise<Built | Refusal> {
+export async function figmaImportChanges(db: Db, org: string, actor: { id: string; name: string }, deliverableId: number): Promise<Built | Refusal> {
   const { state: stored } = await readState(db, org);
   const state: SharedState = stored ?? ({} as SharedState);
   const record = (state.deliverables ?? []).find((candidate) => candidate.id === deliverableId);
@@ -89,14 +92,19 @@ export async function figmaImportChanges(db: Db, org: string, actor: string, del
   if (await versionClosed(db, org, deliverableId)) return refused("Les commentaires de Figma arrivent dans la tournée en cours.");
   if (!(await withinLimit(db, `figma-import:${org}:${deliverableId}`, { max: 1, seconds: quietSeconds() }))) return { changes: noChanges(), data: { imported: 0, replies: 0, waited: true } };
 
-  const token = await figmaAccessToken(db, org);
+  const imports = { ...((state.figmaImports ?? {}) as FigmaImports) };
+  const mark = { ...imports[String(deliverableId)] };
+  // The round's maker's account; gone (they left, or disconnected), the member who brings it in takes it over.
+  let token = mark.ownerId ? await figmaAccessToken(db, org, mark.ownerId) : null;
+  if (!token) {
+    token = await figmaAccessToken(db, org, actor.id);
+    if (token) mark.ownerId = actor.id;
+  }
   if (!token) return notConnected;
   const read = await readFigmaComments(token, round.fileKey);
   if (isRefusal(read)) return figmaRefused(read);
 
   const changes = noChanges();
-  const imports = { ...((state.figmaImports ?? {}) as Imports) };
-  const mark = imports[String(deliverableId)] ?? { at: "" };
   // The round's screens, read once: they say which page each comment is on.
   // Kept with the round as screen id -> page id: the agency's state is read every few seconds.
   let frames = round.frames;
@@ -106,9 +114,10 @@ export async function figmaImportChanges(db: Db, org: string, actor: string, del
     else mark.framesTriedAt = new Date().toISOString();
   }
 
-  const connected = await figmaConnectedUser(db, org);
+  // The agency: every member's connected Figma account, and the people it marked as its team.
+  const connected = await figmaAgencyAccounts(db, org);
   const team = teamOf(state);
-  const isAgency = (userId: string) => userId === connected || Object.hasOwn(team, userId);
+  const isAgency = (userId: string) => connected.has(userId) || Object.hasOwn(team, userId);
 
   // Threads already brought in, whatever their round; those of this round take their new replies.
   const versionIds = new Set(versionsOf(state, record).map((version) => version.id));
@@ -144,7 +153,7 @@ export async function figmaImportChanges(db: Db, org: string, actor: string, del
   }
 
   const ids = await freeCommentIds(db, org, fresh.length);
-  const log = trail(actor, deliverableId);
+  const log = trail(actor.name, deliverableId);
   fresh.forEach(({ root, pageId }, index) => {
     const page = pageId ? round.pages.find((candidate) => candidate.id === pageId) : undefined;
     const replies = (repliesOf.get(root.id) ?? []).sort(byDate);

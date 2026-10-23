@@ -1,9 +1,9 @@
-// One attempt to connect an agency to Figma (US-054). The attempt is bound three ways, so that a code
+// One attempt to connect a member's Figma account (US-054). The attempt is bound three ways, so that a code
 // Figma sends back is only ever stored for the member who started it:
 // - `state`, signed by the server, names the member and the agency, for 10 minutes;
 // - a cookie of this browser holds the same random value and the PKCE verifier: a link with someone
 //   else's state, opened in another browser, is refused (login CSRF);
-// - the callback checks again that the member is signed in, still in that agency, and may manage it.
+// - the callback checks again that the member is signed in and still in that agency.
 
 import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";

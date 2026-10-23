@@ -112,10 +112,10 @@ test("the dialog says why a file cannot be used: not shared, Figma's limit reach
   const link = dialog.getByLabel("Lien du fichier Figma");
 
   await link.fill(figmaLink(fileKey("Absent")));
-  await expect(dialog.getByRole("alert")).toContainText("Ce fichier n’est pas accessible au compte Figma connecté");
+  await expect(dialog.getByRole("alert")).toContainText("Ce fichier n’est pas accessible à votre compte Figma");
   // Figma's limit on reading files, said as it is, with until when.
   await link.fill(figmaLink(fileKey("Limited")));
-  await expect(dialog.getByRole("alert")).toContainText("Figma limite les lectures de fichiers du compte connecté jusqu’au");
+  await expect(dialog.getByRole("alert")).toContainText("Figma limite les lectures de fichiers de votre compte jusqu’au");
   // No saved version yet: « Relire le fichier » reads the history again, never the pages.
   const unsaved = fileKey("Unsaved");
   await link.fill(figmaLink(unsaved));
@@ -139,7 +139,7 @@ test("the server trusts only its own reading of the file: anything else is refus
   // Not connected to Figma: said, with how to connect.
   const unconnected = await call(`/api/integrations/figma/files/${key}`, { person: owner });
   expect(unconnected.status).toBe(409);
-  expect(unconnected.json).toMatchObject({ code: "FIGMA_NOT_CONNECTED", error: expect.stringContaining("Figma n’est pas connecté") });
+  expect(unconnected.json).toMatchObject({ code: "FIGMA_NOT_CONNECTED", error: expect.stringContaining("Votre compte Figma n’est pas connecté à Kora") });
 
   await connectFigma(owner);
   const receipt = await receiptFor(owner, key);
@@ -175,8 +175,12 @@ test("the server trusts only its own reading of the file: anything else is refus
   // The pages were read once for this agency; refusals and creations read only the history.
   expect((await figmaReads(key)).file).toBe(2);
 
-  // What the page says of the file is not kept: its name and pages are those the server read. A member makes one too.
+  // What the page says of the file is not kept: its name and pages are those the server read. A member makes
+  // one too, with their own Figma account (its history read with it) and the agency's reading of the file.
   const member = await addColleague(owner, "Bruno Petit", "member");
+  const unlinked = await createFigma(member, { url: figmaLink(key), figma: { ...round(["0:2"], "101"), receipt } });
+  expect([unlinked.status, unlinked.json.error]).toEqual([409, expect.stringContaining("Votre compte Figma n’est pas connecté à Kora")]);
+  await connectFigma(member);
   const made = await createFigma(member, { url: figmaLink(key), figma: { ...round(["0:2", "0:2"], "101"), receipt, fileName: "Piraté", pages: ["0:2"] } });
   expect(made.status).toBe(200);
   const [record] = await deliverablesOf(org);

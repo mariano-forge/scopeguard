@@ -2,12 +2,13 @@
 
 import { createContext, useContext, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Check, LogOut, Settings, Users } from "lucide-react";
+import { Building2, Check, Frame, LogOut, Settings, Users } from "lucide-react";
 import type { CurrentUser } from "@/lib/session";
 import { authClient } from "@/lib/auth-client";
 import { initialsOf } from "@/lib/authors";
 import { TeamDialog } from "./TeamDialog";
 import { AgencyDialog } from "./AgencyDialog";
+import { FigmaAccountDialog } from "./FigmaAccountDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const CurrentUserContext = createContext<CurrentUser | null>(null);
@@ -30,6 +31,7 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
   const [teamOpen, setTeamOpen] = useState(false);
   const [agencyOpen, setAgencyOpen] = useState(false);
+  const [figmaOpen, setFigmaOpen] = useState(false);
   const canManage = user.role === "owner" || user.role === "admin";
 
   async function switchAgency(organizationId: string) {
@@ -76,6 +78,10 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
           <Users />
           Équipe
         </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setFigmaOpen(true)}>
+          <Frame />
+          Compte Figma
+        </DropdownMenuItem>
         {canManage && (
           <DropdownMenuItem onSelect={() => setAgencyOpen(true)}>
             <Settings />
@@ -103,6 +109,7 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
     </DropdownMenu>
     <TeamDialog open={teamOpen} onClose={() => setTeamOpen(false)} />
     {agencyOpen && <AgencyDialog open onClose={() => setAgencyOpen(false)} />}
+    {figmaOpen && <FigmaAccountDialog onClose={() => setFigmaOpen(false)} />}
     </>
   );
 }

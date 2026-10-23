@@ -1,4 +1,4 @@
-// A Figma file as the agency's connected account sees it (US-054): its name, its pages and its saved
+// A Figma file as the member's own Figma account sees it (US-054): its name, its pages and its saved
 // versions, for « Nouveau livrable ». Its pages are Figma's tightest read (20 a month for a View or Collab
 // seat): the dialog asks once per file, and the answer carries a signed receipt of them that the creation
 // sends back, so the server does not read them again (src/lib/figmaReceipt.ts). Any member may read it.
@@ -18,7 +18,7 @@ export async function GET(_request: Request, context: RouteContext<"/api/integra
   try {
     const db = getDb();
     if (!(await withinLimit(db, `write:${auth.user.id}`, requestLimit.writes()))) return tooManyRequests();
-    const result = await loadFigmaFile(db, auth.user.organizationId, fileKey);
+    const result = await loadFigmaFile(db, auth.user.organizationId, auth.user.id, fileKey);
     if (!result.ok) return Response.json({ error: result.error, code: result.code }, { status: result.status });
     return Response.json({ ...result.tree, versions: result.versions, receipt: figmaReceipt(auth.user.organizationId, fileKey, result.tree) });
   } catch (error) {

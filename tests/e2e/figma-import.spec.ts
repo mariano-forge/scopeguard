@@ -226,3 +226,27 @@ test("the client's page shows a qualified request from Figma with its words and 
   await expect(thread.getByText("On regarde")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("every member's connected Figma account is the agency's; a colleague takes a deliverable over when its maker's account is gone", async () => {
+  const { owner, org, key, agencyAccount, deliverableId } = await figmaReview();
+  const member = await addColleague(owner, "Bruno Petit", "member");
+  const brunoHandle = await connectFigma(member);
+  // Bruno's own comment, from his connected Figma account: the agency's, without ticking anything.
+  await setFigmaComments(key, [...comments(agencyAccount), { id: "c9", message: "Revoir l’alignement", created_at: "2026-10-22T12:00:00Z", user: { id: `fig-${brunoHandle}`, handle: brunoHandle }, client_meta: on("1:1"), order_id: 9 }]);
+  expect((await bringIn(owner, deliverableId)).status).toBe(200);
+  expect(await figmaIds(org)).toEqual(["c1", "c5", "c6"]);
+  const ownerOf = async () => ((await sql<{ value: Record<string, { ownerId?: string }> }>("select value from settings where organization_id = $1 and key = 'figmaImports'", [org]))[0]?.value ?? {})[String(deliverableId)]?.ownerId;
+  const idOf = async (email: string) => (await sql<{ id: string }>("select id from users where email = $1", [email]))[0].id;
+  expect(await ownerOf()).toBe(await idOf(owner.email));
+
+  // Alice disconnects: Bruno brings the comments in with his own account, and the deliverable is his to read.
+  // Her Figma account stays the agency's: her own comment (c3) still stays in Figma.
+  await call("/api/integrations/figma", { method: "DELETE", person: owner });
+  await setFigmaComments(key, [...comments(agencyAccount), { id: "c10", message: "Ajouter un pied de page", created_at: "2026-10-22T13:00:00Z", user: paul, client_meta: on("1:1"), order_id: 10 }]);
+  await expect.poll(async () => (await bringIn(member, deliverableId)).json.imported).toBe(1);
+  expect(await figmaIds(org)).toEqual(["c1", "c10", "c5", "c6"]);
+  expect(await ownerOf()).toBe(await idOf(member.email));
+  // Nobody of the agency connected any more: said so, nothing read.
+  await call("/api/integrations/figma", { method: "DELETE", person: member });
+  await expect.poll(async () => (await bringIn(owner, deliverableId)).json.code).toBe("FIGMA_NOT_CONNECTED");
+});

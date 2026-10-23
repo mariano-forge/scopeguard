@@ -15,7 +15,7 @@ export async function GET(_request: Request, context: RouteContext<"/api/integra
   try {
     const db = getDb();
     if (!(await withinLimit(db, `write:${auth.user.id}`, requestLimit.writes()))) return tooManyRequests();
-    const result = await loadFigmaVersions(db, auth.user.organizationId, fileKey);
+    const result = await loadFigmaVersions(db, auth.user.organizationId, auth.user.id, fileKey);
     return result.ok ? Response.json({ versions: result.versions }) : Response.json({ error: result.error, code: result.code }, { status: result.status });
   } catch (error) {
     return databaseFailure("api figma versions", error);
