@@ -21,7 +21,7 @@ import {
   MAX_COVER_BYTES,
   maxBytesOf,
   deliverableKinds,
-  deliverableTypes,
+  pickableTypes,
   formatBytes,
   isHttpUrl,
   kindFromFile,
@@ -256,7 +256,7 @@ export function NewDeliverableDialog({
         <fieldset className="kind-picker">
           <legend>Type</legend>
           <div className="kind-options">
-            {deliverableTypes.map((option) => (
+            {pickableTypes.map((option) => (
               <label key={option} className={`kind-option ${type === option ? "is-selected" : ""}`}>
                 <input
                   type="radio"

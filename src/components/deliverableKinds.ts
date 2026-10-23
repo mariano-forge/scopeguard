@@ -25,6 +25,8 @@ export const deliverableKinds: Record<
 };
 
 export const deliverableTypes = Object.keys(deliverableKinds) as DeliverableType[];
+/** The kinds « Nouveau livrable » offers: « Écrans Figma » is chosen under « Figma » (where the client comments). */
+export const pickableTypes = deliverableTypes.filter((type) => type !== "Screens");
 
 /** Largest import (MAX_UPLOAD_MB, exposed by next.config.ts); the server checks it again. */
 export const MAX_FILE_BYTES = (Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB) || 50) * 1024 * 1024;
