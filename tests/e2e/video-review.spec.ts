@@ -96,6 +96,35 @@ test("the agency pins a comment on a moment of the video; its mark on the timeli
   await expect.poll(() => timeOf(video)).toBeCloseTo(6, 1);
   await page.getByRole("complementary", { name: "Demandes" }).getByRole("button", { name: `Commentaire #${id}` }).click();
   await expect.poll(() => timeOf(video)).toBeCloseTo(3, 1);
+
+  // Qualified, its header still says its moment, under the author, beside when it was written.
+  expect((await call(`/api/comments/${id}/qualification`, { method: "PUT", person: alice, body: { decision: "Inclus", title: "Logo plus tôt" } })).status).toBe(200);
+  const request = page.getByRole("dialog", { name: `Demande incluse #${id}` });
+  await expect(request.getByRole("tab", { name: "Détail" })).toHaveAttribute("aria-selected", "true");
+  await expect(request.locator(".thread-header")).toContainText("À 0:03 dans la vidéo");
+  expect(errors).toEqual([]);
+});
+
+test("the video's bar puts the film in full screen, with the browser's controls without their menu; a click on it pins nothing", async ({ browser }) => {
+  const { alice, org } = await videoDeliverable();
+  const { page, errors, video } = await openEditor(browser, alice);
+  const bar = page.getByRole("group", { name: "Lecture de la vidéo" });
+  await expect(bar.getByRole("slider", { name: "Position dans la vidéo" })).toBeEnabled();
+  const fullScreen = () => video.evaluate((element: HTMLVideoElement) => document.fullscreenElement === element && element.controls);
+  await bar.getByRole("button", { name: "Vidéo en plein écran" }).click();
+  await expect.poll(fullScreen).toBe(true);
+  // The browser's controls without their menu (its three dots); their own way out of full screen stays, beside the sound.
+  expect(await video.evaluate((element: HTMLVideoElement) => [element.getAttribute("controlslist"), element.disablePictureInPicture])).toEqual([
+    "nodownload noplaybackrate noremoteplayback",
+    true,
+  ]);
+  // A click on the film in full screen: no comment opened behind it.
+  await page.mouse.click(200, 200);
+  await expect(page.getByRole("textbox", { name: "Commentaire" })).toHaveCount(0);
+  // Back from full screen, the browser's controls go: Kora's bar is the one.
+  await page.evaluate(() => document.exitFullscreen());
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => [document.fullscreenElement === null, element.controls])).toEqual([true, false]);
+  expect(await commentsOf(org, "agency")).toEqual([]);
   expect(errors).toEqual([]);
 });
 
@@ -213,10 +242,10 @@ test("the import says when a video may smear or not play, and imports it anyway"
   await expect(note).toHaveCount(0);
   // Not a video this browser plays (a ProRes, say): said, the client may not watch it.
   await file.setInputFiles({ name: "master.mov", mimeType: "video/quicktime", buffer: Buffer.alloc(4096, 7) });
-  await expect(note).toContainText("Ce navigateur ne sait pas lire cette vidéo");
+  await expect(note).toContainText("Votre client risque de ne pas pouvoir regarder cette vidéo");
   // A screen recording, one key picture for 16 s: said, and imported all the same.
   await file.setInputFiles({ name: "capture.webm", mimeType: "video/webm", buffer: screenRecording });
-  await expect(note).toContainText("Cette vidéo risque de « baver » quand on saute à un moment précis");
+  await expect(note).toContainText("Le rendu de cette vidéo risque d’être dégradé par moments");
   await dialog.getByLabel("Nom du livrable").fill("Capture du prototype");
   await dialog.getByRole("button", { name: "Créer le livrable" }).click();
   await page.waitForURL(/livrables\/\d+/);
@@ -224,7 +253,7 @@ test("the import says when a video may smear or not play, and imports it anyway"
 
   // A new version that may smear: said while it uploads.
   await page.getByRole("region", { name: "Versions" }).locator('input[type="file"]').setInputFiles({ name: "capture-2.webm", mimeType: "video/webm", buffer: screenRecording });
-  await expect(page.getByText("Cette vidéo risque de « baver »")).toBeVisible();
+  await expect(page.getByText("Le rendu de cette vidéo risque d’être dégradé par moments")).toBeVisible();
   await expect(page.getByRole("region", { name: "Versions" })).toContainText("V02");
   expect(errors).toEqual([]);
 });

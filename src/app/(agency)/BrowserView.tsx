@@ -3,7 +3,7 @@
 import { ViewTransition, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, FolderClosed, LayoutGrid, List, MessageSquare, Pencil, Plus, RotateCcw, Share2, Star, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderClosed, LayoutGrid, List, MessageSquareDot, Pencil, Plus, RotateCcw, Share2, Star, Trash2 } from "lucide-react";
 import { DeliverableCover } from "@/components/DeliverableCover";
 import { Select } from "@/components/Select";
 import { GettingStarted } from "./GettingStarted";
@@ -357,8 +357,8 @@ export function BrowserView({
     const label = unread > 1 ? `${unread} nouveaux messages du client` : "1 nouveau message du client";
     return (
       <span className="unread-pill" title={label}>
-        <MessageSquare aria-hidden="true" />
-        {unread}
+        <MessageSquareDot aria-hidden="true" />
+        <span aria-hidden="true">{unread > 1 ? `${unread} nouveaux` : "1 nouveau"}</span>
         <span className="sr-only">{label}</span>
       </span>
     );

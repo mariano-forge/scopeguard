@@ -2,7 +2,8 @@
 // staging site), or a verified client invited to a review that shows it (its version's file or cover,
 // or the capture of a request they see). Answers with a redirect to a read-only address valid a few
 // minutes, a video's as long as it lasts (src/lib/storage.ts); anyone else gets 404, so the address
-// reveals nothing.
+// reveals nothing. With ?download, the same file is saved under its name instead of shown (the canvas's
+// « Télécharger le livrable »), to the same people.
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { cookies } from "next/headers";
@@ -57,7 +58,7 @@ async function linkSeconds(db: Db, file: { id: string; organizationId: string; m
   return duration ? videoLinkSeconds(duration) : fileLinkSeconds();
 }
 
-export async function GET(_request: Request, context: RouteContext<"/api/files/[id]">) {
+export async function GET(request: Request, context: RouteContext<"/api/files/[id]">) {
   const { id } = await context.params;
   try {
     const db = getDb();
@@ -71,7 +72,8 @@ export async function GET(_request: Request, context: RouteContext<"/api/files/[
     const allowed = member || (await clientMaySee(db, file.organizationId, id));
     if (!allowed) return notFound();
     // The address changes with every request (it expires): never cached.
-    return new Response(null, { status: 302, headers: { Location: await readableUrl(file, await linkSeconds(db, file)), "Cache-Control": "private, no-store" } });
+    const disposition = new URL(request.url).searchParams.has("download") ? "attachment" : "inline";
+    return new Response(null, { status: 302, headers: { Location: await readableUrl(file, await linkSeconds(db, file), disposition), "Cache-Control": "private, no-store" } });
   } catch (error) {
     console.error("[api/files]", error);
     return new Response(null, { status: 503 });

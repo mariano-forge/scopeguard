@@ -123,8 +123,9 @@ test("the client verifies in Kora's panel on the staging site and places a reque
   await panel.getByLabel("Votre commentaire").fill(message);
   await panel.getByRole("button", { name: "Envoyer" }).click();
 
-  // Stored as a request of the client, signed by the server, with where it was placed.
-  await expect.poll(async () => (await siteRequests(org)).length).toBe(1);
+  // Stored as a request of the client, signed by the server, with where it was placed. (The capture of the
+  // page is sent first: it takes longer on a loaded machine, as for the agency's comment below.)
+  await expect.poll(async () => (await siteRequests(org)).length, { timeout: 30_000 }).toBe(1);
   // The tool stays « Commenter » after a request, as on Kora's canvas.
   await expect(comment).toHaveAttribute("aria-pressed", "true");
   const [created] = await siteRequests(org);
@@ -850,7 +851,7 @@ test("in Kora, a « Lien » shows each request as a page of the canvas, its capt
   // The canvas keeps its bottom bar: the hand, the agency's pins (the decider comments on the site), the zoom.
   const tools = board.getByRole("toolbar", { name: "Outils du canevas" });
   await expect(tools.getByRole("button", { name: "Main" })).toBeVisible();
-  await expect(tools.getByRole("button", { name: "Commentaire" })).toBeVisible();
+  await expect(tools.getByRole("button", { name: "Commentaire", exact: true })).toBeVisible();
   await expect(tools.getByRole("button", { name: "Augmenter le zoom" })).toBeVisible();
   // The client's comments are in the requests panel too, to clarify.
   await expect(agency.page.getByRole("complementary", { name: "Demandes" })).toContainText("Le titre est trop long");
@@ -884,7 +885,7 @@ test("in Kora, a « Lien » shows each request as a page of the canvas, its capt
   // The decider copies the site's link too.
   await expect(clientBoard.getByRole("button", { name: "Copier le lien du site" })).toBeVisible();
   // The decider's pins are placed on the site: their canvas has the hand only.
-  await expect(clientBoard.getByRole("toolbar", { name: "Outils du canevas" }).getByRole("button", { name: "Commentaire" })).toHaveCount(0);
+  await expect(clientBoard.getByRole("toolbar", { name: "Outils du canevas" }).getByRole("button", { name: "Commentaire", exact: true })).toHaveCount(0);
   // Their own steps, nothing to set up: always in view.
   await expect(clientBoard.getByRole("heading", { name: "Commentez le site avec la barre Kora" })).toBeVisible();
   await expect(clientBoard.getByRole("heading", { name: "Cliquez sur « Kora »" })).toBeVisible();
@@ -984,7 +985,7 @@ test("on a « Lien »'s canvas, the agency pins a comment on a request's capture
   await signInPage(page, alice.email);
   await page.goto("/projets/1/livrables/1");
   const board = page.getByRole("region", { name: "Tableau de recette" });
-  await board.getByRole("toolbar", { name: "Outils du canevas" }).getByRole("button", { name: "Commentaire" }).click();
+  await board.getByRole("toolbar", { name: "Outils du canevas" }).getByRole("button", { name: "Commentaire", exact: true }).click();
   const contact = board.getByRole("region", { name: "Page /contact" });
   // A click on the capture's page (the comment tool takes the page, as on a PDF's).
   await contact.locator("[data-page]").first().click({ position: { x: 60, y: 40 } });

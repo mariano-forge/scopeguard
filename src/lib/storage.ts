@@ -192,8 +192,8 @@ export const fileLinkSeconds = () => Math.max(1, Number(process.env.FILE_LINK_SE
  */
 export const videoLinkSeconds = (duration: number) => Math.max(fileLinkSeconds(), Math.min(duration, 3 * 60 * 60) + 15 * 60);
 
-/** Read-only address of a stored file, valid `seconds`, opened in the page (not downloaded). */
-export async function readableUrl(file: { container: string; path: string; originalName: string | null }, seconds = fileLinkSeconds()) {
+/** Read-only address of a stored file, valid `seconds`: opened in the page, or saved under its name (`attachment`). */
+export async function readableUrl(file: { container: string; path: string; originalName: string | null }, seconds = fileLinkSeconds(), disposition: "inline" | "attachment" = "inline") {
   const { service, credential, ready } = storage();
   await ready;
   const blob = service.getContainerClient(file.container).getBlobClient(file.path);
@@ -205,7 +205,7 @@ export async function readableUrl(file: { container: string; path: string; origi
       permissions: BlobSASPermissions.parse("r"),
       startsOn: new Date(now - 60 * 1000),
       expiresOn: new Date(now + seconds * 1000),
-      contentDisposition: file.originalName ? `inline; filename*=UTF-8''${encodeURIComponent(file.originalName)}` : "inline",
+      contentDisposition: file.originalName ? `${disposition}; filename*=UTF-8''${encodeURIComponent(file.originalName)}` : disposition,
     },
     credential,
   );

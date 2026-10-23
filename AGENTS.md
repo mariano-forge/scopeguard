@@ -146,7 +146,7 @@ Pour les tests :
 - **Base locale copiée de la base en ligne** : elle contient de vraies adresses de clients. Avant tout essai d'invitation, de relance ou de devis en local, `MAIL_TRANSPORT=console` dans `.env.local`, sinon les e-mails partent vraiment. Les fichiers restent sur l'Azure en ligne : `STORAGE_TARGET=remote` pour les voir, mais tout import local y irait aussi.
 - **Tests du site de recette** : le faux site est servi par `route.fulfill` sur une adresse `https://…test`, et sa page reçoit la permission `local-network-access` (`otherSitePerson`) : sans elle, Chrome interdit à une page publique d'appeler Kora sur `localhost`, ce qui n'arrive pas en ligne.
 - **Aide `upload` des tests** : elle déduit le type du fichier de son extension (`.pdf`, `.png`, `.webm`) ; une capture d'un autre type est refusée par le serveur, à raison.
-- **Vidéos de test** (`tests/e2e/fixtures/`) : en WebM, le seul format que le Chromium des tests lit (pas de H.264). `screen-recording.webm` a une seule image clé, comme une capture d'écran : il déclenche l'avertissement « risque de baver ».
+- **Vidéos de test** (`tests/e2e/fixtures/`) : en WebM, le seul format que le Chromium des tests lit (pas de H.264). `screen-recording.webm` a une seule image clé, comme une capture d'écran : il déclenche l'avertissement « Le rendu de cette vidéo risque d’être dégradé par moments ».
 
 ## Compte rendu
 

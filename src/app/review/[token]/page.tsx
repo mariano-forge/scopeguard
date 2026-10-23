@@ -24,7 +24,8 @@ import { AccessGate, ProfileGate } from "./AccessGate";
 import { AuthShell } from "@/components/AuthShell";
 import { GateHeading } from "@/components/GatePieces";
 import { initialsOf, sideOf, type Side } from "@/lib/authors";
-import { outsideStatusOf } from "@/lib/outsideStatus";
+import { outsideStatusOf, outsideStatusView } from "@/lib/outsideStatus";
+import { ExportMenu } from "@/app/(agency)/editor/ExportMenu";
 
 
 
@@ -787,6 +788,21 @@ export default function ClientReviewPage() {
           transformRef={transformRef}
           canMove={(comment) => sideOf(comment) === "client" && requestKind(comment) === "comment"}
           onMovePin={moveComment}
+          toolbarExtra={
+            <ExportMenu
+              title={`${deliverable.name} — ${versionLabel}`}
+              comments={canvasComments}
+              statusOf={(comment) =>
+                comment.decision === "Hors périmètre"
+                  ? outsideStatusView(
+                      outsideStatusOf({ state: proposalStates[comment.id] === "sent" ? "sent" : "none", decision: proposalDecisions[comment.id] ?? "none", adaptation: adaptationRequests[comment.id] }),
+                      "client",
+                    ).label
+                  : null
+              }
+              file={deliverable.fileData}
+            />
+          }
           overlay={
             newerVersion ? (
               <div className="canvas-banner" role="status">

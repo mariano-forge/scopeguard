@@ -12,9 +12,6 @@ import {
   Users,
   FolderPlus,
   ArrowRight,
-  Copy,
-  Download,
-  FileDown,
   Check,
   CircleHelp,
   FilePlus,
@@ -69,14 +66,14 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { AddonInput, Field, FormError, Modal } from "@/components/modal";
-import { MenuButton, type MenuEntry } from "./editor/MenuButton";
+import type { MenuEntry } from "./editor/MenuButton";
 import { RenameDialog } from "./EntitySettings";
 import type { HomeAnalyticsData } from "./HomeAnalytics";
 import type { LivrableGroup } from "./LivrableFilter";
 import { useCurrentUser } from "./CurrentUser";
 import { sideOf, type Side } from "@/lib/authors";
 import { proofHtml } from "./proofDocument";
-import { requestsHtml } from "./requestsDocument";
+import { ExportMenu } from "./editor/ExportMenu";
 import { uploadFile as sendFile, type UploadPlacement } from "@/lib/upload";
 import { agencyAction } from "@/lib/agencyActions";
 import type { ClientRole } from "@/lib/clientRoles";
@@ -1144,18 +1141,11 @@ export function AgencyApp() {
 
   /** "Livrable — V03": title of copied / exported requests. */
   const exportTitle = currentDeliverable ? `${currentDeliverable.name} — V${String(currentDeliverable.version).padStart(2, "0")}` : "Demandes";
-  /** The version's requests as a printable page, saved as PDF from the browser (as the proof). */
-  function exportRequests() {
-    const statusOf = (comment: Comment) =>
-      comment.decision === "Hors périmètre"
-        ? outsideStatusView(outsideStatusOf({ state: proposalStateFor(comment.id), decision: proposalDecisionFor(comment.id), adaptation: adaptationRequests[comment.id] }), "agency").label
-        : null;
-    // A page of its own, which prints itself once loaded (src/app/(agency)/requestsDocument.ts).
-    const page = URL.createObjectURL(new Blob([requestsHtml(exportTitle, activeComments, (comment) => statusOf(comment as Comment))], { type: "text/html" }));
-    if (!window.open(page, "_blank")) toast.error("Votre navigateur a bloqué la fenêtre d’export : autorisez les fenêtres pour Kora, puis réessayez.");
-    // Freed once the page has had time to open.
-    window.setTimeout(() => URL.revokeObjectURL(page), 60_000);
-  }
+  /** An out-of-scope request's status, in the agency's words, for the exported comments (ExportMenu). */
+  const agencyStatusOf = (comment: Comment) =>
+    comment.decision === "Hors périmètre"
+      ? outsideStatusView(outsideStatusOf({ state: proposalStateFor(comment.id), decision: proposalDecisionFor(comment.id), adaptation: adaptationRequests[comment.id] }), "agency").label
+      : null;
 
   function replyTo(commentId: number, message: string) {
     if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
@@ -1166,7 +1156,7 @@ export function AgencyApp() {
   function importVersionFile(file: File) {
     const type = kindFromFile(file);
     if (!type) {
-      setDeliverableError("Format non pris en charge. Choisissez une image, un PDF, une vidéo ou un document.");
+      setDeliverableError("Format non pris en charge. Choisissez une image, un PDF ou une vidéo.");
       return;
     }
     if (file.size > maxBytesOf(type)) {
@@ -2011,22 +2001,12 @@ export function AgencyApp() {
               onMovePin={moveComment}
               toolbarExtra={
                 <>
-                <MenuButton
-                  className="tool-button"
-                  label="Copier ou exporter les demandes"
-                  trigger={<Download />}
-                  side="top"
-                  align="center"
-                  tooltip
-                  entries={[
-                    {
-                      label: "Copier les demandes",
-                      icon: <Copy />,
-                      disabled: activeComments.length === 0,
-                      onSelect: () => void navigator.clipboard?.writeText(threadsToMarkdown(exportTitle, activeComments)),
-                    },
-                    { label: "Exporter en PDF", icon: <FileDown />, disabled: activeComments.length === 0, onSelect: exportRequests },
-                  ]}
+                <ExportMenu
+                  title={exportTitle}
+                  comments={activeComments}
+                  statusOf={(comment) => agencyStatusOf(comment as Comment)}
+                  file={currentDeliverable.fileData}
+                  onCopy={() => void navigator.clipboard?.writeText(threadsToMarkdown(exportTitle, activeComments))}
                 />
                 </>
               }

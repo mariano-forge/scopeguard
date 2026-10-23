@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
-import { Hand, Maximize, MessageCirclePlus, Minus, Plus } from "lucide-react";
+import { Eye, EyeOff, Hand, Maximize, MessageCirclePlus, Minus, Plus } from "lucide-react";
 import { DeliverableContent, type CanvasVideo } from "@/components/DeliverableContent";
 import { SiteBoard, sitePages } from "./SiteBoard";
 import type { DeliverableType } from "@/components/deliverableKinds";
@@ -172,7 +172,26 @@ export function ReviewCanvas({
     toggleSound: () => {
       if (videoRef.current) videoRef.current.muted = !videoRef.current.muted;
     },
+    // The film alone on the screen, with the browser's controls there, their way back beside the sound
+    // (Kora's bar stays on the page).
+    fullScreen: () => {
+      const element = videoRef.current;
+      if (!element?.requestFullscreen) return;
+      element.controls = true;
+      void element.requestFullscreen().catch(() => (element.controls = false));
+    },
   };
+  /** The video fills the screen: a click on it plays or pauses it, it pins nothing. */
+  const fullScreenVideo = () => video && Boolean(videoRef.current) && document.fullscreenElement === videoRef.current;
+  useEffect(() => {
+    if (!video) return;
+    // Back from full screen: the browser's controls go, Kora's bar is the one used.
+    const leave = () => {
+      if (videoRef.current && document.fullscreenElement !== videoRef.current) videoRef.current.controls = false;
+    };
+    document.addEventListener("fullscreenchange", leave);
+    return () => document.removeEventListener("fullscreenchange", leave);
+  }, [video]);
   /** Whether a pin shows on the picture now: around its moment (older comments, without one, always). */
   const inView = (comment: CanvasComment) => !video || comment.timecode === undefined || Math.abs(comment.timecode - playback.time) <= pinWindowSeconds;
   const compose = (next: CanvasComposer) => {
@@ -201,6 +220,17 @@ export function ReviewCanvas({
   const [moving, setMoving] = useState<{ id: number; page: number; x: number; y: number } | null>(null);
   // The pin under the pointer: its drawn zone shows.
   const [pinHover, setPinHover] = useState<number | null>(null);
+  /** The pins put away (the eye of the toolbar, or H), to see the deliverable whole: a film, a busy page. */
+  const [pinsHidden, setPinsHidden] = useState(false);
+  useEffect(() => {
+    function toggle(event: KeyboardEvent) {
+      const target = event.target instanceof Element ? event.target : null;
+      if (event.key.toLowerCase() !== "h" || event.ctrlKey || event.metaKey || event.altKey || target?.closest("input, textarea, select, [contenteditable='true']")) return;
+      setPinsHidden((hidden) => !hidden);
+    }
+    window.addEventListener("keydown", toggle);
+    return () => window.removeEventListener("keydown", toggle);
+  }, []);
   /** Press on a movable pin: past a few pixels it becomes a drag, dropped on release. */
   const pinPress = useRef<{ id: number; x: number; y: number; dragging: boolean } | null>(null);
   useEffect(() => {
@@ -212,6 +242,9 @@ export function ReviewCanvas({
     return () => window.removeEventListener("keydown", cancel);
   }, [moving]);
   const selected = comments.find((comment) => comment.id === selectedId);
+  /** A pin on the picture: in view, unless the pins are put away; the comment open and the pin moving stay. */
+  const shown = (comment: CanvasComment) =>
+    (!pinsHidden && inView(comment)) || (threadOpen && comment.id === selectedId) || moving?.id === comment.id;
   // An opened comment on a video brings the video to its moment, paused: what was pointed at is there.
   const openedTimecode = video && threadOpen ? selected?.timecode : undefined;
   useEffect(() => {
@@ -324,7 +357,7 @@ export function ReviewCanvas({
   }
 
   function pointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    if (moving) return;
+    if (moving || fullScreenVideo()) return;
     pointerStart.current = { x: event.clientX, y: event.clientY };
     moved.current = false;
     setDragging(false);
@@ -413,6 +446,7 @@ export function ReviewCanvas({
 
   /** Capture phase, so the deliverable's own buttons don't swallow the click. */
   function click(event: React.MouseEvent<HTMLDivElement>) {
+    if (fullScreenVideo()) return;
     if (moving) {
       event.preventDefault();
       event.stopPropagation();
@@ -479,7 +513,7 @@ export function ReviewCanvas({
       {composer?.page === page && composer.area && <TargetHighlight box={areaBox(composer.area)} drawing />}
       {threadOpen && !moving && selected?.area && (selected.page ?? 1) === page && <TargetHighlight box={areaBox(selected.area)} drawing />}
       {comments
-        .filter((comment) => comment.area && (comment.page ?? 1) === page && (comment.id === pinHover || comment.id === moving?.id) && inView(comment))
+        .filter((comment) => comment.area && (comment.page ?? 1) === page && (comment.id === pinHover || comment.id === moving?.id) && shown(comment))
         .filter((comment) => moving?.id === comment.id || !(threadOpen && comment.id === selectedId))
         .map((comment) => (
           <TargetHighlight
@@ -493,7 +527,7 @@ export function ReviewCanvas({
         .map((comment) => (moving?.id === comment.id ? { ...comment, page: moving.page, position: { x: moving.x, y: moving.y } } : comment))
         .filter((comment) => (comment.page ?? 1) === page && comment.position)
         .filter((comment) => !comment.closed || (threadOpen && comment.id === selectedId))
-        .filter((comment) => inView(comment) || (threadOpen && comment.id === selectedId) || moving?.id === comment.id)
+        .filter(shown)
         .map((comment) => (
           <CommentPin
             key={comment.id}
@@ -604,6 +638,16 @@ export function ReviewCanvas({
               </button>
             </Hint>
           ))}
+          <Hint label={pinsHidden ? "Afficher les commentaires · H" : "Masquer les commentaires · H"} side="top">
+            <button
+              className={`tool-button ${pinsHidden ? "selected" : ""}`}
+              aria-pressed={pinsHidden}
+              aria-label="Masquer les commentaires"
+              onClick={() => setPinsHidden((hidden) => !hidden)}
+            >
+              {pinsHidden ? <EyeOff /> : <Eye />}
+            </button>
+          </Hint>
         </div>
         <span className="toolbar-divider" aria-hidden="true" />
         <div className="tool-group">
