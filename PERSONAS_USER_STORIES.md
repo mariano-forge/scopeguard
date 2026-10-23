@@ -1093,7 +1093,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 
 **Critères d'acceptation**
 
-- La connexion Figma appartient à l'agence ; elle se fait et se retire par le propriétaire ou un administrateur. Sa clé est chiffrée en base et n'apparaît jamais dans l'état, une page, une adresse ou un journal.
+- Chaque membre de l'agence connecte son propre compte Figma, et le retire quand il veut (décidé le 23 octobre 2026, à la place d'une connexion unique de l'agence : les fichiers sont souvent partagés avec chaque designer, le quota de Figma est par compte, et les comptes connectés désignent l'équipe). Sa clé est chiffrée en base et n'apparaît jamais dans l'état, une page, une adresse ou un journal.
 - Un livrable « Figma » n'accepte qu'une adresse `https://www.figma.com/…` d'un fichier que le compte connecté peut lire ; sinon, un message clair, et rien n'est créé.
 - Un commentaire Figma n'est importé qu'une fois, même relu cent fois (identifiant Figma conservé). Un commentaire résolu dans Figma avant l'import n'est pas importé.
 - Un commentaire importé est un brouillon de l'agence tant qu'il n'est pas qualifié : le client ne le voit pas dans Kora, comme un pin posé sans statut.
@@ -1104,8 +1104,9 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 
 **Étapes de réalisation**, chacune livrable seule, avec ses tests :
 
-1. **Connexion** : OAuth Figma, clé chiffrée (nouvelle table réservée à l'agence), déconnexion, droits du propriétaire et des administrateurs.
+1. **Connexion** : OAuth Figma, clé chiffrée, déconnexion. Fait d'abord pour l'agence (propriétaire et administrateurs), puis **reprise en connexions personnelles** : chaque membre connecte son compte ; il agit avec lui (lire un fichier, créer un livrable ou une tournée) ; un livrable garde le compte de qui l'a créé pour relire ses commentaires, et un collègue le reprend avec son propre compte si ce membre part ou se déconnecte ; les comptes connectés de l'agence sont son équipe dans Figma.
 2. **Livrable « Figma » et import**, en deux temps : (a) création depuis le lien du fichier, pages en revue, tournée liée à une version Figma ; (b) import des commentaires du client et de leurs réponses, source « Figma », « Actualiser », liste « équipe ».
+2c. **Revue des écrans Figma dans Kora** (décidée le 23 octobre 2026, avant l'étape 3) : l'agence colle le lien d'un fichier, Kora détecte ses écrans ; elle coche ceux à faire valider, choisit un format pour tout l'import (image par défaut, PDF en option), puis les dispose dans une grande fenêtre : une grille de vignettes avec leur nom, dans l'ordre de Figma au départ, qu'elle réordonne (glisser, ou au clavier) et dont elle règle le nombre par ligne. « Importer » copie les écrans dans Kora : le client commente dans Kora, sans compte Figma, sur un canevas où les écrans sont posés dans cet ordre, et la preuve garde l'empreinte de chaque écran. Une nouvelle version réimporte les mêmes écrans dans leur état actuel. Deux lectures de catégorie 1 par import (les écrans, puis leurs images en un lot, montrées en vignettes puis copiées). Écarté : le placement libre des écrans (un éditeur à part entière), le format choisi écran par écran.
 3. **Réponse dans Figma et notifications** : réponse à la qualification, webhook `FILE_COMMENT` et relecture.
 4. **Captures** : l'image de l'écran de chaque commentaire dans la version Figma de la tournée, le point visé marqué, demandées par lot à Figma, conservées et reprises dans la preuve.
 5. **Plugin Figma** : un panneau dans Figma qui liste les demandes du fichier et permet de les qualifier, connecté par la session Kora de l'agence, jamais par une clé collée.
