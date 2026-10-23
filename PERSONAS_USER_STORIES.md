@@ -1170,7 +1170,7 @@ Si ce scénario fonctionne avec trois agences pilotes, Kora possède une base pr
 
 ## Suivi de réalisation
 
-État au 22 octobre 2026. ✅ réalisé · 🟡 partiel · ⬜ à faire · ⛔ abandonné.
+État au 23 octobre 2026. ✅ réalisé · 🟡 partiel · ⬜ à faire · ⛔ abandonné.
 
 | Story | État | Remarque |
 | --- | :-: | --- |
@@ -1215,14 +1215,14 @@ Si ce scénario fonctionne avec trois agences pilotes, Kora possède une base pr
 | US-042 confirmer son identité par un code | ✅ | Nom complet demandé à la première vérification |
 | US-043 demander l'accès à une revue | ⛔ | Pour des raisons de sécurité (21 octobre 2026) ; les demandes déjà reçues se règlent encore |
 | US-044 prévisualiser la page client | ✅ | |
-| US-045 périmètre de référence | ⬜ | Prochaine priorité produit |
+| US-045 périmètre de référence | 🟡 | En cours : l'écran du périmètre (designer). Le moteur de suggestion IA est prêt (`src/lib/ai/`, Claude ou aucun), à brancher sur ses lignes de devis |
 | US-046 demande offerte | ⬜ | |
 | US-047 envoi vers Jira ou Notion | ⬜ | |
 | US-048 annoter un site web en ligne | 🟡 | Essai du 17 octobre : barre sur le site, vérification par code dans le panneau, demande posée sur un élément, épingles, « élément introuvable » ; testé dans Chrome. Site en `https` obligatoire. L'agence dans la barre (fenêtre Kora, commentaires, réponses, qualification ; devis et partage refusés depuis le site). Passage vers la revue Kora sans nouveau code, avec l'appel « devis en attente ». Capture de la fenêtre au clic, dans le fil et la preuve. Ligne de script posée une fois (clé fixe du livrable, dernière version partagée), donnée selon l'outil du site, avec la détection en direct de la barre sur le site ; les e-mails d'invitation et de relance mènent au site avec `?kora`. Dans Kora, un tableau de recette : chaque demande en page du canevas, sa capture avec son épingle. À faire : Safari et Firefox à vérifier à la main, mobile |
 | US-049 rôles des personnes invitées | ✅ | Décideur et contributeur, contrôlés par le serveur |
 | US-050 saisir une demande reçue ailleurs | ✅ | Source, date, extrait et capture ; visibles par le client et dans la preuve |
 | US-051 e-mails des devis et des décisions | ✅ | Décideurs côté client, propriétaire et administrateurs côté agence |
-| US-053 comparer deux versions | ✅ | Images et PDF, côté agence et client : frise des versions, côte à côte synchronisé, rideau, demandes de l'ancienne version ; le client ne compare que ses versions partagées |
+| US-053 comparer deux versions | ✅ | Images et PDF, côté agence et client : frise animée des versions, « avant » puis « après » choisis librement, côte à côte synchronisé, rideau, fil en lecture seule des demandes de l'ancienne version ; le client ne compare que ses versions partagées |
 | US-052 commenter un moment d'une vidéo | 🟡 | Épingle au moment et à l'endroit, frise des repères, retour au moment en ouvrant un commentaire ; limite de taille propre aux vidéos ; avertissement à l'import (format illisible, images clés rares). Liens de la durée de la vidéo, renouvelés s'ils expirent ; fichiers de plusieurs Go envoyés par blocs. À faire : capture de l'image, reconversion des captures d'écran, plages de temps |
 
 **Avant les premiers pilotes**, il reste à :
@@ -1230,3 +1230,11 @@ Si ce scénario fonctionne avec trois agences pilotes, Kora possède une base pr
 - décider du bouton « Demander des modifications » côté client (US-010) ;
 - brancher un suivi des erreurs en production et vérifier les sauvegardes de la base ;
 - nettoyer les fichiers envoyés au stockage mais jamais validés.
+
+**Prochaines étapes** (23 octobre 2026), dans l'ordre :
+
+1. **US-045, périmètre et suggestion IA.** Le designer construit l'écran du périmètre (lignes du devis, tours de révision). Ensuite : enregistrer les suggestions dans une table réservée à l'agence, les calculer à l'arrivée de chaque demande, pré-remplir « Qualifier », importer un devis en PDF. À fixer avant : où et sous quelle forme le designer range les lignes du devis ; le fournisseur (API Claude d'Anthropic, ou Azure : Claude dans Foundry, ou OpenAI en Europe, conseillé pour le RGPD) ; une clé d'API pour un essai réel.
+2. **Essai sur une préversion Vercel**, avec le vrai Azure : une vidéo de plusieurs centaines de Mo à 1 Go envoyée par blocs, une vraie vidéo MP4 (aucun avertissement, sauts nets), la capture GNOME (avertissement), la barre détectée sur le site de démo Café Boréal, Safari et Firefox.
+3. **Notes internes** : le designer revient sur le fait de montrer tout le fil d'une demande qualifiée au client. Le README décrit encore l'ancien comportement (notes internes, « Hors scope » visible une fois le devis envoyé), AGENTS.md le nouveau : aligner l'un sur l'autre une fois son retour fait.
+4. **Test instable du designer** : glisser une épingle sur une capture d'un « Lien » (`site-toolbar.spec.ts`) échoue parfois dans la suite complète. Cause probable : `ReviewCanvas.tsx` lit au relâchement un état `moving` pas encore rendu ; le corriger par une référence (`useRef`).
+5. **Propositions en attente d'un oui** : un bouton « Comparer » dans le panneau « Versions », des boutons de zoom dans la comparaison, la surbrillance automatique des différences ; vidéo : capture de l'image au clic, reconversion des captures d'écran, plages de temps ; Jira (US-047) ; la page « Pilotage » (branche locale `feat/dashboard`, jamais poussée).

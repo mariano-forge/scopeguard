@@ -2,7 +2,7 @@
 
 Ce document récapitule les technologies utilisées par Kora (nom de code ScopeGuard), leur rôle et la raison de leur choix. Il complète [README.md](README.md), qui explique comment lancer le projet, et [AZURE_PRODUCTION_TRAJECTORY.md](AZURE_PRODUCTION_TRAJECTORY.md), qui décrit la cible de production.
 
-État au 22 octobre 2026.
+État au 23 octobre 2026.
 
 ## Vue d'ensemble
 
@@ -81,7 +81,7 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 
 | Technologie | Version | Rôle |
 | --- | --- | --- |
-| **Playwright Test** | 1.63 | 166 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`, environ 2 min 15) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier ; 4 fichiers de test à la fois, les tests d'un fichier à la suite. Couvre la connexion, les agences et leurs rôles, chaque geste de l'agence et du client dans l'interface et par l'API (refus compris), l'accès client et ses rôles, les fichiers, la preuve, les relances et les notifications. |
+| **Playwright Test** | 1.63 | 178 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`, environ 2 min 30 à 3 min) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier ; 4 fichiers de test à la fois, les tests d'un fichier à la suite. Couvre la connexion, les agences et leurs rôles, chaque geste de l'agence et du client dans l'interface et par l'API (refus compris), l'accès client et ses rôles, les fichiers, la preuve, les relances et les notifications. |
 | **ESLint** | 9.39 | Analyse du code, avec la configuration de Next.js. |
 | **Prettier** | 3.9 | Mise en forme. |
 
@@ -124,7 +124,8 @@ Les e-mails partent par Resend dès que `RESEND_API_KEY` et `MAIL_FROM` sont ren
 | `src/app/review/[token]/site/`, `src/app/review/site/[key]/` | Le panneau Kora sur le site de recette, ouvert par la barre (`public/kora-toolbar.js`) avec le jeton d'une version ou la clé fixe du livrable. |
 | `src/app/api/` | Les routes API. |
 | `src/db/` | Schéma, lecture de l'état (`state.ts`), actions de l'agence (`agencyActions.ts`, `workspaceActions.ts`) et du client (`reviewActions.ts`, règles dans `reviewAccess.ts`), accès client (`reviewAuth.ts`), droits (`agencyPermissions.ts`), preuve (`proof.ts`). |
-| `src/lib/` | Authentification, sessions, stockage, e-mails, rôles client (`clientRoles.ts`), lecture de l'état et envoi des actions côté navigateur (`stateSync.ts`, `actionRequest.ts`). |
+| `src/app/(agency)/editor/` | Le canevas partagé par l'agence et le client (`ReviewCanvas.tsx`), ses fils et épingles (`CanvasComments.tsx`), le panneau des demandes (`EditorInspector.tsx`), la barre vidéo (`VideoBar.tsx`), le tableau « Lien » (`SiteBoard.tsx`), la comparaison de versions (`VersionCompare.tsx`). |
+| `src/lib/` | Authentification, sessions, stockage, e-mails, rôles client (`clientRoles.ts`), lecture de l'état et envoi des actions côté navigateur (`stateSync.ts`, `actionRequest.ts`), envoi des fichiers (`upload.ts`), vidéo (`timecode.ts`, `videoCheck.ts`), suggestion IA (`ai/`). |
 | `src/proxy.ts` | Sans session : `/` montre la page d'accueil publique, le reste redirige vers `/connexion` (l'ancien « middleware » de Next.js). |
 | `drizzle/` | Migrations SQL, à appliquer avant chaque déploiement qui en ajoute. |
 | `tests/e2e/` | La suite de tests. |
