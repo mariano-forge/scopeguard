@@ -46,6 +46,8 @@ import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialo
 import { LinkVersionDialog } from "./LinkVersionDialog";
 import { FigmaVersionDialog } from "./FigmaVersionDialog";
 import { FigmaAgencyPanel } from "./FigmaAgencyPanel";
+import { ScreensReimportDialog, type ReimportedScreens } from "./ScreensReimportDialog";
+import type { StoredScreen } from "@/lib/figmaScreens";
 import type { FigmaChoice, FigmaRound } from "@/lib/figmaLink";
 import { NoDeciderBanner } from "./NoDeciderBanner";
 import { NewProjectDialog } from "./NewProjectDialog";
@@ -167,6 +169,10 @@ type Deliverable = {
   url?: string;
   /** A « Figma »'s file and round (src/lib/figmaLink.ts). */
   figma?: FigmaRound;
+  /** « Écrans Figma »: the file, its screens copied into Kora and how many per row (src/lib/figmaScreens.ts). */
+  figmaFile?: { fileKey: string; fileName: string };
+  screens?: StoredScreen[];
+  columns?: number;
   /** Optional cover image shown on cards instead of the default template. */
   coverData?: string;
   /** Client decision on this version (each version has its own review). */
@@ -1037,7 +1043,8 @@ export function AgencyApp() {
 
   /** "Nouveau livrable" dialog: a new deliverable (version 1) in the current project. */
   async function createDeliverable(input: NewDeliverable) {
-    const id = Date.now();
+    // « Écrans Figma »: its screens were stored under the id it chose (NewDeliverableDialog).
+    const id = input.id ?? Date.now();
     const projectId = input.projectId ?? selectedProjectId;
     const [fileData, coverData, duration] = await Promise.all([
       input.file ? uploadFile(input.file, { kind: "version", projectId, livrableId: id, version: 1 }) : Promise.resolve(undefined),
@@ -1054,6 +1061,7 @@ export function AgencyApp() {
       ...(fileData ? { fileData } : {}),
       ...(input.url ? { url: input.url } : {}),
       ...(input.figma ? { figma: input.figma } : {}),
+      ...(input.screens ? { screens: input.screens.picked, receipt: input.screens.receipt, columns: input.screens.columns } : {}),
       ...(coverData ? { coverData } : {}),
       ...(duration ? { duration } : {}),
     });
@@ -1064,9 +1072,9 @@ export function AgencyApp() {
     router.push(hrefForRecord(created, [created, ...deliverables]));
   }
 
-  async function confirmImport(mode: ImportMode, source: { file?: File; url?: string; figma?: FigmaChoice; type: DeliverableType } | null = pendingImport) {
+  async function confirmImport(mode: ImportMode, source: { file?: File; url?: string; figma?: FigmaChoice; screens?: ReimportedScreens; type: DeliverableType } | null = pendingImport) {
     if (!source) return;
-    const { file, url, figma, type } = source;
+    const { file, url, figma, screens, type } = source;
     const activeDeliverable = currentDeliverable;
     const sameDeliverableVersions = deliverables.filter(
       (deliverable) => deliverable.projectId === selectedProjectId && deliverable.name === activeDeliverable?.name,
@@ -1082,7 +1090,7 @@ export function AgencyApp() {
       file && type === "Video" ? videoDuration(file) : Promise.resolve(null),
     ]);
     if (file && !fileData) return;
-    const content = { id, type, size: file?.size ?? 0, ...(fileData ? { fileData } : {}), ...(url ? { url } : {}), ...(figma ? { figma } : {}), ...(duration ? { duration } : {}) };
+    const content = { id, type, size: file?.size ?? 0, ...(fileData ? { fileData } : {}), ...(url ? { url } : {}), ...(figma ? { figma } : {}), ...(screens ? { screens: screens.picked, receipt: screens.receipt, columns: screens.columns } : {}), ...(duration ? { duration } : {}) };
     // A new version freezes the earlier ones (src/db/workspaceActions.ts).
     const result =
       mode === "version" && activeDeliverable
@@ -1776,6 +1784,8 @@ export function AgencyApp() {
       ? { onSelect: () => setLinkVersionOpen(true), label: "Nouvelle version du site" }
       : currentDeliverable?.type === "Figma"
         ? { onSelect: () => setLinkVersionOpen(true), label: "Nouvelle tournée Figma" }
+        : currentDeliverable?.type === "Screens"
+          ? { onSelect: () => setLinkVersionOpen(true), label: "Réimporter depuis Figma" }
         : { onFile: importVersionFile, accept: currentDeliverable ? deliverableKinds[currentDeliverable.type]?.accept : undefined };
   // Its versions to compare (US-053): images and PDFs, each with its requests.
   const compareVersions = agencyCompareVersions(viewVersions, comments, reviewLinks);
@@ -1854,6 +1864,23 @@ export function AgencyApp() {
       />
     )}
     {compareOpen && <VersionCompare versions={compareVersions} initialAfter={viewRecord?.version} onClose={() => setCompareOpen(false)} />}
+    {linkVersionOpen && currentDeliverable?.type === "Screens" && currentDeliverable.figmaFile && currentDeliverable.screens && (
+      <ScreensReimportDialog
+        fileKey={currentDeliverable.figmaFile.fileKey}
+        screens={currentDeliverable.screens}
+        columns={currentDeliverable.columns ?? 3}
+        placement={{
+          projectId: currentDeliverable.projectId ?? 1,
+          livrableId: livrableIdOf(currentDeliverable, deliverables),
+          version: Math.max(...deliverables.filter((record) => record.projectId === currentDeliverable.projectId && record.name === currentDeliverable.name).map((record) => record.version), 0) + 1,
+        }}
+        onClose={() => setLinkVersionOpen(false)}
+        onCreate={async (screens) => {
+          await confirmImport("version", { screens, type: "Screens" });
+          setLinkVersionOpen(false);
+        }}
+      />
+    )}
     {linkVersionOpen && currentDeliverable?.type === "Figma" && currentDeliverable.figma && (
       <FigmaVersionDialog
         round={currentDeliverable.figma}

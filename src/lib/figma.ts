@@ -7,6 +7,7 @@ import "server-only";
 import { appUrl } from "./mail";
 import { canSeal } from "./sealed";
 import type { FigmaPage, FigmaVersion } from "./figmaLink";
+import type { FigmaScreen } from "./figmaScreens";
 
 const apiUrl = () => (process.env.FIGMA_API_URL || "https://api.figma.com").replace(/\/$/, "");
 const oauthUrl = () => process.env.FIGMA_OAUTH_URL || "https://www.figma.com/oauth";
@@ -213,4 +214,63 @@ export async function readFigmaComments(accessToken: string, key: string): Promi
       };
     })
     .slice(0, 2000);
+}
+
+const screenTypes = new Set(["FRAME", "COMPONENT", "COMPONENT_SET", "INSTANCE"]);
+
+/**
+ * The file's screens: the frames at the top of each page, and those in a section there (Figma's way of
+ * grouping screens). Figma's tightest read: once when the agency picks screens.
+ */
+export async function readFigmaScreens(accessToken: string, key: string): Promise<{ name: string; screens: FigmaScreen[] } | FigmaRefusal> {
+  const { answer, refusal } = await figmaRead(`/v1/files/${encodeURIComponent(key)}?depth=3`, accessToken);
+  if (refusal) return refusal;
+  const name = text(answer.body?.name);
+  const document = answer.body?.document as Record<string, unknown> | undefined;
+  if (!name || !document) return { unavailable: true };
+  const screens = list(document.children)
+    .filter((page) => page.type === "CANVAS" && text(page.id))
+    .flatMap((page) => {
+      const top = list(page.children);
+      const nodes = top.flatMap((node) => (node.type === "SECTION" ? list(node.children) : [node]));
+      return nodes
+        .filter((node) => screenTypes.has(String(node.type)) && text(node.id))
+        .map((node) => {
+          const box = (node.absoluteBoundingBox ?? {}) as Record<string, unknown>;
+          return {
+            id: String(node.id),
+            name: (text(node.name) ?? "Écran").slice(0, 200),
+            pageId: String(page.id),
+            pageName: (text(page.name) ?? "").slice(0, 200),
+            width: Math.max(1, Math.round(Number(box.width) || 1)),
+            height: Math.max(1, Math.round(Number(box.height) || 1)),
+          };
+        });
+    })
+    .slice(0, 500);
+  return { name: name.slice(0, 200), screens };
+}
+
+/**
+ * Figma draws the screens `ids` (one request for all of them, one read of its tightest tier) and answers an
+ * address for each, valid 30 days, where Kora fetches the picture. A screen Figma could not draw is left out.
+ */
+export async function renderFigmaScreens(accessToken: string, key: string, ids: string[], format: "png" | "pdf", scale: number): Promise<Record<string, string> | FigmaRefusal> {
+  const query = new URLSearchParams({ ids: ids.join(","), format, ...(format === "png" ? { scale: String(scale) } : {}) });
+  const { answer, refusal } = await figmaRead(`/v1/images/${encodeURIComponent(key)}?${query}`, accessToken);
+  if (refusal) return refusal;
+  const images = (answer.body?.images ?? {}) as Record<string, unknown>;
+  return Object.fromEntries(ids.flatMap((id) => (typeof images[id] === "string" && images[id] ? [[id, images[id] as string]] : [])));
+}
+
+/** Where Figma's pictures may be fetched from: its storage, never an address a page could choose. */
+export function figmaRenderUrl(value: string) {
+  try {
+    const url = new URL(value);
+    const stand = process.env.FIGMA_API_URL ? new URL(process.env.FIGMA_API_URL).origin : null;
+    if (stand && url.origin === stand) return url;
+    return url.protocol === "https:" && (url.hostname.endsWith(".amazonaws.com") || url.hostname.endsWith(".figma.com")) ? url : null;
+  } catch {
+    return null;
+  }
 }

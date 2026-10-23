@@ -14,10 +14,11 @@ import { clients, deliverables, projects, storedFiles } from "./schema";
 import { readState } from "./state";
 import { loadFigmaVersions } from "./figmaConnection";
 import type { FigmaImports } from "./figmaImport";
-import { readFigmaReceipt } from "@/lib/figmaReceipt";
+import { readFigmaReceipt, readFigmaScreensReceipt } from "@/lib/figmaReceipt";
+import { maxScreens, readColumns, type StoredScreen } from "@/lib/figmaScreens";
 import type { FigmaFileTree } from "@/lib/figma";
 
-const deliverableTypes = ["PDF", "Image", "Video", "Link", "Doc", "Figma"] as const;
+const deliverableTypes = ["PDF", "Image", "Video", "Link", "Doc", "Figma", "Screens"] as const;
 type DeliverableType = (typeof deliverableTypes)[number];
 /** Items stay restorable this long; then an administrator's page has them purged. */
 export const trashDays = 30;
@@ -26,7 +27,9 @@ export const trashDays = 30;
  * `duration`: a video's length in seconds, read by the agency's browser; its files' links last that long (src/lib/storage.ts).
  * `figma`: a « Figma » round, the pages up for review and the saved version of the file (src/lib/figmaLink.ts).
  */
-type NewFile = { kind: DeliverableType; size: number; fileData?: string; duration?: number; figma?: FigmaChoice };
+type NewFile = { kind: DeliverableType; size: number; fileData?: string; duration?: number; figma?: FigmaChoice; screens?: Screens };
+/** « Écrans Figma »: the screens copied into Kora (src/db/figmaScreens.ts), in their order, and how many per row. */
+type Screens = { picked: { id: string; fileData: string }[]; receipt: string; columns: number };
 
 export type WorkspaceAction =
   | { type: "space.create"; id?: number; name: string; email?: string }
@@ -102,13 +105,34 @@ export function readWorkspaceAction(type: WorkspaceAction["type"], body: Data, p
       // A « Figma » is a file of Figma's, never one of Kora's, with its first round.
       const figma = kind === "Figma" ? readFigmaChoice(body.figma) : undefined;
       if (kind === "Figma" && (!figma || !figmaFileKey(String(body.url ?? "")) || body.fileData !== undefined)) return null;
-      return { type, id: id(body.id), projectId: target, name, kind, size: size(body.size), fileData: fileHref(body.fileData), url: webAddress(body.url), coverData: fileHref(body.coverData), duration, ...(figma ? { figma } : {}) };
+      // « Écrans Figma »: screens of a Figma file, copied into Kora first.
+      const screens = kind === "Screens" ? readScreens(body) : undefined;
+      if (kind === "Screens" && (!screens || !figmaFileKey(String(body.url ?? "")) || body.fileData !== undefined)) return null;
+      return {
+        type,
+        id: id(body.id),
+        projectId: target,
+        name,
+        kind,
+        size: size(body.size),
+        fileData: fileHref(body.fileData),
+        url: webAddress(body.url),
+        coverData: fileHref(body.coverData),
+        duration,
+        ...(figma ? { figma } : {}),
+        ...(screens ? { screens } : {}),
+      };
     }
     case "version.import": {
       const kind = deliverableType(body.type);
       const fileData = fileHref(body.fileData);
       const url = webAddress(body.url);
       if (!deliverableId || !kind) return null;
+      if (kind === "Screens") {
+        // The same screens copied again, in their state now.
+        const screens = readScreens(body);
+        return screens && body.fileData === undefined && body.url === undefined ? { type, livrableId: deliverableId, id: id(body.id), kind, size: 0, screens } : null;
+      }
       if (kind === "Figma") {
         // The same file, another round: its file is the deliverable's.
         const figma = readFigmaChoice(body.figma);
@@ -134,6 +158,20 @@ export function readWorkspaceAction(type: WorkspaceAction["type"], body: Data, p
     case "trash.purge-expired":
       return { type };
   }
+}
+
+/** The screens a page sends: each a Figma screen id and the stored file of its copy; null when malformed. */
+function readScreens(body: Data): Screens | null {
+  const list = body.screens;
+  if (!Array.isArray(list) || !list.length || list.length > maxScreens || typeof body.receipt !== "string" || body.receipt.length > 128_000) return null;
+  const picked = list.map((item) => {
+    const entry = item && typeof item === "object" ? (item as Data) : {};
+    const screenId = typeof entry.id === "string" && /^[\w:;-]{1,100}$/.test(entry.id) ? entry.id : null;
+    const href = fileHref(entry.fileData);
+    return screenId && href ? { id: screenId, fileData: href } : null;
+  });
+  if (picked.some((item) => !item) || new Set(picked.map((item) => item!.id)).size !== picked.length) return null;
+  return { picked: picked as Screens["picked"], receipt: body.receipt, columns: readColumns(body.columns) };
 }
 
 // ——— Turning an action into changes ———
@@ -278,11 +316,13 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
       const undeployed = action.kind === "Link" && action.url ? undeployedSiteProblem(action.url) : null;
       if (undeployed) return refused(undeployed, 400);
       const fileKey = figmaFileKey(action.url ?? "");
-      // The file's pages as the server read them for the dialog, signed: Figma is not asked again.
+      // A « Figma »'s pages as the server read them for the dialog, signed: Figma is not asked again.
       const tree = action.figma && fileKey ? readFigmaReceipt(action.figma.receipt, org, fileKey) : null;
       if (action.figma && !tree) return refused("La lecture du fichier Figma a expiré : rouvrez « Nouveau livrable » et collez le lien à nouveau.", 400);
       const round = action.figma && fileKey && tree ? await figmaRound(db, org, memberId, fileKey, tree, action.figma) : null;
       if (round && !("fileKey" in round)) return round;
+      const copied = action.screens && fileKey ? await storedScreens(db, org, fileKey, action.screens) : null;
+      if (copied && !("screens" in copied)) return copied;
       const files = [action.fileData, action.coverData].filter((href): href is string => Boolean(href));
       if (!(await ownFiles(db, org, files))) return refused("Fichier introuvable.", 404);
       const recordId = await freeId(db, deliverables, org, action.id);
@@ -300,6 +340,7 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
           ...(action.fileData ? { fileData: action.fileData } : {}),
           ...(action.url ? { url: action.kind === "Link" ? withoutToolbarFlag(action.url) : action.url } : {}),
           ...(round ? { url: figmaFileUrl(round.fileKey), figma: round } : {}),
+          ...(copied && fileKey ? { url: figmaFileUrl(fileKey), figmaFile: { fileKey, fileName: copied.fileName }, screens: copied.screens, columns: action.screens!.columns } : {}),
           ...(action.coverData ? { coverData: action.coverData } : {}),
           ...(action.duration ? { duration: action.duration } : {}),
         },
@@ -310,7 +351,13 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
     case "version.import": {
       const versions = versionsOf(state, action.livrableId);
       if (!versions[0]) return refused("Livrable introuvable.", 404);
-      if ((versions[0].type === "Figma") !== (action.kind === "Figma")) return refused("Une version est de la nature de son livrable.", 400);
+      // A « Figma » or « Écrans Figma » stays one: its versions are rounds of the same Figma file.
+      const figmaKinds = new Set(["Figma", "Screens"]);
+      if ((figmaKinds.has(String(versions[0].type)) || figmaKinds.has(action.kind)) && versions[0].type !== action.kind) return refused("Une version est de la nature de son livrable.", 400);
+      const previousFile = versions[0].figmaFile as { fileKey: string } | undefined;
+      const copied = action.screens && previousFile ? await storedScreens(db, org, previousFile.fileKey, action.screens) : null;
+      if (action.screens && !copied) return refused("Livrable introuvable.", 404);
+      if (copied && !("screens" in copied)) return copied;
       const previousRound = versions[0].figma as FigmaRound | undefined;
       // Its pages are the ones read for the deliverable: a round reads only the file's history.
       const round = action.figma && previousRound ? await figmaRound(db, org, memberId, previousRound.fileKey, { name: previousRound.fileName, pages: previousRound.pages }, action.figma) : null;
@@ -335,6 +382,7 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
         ...(action.fileData ? { fileData: action.fileData } : {}),
         ...(action.url ? { url: withoutToolbarFlag(action.url) } : {}),
         ...(round ? { url: figmaFileUrl(round.fileKey), figma: round } : {}),
+        ...(copied && previousFile ? { url: figmaFileUrl(previousFile.fileKey), figmaFile: { fileKey: previousFile.fileKey, fileName: copied.fileName }, screens: copied.screens, columns: action.screens!.columns } : {}),
         ...(action.duration ? { duration: action.duration } : {}),
       };
       // The earlier versions are frozen: the client reviews the new one.
@@ -406,6 +454,31 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
   }
   log.into(changes);
   return { changes };
+}
+
+/**
+ * The screens of an « Écrans Figma » version: copies the agency stored itself (src/db/figmaScreens.ts), all of
+ * one format, named and sized as the server read them (the receipt), never as the page says.
+ */
+async function storedScreens(db: Db, org: string, fileKey: string, screens: Screens): Promise<{ fileName: string; screens: StoredScreen[] } | Refusal> {
+  const read = readFigmaScreensReceipt(screens.receipt, org, fileKey);
+  if (!read) return refused("La lecture du fichier Figma a expiré : rouvrez la fenêtre et choisissez les écrans à nouveau.", 400);
+  const hrefs = screens.picked.map((item) => item.fileData);
+  const files = await db
+    .select({ id: storedFiles.id, mimeType: storedFiles.mimeType })
+    .from(storedFiles)
+    .where(and(eq(storedFiles.organizationId, org), inArray(storedFiles.id, hrefs.map((href) => href.split("/").at(-1)!))));
+  const mimeOf = new Map(files.map((file) => [`/api/files/${file.id}`, file.mimeType]));
+  if (files.length !== new Set(hrefs).size) return refused("Fichier introuvable.", 404);
+  const kinds = new Set(hrefs.map((href) => (mimeOf.get(href) === "application/pdf" ? "pdf" : mimeOf.get(href)?.startsWith("image/") ? "image" : "other")));
+  if (kinds.has("other") || kinds.size > 1) return refused("Les écrans d’un import sont tous des images, ou tous des PDF.", 400);
+  const result: StoredScreen[] = [];
+  for (const item of screens.picked) {
+    const screen = read.screens.find((candidate) => candidate.id === item.id);
+    if (!screen) return refused("Un écran choisi n’est pas dans le fichier Figma lu par Kora.", 400);
+    result.push({ ...screen, fileData: item.fileData, mimeType: mimeOf.get(item.fileData)! });
+  }
+  return { fileName: read.name, screens: result };
 }
 
 /** The round's comments are read with its maker's Figma account (src/db/figmaImport.ts): an agency setting, never the client's. */

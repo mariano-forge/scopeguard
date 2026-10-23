@@ -1,5 +1,5 @@
 /** The kinds of deliverable an agency can submit for review. */
-export type DeliverableType = "PDF" | "Image" | "Video" | "Link" | "Doc" | "Figma";
+export type DeliverableType = "PDF" | "Image" | "Video" | "Link" | "Doc" | "Figma" | "Screens";
 
 /** Tone = a Kora status pair (background + text, all ≥ 7:1), used for the default cover. */
 export type KindTone = "resolved" | "clarify" | "scope" | "low" | "medium";
@@ -20,6 +20,8 @@ export const deliverableKinds: Record<
     hint: "Word, PowerPoint, Excel, texte",
   },
   Figma: { label: "Figma", badge: "FIG", tone: "low", hint: "Lien d’un fichier Figma" },
+  // Screens of a Figma file copied into Kora (src/lib/figmaScreens.ts): chosen under « Figma » in the dialog.
+  Screens: { label: "Écrans Figma", badge: "FIG", tone: "resolved", hint: "Écrans d’un fichier Figma, commentés dans Kora" },
 };
 
 export const deliverableTypes = Object.keys(deliverableKinds) as DeliverableType[];

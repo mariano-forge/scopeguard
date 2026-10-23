@@ -5,6 +5,7 @@
 import "server-only";
 import type { FigmaFileTree } from "./figma";
 import type { FigmaPage } from "./figmaLink";
+import type { FigmaScreen, ScreenFormat } from "./figmaScreens";
 import { readClaim, signClaim } from "./signedClaim";
 
 const scope = "figma-file";
@@ -20,4 +21,34 @@ export function readFigmaReceipt(value: unknown, organizationId: string, fileKey
   const receipt = readClaim<Receipt>(scope, value, maxLength);
   if (!receipt || receipt.organizationId !== organizationId || receipt.fileKey !== fileKey || !Array.isArray(receipt.pages)) return null;
   return { name: receipt.name, pages: receipt.pages };
+}
+
+// The same for a file's screens (step 2c): what the server read of them, then what Figma drew of the ones
+// picked. The drawing's addresses stay inside the ticket: the server fetches only those, never an address a
+// page sends.
+
+const screensScope = "figma-screens";
+const rendersScope = "figma-renders";
+
+type ScreensReceipt = { organizationId: string; fileKey: string; name: string; screens: FigmaScreen[] };
+type RendersTicket = { organizationId: string; fileKey: string; format: ScreenFormat; renders: Record<string, string> };
+
+export const figmaScreensReceipt = (organizationId: string, fileKey: string, name: string, screens: FigmaScreen[]) =>
+  signClaim(screensScope, { organizationId, fileKey, name, screens }, lifetimeMs);
+
+/** The file's screens as the server read them for this agency, in the last 30 minutes; null otherwise. */
+export function readFigmaScreensReceipt(value: unknown, organizationId: string, fileKey: string): { name: string; screens: FigmaScreen[] } | null {
+  const receipt = readClaim<ScreensReceipt>(screensScope, value, maxLength * 2);
+  if (!receipt || receipt.organizationId !== organizationId || receipt.fileKey !== fileKey || !Array.isArray(receipt.screens)) return null;
+  return { name: receipt.name, screens: receipt.screens };
+}
+
+export const figmaRendersTicket = (organizationId: string, fileKey: string, format: ScreenFormat, renders: Record<string, string>) =>
+  signClaim(rendersScope, { organizationId, fileKey, format, renders }, lifetimeMs);
+
+/** What Figma drew for this agency's import, in the last 30 minutes; null otherwise. */
+export function readFigmaRendersTicket(value: unknown, organizationId: string, fileKey: string): { format: ScreenFormat; renders: Record<string, string> } | null {
+  const ticket = readClaim<RendersTicket>(rendersScope, value, maxLength);
+  if (!ticket || ticket.organizationId !== organizationId || ticket.fileKey !== fileKey || !ticket.renders || typeof ticket.renders !== "object") return null;
+  return { format: ticket.format, renders: ticket.renders };
 }

@@ -4,6 +4,7 @@
 
 import type { SiteAnchor } from "@/lib/siteReview";
 import type { FigmaRound } from "@/lib/figmaLink";
+import type { StoredScreen } from "@/lib/figmaScreens";
 import "server-only";
 import { createHash } from "node:crypto";
 import { and, asc, eq, inArray, or } from "drizzle-orm";
@@ -81,6 +82,19 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
             .limit(1)
         )[0] ?? null);
 
+  // « Écrans Figma »: each screen copied into Kora, with its fingerprint (src/db/figmaScreens.ts).
+  const screenList = Array.isArray(version.screens) ? (version.screens as StoredScreen[]) : [];
+  const screenFiles = screenList.length
+    ? await db
+        .select({ id: storedFiles.id, sha256: storedFiles.sha256, size: storedFiles.size })
+        .from(storedFiles)
+        .where(and(eq(storedFiles.organizationId, org), inArray(storedFiles.id, screenList.map((screen) => screen.fileData.split("/").at(-1)!))))
+    : [];
+  const screens = screenList.map((screen) => {
+    const stored = screenFiles.find((candidate) => `/api/files/${candidate.id}` === screen.fileData);
+    return { name: screen.name, page: screen.pageName, mimeType: screen.mimeType, sha256: stored?.sha256 ?? null, size: stored?.size ?? null };
+  });
+
   const requestRows = await db
     .select()
     .from(comments)
@@ -144,6 +158,8 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
       author: text(data.authorEmail) && text(data.authorEmail) !== text(data.author) ? `${text(data.author)} <${text(data.authorEmail)}>` : text(data.author),
       message: text(data.message),
       location: text(data.location),
+      // On « Écrans Figma »: the screen it is pinned on.
+      screen: typeof data.page === "number" && screenList[data.page - 1] ? screenList[data.page - 1].name : null,
       qualification: text(data.decision),
       title: text(data.title),
       createdAt: typeof data.createdAt === "number" ? new Date(data.createdAt).toISOString() : null,
@@ -183,6 +199,7 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
       reviewStatus: record.reviewStatus ?? "pending",
       file: file ? { sha256: file.sha256, mimeType: file.mimeType, size: file.size, originalName: "originalName" in file ? file.originalName : null } : null,
       figma: figmaOf(version),
+      screens: screens.length ? screens : null,
     },
     approval: record.reviewStatus === "approved" ? last("deliverable.approved") : null,
     changesRequested: record.reviewStatus === "changes-requested" ? last("review.changes-requested") : null,

@@ -7,6 +7,7 @@ import { DeliverableContent, type CanvasVideo } from "@/components/DeliverableCo
 import { SiteBoard, sitePages } from "./SiteBoard";
 import { FigmaBoard } from "./FigmaBoard";
 import type { FigmaRound } from "@/lib/figmaLink";
+import type { StoredScreen } from "@/lib/figmaScreens";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { areaFromPin } from "@/lib/pinArea";
 import { CommentPin, TargetHighlight, describeTarget, itemLabel, requestKind, type Area, type TargetBox, type ThreadComment } from "./CanvasComments";
@@ -30,7 +31,7 @@ export type CanvasComposer = {
   timecode?: number;
 };
 type CanvasComment = ThreadComment & { page?: number };
-type ViewedDeliverable = { name: string; type: DeliverableType; fileData?: string; url?: string; coverData?: string; figma?: FigmaRound };
+type ViewedDeliverable = { name: string; type: DeliverableType; fileData?: string; url?: string; coverData?: string; figma?: FigmaRound; screens?: StoredScreen[]; columns?: number };
 
 const areaBox = (area: Area): TargetBox => ({ left: area.x, top: area.y, width: area.w, height: area.h, label: "" });
 
@@ -100,6 +101,8 @@ export function ReviewCanvas({
   // A « Lien » is commented on its staging site, with the toolbar: here, its requests are pages of the
   // canvas (SiteBoard), their pins where they were placed on the site. The agency (`siteSetup`) may pin a
   // comment on a capture too, tied to its request; the client comments on the site only.
+  // A page of the canvas, as a comment's place says it: an « Écrans Figma »'s screen by its name.
+  const pageLabel = (page: number) => (deliverable.type === "Screens" && deliverable.screens?.[page - 1] ? `Écran « ${deliverable.screens[page - 1].name} »` : `Page ${page}`);
   const site = deliverable.type === "Link";
   // A « Figma » is commented in Figma: its requests come without a pin, their thread docked.
   const figma = deliverable.type === "Figma";
@@ -329,7 +332,7 @@ export function ReviewCanvas({
       page: point.page,
       element,
       box: element.matches("[data-page]")
-        ? { left: 0, top: 0, width: 100, height: 100, label: `Page ${point.page}` }
+        ? { left: 0, top: 0, width: 100, height: 100, label: pageLabel(point.page) }
         : boxIn(element, point.bounds, describeTarget(element)),
     });
   }
@@ -414,7 +417,7 @@ export function ReviewCanvas({
         page: drawing.page,
         x: area.x,
         y: area.y,
-        target: `Page ${drawing.page} · Zone sélectionnée`,
+        target: `${pageLabel(drawing.page)} · Zone sélectionnée`,
         area,
       });
     }
@@ -453,7 +456,7 @@ export function ReviewCanvas({
       page: point.page,
       x: point.x,
       y: point.y,
-      target: [`Page ${point.page}`, element ? describeTarget(element) : null].filter(Boolean).join(" · "),
+      target: [pageLabel(point.page), element ? describeTarget(element) : null].filter(Boolean).join(" · "),
     });
   }
 

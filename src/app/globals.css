@@ -10383,3 +10383,33 @@ body.is-resizing {
   padding: 0;
   font-weight: 600;
 }
+
+/* « Écrans Figma » (US-054): the screens copied into Kora, in rows, each with its name above it. */
+.canvas-screens {
+  display: grid;
+  align-items: start;
+  gap: 48px 40px;
+  width: max-content;
+}
+.canvas-screen {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.canvas-screen figcaption {
+  color: var(--graphite);
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.canvas-screen-image {
+  display: block;
+  max-width: none;
+  height: auto;
+}
+.figma-screen-page {
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-2) 0;
+}
+.figma-screen-page + .figma-screen-page {
+  border-top: 1px solid var(--border);
+}

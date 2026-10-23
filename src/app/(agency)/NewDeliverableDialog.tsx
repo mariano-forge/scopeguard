@@ -10,6 +10,9 @@ import { videoWarning, videoWarningText, type VideoWarning } from "@/lib/videoCh
 import { SiteScriptIntro } from "./SiteToolbarSnippet";
 import { FigmaRoundFields, roundChoice, useFigmaFile } from "./FigmaRoundFields";
 import { figmaFileKey, figmaFileUrl, type FigmaChoice } from "@/lib/figmaLink";
+import { FigmaScreensFields, useFigmaScreens } from "./FigmaScreensFields";
+import { copyFigmaScreens } from "@/lib/figmaScreensImport";
+import type { ScreenFormat } from "@/lib/figmaScreens";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DeliverableCover } from "@/components/DeliverableCover";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
@@ -24,7 +27,19 @@ import {
   type DeliverableType,
 } from "@/components/deliverableKinds";
 
-export type NewDeliverable = { name: string; type: DeliverableType; file?: File; url?: string; cover?: File; projectId?: number; figma?: FigmaChoice };
+export type NewDeliverable = {
+  name: string;
+  type: DeliverableType;
+  file?: File;
+  url?: string;
+  cover?: File;
+  projectId?: number;
+  figma?: FigmaChoice;
+  /** The id its files were stored under (« Écrans Figma »: copied before the deliverable is made). */
+  id?: number;
+  /** « Écrans Figma »: the screens copied into Kora, the server's reading of them, how many per row. */
+  screens?: { picked: { id: string; fileData: string }[]; receipt: string; columns: number };
+};
 
 /** "+ Livrable": name, kind, the file (or the address for a link, the file and its round for a Figma) and an optional cover. */
 export function NewDeliverableDialog({
@@ -51,9 +66,18 @@ export function NewDeliverableDialog({
   // Checked in a moment, without reading it whole: `done` once known.
   const [videoCheck, setVideoCheck] = useState<{ file: File; warning: VideoWarning | null; done: boolean } | null>(null);
   const [url, setUrl] = useState("");
-  // A « Figma »: the file named by the link, read by the server; its pages and version chosen here.
+  // A Figma file, named by the link and read by the server. Its client comments either in Kora, on its
+  // screens copied here (« Écrans Figma »), or in Figma (its pages and saved version chosen here).
   const figmaKey = type === "Figma" ? figmaFileKey(url) : null;
-  const figma = useFigmaFile(figmaKey);
+  const [figmaMode, setFigmaMode] = useState<"kora" | "figma">("kora");
+  const inKora = type === "Figma" && figmaMode === "kora";
+  const figma = useFigmaFile(inKora ? null : figmaKey);
+  const screensRead = useFigmaScreens(inKora ? figmaKey : null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [screenFormat, setScreenFormat] = useState<ScreenFormat>("image");
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  // A Figma deliverable is named after its file unless the agency names it.
+  const figmaName = type === "Figma" ? (inKora ? screensRead.file : figma.file)?.name : undefined;
   const [figmaPages, setFigmaPages] = useState<string[] | null>(null);
   const [figmaVersion, setFigmaVersion] = useState<string | null>(null);
   const round = figma.file ? roundChoice(figma.file, figmaPages, figmaVersion) : null;
@@ -97,12 +121,16 @@ export function NewDeliverableDialog({
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     // A « Figma » is named after its file unless the agency names it.
-    const chosenName = name.trim() || (type === "Figma" ? (figma.file?.name ?? "") : "");
+    const figmaRead = inKora ? screensRead : figma;
+    const chosenName = name.trim() || (type === "Figma" ? (figmaRead.file?.name ?? "") : "");
     if (type === "Figma" && !figmaKey) return setError("Collez le lien d’un fichier Figma, par exemple https://www.figma.com/design/…");
-    if (!chosenName) return setError(type === "Figma" ? (figma.error ?? "Le fichier Figma est en cours de lecture.") : "Donnez un nom au livrable.");
+    if (!chosenName) return setError(type === "Figma" ? (figmaRead.error ?? "Le fichier Figma est en cours de lecture.") : "Donnez un nom au livrable.");
     if (existingNames.some((existing) => existing.toLowerCase() === chosenName.toLowerCase()))
       return setError("Un livrable porte déjà ce nom dans ce projet. Pour le mettre à jour, importez une nouvelle version depuis le livrable.");
-    if (type === "Figma") {
+    if (inKora) {
+      if (!screensRead.file) return setError(screensRead.error ?? "Le fichier Figma est en cours de lecture.");
+      if (!picked.length) return setError("Cochez au moins un écran à faire valider.");
+    } else if (type === "Figma") {
       if (!round) return setError(figma.error ?? "Le fichier Figma est en cours de lecture.");
       if (!round.reviewed.length) return setError("Cochez au moins une page en revue.");
       if (!round.version) return setError("Enregistrez dans Figma la version que vous envoyez au client, puis relisez le fichier.");
@@ -119,6 +147,34 @@ export function NewDeliverableDialog({
     if (cover && cover.size > MAX_COVER_BYTES)
       return setError(`Couverture trop lourde : ${formatBytes(cover.size)} (maximum ${formatBytes(MAX_COVER_BYTES)}).`);
     setSaving(true);
+    if (inKora && figmaKey && screensRead.file) {
+      // The screens copied first, under the deliverable's id; the deliverable is made from them.
+      const id = Date.now();
+      try {
+        const copied = await copyFigmaScreens({
+          fileKey: figmaKey,
+          receipt: screensRead.file.receipt,
+          ids: picked,
+          format: screenFormat,
+          placement: { projectId, livrableId: id, version: 1 },
+          onProgress: (done, total) => setProgress({ done, total }),
+        });
+        await onCreate({
+          name: chosenName,
+          type: "Screens",
+          id,
+          url: figmaFileUrl(figmaKey),
+          screens: { picked: copied.map(({ id: screenId, fileData }) => ({ id: screenId, fileData })), receipt: screensRead.file.receipt, columns: 3 },
+          cover: cover ?? undefined,
+          projectId,
+        });
+      } catch (failure) {
+        setError(failure instanceof Error ? failure.message : "Le livrable n’a pas pu être enregistré.");
+        setProgress(null);
+        setSaving(false);
+      }
+      return;
+    }
     try {
       const byAddress = type === "Link" || type === "Figma";
       await onCreate({
@@ -172,7 +228,7 @@ export function NewDeliverableDialog({
           </Field>
         )}
         <Field id="deliverable-name" label="Nom du livrable">
-          <Input id="deliverable-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={type === "Figma" && figma.file ? figma.file.name : "Ex. Maquette page d’accueil"} />
+          <Input id="deliverable-name" autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={figmaName ?? "Ex. Maquette page d’accueil"} />
         </Field>
 
         <fieldset className="kind-picker">
@@ -199,16 +255,39 @@ export function NewDeliverableDialog({
 
         {type === "Figma" ? (
           <>
-            <Field id="deliverable-figma" label="Lien du fichier Figma" hint="Dans Figma : Partager › Copier le lien. Le fichier est lu avec le compte Figma de l’agence.">
+            <Field id="deliverable-figma" label="Lien du fichier Figma" hint="Dans Figma : Partager › Copier le lien. Le fichier est lu avec votre compte Figma.">
               <Input
                 id="deliverable-figma"
                 inputMode="url"
                 value={url}
-                onChange={(event) => (setUrl(event.target.value), setFigmaPages(null), setFigmaVersion(null), setError(""))}
+                onChange={(event) => (setUrl(event.target.value), setFigmaPages(null), setFigmaVersion(null), setPicked([]), setError(""))}
                 placeholder="https://www.figma.com/design/…"
               />
             </Field>
-            {figmaKey && (
+            <fieldset className="figma-pages">
+              <legend>Où votre client commente-t-il ?</legend>
+              <label className="figma-page">
+                <input type="radio" name="figma-mode" checked={figmaMode === "kora"} onChange={() => (setFigmaMode("kora"), setError(""))} />
+                <span>
+                  Dans Kora <span className="text-muted-foreground">· les écrans choisis sont copiés ici, sans compte Figma pour le client</span>
+                </span>
+              </label>
+              <label className="figma-page">
+                <input type="radio" name="figma-mode" checked={figmaMode === "figma"} onChange={() => (setFigmaMode("figma"), setError(""))} />
+                <span>
+                  Dans Figma <span className="text-muted-foreground">· ses commentaires arrivent dans Kora pour les qualifier</span>
+                </span>
+              </label>
+            </fieldset>
+            {figmaKey && inKora && (
+              <FigmaScreensFields {...screensRead} picked={picked} format={screenFormat} onPick={(ids) => (setPicked(ids), setError(""))} onFormat={setScreenFormat} />
+            )}
+            {progress && (
+              <p role="status" className="text-sm text-muted-foreground">
+                Import des écrans : {progress.done} sur {progress.total}…
+              </p>
+            )}
+            {figmaKey && !inKora && (
               <FigmaRoundFields
                 {...figma}
                 reviewed={round?.reviewed ?? []}

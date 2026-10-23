@@ -12,11 +12,14 @@
 // month); "Shallow" one whose pages are read but not its screens. The stand-in counts the reads of each
 // file: GET /__test/reads/<key> (figmaReads).
 //
-// Each page has one screen at its top (figmaStandInFile.frames). A file has no comments until a test gives
-// it some: PUT /__test/comments/<key> with Figma's own shape (setFigmaComments).
+// Each page has one screen at its top (figmaStandInFile.frames); « Accueil » also has a section holding a
+// mobile screen. Figma draws screens (GET /v1/images, counted as a read of the file) at addresses of this
+// stand-in, /__render/<id>.<png|pdf>; for a key starting with "Blank", it draws none. A file has no comments
+// until a test gives it some: PUT /__test/comments/<key> with Figma's own shape (setFigmaComments).
 
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
+import { makePdf } from "./makePdf";
 
 export const figmaStandInPort = 3197;
 export const figmaClient = { id: "figma-test-client", secret: "figma-test-secret" };
@@ -30,6 +33,8 @@ export const figmaStandInFile = {
   ],
   /** The screen at the top of each page: Figma pins a comment on one. */
   frames: { "0:1": { id: "1:1", name: "Accueil desktop" }, "0:2": { id: "2:1", name: "Formulaire" }, "0:3": { id: "3:1", name: "Essai" } } as Record<string, { id: string; name: string }>,
+  /** « Accueil » also groups a mobile screen in a section, as designers often do. */
+  section: { id: "1:4", name: "Mobile", screen: { id: "1:5", name: "Accueil mobile" } },
   versions: [
     { id: "102", label: "V2 envoyée au client", description: "", created_at: "2026-10-22T10:00:00Z", user: { handle: "Mariano" } },
     { id: "101b", label: null, description: null, created_at: "2026-10-21T10:00:00Z", user: { handle: "Mariano" } },
@@ -59,6 +64,8 @@ export async function setFigmaComments(key: string, comments: StandInComment[]) 
   await fetch(`http://127.0.0.1:${figmaStandInPort}/__test/comments/${key}`, { method: "PUT", body: JSON.stringify(comments) });
 }
 
+const tinyPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+
 export function startFigmaStandIn(redirectUri: string): Promise<Server> {
   const commentsOf = new Map<string, StandInComment[]>();
   const used = new Set<string>();
@@ -73,6 +80,12 @@ export function startFigmaStandIn(redirectUri: string): Promise<Server> {
         response.end(JSON.stringify(body));
       };
       const url = new URL(request.url ?? "/", "http://stand-in");
+      // A screen as Figma draws it: a tiny PNG, or a one-page PDF.
+      const render = /^\/__render\/([\w-]+)\.(png|pdf)$/.exec(url.pathname);
+      if (render) {
+        response.writeHead(200, { "content-type": render[2] === "png" ? "image/png" : "application/pdf" });
+        return response.end(render[2] === "png" ? tinyPng : makePdf(`Écran ${render[1]}`));
+      }
       const counted = /^\/__test\/reads\/([A-Za-z0-9]+)$/.exec(url.pathname);
       if (counted) return answer(200, reads.get(counted[1]) ?? { file: 0, versions: 0 });
       const given = /^\/__test\/comments\/([A-Za-z0-9]+)$/.exec(url.pathname);
@@ -112,6 +125,17 @@ export function startFigmaStandIn(redirectUri: string): Promise<Server> {
 
       if (request.method === "GET" && url.pathname === "/v1/me") return answer(200, { id: `fig-${handle}`, handle, email: `${handle}@figma.test`, img_url: "" });
 
+      const drawing = /^\/v1\/images\/([A-Za-z0-9]+)$/.exec(url.pathname);
+      if (request.method === "GET" && drawing) {
+        const key = drawing[1];
+        const count = reads.get(key) ?? { file: 0, versions: 0 };
+        reads.set(key, { ...count, file: count.file + 1 });
+        const format = url.searchParams.get("format") === "pdf" ? "pdf" : "png";
+        const ids = (url.searchParams.get("ids") ?? "").split(",").filter(Boolean);
+        const origin = `http://127.0.0.1:${figmaStandInPort}`;
+        return answer(200, { err: null, images: Object.fromEntries(ids.map((id) => [id, key.startsWith("Blank") ? null : `${origin}/__render/${id.replace(/:/g, "-")}.${format}`])) });
+      }
+
       const thread = /^\/v1\/files\/([A-Za-z0-9]+)\/comments$/.exec(url.pathname);
       if (request.method === "GET" && thread) return answer(200, { comments: commentsOf.get(thread[1]) ?? [] });
 
@@ -127,9 +151,23 @@ export function startFigmaStandIn(redirectUri: string): Promise<Server> {
           return response.end(JSON.stringify({ status: 429, err: "Rate limit exceeded" }));
         }
         if (history) return answer(200, { versions: key.startsWith("Unsaved") ? figmaStandInFile.versions.filter((version) => !version.label) : figmaStandInFile.versions, pagination: {} });
-        // depth=2: each page with its screens, as in the version asked for.
-        const deep = url.searchParams.get("depth") === "2";
-        const pages = figmaStandInFile.pages.map((page) => (deep ? { ...page, children: [{ ...figmaStandInFile.frames[page.id], type: "FRAME" }] } : page));
+        // depth=2: each page with its screens (and the section, without what it holds); depth=3: the section's screen too.
+        const depth = Number(url.searchParams.get("depth")) || 1;
+        const box = (width: number, height: number) => ({ absoluteBoundingBox: { x: 0, y: 0, width, height } });
+        const { section } = figmaStandInFile;
+        const pages = figmaStandInFile.pages.map((page) =>
+          depth < 2
+            ? page
+            : {
+                ...page,
+                children: [
+                  { ...figmaStandInFile.frames[page.id], type: "FRAME", ...box(1440, 900) },
+                  ...(page.id === "0:1"
+                    ? [{ id: section.id, name: section.name, type: "SECTION", ...(depth >= 3 ? { children: [{ ...section.screen, type: "FRAME", ...box(375, 812) }] } : {}) }]
+                    : []),
+                ],
+              },
+        );
         return answer(200, { name: `Maquette ${key}`, document: { id: "0:0", name: "Document", type: "DOCUMENT", children: pages } });
       }
 

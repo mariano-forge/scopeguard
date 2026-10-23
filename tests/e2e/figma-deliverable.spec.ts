@@ -41,6 +41,8 @@ test("the agency makes a « Figma » deliverable from a file's link: pages ticke
   await page.getByRole("button", { name: "Ajouter un livrable", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Nouveau livrable" });
   await dialog.locator(".kind-option").filter({ hasText: /^Figma$/ }).click();
+  // The client comments in Figma (in Kora is the default: figma-screens.spec.ts).
+  await dialog.getByRole("radio", { name: /Dans Figma/ }).check();
   await dialog.getByLabel("Lien du fichier Figma").fill(figmaLink(key));
 
   // Its pages, all ticked; its saved versions, the latest first, without Figma's unnamed autosaves.
@@ -109,6 +111,8 @@ test("the dialog says why a file cannot be used: not shared, Figma's limit reach
   await page.getByRole("button", { name: "Ajouter un livrable", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Nouveau livrable" });
   await dialog.locator(".kind-option").filter({ hasText: /^Figma$/ }).click();
+  // The client comments in Figma (in Kora is the default: figma-screens.spec.ts).
+  await dialog.getByRole("radio", { name: /Dans Figma/ }).check();
   const link = dialog.getByLabel("Lien du fichier Figma");
 
   await link.fill(figmaLink(fileKey("Absent")));
