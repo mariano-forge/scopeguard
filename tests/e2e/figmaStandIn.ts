@@ -14,7 +14,7 @@
 //
 // Each page has one screen at its top (figmaStandInFile.frames); « Accueil » also has a section holding a
 // mobile screen. Figma draws screens (GET /v1/images, counted as a read of the file) at addresses of this
-// stand-in, /__render/<id>.<png|pdf>; for a key starting with "Blank", it draws none. A file has no comments
+// stand-in, /__render/<id>.<png|jpg|svg|pdf>; for a key starting with "Blank", it draws none. A file has no comments
 // until a test gives it some: PUT /__test/comments/<key> with Figma's own shape (setFigmaComments).
 
 import { createHash, randomBytes } from "node:crypto";
@@ -64,6 +64,10 @@ export async function setFigmaComments(key: string, comments: StandInComment[]) 
   await fetch(`http://127.0.0.1:${figmaStandInPort}/__test/comments/${key}`, { method: "PUT", body: JSON.stringify(comments) });
 }
 
+const tinyJpeg = Buffer.from(
+  "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==",
+  "base64",
+);
 const tinyPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 
 export function startFigmaStandIn(redirectUri: string): Promise<Server> {
@@ -80,11 +84,17 @@ export function startFigmaStandIn(redirectUri: string): Promise<Server> {
         response.end(JSON.stringify(body));
       };
       const url = new URL(request.url ?? "/", "http://stand-in");
-      // A screen as Figma draws it: a tiny PNG, or a one-page PDF.
-      const render = /^\/__render\/([\w-]+)\.(png|pdf)$/.exec(url.pathname);
+      // A screen as Figma draws it: a tiny PNG or JPEG, a small SVG, or a one-page PDF.
+      const render = /^\/__render\/([\w-]+)\.(png|jpg|svg|pdf)$/.exec(url.pathname);
       if (render) {
-        response.writeHead(200, { "content-type": render[2] === "png" ? "image/png" : "application/pdf" });
-        return response.end(render[2] === "png" ? tinyPng : makePdf(`Écran ${render[1]}`));
+        const drawn = {
+          png: ["image/png", tinyPng],
+          jpg: ["image/jpeg", tinyJpeg],
+          svg: ["image/svg+xml", Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="#30a8ff"/></svg>`)],
+          pdf: ["application/pdf", makePdf(`Écran ${render[1]}`)],
+        }[render[2] as "png" | "jpg" | "svg" | "pdf"] as [string, Buffer];
+        response.writeHead(200, { "content-type": drawn[0] });
+        return response.end(drawn[1]);
       }
       const counted = /^\/__test\/reads\/([A-Za-z0-9]+)$/.exec(url.pathname);
       if (counted) return answer(200, reads.get(counted[1]) ?? { file: 0, versions: 0 });
@@ -130,7 +140,7 @@ export function startFigmaStandIn(redirectUri: string): Promise<Server> {
         const key = drawing[1];
         const count = reads.get(key) ?? { file: 0, versions: 0 };
         reads.set(key, { ...count, file: count.file + 1 });
-        const format = url.searchParams.get("format") === "pdf" ? "pdf" : "png";
+        const format = ["jpg", "svg", "pdf"].includes(url.searchParams.get("format") ?? "") ? url.searchParams.get("format")! : "png";
         const ids = (url.searchParams.get("ids") ?? "").split(",").filter(Boolean);
         const origin = `http://127.0.0.1:${figmaStandInPort}`;
         return answer(200, { err: null, images: Object.fromEntries(ids.map((id) => [id, key.startsWith("Blank") ? null : `${origin}/__render/${id.replace(/:/g, "-")}.${format}`])) });

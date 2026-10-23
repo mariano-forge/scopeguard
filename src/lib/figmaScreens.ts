@@ -5,10 +5,30 @@
 /** A screen at the top of a page of the file, or in a section there: what the agency picks. */
 export type FigmaScreen = { id: string; name: string; pageId: string; pageName: string; width: number; height: number };
 
-/** One format for a whole import: an image is light and quick; a PDF stays sharp at any zoom. */
-export const screenFormats = { image: "Image", pdf: "PDF" } as const;
+/**
+ * Figma's four export formats, in its order, chosen screen by screen (PNG by default): each one Kora stores
+ * as Figma gives it. PNG and JPEG are drawn at twice the size, so text stays sharp at zoom.
+ */
+export const screenFormats = {
+  png: { label: "PNG", hint: "fidèle, avec la transparence (conseillé)", mimeType: "image/png" },
+  jpg: { label: "JPEG", hint: "plus léger, pour les écrans pleins de photos", mimeType: "image/jpeg" },
+  svg: { label: "SVG", hint: "vectoriel, net à tous les zooms ; lourd avec des photos", mimeType: "image/svg+xml" },
+  pdf: { label: "PDF", hint: "vectoriel, net à tous les zooms", mimeType: "application/pdf" },
+} as const;
 export type ScreenFormat = keyof typeof screenFormats;
-export const readScreenFormat = (value: unknown): ScreenFormat | null => (value === "image" || value === "pdf" ? value : null);
+export const screenFormatList = Object.keys(screenFormats) as ScreenFormat[];
+export const readScreenFormat = (value: unknown): ScreenFormat | null => (typeof value === "string" && Object.hasOwn(screenFormats, value) ? (value as ScreenFormat) : null);
+/** The format a stored screen was copied in (a new version copies it again in the same one). */
+export const formatOfMime = (mimeType: string): ScreenFormat => screenFormatList.find((format) => screenFormats[format].mimeType === mimeType) ?? "png";
+
+/** Each screen picked with its format: known shape, no repeat, at most maxScreens; null when malformed. */
+export function readScreenFormats(value: unknown): Record<string, ScreenFormat> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (!entries.length || entries.length > maxScreens) return null;
+  const read = entries.map(([id, format]) => [screenId(id), readScreenFormat(format)] as const);
+  return read.every(([id, format]) => id && format) ? (Object.fromEntries(read) as Record<string, ScreenFormat>) : null;
+}
 
 /** At most this many screens per import: each is copied into Kora. */
 export const maxScreens = 30;

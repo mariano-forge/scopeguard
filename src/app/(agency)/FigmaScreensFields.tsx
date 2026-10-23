@@ -1,11 +1,30 @@
 "use client";
 
 // « Écrans Figma » in « Nouveau livrable » (US-054, step 2c): the screens of the file, page by page, to tick,
-// and one format for the whole import. The screens are read once per file by the server, with the member's
+// each with its format (Figma's four, PNG by default), set for all at once or one by one. The screens are read once per file by the server, with the member's
 // own Figma account (Figma's tightest read), once the link stops changing.
 
 import { useEffect, useState } from "react";
-import { maxScreens, screenFormats, type FigmaScreen, type ScreenFormat } from "@/lib/figmaScreens";
+import { maxScreens, screenFormatList, screenFormats, type FigmaScreen, type ScreenFormat } from "@/lib/figmaScreens";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+/** A menu of Figma's four formats, each with what it is good for. */
+function FormatSelect({ value, label, onChange, id }: { value: ScreenFormat; label: string; onChange: (format: ScreenFormat) => void; id?: string }) {
+  return (
+    <Select value={value} onValueChange={(next) => onChange(next as ScreenFormat)}>
+      <SelectTrigger id={id} aria-label={label} className="h-8 w-28 shrink-0" size="sm">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {screenFormatList.map((format) => (
+          <SelectItem key={format} value={format} title={screenFormats[format].hint}>
+            {screenFormats[format].label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
 
 export type FigmaScreensRead = { name: string; screens: FigmaScreen[]; receipt: string };
 type Read = { key: string; file: FigmaScreensRead | null; error: string | null };
@@ -36,10 +55,20 @@ export function FigmaScreensFields({
   error,
   loading,
   picked,
-  format,
+  formats,
+  allFormat,
   onPick,
   onFormat,
-}: ReturnType<typeof useFigmaScreens> & { picked: string[]; format: ScreenFormat; onPick: (ids: string[]) => void; onFormat: (format: ScreenFormat) => void }) {
+  onFormatAll,
+}: ReturnType<typeof useFigmaScreens> & {
+  picked: string[];
+  /** The format of each screen picked; one not set takes `allFormat`. */
+  formats: Record<string, ScreenFormat>;
+  allFormat: ScreenFormat;
+  onPick: (ids: string[]) => void;
+  onFormat: (id: string, format: ScreenFormat) => void;
+  onFormatAll: (format: ScreenFormat) => void;
+}) {
   if (loading)
     return (
       <p role="status" className="text-sm text-muted-foreground">
@@ -58,6 +87,8 @@ export function FigmaScreensFields({
   const order = file.screens.map((screen) => screen.id);
   const set = (ids: string[]) => onPick(order.filter((id) => ids.includes(id)));
   const pages = [...new Map(file.screens.map((screen) => [screen.pageId, screen.pageName])).entries()];
+  // Figma draws one format per request: each format chosen is one of its tightest reads.
+  const drawings = new Set(picked.map((id) => formats[id] ?? allFormat)).size;
   return (
     <>
       <fieldset className="figma-pages">
@@ -65,39 +96,44 @@ export function FigmaScreensFields({
         <p className="text-sm text-muted-foreground">
           {picked.length} sur {maxScreens} au plus. Ils seront copiés dans Kora : votre client les commente ici, sans compte Figma.
         </p>
+        <div className="figma-screen-format-all">
+          <label htmlFor="figma-format-all" className="text-sm font-medium">
+            Format de tous les écrans
+          </label>
+          <FormatSelect id="figma-format-all" value={allFormat} label="Format de tous les écrans" onChange={onFormatAll} />
+          <span className="text-sm text-muted-foreground">{screenFormats[allFormat].hint}</span>
+        </div>
+        {drawings > 1 && (
+          <p role="note" className="text-sm text-muted-foreground">
+            Cet import utilisera {drawings} dessins Figma (un par format) : avec une place « lecteur », Figma n’en permet que 20 par mois.
+          </p>
+        )}
         {pages.map(([pageId, pageName]) => {
           const ofPage = file.screens.filter((screen) => screen.pageId === pageId);
           return (
             <div key={pageId} className="figma-screen-page" role="group" aria-label={`Page ${pageName}`}>
               <b>{pageName}</b>
               {ofPage.map((screen) => (
-                <label key={screen.id} className="figma-page">
-                  <input
-                    type="checkbox"
-                    checked={picked.includes(screen.id)}
-                    disabled={!picked.includes(screen.id) && picked.length >= maxScreens}
-                    onChange={(event) => set(event.target.checked ? [...picked, screen.id] : picked.filter((id) => id !== screen.id))}
-                  />
-                  <span>
-                    {screen.name} <span className="text-muted-foreground">· {screen.width} × {screen.height}</span>
-                  </span>
-                </label>
+                <div key={screen.id} className="figma-screen-row">
+                  <label className="figma-page">
+                    <input
+                      type="checkbox"
+                      checked={picked.includes(screen.id)}
+                      disabled={!picked.includes(screen.id) && picked.length >= maxScreens}
+                      onChange={(event) => set(event.target.checked ? [...picked, screen.id] : picked.filter((id) => id !== screen.id))}
+                    />
+                    <span>
+                      {screen.name} <span className="text-muted-foreground">· {screen.width} × {screen.height}</span>
+                    </span>
+                  </label>
+                  {picked.includes(screen.id) && (
+                    <FormatSelect value={formats[screen.id] ?? allFormat} label={`Format de « ${screen.name} »`} onChange={(format) => onFormat(screen.id, format)} />
+                  )}
+                </div>
               ))}
             </div>
           );
         })}
-      </fieldset>
-      <fieldset className="figma-pages">
-        <legend>Format</legend>
-        {(Object.keys(screenFormats) as ScreenFormat[]).map((option) => (
-          <label key={option} className="figma-page">
-            <input type="radio" name="figma-screen-format" checked={format === option} onChange={() => onFormat(option)} />
-            <span>
-              {screenFormats[option]}{" "}
-              <span className="text-muted-foreground">{option === "image" ? "· léger et rapide (conseillé)" : "· net à tous les zooms, plus lourd"}</span>
-            </span>
-          </label>
-        ))}
       </fieldset>
     </>
   );

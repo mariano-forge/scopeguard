@@ -31,7 +31,9 @@ const screensScope = "figma-screens";
 const rendersScope = "figma-renders";
 
 type ScreensReceipt = { organizationId: string; fileKey: string; name: string; screens: FigmaScreen[] };
-type RendersTicket = { organizationId: string; fileKey: string; format: ScreenFormat; renders: Record<string, string> };
+/** Each screen drawn: where Figma put its picture, and the format asked for. */
+type Renders = Record<string, { url: string; format: ScreenFormat }>;
+type RendersTicket = { organizationId: string; fileKey: string; renders: Renders };
 
 export const figmaScreensReceipt = (organizationId: string, fileKey: string, name: string, screens: FigmaScreen[]) =>
   signClaim(screensScope, { organizationId, fileKey, name, screens }, lifetimeMs);
@@ -43,12 +45,11 @@ export function readFigmaScreensReceipt(value: unknown, organizationId: string, 
   return { name: receipt.name, screens: receipt.screens };
 }
 
-export const figmaRendersTicket = (organizationId: string, fileKey: string, format: ScreenFormat, renders: Record<string, string>) =>
-  signClaim(rendersScope, { organizationId, fileKey, format, renders }, lifetimeMs);
+export const figmaRendersTicket = (organizationId: string, fileKey: string, renders: Renders) => signClaim(rendersScope, { organizationId, fileKey, renders }, lifetimeMs);
 
 /** What Figma drew for this agency's import, in the last 30 minutes; null otherwise. */
-export function readFigmaRendersTicket(value: unknown, organizationId: string, fileKey: string): { format: ScreenFormat; renders: Record<string, string> } | null {
+export function readFigmaRendersTicket(value: unknown, organizationId: string, fileKey: string): Renders | null {
   const ticket = readClaim<RendersTicket>(rendersScope, value, maxLength);
   if (!ticket || ticket.organizationId !== organizationId || ticket.fileKey !== fileKey || !ticket.renders || typeof ticket.renders !== "object") return null;
-  return { format: ticket.format, renders: ticket.renders };
+  return ticket.renders;
 }

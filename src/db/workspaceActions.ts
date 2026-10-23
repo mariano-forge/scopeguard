@@ -15,7 +15,7 @@ import { readState } from "./state";
 import { loadFigmaVersions } from "./figmaConnection";
 import type { FigmaImports } from "./figmaImport";
 import { readFigmaReceipt, readFigmaScreensReceipt } from "@/lib/figmaReceipt";
-import { maxScreens, readColumns, type StoredScreen } from "@/lib/figmaScreens";
+import { maxScreens, readColumns, screenFormats, type StoredScreen } from "@/lib/figmaScreens";
 import type { FigmaFileTree } from "@/lib/figma";
 
 const deliverableTypes = ["PDF", "Image", "Video", "Link", "Doc", "Figma", "Screens"] as const;
@@ -457,8 +457,8 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
 }
 
 /**
- * The screens of an « Écrans Figma » version: copies the agency stored itself (src/db/figmaScreens.ts), all of
- * one format, named and sized as the server read them (the receipt), never as the page says.
+ * The screens of an « Écrans Figma » version: copies the agency stored itself (src/db/figmaScreens.ts), each in
+ * one of Figma's formats, named and sized as the server read them (the receipt), never as the page says.
  */
 async function storedScreens(db: Db, org: string, fileKey: string, screens: Screens): Promise<{ fileName: string; screens: StoredScreen[] } | Refusal> {
   const read = readFigmaScreensReceipt(screens.receipt, org, fileKey);
@@ -470,8 +470,9 @@ async function storedScreens(db: Db, org: string, fileKey: string, screens: Scre
     .where(and(eq(storedFiles.organizationId, org), inArray(storedFiles.id, hrefs.map((href) => href.split("/").at(-1)!))));
   const mimeOf = new Map(files.map((file) => [`/api/files/${file.id}`, file.mimeType]));
   if (files.length !== new Set(hrefs).size) return refused("Fichier introuvable.", 404);
-  const kinds = new Set(hrefs.map((href) => (mimeOf.get(href) === "application/pdf" ? "pdf" : mimeOf.get(href)?.startsWith("image/") ? "image" : "other")));
-  if (kinds.has("other") || kinds.size > 1) return refused("Les écrans d’un import sont tous des images, ou tous des PDF.", 400);
+  // One of Figma's four formats each, mixed as the agency chose (src/lib/figmaScreens.ts).
+  const known = new Set(Object.values(screenFormats).map((format) => format.mimeType as string));
+  if (hrefs.some((href) => !known.has(mimeOf.get(href) ?? ""))) return refused("Un écran n’est pas une image ou un PDF copié depuis Figma.", 400);
   const result: StoredScreen[] = [];
   for (const item of screens.picked) {
     const screen = read.screens.find((candidate) => candidate.id === item.id);

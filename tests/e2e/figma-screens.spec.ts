@@ -1,5 +1,5 @@
-// Figma screens reviewed in Kora (US-054, step 2c): the agency picks screens of a Figma file, one format for
-// the import; Kora has Figma draw them in one request and copies each into the agency's storage; the client
+// Figma screens reviewed in Kora (US-054, step 2c): the agency picks screens of a Figma file, each in one of
+// Figma's four formats (PNG by default); Kora has Figma draw them in one request and copies each into the agency's storage; the client
 // comments on them in Kora, without a Figma account. Names and sizes come from the server's own reading of
 // the file, the pictures from Figma's storage only, the files from the agency's own copies. Figma is the run's
 // stand-in (figmaStandIn.ts), which counts its tightest reads.
@@ -30,9 +30,9 @@ const draw = (member: Member, key: string, body: Record<string, unknown>) => cal
 const store = (member: Member, key: string, body: Record<string, unknown>) => call(`${screensApi(key)}/store`, { person: member, body: { projectId: 7, livrableId: 500, version: 1, ...body } });
 
 /** Screens copied through the API, as the dialog does: read, drawn in one request, each one stored. */
-async function copied(member: Member, key: string, ids: string[], format = "image", placement: Record<string, number> = {}) {
+async function copied(member: Member, key: string, ids: string[], format = "png", placement: Record<string, number> = {}) {
   const { receipt } = await readScreens(member, key);
-  const { ticket } = (await draw(member, key, { receipt, ids, format })).json as { ticket: string };
+  const { ticket } = (await draw(member, key, { receipt, formats: Object.fromEntries(ids.map((id) => [id, format])) })).json as { ticket: string };
   const screens = [];
   for (const id of ids) screens.push({ id, fileData: (await store(member, key, { ticket, id, ...placement })).json.fileData as string });
   return { receipt, ticket, screens };
@@ -60,7 +60,16 @@ test("the agency picks Figma screens, page by page; they are copied into Kora an
   await home.getByRole("checkbox", { name: /Accueil mobile/ }).check();
   await home.getByRole("checkbox", { name: /Accueil desktop/ }).check();
   await dialog.getByRole("group", { name: "Page Contact" }).getByRole("checkbox", { name: /Formulaire/ }).check();
-  await expect(dialog.getByRole("group", { name: "Format" }).getByRole("radio", { name: /^Image/ })).toBeChecked();
+  // PNG for all to start with; each screen ticked has its own menu: one in JPEG, one in SVG.
+  await expect(dialog.getByRole("combobox", { name: "Format de tous les écrans" })).toHaveText("PNG");
+  await expect(dialog.getByRole("combobox", { name: /^Format de « / })).toHaveCount(3);
+  await dialog.getByRole("combobox", { name: "Format de « Accueil mobile »" }).click();
+  await expect(page.getByRole("option")).toHaveText(["PNG", "JPEG", "SVG", "PDF"]);
+  await page.getByRole("option", { name: "JPEG" }).click();
+  await dialog.getByRole("combobox", { name: "Format de « Formulaire »" }).click();
+  await page.getByRole("option", { name: "SVG" }).click();
+  // Figma draws one format per request: said, with what it costs.
+  await expect(dialog.getByRole("note")).toContainText("Cet import utilisera 3 dessins Figma");
   await dialog.getByRole("button", { name: "Disposer les écrans" }).click();
 
   // Laid out: thumbnails in Figma's order, whatever order they were ticked in; moved by keyboard and by dragging.
@@ -100,13 +109,15 @@ test("the agency picks Figma screens, page by page; they are copied into Kora an
     columns: 2,
     figmaFile: { fileKey: key, fileName: `Maquette ${key}` },
     screens: [
-      { id: "1:5", name: "Accueil mobile", pageName: "Accueil", width: 375, height: 812, mimeType: "image/png" },
+      { id: "1:5", name: "Accueil mobile", pageName: "Accueil", width: 375, height: 812, mimeType: "image/jpeg" },
       { id: "1:1", name: "Accueil desktop", pageName: "Accueil", width: 1440, height: 900, mimeType: "image/png" },
-      { id: "2:1", name: "Formulaire", pageName: "Contact", width: 1440, height: 900, mimeType: "image/png" },
+      { id: "2:1", name: "Formulaire", pageName: "Contact", width: 1440, height: 900, mimeType: "image/svg+xml" },
     ],
   });
-  // Figma's tightest reads: the screens once, their drawing once.
-  expect((await figmaReads(key)).file).toBe(2);
+  // Figma's tightest reads: the screens once, then one drawing per format.
+  expect((await figmaReads(key)).file).toBe(4);
+  // The SVG screen shows on the canvas, as an image (opened at its address, it would be downloaded).
+  await expect.poll(() => canvas.getByRole("img", { name: "Formulaire" }).evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
 
   // A pin on the second screen (Accueil desktop, moved there): its place names the screen.
   await page.locator("[data-page]").nth(1).click({ position: { x: 60, y: 60 } });
@@ -128,7 +139,9 @@ test("the agency picks Figma screens, page by page; they are copied into Kora an
     [1, "Remplacée", "Accueil mobile, Accueil desktop, Formulaire"],
     [2, "En attente client", "Accueil mobile, Accueil desktop, Formulaire"],
   ]);
-  expect((await figmaReads(key)).file).toBe(4);
+  // Each screen again in its format: the screens read, then three drawings.
+  expect((await figmaReads(key)).file).toBe(8);
+  expect((await records(org))[1].data.screens).toMatchObject([{ mimeType: "image/jpeg" }, { mimeType: "image/png" }, { mimeType: "image/svg+xml" }]);
   expect(errors).toEqual([]);
 });
 
@@ -143,15 +156,15 @@ test("screens come from the server's reading and Figma's storage only, as the ag
 
   const { receipt } = await readScreens(owner, key);
   // Drawing: a reading altered, a screen it does not have, too many, an unknown format; nothing drawn.
-  expect((await draw(owner, key, { receipt: `${receipt}x`, ids: ["1:1"], format: "image" })).json.error).toContain("a expiré");
-  expect((await draw(owner, key, { receipt, ids: ["9:9"], format: "image" })).json.error).toContain("n’est pas dans le fichier Figma");
-  expect((await draw(owner, key, { receipt, ids: Array.from({ length: 31 }, (_, index) => `1:${index}`), format: "image" })).status).toBe(400);
-  expect((await draw(owner, key, { receipt, ids: ["1:1"], format: "gif" })).status).toBe(400);
+  expect((await draw(owner, key, { receipt: `${receipt}x`, formats: { "1:1": "png" } })).json.error).toContain("a expiré");
+  expect((await draw(owner, key, { receipt, formats: { "9:9": "png" } })).json.error).toContain("n’est pas dans le fichier Figma");
+  expect((await draw(owner, key, { receipt, formats: Object.fromEntries(Array.from({ length: 31 }, (_, index) => [`1:${index}`, "png"])) })).status).toBe(400);
+  expect((await draw(owner, key, { receipt, formats: { "1:1": "gif" } })).status).toBe(400);
   const blank = fileKey("Blank");
-  expect((await draw(owner, blank, { receipt: (await readScreens(owner, blank)).receipt, ids: ["1:1"], format: "image" })).status).toBe(502);
+  expect((await draw(owner, blank, { receipt: (await readScreens(owner, blank)).receipt, formats: { "1:1": "png" } })).status).toBe(502);
 
   // Storing: a ticket altered or of another agency, a screen Figma did not draw.
-  const { ticket } = (await draw(owner, key, { receipt, ids: ["1:1", "2:1"], format: "image" })).json as { ticket: string };
+  const { ticket } = (await draw(owner, key, { receipt, formats: { "1:1": "png", "2:1": "png" } })).json as { ticket: string };
   expect((await store(owner, key, { ticket: `${ticket}x`, id: "1:1" })).json.error).toContain("a expiré");
   expect((await store(owner, key, { ticket, id: "3:1" })).status).toBe(404);
   await connectFigma(stranger);
@@ -160,15 +173,17 @@ test("screens come from the server's reading and Figma's storage only, as the ag
   expect(first.mimeType).toBe("image/png");
   const second = (await store(owner, key, { ticket, id: "2:1" })).json.fileData as string;
 
-  // Making the deliverable: its screens as read, its files the agency's own, of one format.
+  // Making the deliverable: its screens as read, its files the agency's own copies from Figma, formats mixed as chosen.
   const pdf = (await copied(owner, key, ["3:1"], "pdf")).screens[0];
   expect((await sql<{ mime_type: string }>("select mime_type from stored_files where id = $1", [pdf.fileData.split("/").at(-1)]))[0].mime_type).toBe("application/pdf");
   const othersFile = (await copied(stranger, key, ["1:1"])).screens[0].fileData;
+  // A file of the agency that is no copy of a screen: a page it uploaded.
+  const page = (await upload(owner, Buffer.from("<!doctype html><p>Page</p>"), "page.html", { kind: "version", projectId: 7, livrableId: 500, version: 1 })).json.href!;
   const refusals: [Record<string, unknown>, number, string?][] = [
     [{ receipt: `${receipt}x`, screens: [{ id: "1:1", fileData: first.fileData }] }, 400, "a expiré"],
     [{ receipt, screens: [{ id: "9:9", fileData: first.fileData }] }, 400, "n’est pas dans le fichier Figma"],
     [{ receipt, screens: [{ id: "1:1", fileData: othersFile }] }, 404],
-    [{ receipt, screens: [{ id: "1:1", fileData: first.fileData }, { id: "3:1", fileData: pdf.fileData }] }, 400, "tous des images, ou tous des PDF"],
+    [{ receipt, screens: [{ id: "1:1", fileData: page }] }, 400, "n’est pas une image ou un PDF copié depuis Figma"],
     [{ receipt, screens: [{ id: "1:1", fileData: first.fileData }, { id: "1:1", fileData: second }] }, 400],
     [{ receipt, screens: [] }, 400],
   ];
@@ -178,6 +193,10 @@ test("screens come from the server's reading and Figma's storage only, as the ag
     if (error) expect(refused.json.error).toContain(error);
   }
   expect(await records(org)).toEqual([]);
+
+  // Formats mixed as chosen: a PNG and a PDF in one deliverable.
+  expect((await createScreens(owner, key, { id: 501, name: "Mélange", receipt, screens: [{ id: "1:1", fileData: first.fileData }, { id: "3:1", fileData: pdf.fileData }] })).status).toBe(200);
+  await sql("delete from deliverables where organization_id = $1", [org]);
 
   // Their names and sizes are the server's reading, never what the page says.
   const made = await createScreens(owner, key, { receipt, screens: [{ id: "2:1", fileData: second, name: "Piraté", width: 1 }, { id: "1:1", fileData: first.fileData }] });
@@ -193,7 +212,7 @@ test("screens come from the server's reading and Figma's storage only, as the ag
 test("a new version copies the screens again; the client sees the shared version's screens, never another's; the proof keeps each one", async ({ browser }) => {
   const { owner, org } = await agency();
   const key = fileKey();
-  const v1 = await copied(owner, key, ["1:1", "1:5"], "image", { livrableId: 500, version: 1 });
+  const v1 = await copied(owner, key, ["1:1", "1:5"], "png", { livrableId: 500, version: 1 });
   expect((await createScreens(owner, key, { receipt: v1.receipt, screens: v1.screens })).status).toBe(200);
   const v2 = await copied(owner, key, ["1:1", "1:5"], "pdf", { livrableId: 500, version: 2 });
   // A version of « Écrans Figma » is screens again: not a file, not another file's screens.

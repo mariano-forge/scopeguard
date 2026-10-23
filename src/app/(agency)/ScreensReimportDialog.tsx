@@ -1,13 +1,13 @@
 "use client";
 
 // « Réimporter depuis Figma » (US-054, step 2c): a new version of « Écrans Figma » copies the same screens again,
-// in the same order, format and layout, in their state in Figma now. The file's screens are read again (a
+// in the same order, formats and layout, in their state in Figma now. The file's screens are read again (a
 // screen deleted in Figma is said, not silently dropped), then drawn and copied as for the first version.
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FormError, Modal } from "@/components/modal";
-import type { StoredScreen } from "@/lib/figmaScreens";
+import { formatOfMime, type StoredScreen } from "@/lib/figmaScreens";
 import { copyFigmaScreens } from "@/lib/figmaScreensImport";
 
 export type ReimportedScreens = { picked: { id: string; fileData: string }[]; receipt: string; columns: number };
@@ -44,8 +44,8 @@ export function ScreensReimportDialog({
       const copied = await copyFigmaScreens({
         fileKey,
         receipt: read.receipt,
-        ids: screens.map((screen) => screen.id),
-        format: screens[0]?.mimeType === "application/pdf" ? "pdf" : "image",
+        // Each screen in the format it was copied in.
+        screens: screens.map((screen) => ({ id: screen.id, format: formatOfMime(screen.mimeType) })),
         placement,
         onProgress: (done, total) => setProgress({ done, total }),
       });

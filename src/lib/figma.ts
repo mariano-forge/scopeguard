@@ -255,8 +255,8 @@ export async function readFigmaScreens(accessToken: string, key: string): Promis
  * Figma draws the screens `ids` (one request for all of them, one read of its tightest tier) and answers an
  * address for each, valid 30 days, where Kora fetches the picture. A screen Figma could not draw is left out.
  */
-export async function renderFigmaScreens(accessToken: string, key: string, ids: string[], format: "png" | "pdf", scale: number): Promise<Record<string, string> | FigmaRefusal> {
-  const query = new URLSearchParams({ ids: ids.join(","), format, ...(format === "png" ? { scale: String(scale) } : {}) });
+export async function renderFigmaScreens(accessToken: string, key: string, ids: string[], format: "png" | "jpg" | "svg" | "pdf", scale: number): Promise<Record<string, string> | FigmaRefusal> {
+  const query = new URLSearchParams({ ids: ids.join(","), format, ...(format === "png" || format === "jpg" ? { scale: String(scale) } : {}) });
   const { answer, refusal } = await figmaRead(`/v1/images/${encodeURIComponent(key)}?${query}`, accessToken);
   if (refusal) return refusal;
   const images = (answer.body?.images ?? {}) as Record<string, unknown>;

@@ -75,7 +75,9 @@ export function NewDeliverableDialog({
   const figma = useFigmaFile(inKora ? null : figmaKey);
   const screensRead = useFigmaScreens(inKora ? figmaKey : null);
   const [picked, setPicked] = useState<string[]>([]);
-  const [screenFormat, setScreenFormat] = useState<ScreenFormat>("image");
+  // PNG for every screen to start with; one changed by hand keeps its own (formats).
+  const [allFormat, setAllFormat] = useState<ScreenFormat>("png");
+  const [formats, setFormats] = useState<Record<string, ScreenFormat>>({});
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   // The screens copied, laid out next (« Disposer les écrans ») before the deliverable is made from them.
   const [laid, setLaid] = useState<{ id: number; screens: LaidScreen[]; receipt: string; name: string } | null>(null);
@@ -158,8 +160,7 @@ export function NewDeliverableDialog({
         const copied = await copyFigmaScreens({
           fileKey: figmaKey,
           receipt: read.receipt,
-          ids: picked,
-          format: screenFormat,
+          screens: picked.map((screenId) => ({ id: screenId, format: formats[screenId] ?? allFormat })),
           placement: { projectId, livrableId: id, version: 1 },
           onProgress: (done, total) => setProgress({ done, total }),
         });
@@ -302,7 +303,15 @@ export function NewDeliverableDialog({
               </label>
             </fieldset>
             {figmaKey && inKora && (
-              <FigmaScreensFields {...screensRead} picked={picked} format={screenFormat} onPick={(ids) => (setPicked(ids), setError(""))} onFormat={setScreenFormat} />
+              <FigmaScreensFields
+                {...screensRead}
+                picked={picked}
+                formats={formats}
+                allFormat={allFormat}
+                onPick={(ids) => (setPicked(ids), setError(""))}
+                onFormat={(screenId, format) => setFormats((current) => ({ ...current, [screenId]: format }))}
+                onFormatAll={(format) => (setAllFormat(format), setFormats({}))}
+              />
             )}
             {progress && (
               <p role="status" className="text-sm text-muted-foreground">
