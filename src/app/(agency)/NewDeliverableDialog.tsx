@@ -9,7 +9,7 @@ import { undeployedSiteProblem, withoutToolbarFlag } from "@/lib/siteReview";
 import { videoWarning, videoWarningText, type VideoWarning } from "@/lib/videoCheck";
 import { SiteScriptIntro } from "./SiteToolbarSnippet";
 import { FigmaRoundFields, roundChoice, useFigmaFile } from "./FigmaRoundFields";
-import { figmaFileKey, figmaFileUrl, type FigmaChoice } from "@/lib/figmaLink";
+import { figmaCommentsOffered, figmaFileKey, figmaFileUrl, type FigmaChoice } from "@/lib/figmaLink";
 import { FigmaScreensFields, useFigmaScreens } from "./FigmaScreensFields";
 import { copyFigmaScreens } from "@/lib/figmaScreensImport";
 import { ScreensLayoutDialog, type LaidScreen } from "./ScreensLayoutDialog";
@@ -287,21 +287,24 @@ export function NewDeliverableDialog({
                 placeholder="https://www.figma.com/design/…"
               />
             </Field>
-            <fieldset className="figma-pages">
-              <legend>Où votre client commente-t-il ?</legend>
-              <label className="figma-page">
-                <input type="radio" name="figma-mode" checked={figmaMode === "kora"} onChange={() => (setFigmaMode("kora"), setError(""))} />
-                <span>
-                  Dans Kora <span className="text-muted-foreground">· les écrans choisis sont copiés ici, sans compte Figma pour le client</span>
-                </span>
-              </label>
-              <label className="figma-page">
-                <input type="radio" name="figma-mode" checked={figmaMode === "figma"} onChange={() => (setFigmaMode("figma"), setError(""))} />
-                <span>
-                  Dans Figma <span className="text-muted-foreground">· ses commentaires arrivent dans Kora pour les qualifier</span>
-                </span>
-              </label>
-            </fieldset>
+            {/* Comments made in Figma: offered again when agencies ask (FIGMA_COMMENTS). */}
+            {figmaCommentsOffered && (
+              <fieldset className="figma-pages">
+                <legend>Où votre client commente-t-il ?</legend>
+                <label className="figma-page">
+                  <input type="radio" name="figma-mode" checked={figmaMode === "kora"} onChange={() => (setFigmaMode("kora"), setError(""))} />
+                  <span>
+                    Dans Kora <span className="text-muted-foreground">· les écrans choisis sont copiés ici, sans compte Figma pour le client</span>
+                  </span>
+                </label>
+                <label className="figma-page">
+                  <input type="radio" name="figma-mode" checked={figmaMode === "figma"} onChange={() => (setFigmaMode("figma"), setError(""))} />
+                  <span>
+                    Dans Figma <span className="text-muted-foreground">· ses commentaires arrivent dans Kora pour les qualifier</span>
+                  </span>
+                </label>
+              </fieldset>
+            )}
             {figmaKey && inKora && (
               <FigmaScreensFields
                 {...screensRead}

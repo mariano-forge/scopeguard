@@ -65,6 +65,8 @@ export default defineConfig({
       TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
       // A file's comments read again after 1 s instead of 15: « Actualiser » right after the opening's import.
       FIGMA_IMPORT_QUIET_SECONDS: "1",
+      // « Dans Figma » offered in « Nouveau livrable », off online: its tests keep it working while it sleeps.
+      FIGMA_COMMENTS: "1",
     },
   },
 });

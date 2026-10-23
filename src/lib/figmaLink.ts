@@ -1,6 +1,14 @@
 // A « Figma » deliverable (US-054): a Figma file, named by the link the agency pastes, reviewed one round
 // at a time. Shared by the pages (the dialogs) and the server (src/db/workspaceActions.ts), which checks it.
 
+/**
+ * Whether « Nouveau livrable » offers « Dans Figma » (the client comments in Figma, Kora imports the comments).
+ * Off unless FIGMA_COMMENTS=1 (decided 24 October 2026): reading comments and each round's screens costs too
+ * many of Figma's reads for personal plans, and soon for agencies; offered again when people ask for it. The
+ * code stays, and a deliverable made that way still works.
+ */
+export const figmaCommentsOffered = process.env.NEXT_PUBLIC_FIGMA_COMMENTS === "1";
+
 /** "https://www.figma.com/design/AbC123…/Maquette?node-id=1-2" -> "AbC123…"; null when it is no Figma file. */
 export function figmaFileKey(value: string): string | null {
   let url: URL;
