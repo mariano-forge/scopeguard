@@ -126,7 +126,7 @@ export function NewDeliverableDialog({
         type,
         file: byAddress ? undefined : (file ?? undefined),
         url: type === "Link" ? withoutToolbarFlag(url.trim()) : figmaKey ? figmaFileUrl(figmaKey) : undefined,
-        figma: figmaKey && round?.version ? { pages: round.reviewed, versionId: round.version.id } : undefined,
+        figma: figmaKey && round?.version && figma.receipt ? { pages: round.reviewed, versionId: round.version.id, receipt: figma.receipt } : undefined,
         cover: cover ?? undefined,
         projectId,
       });

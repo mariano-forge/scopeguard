@@ -31,17 +31,21 @@ export type FigmaRound = {
   version: FigmaVersion;
 };
 
-/** What the dialogs choose and send: the pages up for review and the round's saved version. */
-export type FigmaChoice = { pages: string[]; versionId: string };
+/**
+ * What the dialogs choose and send: the pages up for review and the round's saved version. A new
+ * deliverable adds `receipt`, the server's signed reading of the file's pages (src/lib/figmaReceipt.ts).
+ */
+export type FigmaChoice = { pages: string[]; versionId: string; receipt?: string };
 
 const figmaId = (value: unknown) => (typeof value === "string" && /^[\w:;-]{1,100}$/.test(value) ? value : null);
 
 /** The choice a page sends, or null when it is malformed. */
 export function readFigmaChoice(value: unknown): FigmaChoice | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const { pages, versionId } = value as Record<string, unknown>;
+  const { pages, versionId, receipt } = value as Record<string, unknown>;
   if (!Array.isArray(pages) || !pages.length || pages.length > 200) return null;
+  if (receipt !== undefined && (typeof receipt !== "string" || receipt.length > 64_000)) return null;
   const ids = pages.map(figmaId);
   const version = figmaId(versionId);
-  return version && ids.every(Boolean) ? { pages: [...new Set(ids as string[])], versionId: version } : null;
+  return version && ids.every(Boolean) ? { pages: [...new Set(ids as string[])], versionId: version, ...(typeof receipt === "string" ? { receipt } : {}) } : null;
 }

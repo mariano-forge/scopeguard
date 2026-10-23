@@ -1,7 +1,8 @@
 "use client";
 
 // « Nouvelle tournée Figma » (US-054): a new version of a « Figma » deliverable is a new round of review of
-// the same file, about another version saved in its history. Its pages start from the current round's.
+// the same file, about another version saved in its history. Its pages are those read for the deliverable,
+// ticked as in the current round.
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,8 @@ import type { FigmaChoice, FigmaRound } from "@/lib/figmaLink";
 import { FigmaRoundFields, roundChoice, useFigmaFile } from "./FigmaRoundFields";
 
 export function FigmaVersionDialog({ round, onClose, onCreate }: { round: FigmaRound; onClose: () => void; onCreate: (choice: FigmaChoice) => Promise<void> }) {
-  const figma = useFigmaFile(round.fileKey);
+  // The pages read for the deliverable: a round reads only the file's saved versions.
+  const figma = useFigmaFile(round.fileKey, { name: round.fileName, pages: round.pages });
   const [pages, setPages] = useState<string[] | null>(null);
   const [versionId, setVersionId] = useState<string | null>(null);
   const [error, setError] = useState("");

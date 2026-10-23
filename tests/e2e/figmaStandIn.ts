@@ -7,7 +7,9 @@
 // matching that challenge and only once; anything else is refused, as Figma refuses an unknown code.
 //
 // Files: every key is a file named "Maquette <key>", with three pages and its history (figmaStandInFile).
-// A key starting with "Absent" is a file the account cannot open; "Unsaved" one with no named version.
+// A key starting with "Absent" is a file the account cannot open; "Unsaved" one with no named version;
+// "Limited" one whose pages Figma refuses to read again for days (a View or Collab seat's 20 reads a
+// month). The stand-in counts the reads of each file: GET /__test/reads/<key> (figmaReads).
 
 import { createHash, randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
@@ -29,8 +31,14 @@ export const figmaStandInFile = {
   ],
 };
 
+/** How often Kora's server read a file of the stand-in: its pages (Figma's tightest read) and its history. */
+export async function figmaReads(key: string): Promise<{ file: number; versions: number }> {
+  return (await fetch(`http://127.0.0.1:${figmaStandInPort}/__test/reads/${key}`)).json();
+}
+
 export function startFigmaStandIn(redirectUri: string): Promise<Server> {
   const used = new Set<string>();
+  const reads = new Map<string, { file: number; versions: number }>();
   const accounts = new Map<string, string>();
   const server = createServer((request, response) => {
     let raw = "";
@@ -41,6 +49,8 @@ export function startFigmaStandIn(redirectUri: string): Promise<Server> {
         response.end(JSON.stringify(body));
       };
       const url = new URL(request.url ?? "/", "http://stand-in");
+      const counted = /^\/__test\/reads\/([A-Za-z0-9]+)$/.exec(url.pathname);
+      if (counted) return answer(200, reads.get(counted[1]) ?? { file: 0, versions: 0 });
 
       if (request.method === "POST" && url.pathname === "/v1/oauth/token") {
         const expected = `Basic ${Buffer.from(`${figmaClient.id}:${figmaClient.secret}`).toString("base64")}`;
@@ -76,7 +86,13 @@ export function startFigmaStandIn(redirectUri: string): Promise<Server> {
       const file = /^\/v1\/files\/([A-Za-z0-9]+)(\/versions)?$/.exec(url.pathname);
       if (request.method === "GET" && file) {
         const [, key, history] = file;
+        const count = reads.get(key) ?? { file: 0, versions: 0 };
+        reads.set(key, { file: count.file + (history ? 0 : 1), versions: count.versions + (history ? 1 : 0) });
         if (key.startsWith("Absent")) return answer(404, { status: 404, err: "Not found" });
+        if (key.startsWith("Limited") && !history) {
+          response.writeHead(429, { "content-type": "application/json", "retry-after": "399574", "x-figma-rate-limit-type": "low", "x-figma-plan-tier": "starter" });
+          return response.end(JSON.stringify({ status: 429, err: "Rate limit exceeded" }));
+        }
         if (history) return answer(200, { versions: key.startsWith("Unsaved") ? figmaStandInFile.versions.filter((version) => !version.label) : figmaStandInFile.versions, pagination: {} });
         return answer(200, { name: `Maquette ${key}`, document: { id: "0:0", name: "Document", type: "DOCUMENT", children: figmaStandInFile.pages } });
       }

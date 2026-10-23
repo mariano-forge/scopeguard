@@ -17,9 +17,12 @@ export function signClaim(scope: string, claim: Record<string, unknown>, lifetim
   return `${payload}.${signature(scope, payload)}`;
 }
 
-/** The claim a value holds when it was signed for `scope` and is not expired; null otherwise. */
-export function readClaim<T extends Record<string, unknown>>(scope: string, value: unknown): (T & { expires: number }) | null {
-  if (typeof value !== "string" || value.length > 1000) return null;
+/**
+ * The claim a value holds when it was signed for `scope` and is not expired; null otherwise. `maxLength`:
+ * the longest value read (a ticket is short; a Figma file's pages are longer, src/lib/figmaReceipt.ts).
+ */
+export function readClaim<T extends Record<string, unknown>>(scope: string, value: unknown, maxLength = 1000): (T & { expires: number }) | null {
+  if (typeof value !== "string" || value.length > maxLength) return null;
   const [payload, given] = value.split(".");
   if (!payload || !given) return null;
   const expected = Buffer.from(signature(scope, payload));

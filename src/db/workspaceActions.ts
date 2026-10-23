@@ -12,7 +12,9 @@ import { id, noChanges, text, trail, type Data } from "./actions";
 import type { Db } from "./client";
 import { clients, deliverables, projects, storedFiles } from "./schema";
 import { readState } from "./state";
-import { loadFigmaFile } from "./figmaConnection";
+import { loadFigmaVersions } from "./figmaConnection";
+import { readFigmaReceipt } from "@/lib/figmaReceipt";
+import type { FigmaFileTree } from "@/lib/figma";
 
 const deliverableTypes = ["PDF", "Image", "Video", "Link", "Doc", "Figma"] as const;
 type DeliverableType = (typeof deliverableTypes)[number];
@@ -273,7 +275,11 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
       if (!project(action.projectId)) return refused("Projet introuvable.", 404);
       const undeployed = action.kind === "Link" && action.url ? undeployedSiteProblem(action.url) : null;
       if (undeployed) return refused(undeployed, 400);
-      const round = action.figma ? await figmaRound(db, org, figmaFileKey(action.url ?? "")!, action.figma) : null;
+      const fileKey = figmaFileKey(action.url ?? "");
+      // The file's pages as the server read them for the dialog, signed: Figma is not asked again.
+      const tree = action.figma && fileKey ? readFigmaReceipt(action.figma.receipt, org, fileKey) : null;
+      if (action.figma && !tree) return refused("La lecture du fichier Figma a expiré : rouvrez « Nouveau livrable » et collez le lien à nouveau.", 400);
+      const round = action.figma && fileKey && tree ? await figmaRound(db, org, fileKey, tree, action.figma) : null;
       if (round && !("fileKey" in round)) return round;
       const files = [action.fileData, action.coverData].filter((href): href is string => Boolean(href));
       if (!(await ownFiles(db, org, files))) return refused("Fichier introuvable.", 404);
@@ -303,7 +309,8 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
       if (!versions[0]) return refused("Livrable introuvable.", 404);
       if ((versions[0].type === "Figma") !== (action.kind === "Figma")) return refused("Une version est de la nature de son livrable.", 400);
       const previousRound = versions[0].figma as FigmaRound | undefined;
-      const round = action.figma && previousRound ? await figmaRound(db, org, previousRound.fileKey, action.figma) : null;
+      // Its pages are the ones read for the deliverable: a round reads only the file's history.
+      const round = action.figma && previousRound ? await figmaRound(db, org, previousRound.fileKey, { name: previousRound.fileName, pages: previousRound.pages }, action.figma) : null;
       if (action.figma && !round) return refused("Livrable introuvable.", 404);
       if (round && !("fileKey" in round)) return round;
       if (round && round.version.id === previousRound?.version.id)
@@ -398,18 +405,18 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
 }
 
 /**
- * A round of a « Figma » deliverable, as Figma tells it now: the pages chosen must be the file's, and the
- * version one saved in its history. Nothing the page sends of the file (its name, its pages' names) is kept.
+ * A round of a « Figma » deliverable: the pages chosen must be the file's (`tree`, as the server read it),
+ * and the version one saved in its history, read from Figma now. Nothing the page says of the file (its
+ * name, its pages' names) is kept.
  */
-async function figmaRound(db: Db, org: string, fileKey: string, choice: FigmaChoice): Promise<FigmaRound | Refusal> {
-  const loaded = await loadFigmaFile(db, org, fileKey);
+async function figmaRound(db: Db, org: string, fileKey: string, tree: FigmaFileTree, choice: FigmaChoice): Promise<FigmaRound | Refusal> {
+  const loaded = await loadFigmaVersions(db, org, fileKey);
   if (!loaded.ok) return refused(loaded.error, loaded.status);
-  const { file } = loaded;
-  const version = file.versions.find((candidate) => candidate.id === choice.versionId);
+  const version = loaded.versions.find((candidate) => candidate.id === choice.versionId);
   if (!version) return refused("Cette version n’est pas dans l’historique du fichier Figma. Enregistrez-la dans Figma, puis choisissez-la.", 400);
-  const known = new Set(file.pages.map((page) => page.id));
-  if (!choice.pages.every((page) => known.has(page))) return refused("Une page choisie n’est plus dans le fichier Figma. Rouvrez la fenêtre pour relire ses pages.", 400);
-  return { fileKey, fileName: file.name, pages: file.pages, reviewed: choice.pages, version };
+  const known = new Set(tree.pages.map((page) => page.id));
+  if (!choice.pages.every((page) => known.has(page))) return refused("Une page choisie n’est pas dans le fichier Figma lu par Kora.", 400);
+  return { fileKey, fileName: tree.name, pages: tree.pages, reviewed: choice.pages, version };
 }
 
 /** Files the agency imported itself (src/lib/storage.ts): a page cannot point at another's. */

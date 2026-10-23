@@ -1,11 +1,14 @@
 // A « Figma » deliverable (US-054, step 2a): made from the link of a Figma file, read by the server with the
 // agency's Figma account; the agency ticks the pages up for review and the version saved in Figma that the
-// client is sent. A new version is a new round, about another saved version. Nothing the page says of the
-// file is kept: the server reads it again from Figma. Figma is the run's stand-in (figmaStandIn.ts).
+// client is sent. A new version is a new round, about another saved version. Figma allows a View or Collab
+// seat 20 reads of a file a month: its pages are read once per deliverable, the server trusting its own
+// signed reading (src/lib/figmaReceipt.ts) and nothing else the page says of the file. Figma is the run's
+// stand-in (figmaStandIn.ts), which counts the reads.
 
 import { expect, test } from "@playwright/test";
 import { baseURL } from "../../playwright.config";
 import { addColleague, call, connectFigma, createAgency, figmaLink, newPerson, seedState, signInPage, signUp, sql, unique, verifiedClient, type Member } from "./helpers";
+import { figmaReads } from "./figmaStandIn";
 
 const fileKey = (prefix = "File") => `${prefix}${unique("k").replace(/[^A-Za-z0-9]/g, "")}`;
 const round = (pages: string[], versionId: string) => ({ pages, versionId });
@@ -24,6 +27,8 @@ async function agencyWithProject(name = "Alice Martin") {
 
 const deliverablesOf = (org: string) => sql<{ id: string; version: number; data: Record<string, unknown> }>("select id, version, data from deliverables where organization_id = $1 order by version", [org]);
 const createFigma = (member: Member, body: Record<string, unknown>) => call("/api/deliverables", { person: member, body: { projectId: 7, name: "Maquette", type: "Figma", size: 0, ...body } });
+/** The server's signed reading of a file's pages, as « Nouveau livrable » gets it. */
+const receiptFor = async (member: Member, key: string) => (await call(`/api/integrations/figma/files/${key}`, { person: member })).json.receipt as string;
 
 test("the agency makes a « Figma » deliverable from a file's link: pages ticked, a saved version, then a new round", async ({ browser }) => {
   const { owner, org } = await agencyWithProject();
@@ -58,6 +63,8 @@ test("the agency makes a « Figma » deliverable from a file's link: pages ticke
   await expect(board).toContainText("Accueil, Contact");
   await expect(board.getByRole("link", { name: "Ouvrir dans Figma" })).toHaveAttribute("href", `https://www.figma.com/design/${key}`);
   await expect(board).toContainText("Aucune demande de Figma pour l’instant.");
+  // The file's pages read once, by the dialog: the creation trusted that reading.
+  expect((await figmaReads(key)).file).toBe(1);
   const [first] = await deliverablesOf(org);
   expect(first.data).toMatchObject({
     type: "Figma",
@@ -87,10 +94,12 @@ test("the agency makes a « Figma » deliverable from a file's link: pages ticke
     [2, "En attente client", "102"],
   ]);
   await expect(page.getByRole("region", { name: "Tableau Figma" })).toContainText("« V2 envoyée au client »");
+  // A round reads only the file's history.
+  expect((await figmaReads(key)).file).toBe(1);
   expect(errors).toEqual([]);
 });
 
-test("the dialog says why a file cannot be used: not shared with the account, no saved version, not a Figma link", async ({ browser }) => {
+test("the dialog says why a file cannot be used: not shared, Figma's limit reached, no saved version, not a Figma link", async ({ browser }) => {
   const { owner, org } = await agencyWithProject();
   await connectFigma(owner);
   const { page, errors } = await newPerson(browser);
@@ -103,9 +112,16 @@ test("the dialog says why a file cannot be used: not shared with the account, no
 
   await link.fill(figmaLink(fileKey("Absent")));
   await expect(dialog.getByRole("alert")).toContainText("Ce fichier n’est pas accessible au compte Figma connecté");
-  await link.fill(figmaLink(fileKey("Unsaved")));
+  // Figma's limit on reading files, said as it is, with until when.
+  await link.fill(figmaLink(fileKey("Limited")));
+  await expect(dialog.getByRole("alert")).toContainText("Figma limite les lectures de fichiers du compte connecté jusqu’au");
+  // No saved version yet: « Relire le fichier » reads the history again, never the pages.
+  const unsaved = fileKey("Unsaved");
+  await link.fill(figmaLink(unsaved));
   await expect(dialog.getByRole("note")).toContainText("Aucune version enregistrée dans ce fichier");
-  await expect(dialog.getByRole("button", { name: "Relire le fichier" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Relire le fichier" }).click();
+  await expect(dialog.getByRole("note")).toContainText("Aucune version enregistrée dans ce fichier");
+  await expect.poll(() => figmaReads(unsaved)).toEqual({ file: 1, versions: 2 });
   await dialog.getByRole("button", { name: "Créer le livrable" }).click();
   await expect(dialog.getByRole("alert")).toContainText("Enregistrez dans Figma la version");
   await link.fill("https://www.example.com/design/Abcdefghijkl");
@@ -115,38 +131,52 @@ test("the dialog says why a file cannot be used: not shared with the account, no
   expect(errors).toEqual([]);
 });
 
-test("the server reads the file again from Figma: anything else is refused, and nothing is made", async () => {
+test("the server trusts only its own reading of the file: anything else is refused, and nothing is made", async () => {
   const { owner, org } = await agencyWithProject();
   const key = fileKey();
 
   // Not connected to Figma: said, with how to connect.
-  const unconnected = await createFigma(owner, { url: figmaLink(key), figma: round(["0:1"], "101") });
+  const unconnected = await call(`/api/integrations/figma/files/${key}`, { person: owner });
   expect(unconnected.status).toBe(409);
-  expect(unconnected.json.error).toContain("Figma n’est pas connecté");
-  expect((await call(`/api/integrations/figma/files/${key}`, { person: owner })).json.code).toBe("FIGMA_NOT_CONNECTED");
+  expect(unconnected.json).toMatchObject({ code: "FIGMA_NOT_CONNECTED", error: expect.stringContaining("Figma n’est pas connecté") });
 
   await connectFigma(owner);
+  const receipt = await receiptFor(owner, key);
+  // Another agency's reading of the same file, or a reading altered: not this agency's.
+  const other = await agencyWithProject("Oscar Autre");
+  await connectFigma(other.owner);
+  const othersReceipt = await receiptFor(other.owner, key);
+  const otherFile = fileKey();
   const refusals: [Record<string, unknown>, number, string?][] = [
-    [{ url: "https://www.example.com/design/Abcdefghijkl", figma: round(["0:1"], "101") }, 400],
+    [{ url: "https://www.example.com/design/Abcdefghijkl", figma: { ...round(["0:1"], "101"), receipt } }, 400],
     [{ url: figmaLink(key) }, 400],
-    [{ url: figmaLink(key), figma: round(["0:1"], "101"), fileData: "/api/files/00000000-0000-4000-8000-000000000000" }, 400],
-    [{ url: figmaLink(key), figma: round(["9:9"], "101") }, 400, "Une page choisie n’est plus dans le fichier Figma"],
-    // An unnamed autosave, or a version the file does not have.
-    [{ url: figmaLink(key), figma: round(["0:1"], "101b") }, 400, "n’est pas dans l’historique du fichier Figma"],
-    [{ url: figmaLink(key), figma: round(["0:1"], "999") }, 400, "n’est pas dans l’historique du fichier Figma"],
-    [{ url: figmaLink(fileKey("Absent")), figma: round(["0:1"], "101") }, 404, "n’est pas accessible au compte Figma connecté"],
+    [{ url: figmaLink(key), figma: { ...round(["0:1"], "101"), receipt }, fileData: "/api/files/00000000-0000-4000-8000-000000000000" }, 400],
+    [{ url: figmaLink(key), figma: round(["0:1"], "101") }, 400, "La lecture du fichier Figma a expiré"],
+    [{ url: figmaLink(key), figma: { ...round(["0:1"], "101"), receipt: `${receipt}x` } }, 400, "La lecture du fichier Figma a expiré"],
+    [{ url: figmaLink(key), figma: { ...round(["0:1"], "101"), receipt: othersReceipt } }, 400, "La lecture du fichier Figma a expiré"],
+    [{ url: figmaLink(otherFile), figma: { ...round(["0:1"], "101"), receipt } }, 400, "La lecture du fichier Figma a expiré"],
+    [{ url: figmaLink(key), figma: { ...round(["9:9"], "101"), receipt } }, 400, "Une page choisie n’est pas dans le fichier Figma"],
+    // An unnamed autosave, or a version the file does not have (its history is read from Figma again).
+    [{ url: figmaLink(key), figma: { ...round(["0:1"], "101b"), receipt } }, 400, "n’est pas dans l’historique du fichier Figma"],
+    [{ url: figmaLink(key), figma: { ...round(["0:1"], "999"), receipt } }, 400, "n’est pas dans l’historique du fichier Figma"],
   ];
   for (const [body, status, error] of refusals) {
     const refused = await createFigma(owner, body);
-    expect(refused.status, JSON.stringify(body)).toBe(status);
+    expect(refused.status, JSON.stringify(body).slice(0, 200)).toBe(status);
     if (error) expect(refused.json.error).toContain(error);
   }
   expect(await deliverablesOf(org)).toEqual([]);
   expect((await call("/api/integrations/figma/files/pas-un-fichier", { person: owner })).status).toBe(400);
+  expect((await call(`/api/integrations/figma/files/${fileKey("Absent")}`, { person: owner })).json.code).toBe("FIGMA_FILE_MISSING");
+  const limited = await call(`/api/integrations/figma/files/${fileKey("Limited")}`, { person: owner });
+  expect(limited.status).toBe(429);
+  expect(limited.json.code).toBe("FIGMA_RATE_LIMITED");
+  // The pages were read once for this agency; refusals and creations read only the history.
+  expect((await figmaReads(key)).file).toBe(2);
 
-  // What the page says of the file is not kept: its name and pages come from Figma. A member makes one too.
+  // What the page says of the file is not kept: its name and pages are those the server read. A member makes one too.
   const member = await addColleague(owner, "Bruno Petit", "member");
-  const made = await createFigma(member, { url: figmaLink(key), figma: { ...round(["0:2", "0:2"], "101"), fileName: "Piraté", pages: ["0:2"] } });
+  const made = await createFigma(member, { url: figmaLink(key), figma: { ...round(["0:2", "0:2"], "101"), receipt, fileName: "Piraté", pages: ["0:2"] } });
   expect(made.status).toBe(200);
   const [record] = await deliverablesOf(org);
   expect(record.data.figma).toMatchObject({ fileName: `Maquette ${key}`, reviewed: ["0:2"], pages: [{ id: "0:1", name: "Accueil" }, { id: "0:2", name: "Contact" }, { id: "0:3", name: "Brouillons" }] });
@@ -159,8 +189,11 @@ test("the server reads the file again from Figma: anything else is refused, and 
   expect((await call(`/api/deliverables/${deliverableId}/versions`, { person: owner, body: { type: "PDF", size: 1, fileData: "/api/files/00000000-0000-4000-8000-000000000000" } })).status).toBe(400);
   await seedState(owner, { lists: { deliverables: { upsert: [{ id: 99, projectId: 7, name: "Cahier", type: "PDF", version: 1, status: "En attente client", importedAt: "x", locked: false, size: 1 }], remove: [] } } });
   expect((await nextRound({ figma: round(["0:1"], "102") }, 99)).status).toBe(400);
+  // A round ticks among the pages read for the deliverable.
+  expect((await nextRound({ figma: round(["9:9"], "102") })).json.error).toContain("Une page choisie n’est pas dans le fichier Figma");
   const second = await nextRound({ figma: round(["0:1"], "102") });
   expect(second.status).toBe(200);
+  expect((await figmaReads(key)).file).toBe(2);
   expect((await deliverablesOf(org)).filter((row) => row.data.type === "Figma").map((row) => row.version)).toEqual([1, 2]);
 
   // The proof of a round names the file, the version saved in Figma that was reviewed, and its pages.
@@ -196,7 +229,7 @@ test("the client is told to comment in Figma, and sees the file, the round and i
   const { owner } = await agencyWithProject();
   await connectFigma(owner);
   const key = fileKey();
-  const made = await createFigma(owner, { url: figmaLink(key), figma: round(["0:1"], "102") });
+  const made = await createFigma(owner, { url: figmaLink(key), figma: { ...round(["0:1"], "102"), receipt: await receiptFor(owner, key) } });
   const deliverableId = made.json.id as number;
   const token = unique("tok-figma");
   const linkKey = `${deliverableId}:1`;

@@ -3,7 +3,8 @@
 
 import "server-only";
 import { eq } from "drizzle-orm";
-import { readFigmaFile, refreshFigmaToken, type FigmaFile, type FigmaTokens, type FigmaUser } from "@/lib/figma";
+import { readFigmaPages, readFigmaVersions, refreshFigmaToken, type FigmaFileTree, type FigmaRefusal, type FigmaTokens, type FigmaUser } from "@/lib/figma";
+import type { FigmaVersion } from "@/lib/figmaLink";
 import { seal, unseal } from "@/lib/sealed";
 import type { Db } from "./client";
 import { users } from "./auth-schema";
@@ -65,16 +66,47 @@ export async function figmaAccessToken(db: Db, organizationId: string): Promise<
   return renewed.accessToken;
 }
 
-export type FigmaFileResult = { ok: true; file: FigmaFile } | { ok: false; status: number; error: string; code: string };
+type Refused = { ok: false; status: number; error: string; code: string };
 
-/** A Figma file as the agency's connected account sees it, or why it cannot be read. */
-export async function loadFigmaFile(db: Db, organizationId: string, fileKey: string): Promise<FigmaFileResult> {
-  const token = await figmaAccessToken(db, organizationId);
-  if (!token)
-    return { ok: false, status: 409, code: "FIGMA_NOT_CONNECTED", error: "Figma n’est pas connecté à l’agence : le propriétaire ou un administrateur le connecte dans « Paramètres de l’agence »." };
-  const file = await readFigmaFile(token, fileKey);
-  if (file === "missing")
+const notConnected: Refused = {
+  ok: false,
+  status: 409,
+  code: "FIGMA_NOT_CONNECTED",
+  error: "Figma n’est pas connecté à l’agence : le propriétaire ou un administrateur le connecte dans « Paramètres de l’agence ».",
+};
+
+const until = (date: Date) => date.toLocaleString("fr-FR", { day: "numeric", month: "long", hour: "numeric", minute: "2-digit", timeZone: "Europe/Paris" });
+
+/** What the agency is told when Figma refuses (never a 403: the page would take it for a lost session). */
+function refused(refusal: FigmaRefusal): Refused {
+  if ("missing" in refusal)
     return { ok: false, status: 404, code: "FIGMA_FILE_MISSING", error: "Ce fichier n’est pas accessible au compte Figma connecté. Vérifiez le lien, ou partagez le fichier avec ce compte." };
-  if (!file) return { ok: false, status: 502, code: "FIGMA_UNAVAILABLE", error: "Figma ne répond pas pour l’instant. Réessayez dans un moment." };
-  return { ok: true, file };
+  if ("limitedUntil" in refusal)
+    return {
+      ok: false,
+      status: 429,
+      code: "FIGMA_RATE_LIMITED",
+      error: `Figma limite les lectures de fichiers du compte connecté jusqu’au ${until(refusal.limitedUntil)}. Un compte Figma avec une place d’éditeur (Full ou Dev) n’a presque pas cette limite.`,
+    };
+  return { ok: false, status: 502, code: "FIGMA_UNAVAILABLE", error: "Figma ne répond pas pour l’instant. Réessayez dans un moment." };
+}
+
+const isRefusal = (value: object): value is FigmaRefusal => "missing" in value || "limitedUntil" in value || "unavailable" in value;
+
+/** The file's name and pages (Figma's tightest read: once per deliverable), with its saved versions. */
+export async function loadFigmaFile(db: Db, organizationId: string, fileKey: string): Promise<{ ok: true; tree: FigmaFileTree; versions: FigmaVersion[] } | Refused> {
+  const token = await figmaAccessToken(db, organizationId);
+  if (!token) return notConnected;
+  const [tree, versions] = await Promise.all([readFigmaPages(token, fileKey), readFigmaVersions(token, fileKey)]);
+  if (isRefusal(tree)) return refused(tree);
+  if (!Array.isArray(versions)) return refused(versions);
+  return { ok: true, tree, versions };
+}
+
+/** The file's saved versions only: what « Relire le fichier » and a new round read. */
+export async function loadFigmaVersions(db: Db, organizationId: string, fileKey: string): Promise<{ ok: true; versions: FigmaVersion[] } | Refused> {
+  const token = await figmaAccessToken(db, organizationId);
+  if (!token) return notConnected;
+  const versions = await readFigmaVersions(token, fileKey);
+  return Array.isArray(versions) ? { ok: true, versions } : refused(versions);
 }

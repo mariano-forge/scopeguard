@@ -12,29 +12,69 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { FigmaPage, FigmaVersion } from "@/lib/figmaLink";
 
 export type FigmaFileInfo = { name: string; pages: FigmaPage[]; versions: FigmaVersion[] };
-type Read = { key: string; attempt: number; file: FigmaFileInfo | null; error: string | null };
+type Tree = { name: string; pages: FigmaPage[] };
+type TreeRead = { key: string; tree: (Tree & { receipt: string }) | null; error: string | null };
+type HistoryRead = { key: string; attempt: number; versions: FigmaVersion[] | null; error: string | null };
 
-/** The file named by `key`, read again on `reload`; null while there is none to read, or it is being read. */
-export function useFigmaFile(key: string | null) {
-  const [read, setRead] = useState<Read | null>(null);
+const failed = "Le fichier Figma n’a pas pu être lu. Réessayez.";
+async function getJson<T>(url: string) {
+  const response = await fetch(url, { cache: "no-store" }).catch(() => null);
+  const body = (await response?.json().catch(() => null)) as (T & { error?: string }) | null;
+  return response?.ok && body ? { body, error: null } : { body: null, error: body?.error ?? failed };
+}
+
+/**
+ * The file named by `key`. Its pages are Figma's tightest read (20 a month for a View or Collab seat): read
+ * once per file, once the link stops changing, unless they are `known` (a new round keeps its
+ * deliverable's); `reload` reads only the saved versions again.
+ */
+export function useFigmaFile(key: string | null, known?: Tree) {
+  const [treeRead, setTreeRead] = useState<TreeRead | null>(null);
+  const [history, setHistory] = useState<HistoryRead | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const fromRound = Boolean(known);
+
   useEffect(() => {
-    if (!key) return;
+    if (!key || fromRound) return;
+    let cancelled = false;
+    // A link typed letter by letter names a new file at each one: read the one it settles on.
+    const timer = setTimeout(async () => {
+      const { body, error } = await getJson<Tree & { versions: FigmaVersion[]; receipt: string }>(`/api/integrations/figma/files/${key}`);
+      if (cancelled) return;
+      setTreeRead({ key, tree: body ? { name: body.name, pages: body.pages, receipt: body.receipt } : null, error });
+      setHistory({ key, attempt: 0, versions: body?.versions ?? null, error });
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [key, fromRound]);
+
+  useEffect(() => {
+    if (!key || (!fromRound && attempt === 0)) return;
     let cancelled = false;
     void (async () => {
-      const response = await fetch(`/api/integrations/figma/files/${key}`, { cache: "no-store" }).catch(() => null);
-      const body = (await response?.json().catch(() => null)) as (FigmaFileInfo & { error?: string }) | null;
-      if (cancelled) return;
-      if (response?.ok && body) setRead({ key, attempt, file: body, error: null });
-      else setRead({ key, attempt, file: null, error: body?.error ?? "Le fichier Figma n’a pas pu être lu. Réessayez." });
+      const { body, error } = await getJson<{ versions: FigmaVersion[] }>(`/api/integrations/figma/files/${key}/versions`);
+      if (!cancelled) setHistory({ key, attempt, versions: body?.versions ?? null, error });
     })();
     return () => {
       cancelled = true;
     };
-  }, [key, attempt]);
+  }, [key, attempt, fromRound]);
+
   // Another file, or read again: nothing known of it yet.
-  const current = key && read?.key === key && read.attempt === attempt ? read : null;
-  return { file: current?.file ?? null, error: current?.error ?? null, loading: Boolean(key) && !current, reload: () => setAttempt((count) => count + 1) };
+  const tree = known ?? (treeRead?.key === key ? treeRead.tree : null);
+  const treeError = !known && treeRead?.key === key ? treeRead.error : null;
+  const current = history?.key === key && history.attempt === attempt ? history : null;
+  const error = treeError ?? current?.error ?? null;
+  const file = tree && current?.versions ? { name: tree.name, pages: tree.pages, versions: current.versions } : null;
+  return {
+    file,
+    receipt: treeRead?.key === key ? (treeRead.tree?.receipt ?? null) : null,
+    error,
+    loading: Boolean(key) && !file && !error,
+    reload: () => setAttempt((count) => count + 1),
+  };
 }
 
 export const versionDate = (iso: string) => (iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : "");

@@ -96,28 +96,56 @@ export async function refreshFigmaToken(refreshToken: string): Promise<{ accessT
   return accessToken && Number.isFinite(expiresIn) && expiresIn > 0 ? { accessToken, expiresAt: new Date(Date.now() + expiresIn * 1000) } : null;
 }
 
-export type FigmaFile = { name: string; pages: FigmaPage[]; versions: FigmaVersion[] };
-
 const list = (value: unknown) => (Array.isArray(value) ? (value as Record<string, unknown>[]).filter((item) => item && typeof item === "object") : []);
 
 /**
- * The file's name, its pages and its saved versions, latest first: only the named ones (Figma also keeps
- * unnamed autosaves, which no one sends to a client). "missing" when the connected account cannot open
- * the file (unknown, or not shared with it); null when Figma does not answer.
+ * Why Figma did not give what was asked: the file is not open to the connected account, Figma limits
+ * this account's reads until `until` (a View or Collab seat may read a file only 20 times a month), or
+ * Figma did not answer.
  */
-export async function readFigmaFile(accessToken: string, key: string): Promise<FigmaFile | "missing" | null> {
-  const [file, history] = await Promise.all([
-    figmaAnswer(`/v1/files/${encodeURIComponent(key)}?depth=1`, { headers: bearer(accessToken) }),
-    figmaAnswer(`/v1/files/${encodeURIComponent(key)}/versions`, { headers: bearer(accessToken) }),
-  ]);
-  if ([file.status, history.status].some((status) => status === 403 || status === 404)) return "missing";
-  const name = text(file.body?.name);
-  const document = file.body?.document as Record<string, unknown> | undefined;
-  if (!name || !document || history.status !== 200) return null;
+export type FigmaRefusal = { missing: true } | { limitedUntil: Date } | { unavailable: true };
+
+function refusalOf(answer: Answer, retryAfter: string | null): FigmaRefusal | null {
+  if (answer.status === 403 || answer.status === 404) return { missing: true };
+  if (answer.status === 429) return { limitedUntil: new Date(Date.now() + Math.max(60, Number(retryAfter) || 60) * 1000) };
+  return answer.status >= 200 && answer.status < 300 && answer.body ? null : { unavailable: true };
+}
+
+async function figmaRead(path: string, accessToken: string) {
+  const response = await fetch(apiUrl() + path, { headers: bearer(accessToken), signal: AbortSignal.timeout(10_000), cache: "no-store" }).catch(() => null);
+  if (!response) return { answer: { status: 0, body: null }, refusal: { unavailable: true } as FigmaRefusal };
+  const body = (await response.json().catch(() => null)) as unknown;
+  const answer: Answer = { status: response.status, body: body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : null };
+  return { answer, refusal: refusalOf(answer, response.headers.get("retry-after")) };
+}
+
+export type FigmaFileTree = { name: string; pages: FigmaPage[] };
+
+/**
+ * The file's name and pages. Figma counts this read in its tightest tier (20 a month for a View or
+ * Collab seat): Kora reads it once per deliverable, never on each change of a dialog.
+ */
+export async function readFigmaPages(accessToken: string, key: string): Promise<FigmaFileTree | FigmaRefusal> {
+  const { answer, refusal } = await figmaRead(`/v1/files/${encodeURIComponent(key)}?depth=1`, accessToken);
+  if (refusal) return refusal;
+  const name = text(answer.body?.name);
+  const document = answer.body?.document as Record<string, unknown> | undefined;
+  if (!name || !document) return { unavailable: true };
   const pages = list(document.children)
     .filter((page) => page.type === "CANVAS" && text(page.id) && typeof page.name === "string")
+    .slice(0, 100)
     .map((page) => ({ id: String(page.id), name: String(page.name).slice(0, 200) }));
-  const versions = list(history.body?.versions)
+  return { name: name.slice(0, 200), pages };
+}
+
+/**
+ * The versions saved in the file's history, latest first: only the named ones (Figma also keeps unnamed
+ * autosaves, which no one sends to a client). A read Figma allows far more often than the file's.
+ */
+export async function readFigmaVersions(accessToken: string, key: string): Promise<FigmaVersion[] | FigmaRefusal> {
+  const { answer, refusal } = await figmaRead(`/v1/files/${encodeURIComponent(key)}/versions`, accessToken);
+  if (refusal) return refusal;
+  return list(answer.body?.versions)
     .filter((version) => text(version.id) && text(version.label))
     .map((version) => ({
       id: String(version.id),
@@ -125,5 +153,4 @@ export async function readFigmaFile(accessToken: string, key: string): Promise<F
       createdAt: text(version.created_at) ?? "",
       author: text((version.user as Record<string, unknown> | undefined)?.handle) ?? "",
     }));
-  return { name: name.slice(0, 200), pages, versions };
 }
