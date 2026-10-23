@@ -1137,8 +1137,9 @@ Discutées avec le porteur du produit ; à reprendre telles quelles :
 - **Jira / Notion** (US-047) : aucune licence requise ; jeton API pour les pilotes (chiffré en base, jamais renvoyé à la page), OAuth ensuite.
 - **E-mails groupés** : un e-mail par action pour l'instant ; un récapitulatif seulement si les pilotes s'en plaignent.
 
-#### Décision notée (24 octobre 2026)
+#### Décisions notées (24 octobre 2026)
 
+- **Commentaires faits dans Figma retirés de l'interface** : trop de lectures Figma (commentaires, écrans de chaque tournée) pour les offres personnelles, et vite pour les agences. Le code reste et ses tests tournent (`FIGMA_COMMENTS=1` le remet) ; à rouvrir quand des agences le demandent. « Figma » dans « Nouveau livrable » mène aux écrans copiés dans Kora.
 - **Plus de livrable « Document »** (Word, PowerPoint, Excel…) : Kora ne sait pas l'afficher, rien ne s'y épingle ni ne s'y qualifie précisément ; relire un document à plusieurs est le métier d'un autre outil. Retiré de « Nouveau livrable », refusé par le serveur ; aucun n'existait dans la copie de la base. Un « Document » créé avant s'affiche toujours. À l'agence qui en a un : l'importer en PDF.
 
 #### Décisions notées (21 et 22 octobre 2026)
