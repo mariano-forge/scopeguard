@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { AgencyApp } from "./AgencyApp";
 import { CurrentUserProvider } from "./CurrentUser";
+import { FigmaReturn } from "./FigmaReturn";
 
 export default async function AgencyLayout({ children }: LayoutProps<"/">) {
   const user = await getCurrentUser();
@@ -14,6 +15,7 @@ export default async function AgencyLayout({ children }: LayoutProps<"/">) {
     <CurrentUserProvider user={user}>
       <Suspense fallback={null}>
         <AgencyApp />
+        <FigmaReturn />
       </Suspense>
       {children}
     </CurrentUserProvider>

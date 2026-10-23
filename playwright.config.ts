@@ -5,6 +5,7 @@
 
 import { defineConfig } from "@playwright/test";
 import { resolve } from "node:path";
+import { figmaClient, figmaStandInPort } from "./tests/e2e/figmaStandIn";
 
 const port = 3199;
 export const baseURL = `http://localhost:${port}`;
@@ -55,6 +56,13 @@ export default defineConfig({
       // Low enough for the limit tests, high enough for every other test's person.
       UPLOADS_PER_HOUR: "5",
       WRITES_PER_MINUTE: "120",
+      // Figma (US-054): its API is the run's stand-in (tests/e2e/figmaStandIn.ts), its consent page an
+      // address the tests intercept; a fixed key seals the tokens.
+      FIGMA_CLIENT_ID: figmaClient.id,
+      FIGMA_CLIENT_SECRET: figmaClient.secret,
+      FIGMA_API_URL: `http://127.0.0.1:${figmaStandInPort}`,
+      FIGMA_OAUTH_URL: "https://www.figma.test/oauth",
+      TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
     },
   },
 });
