@@ -2,7 +2,7 @@
 // names and places checked, files only the agency's own, deletions reserved to administrators.
 
 import { expect, test } from "@playwright/test";
-import { addColleague, call, createAgency, makePdf, seedState, signUp, sql, upload, type Person } from "./helpers";
+import { addColleague, call, createAgency, makePdf, newPerson, seedState, signInPage, signUp, sql, upload, type Person } from "./helpers";
 
 async function agency() {
   const alice = await signUp("Alice Martin");
@@ -61,6 +61,23 @@ test("files: a deliverable may only point at the agency's own imports", async ()
   const link = await act(alice, "deliverables", "POST", { projectId: 1, name: "site", type: "Link", size: 0, url: "https://exemple.fr" });
   expect(link.status).toBe(200);
   expect(await data(org, "deliverables", link.json.id as number)).toMatchObject({ type: "Link", url: "https://exemple.fr", version: 1 });
+});
+
+test("« Document » is no longer a kind of deliverable: not offered, a Word file told what to do, refused by the server", async ({ browser }) => {
+  const { alice, act } = await agency();
+  const pdf = await upload(alice, makePdf("notes"), "notes.pdf", { kind: "version", projectId: 1, livrableId: 9, version: 1 });
+  expect((await act(alice, "deliverables", "POST", { projectId: 1, name: "notes", type: "Doc", size: 1, fileData: pdf.json.href })).status).toBe(400);
+
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1");
+  await page.getByRole("button", { name: "Ajouter un livrable", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("radio")).toHaveCount(4);
+  await expect(dialog.getByRole("radio", { name: "Document" })).toHaveCount(0);
+  await dialog.locator('input[type="file"]').first().setInputFiles({ name: "notes.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: Buffer.from("PK") });
+  await expect(dialog).toContainText("Les documents Word, PowerPoint ou Excel ne sont plus pris en charge : exportez-le en PDF.");
+  expect(errors).toEqual([]);
 });
 
 test("a version of a « Lien » is a new address of the site, never a file; any other kind keeps a file", async () => {

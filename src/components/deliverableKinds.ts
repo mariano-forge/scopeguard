@@ -22,6 +22,13 @@ export const deliverableKinds: Record<
 };
 
 export const deliverableTypes = Object.keys(deliverableKinds) as DeliverableType[];
+/**
+ * The kinds a new deliverable may take: no more « Document » (Word, PowerPoint…, which Kora could only offer
+ * to download), decided with the product owner on 22 October 2026. Those already imported stay readable.
+ */
+export const newDeliverableTypes = deliverableTypes.filter((type) => type !== "Doc");
+/** Said when a document is chosen anyway: what to do instead. */
+export const documentRefused = "Les documents Word, PowerPoint ou Excel ne sont plus pris en charge : exportez-le en PDF.";
 
 /** Largest import (MAX_UPLOAD_MB, exposed by next.config.ts); the server checks it again. */
 export const MAX_FILE_BYTES = (Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB) || 50) * 1024 * 1024;
