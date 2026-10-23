@@ -1116,8 +1116,6 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - L'API ne sait pas marquer un commentaire comme résolu.
 - Les notifications de Figma (`FILE_COMMENT`) se créent sur un fichier par quelqu'un qui peut le modifier ; une offre minimale est peut-être exigée, à vérifier sur un vrai compte. À défaut, Kora relit à l'ouverture et sur « Actualiser ».
 
-**À trancher avant de coder** : voir la fin de la section « Prochaines étapes ».
-
 **Pas dans cette story** : écrire dans Figma autre chose qu'une réponse, résoudre un commentaire Figma, prendre une décision (devis, validation) depuis Figma, importer les fichiers FigJam.
 
 #### Décisions et pistes notées (16 octobre 2026)
