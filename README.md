@@ -102,6 +102,8 @@ Le MVP doit permettre de tester ce positionnement avec un flux complet, sans con
 - Projets associes a un client.
 - Import de PDF, d'images et de vidéos (jusqu'à `MAX_VIDEO_UPLOAD_MB`, 1 Go par défaut).
 - Revue d'un site de recette : le livrable « Lien » et la barre Kora sur le site (US-048), qui remplacent la capture d'une page depuis une URL.
+- Fichiers Figma : écrans copiés dans Kora, ou commentaires faits dans Figma (US-054).
+- Plus de livrable « Document » (Word, PowerPoint…) depuis le 24 octobre 2026 : Kora ne sait pas l'afficher, donc rien ne s'y épingle. Le serveur refuse d'en créer ; un « Document » créé avant s'affiche toujours (couverture et téléchargement).
 - Versions de livrables avec statut clair : brouillon, en revue, modifications demandees, approuve.
 
 ### Revue client

@@ -1137,6 +1137,10 @@ Discutées avec le porteur du produit ; à reprendre telles quelles :
 - **Jira / Notion** (US-047) : aucune licence requise ; jeton API pour les pilotes (chiffré en base, jamais renvoyé à la page), OAuth ensuite.
 - **E-mails groupés** : un e-mail par action pour l'instant ; un récapitulatif seulement si les pilotes s'en plaignent.
 
+#### Décision notée (24 octobre 2026)
+
+- **Plus de livrable « Document »** (Word, PowerPoint, Excel…) : Kora ne sait pas l'afficher, rien ne s'y épingle ni ne s'y qualifie précisément ; relire un document à plusieurs est le métier d'un autre outil. Retiré de « Nouveau livrable », refusé par le serveur ; aucun n'existait dans la copie de la base. Un « Document » créé avant s'affiche toujours. À l'agence qui en a un : l'importer en PDF.
+
 #### Décisions notées (21 et 22 octobre 2026)
 
 - **Barre du site de recette** *(21 octobre)* : une ligne de script par livrable, jamais une clé de toute l'agence (lisible par tout visiteur, elle permettrait de sonder ses autres sites) ; l'agence entre dans la barre par sa session Kora, les codes sont aux clients ; la demande de code ne distingue jamais l'adresse d'un membre. Acceptés : plus de demandes d'accès (US-043), un « Lien » doit être un site déployé en `https`.
