@@ -62,6 +62,7 @@ export function ReviewCanvas({
   onMovePin,
   siteSetup,
   agency,
+  figmaPanel,
 }: {
   deliverable: ViewedDeliverable;
   comments: CanvasComment[];
@@ -93,6 +94,8 @@ export function ReviewCanvas({
   siteSetup?: React.ReactNode;
   /** The agency's page (a « Figma »'s board speaks to the agency or to the client). */
   agency?: boolean;
+  /** A « Figma », for the agency: bringing its comments in, telling its team from the client (FigmaAgencyPanel). */
+  figmaPanel?: React.ReactNode;
 }) {
   // A « Lien » is commented on its staging site, with the toolbar: here, its requests are pages of the
   // canvas (SiteBoard), their pins where they were placed on the site. The agency (`siteSetup`) may pin a
@@ -569,7 +572,7 @@ export function ReviewCanvas({
               {site ? (
                 <SiteBoard siteUrl={deliverable.url} comments={givenComments} renderPage={renderPage} setup={siteSetup} />
               ) : figma ? (
-                <FigmaBoard url={deliverable.url} round={deliverable.figma} comments={givenComments} agency={Boolean(agency)} />
+                <FigmaBoard url={deliverable.url} round={deliverable.figma} comments={givenComments} agency={Boolean(agency)} panel={figmaPanel} />
               ) : (
                 <DeliverableContent deliverable={deliverable} renderPage={renderPage} video={video ? videoEvents : undefined} />
               )}

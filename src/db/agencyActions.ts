@@ -39,6 +39,7 @@ import { commentProposals, comments, deliverables, proposalVersions, reviewLinks
 import { visibleToClient } from "./reviewAccess";
 import { mailQuoteToClient, versionDeciders, type AgencyQuoteEvent } from "./reviewMails";
 import { applyChanges, type Writer } from "./state";
+import { figmaImportChanges, figmaTeamChanges } from "./figmaImport";
 import { readWorkspaceAction, workspaceChanges, type WorkspaceAction, type WorkspaceParams } from "./workspaceActions";
 
 type Qualification = "Inclus" | "Hors périmètre" | "À qualifier";
@@ -66,7 +67,10 @@ export type AgencyAction =
   | { type: "link.share"; deliverableId: number }
   | { type: "link.revoke"; deliverableId: number }
   | { type: "invite.remove"; deliverableId: number; email: string }
-  | { type: "invite.role"; deliverableId: number; email: string; role: ClientRole };
+  | { type: "invite.role"; deliverableId: number; email: string; role: ClientRole }
+  // A « Figma »: its file's new comments brought in (src/db/figmaImport.ts); a person of Figma marked as the agency's.
+  | { type: "figma.import"; deliverableId: number }
+  | { type: "figma.team"; figmaUserId: string; handle: string; member: boolean };
 
 export type AgencyMember = { id: string; name: string; organizationId: string; role: string | null | undefined };
 export type AgencyActionResult = { ok: true; revision: number; id?: number; data?: Data } | { ok: false; status: number; error: string; code?: string };
@@ -168,6 +172,13 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
       if (type === "invite.remove") return { type, deliverableId, email };
       const role = readClientRole(body.role);
       return role ? { type, deliverableId, email, role } : null;
+    }
+    case "figma.import":
+      return deliverableId ? { type, deliverableId } : null;
+    case "figma.team": {
+      const figmaUserId = typeof body.figmaUserId === "string" && /^[\w:-]{1,100}$/.test(body.figmaUserId) ? body.figmaUserId : null;
+      const handle = text(body.handle, 100);
+      return figmaUserId && handle && typeof body.member === "boolean" ? { type, figmaUserId, handle, member: body.member } : null;
     }
     default:
       return null;
@@ -297,6 +308,8 @@ async function versionChanges(db: Db, member: AgencyMember, action: Extract<Agen
 
 async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): Promise<{ changes: StateChanges; id?: number; data?: Data } | AgencyActionResult> {
   if (isWorkspace(action)) return workspaceChanges(db, member.organizationId, member.name, action);
+  if (action.type === "figma.import") return figmaImportChanges(db, member.organizationId, member.name, action.deliverableId);
+  if (action.type === "figma.team") return figmaTeamChanges(db, member.organizationId, member.name, action.figmaUserId, action.handle, action.member);
   if (action.type === "version.reopen" || action.type === "link.share" || action.type === "link.revoke" || action.type === "invite.remove" || action.type === "invite.role")
     return versionChanges(db, member, action);
   const org = member.organizationId;

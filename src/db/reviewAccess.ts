@@ -25,6 +25,11 @@ type Reply = { id?: unknown; initials?: unknown } & Data;
 
 /** Written by the client (src/lib/authors.ts: `from`, or "CM" initials on older messages). */
 const byClient = (message: Data | undefined) => Boolean(message) && sideOf(message!) === "client";
+/**
+ * Words the client wrote in Kora, which they may change: not those brought in from Figma (src/db/figmaImport.ts),
+ * a person's comment kept as Figma gave it, for the proof.
+ */
+const clientWords = (message: Data | undefined) => byClient(message) && !message!.figma && !message!.figmaId;
 const same = (left: unknown, right: unknown) => sameValue(left ?? null, right ?? null);
 const isObject = (value: unknown): value is Data => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const shortText = (value: unknown, max: number) => (typeof value === "string" ? value.slice(0, max) : undefined);
@@ -109,7 +114,9 @@ const publicLink = (link: Data) => {
  * 19 October 2026); a draft quote's amount never leaves the server (readReviewState).
  */
 export function visibleToClient(comment: Data) {
-  if (byClient(comment)) return true;
+  // The client's own words, except a comment brought in from Figma (src/db/figmaImport.ts): the agency's
+  // draft until qualified, like its own pins, so that its team's stray talk never reaches the client.
+  if (byClient(comment) && !comment.figma) return true;
   if (comment.decision === "Hors périmètre" || comment.decision === "Inclus") return true;
   // Still to clarify: shown only when the agency chose that status (« + Demande », always titled).
   return typeof comment.title === "string" && comment.title.trim() !== "";
@@ -202,7 +209,7 @@ export async function readSiteAgencyState(db: Db, access: ReviewAccess) {
 function repliesAllowed(before: Reply[], after: Reply[]) {
   const afterById = new Map(after.map((reply) => [reply.id, reply]));
   for (const reply of before)
-    if (!byClient(reply) && !same(afterById.get(reply.id), reply)) return false;
+    if (!clientWords(reply) && !same(afterById.get(reply.id), reply)) return false;
   const known = new Set(before.map((reply) => reply.id));
   return after.every((reply) => known.has(reply.id) || byClient(reply));
 }
@@ -216,6 +223,7 @@ function commentAllowed(before: Data | undefined, after: Data, deliverableId: nu
   if (!before)
     return (
       byClient(after) &&
+      after.figma === undefined &&
       after.decision === "À qualifier" &&
       (after.kind ?? "remark") === "remark" &&
       after.title === undefined &&
@@ -223,7 +231,7 @@ function commentAllowed(before: Data | undefined, after: Data, deliverableId: nu
       replies(after.replies).every((reply) => byClient(reply))
     );
   if (qualificationFields.some((field) => !same(before[field], after[field]))) return false;
-  if (!byClient(before) && placementFields.some((field) => !same(before[field], after[field]))) return false;
+  if (!clientWords(before) && placementFields.some((field) => !same(before[field], after[field]))) return false;
   const known = new Set([...qualificationFields, ...placementFields, "replies", "time"]);
   if ([...Object.keys(before), ...Object.keys(after)].some((field) => !known.has(field) && !same(before[field], after[field]))) return false;
   return repliesAllowed(replies(before.replies), replies(after.replies));
@@ -279,7 +287,7 @@ export async function sanitizeReviewChanges(
     const remove = (incoming.remove ?? []).filter((id) => {
       const comment = before.get(id);
       // Their own comment, while the agency has not qualified it (no title given) nor closed it.
-      return byClient(comment) && comment!.decision === "À qualifier" && !String(comment!.title ?? "").trim() && comment!.closed !== true;
+      return clientWords(comment) && comment!.decision === "À qualifier" && !String(comment!.title ?? "").trim() && comment!.closed !== true;
     });
     if (upsert.length || remove.length) lists.comments = { upsert, remove };
   }

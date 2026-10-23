@@ -66,9 +66,9 @@ export async function figmaAccessToken(db: Db, organizationId: string): Promise<
   return renewed.accessToken;
 }
 
-type Refused = { ok: false; status: number; error: string; code: string };
+export type FigmaRefused = { ok: false; status: number; error: string; code: string };
 
-const notConnected: Refused = {
+export const notConnected: FigmaRefused = {
   ok: false,
   status: 409,
   code: "FIGMA_NOT_CONNECTED",
@@ -78,7 +78,7 @@ const notConnected: Refused = {
 const until = (date: Date) => date.toLocaleString("fr-FR", { day: "numeric", month: "long", hour: "numeric", minute: "2-digit", timeZone: "Europe/Paris" });
 
 /** What the agency is told when Figma refuses (never a 403: the page would take it for a lost session). */
-function refused(refusal: FigmaRefusal): Refused {
+export function figmaRefused(refusal: FigmaRefusal): FigmaRefused {
   if ("missing" in refusal)
     return { ok: false, status: 404, code: "FIGMA_FILE_MISSING", error: "Ce fichier n’est pas accessible au compte Figma connecté. Vérifiez le lien, ou partagez le fichier avec ce compte." };
   if ("limitedUntil" in refusal)
@@ -91,22 +91,28 @@ function refused(refusal: FigmaRefusal): Refused {
   return { ok: false, status: 502, code: "FIGMA_UNAVAILABLE", error: "Figma ne répond pas pour l’instant. Réessayez dans un moment." };
 }
 
-const isRefusal = (value: object): value is FigmaRefusal => "missing" in value || "limitedUntil" in value || "unavailable" in value;
+export const isRefusal = (value: object): value is FigmaRefusal => "missing" in value || "limitedUntil" in value || "unavailable" in value;
 
 /** The file's name and pages (Figma's tightest read: once per deliverable), with its saved versions. */
-export async function loadFigmaFile(db: Db, organizationId: string, fileKey: string): Promise<{ ok: true; tree: FigmaFileTree; versions: FigmaVersion[] } | Refused> {
+export async function loadFigmaFile(db: Db, organizationId: string, fileKey: string): Promise<{ ok: true; tree: FigmaFileTree; versions: FigmaVersion[] } | FigmaRefused> {
   const token = await figmaAccessToken(db, organizationId);
   if (!token) return notConnected;
   const [tree, versions] = await Promise.all([readFigmaPages(token, fileKey), readFigmaVersions(token, fileKey)]);
-  if (isRefusal(tree)) return refused(tree);
-  if (!Array.isArray(versions)) return refused(versions);
+  if (isRefusal(tree)) return figmaRefused(tree);
+  if (!Array.isArray(versions)) return figmaRefused(versions);
   return { ok: true, tree, versions };
 }
 
 /** The file's saved versions only: what « Relire le fichier » and a new round read. */
-export async function loadFigmaVersions(db: Db, organizationId: string, fileKey: string): Promise<{ ok: true; versions: FigmaVersion[] } | Refused> {
+export async function loadFigmaVersions(db: Db, organizationId: string, fileKey: string): Promise<{ ok: true; versions: FigmaVersion[] } | FigmaRefused> {
   const token = await figmaAccessToken(db, organizationId);
   if (!token) return notConnected;
   const versions = await readFigmaVersions(token, fileKey);
-  return Array.isArray(versions) ? { ok: true, versions } : refused(versions);
+  return Array.isArray(versions) ? { ok: true, versions } : figmaRefused(versions);
+}
+
+/** The Figma account the agency connected: its comments are the agency's, never imported as the client's. */
+export async function figmaConnectedUser(db: Db, organizationId: string) {
+  const [row] = await db.select({ id: figmaConnections.figmaUserId }).from(figmaConnections).where(eq(figmaConnections.organizationId, organizationId)).limit(1);
+  return row?.id ?? null;
 }

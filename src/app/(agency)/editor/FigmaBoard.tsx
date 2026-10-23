@@ -13,7 +13,7 @@ import { isAgencyDraft, type ThreadComment } from "./CanvasComments";
 const day = (iso: string) => (iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : "");
 const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "s" : ""}`;
 
-export function FigmaBoard({ url, round, comments, agency }: { url?: string; round?: FigmaRound; comments: ThreadComment[]; agency: boolean }) {
+export function FigmaBoard({ url, round, comments, agency, panel }: { url?: string; round?: FigmaRound; comments: ThreadComment[]; agency: boolean; panel?: React.ReactNode }) {
   const requests = comments.filter((comment) => !isAgencyDraft(comment));
   const reviewed = round ? round.pages.filter((page) => round.reviewed.includes(page.id)).map((page) => page.name) : [];
   const hero = !agency
@@ -58,6 +58,7 @@ export function FigmaBoard({ url, round, comments, agency }: { url?: string; rou
               </div>
             </dl>
           )}
+          {panel}
         </div>
       </article>
       {!requests.length && (

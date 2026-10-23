@@ -154,3 +154,63 @@ export async function readFigmaVersions(accessToken: string, key: string): Promi
       author: text((version.user as Record<string, unknown> | undefined)?.handle) ?? "",
     }));
 }
+
+/** A screen at the top of a page (a frame, mostly): where Figma pins a comment, and so on which page it is. */
+export type FigmaFrame = { id: string; name: string; pageId: string };
+
+/**
+ * The top-level screens of each page, in the round's saved version. Figma's tightest read again: Kora
+ * reads it once per round, at its first import, and keeps it with the round.
+ */
+export async function readFigmaFrames(accessToken: string, key: string, versionId: string): Promise<FigmaFrame[] | FigmaRefusal> {
+  const { answer, refusal } = await figmaRead(`/v1/files/${encodeURIComponent(key)}?depth=2&version=${encodeURIComponent(versionId)}`, accessToken);
+  if (refusal) return refusal;
+  const document = answer.body?.document as Record<string, unknown> | undefined;
+  if (!document) return { unavailable: true };
+  return list(document.children)
+    .filter((page) => page.type === "CANVAS" && text(page.id))
+    .flatMap((page) =>
+      list(page.children)
+        .filter((frame) => text(frame.id))
+        .map((frame) => ({ id: String(frame.id), name: (text(frame.name) ?? "").slice(0, 200), pageId: String(page.id) })),
+    )
+    .slice(0, 3000);
+}
+
+/** A comment of the file as Kora reads it: who, what, when, where it is pinned, and the thread it answers. */
+export type FigmaComment = {
+  id: string;
+  /** The thread's first comment, for a reply; null for the first one. */
+  parentId: string | null;
+  message: string;
+  createdAt: string;
+  resolved: boolean;
+  user: { id: string; handle: string };
+  /** The screen it is pinned on; null when it is placed on the canvas outside any. */
+  nodeId: string | null;
+  /** The number Figma shows on its pin. */
+  orderId: number | null;
+};
+
+/** Every comment of the file, threads and replies. A read Figma allows often (its second tier). */
+export async function readFigmaComments(accessToken: string, key: string): Promise<FigmaComment[] | FigmaRefusal> {
+  const { answer, refusal } = await figmaRead(`/v1/files/${encodeURIComponent(key)}/comments`, accessToken);
+  if (refusal) return refusal;
+  return list(answer.body?.comments)
+    .filter((comment) => text(comment.id) && typeof comment.message === "string")
+    .map((comment) => {
+      const user = (comment.user ?? {}) as Record<string, unknown>;
+      const meta = (comment.client_meta ?? {}) as Record<string, unknown>;
+      return {
+        id: String(comment.id),
+        parentId: text(comment.parent_id),
+        message: String(comment.message).slice(0, 5000),
+        createdAt: text(comment.created_at) ?? "",
+        resolved: Boolean(text(comment.resolved_at)),
+        user: { id: text(user.id) ?? "", handle: (text(user.handle) ?? "Figma").slice(0, 100) },
+        nodeId: text(meta.node_id),
+        orderId: typeof comment.order_id === "number" ? comment.order_id : Number(comment.order_id) || null,
+      };
+    })
+    .slice(0, 2000);
+}

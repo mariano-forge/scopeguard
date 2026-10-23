@@ -6600,6 +6600,11 @@ button.rail-logo .lucide {
 .request-source-line {
   margin: 0;
 }
+.request-source-open {
+  justify-self: start;
+  color: var(--action-text);
+  text-decoration: underline;
+}
 .request-source-excerpt {
   margin: 0;
   color: var(--ink);
@@ -10354,4 +10359,27 @@ body.is-resizing {
 .figma-round dd {
   margin: 0;
   font: 400 var(--t-body) var(--font-ui);
+}
+.figma-agency {
+  display: grid;
+  gap: var(--s-3);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border);
+}
+.figma-agency-sync {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-4);
+}
+.figma-people {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.figma-people legend {
+  margin-bottom: var(--s-1);
+  padding: 0;
+  font-weight: 600;
 }

@@ -63,6 +63,8 @@ export default defineConfig({
       FIGMA_API_URL: `http://127.0.0.1:${figmaStandInPort}`,
       FIGMA_OAUTH_URL: "https://www.figma.test/oauth",
       TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
+      // A file's comments read again after 1 s instead of 15: « Actualiser » right after the opening's import.
+      FIGMA_IMPORT_QUIET_SECONDS: "1",
     },
   },
 });

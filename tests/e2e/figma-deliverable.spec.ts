@@ -63,8 +63,9 @@ test("the agency makes a « Figma » deliverable from a file's link: pages ticke
   await expect(board).toContainText("Accueil, Contact");
   await expect(board.getByRole("link", { name: "Ouvrir dans Figma" })).toHaveAttribute("href", `https://www.figma.com/design/${key}`);
   await expect(board).toContainText("Aucune demande de Figma pour l’instant.");
-  // The file's pages read once, by the dialog: the creation trusted that reading.
-  expect((await figmaReads(key)).file).toBe(1);
+  // The file's pages read once, by the dialog (the creation trusted that reading); then, the deliverable
+  // open, its comments brought in, which reads the round's screens once (src/db/figmaImport.ts).
+  await expect.poll(async () => (await figmaReads(key)).file).toBe(2);
   const [first] = await deliverablesOf(org);
   expect(first.data).toMatchObject({
     type: "Figma",
@@ -94,8 +95,8 @@ test("the agency makes a « Figma » deliverable from a file's link: pages ticke
     [2, "En attente client", "102"],
   ]);
   await expect(page.getByRole("region", { name: "Tableau Figma" })).toContainText("« V2 envoyée au client »");
-  // A round reads only the file's history.
-  expect((await figmaReads(key)).file).toBe(1);
+  // A round reads only the file's history; its first import reads its own version's screens, once.
+  await expect.poll(async () => (await figmaReads(key)).file).toBe(3);
   expect(errors).toEqual([]);
 });
 

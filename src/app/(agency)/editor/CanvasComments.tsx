@@ -77,6 +77,8 @@ export type ThreadComment = {
   internalNote?: boolean;
   /** Placed on the staging site, with the capture of the window (src/lib/siteReview.ts). */
   site?: SiteAnchor;
+  /** Brought in from a Figma file (src/db/figmaImport.ts): the comment there, which nobody entered in Kora. */
+  figma?: { url?: string };
   position?: { x: number; y: number };
   area?: Area;
   /** On a video: the moment it was pinned on, in seconds (src/lib/timecode.ts). */
@@ -87,10 +89,15 @@ export type ThreadComment = {
 };
 
 /** A request's origin: the channel and day, the client's words and their capture (both shown to the client). */
-export function RequestSourceNote({ source, enteredBy }: { source: RequestSource; enteredBy: string }) {
+export function RequestSourceNote({ source, enteredBy, figmaUrl }: { source: RequestSource; enteredBy?: string; figmaUrl?: string }) {
   return (
     <aside className="request-source" aria-label="Source de la demande">
       <p className="request-source-line">{sourceLine(source, enteredBy)}</p>
+      {figmaUrl && (
+        <a className="request-source-open" href={figmaUrl} target="_blank" rel="noopener noreferrer">
+          Voir le commentaire dans Figma
+        </a>
+      )}
       {source.excerpt && <blockquote className="request-source-excerpt">{source.excerpt}</blockquote>}
       {source.capture && (
         <a className="request-source-capture" href={source.capture} target="_blank" rel="noopener" aria-label="Ouvrir la capture">
@@ -601,7 +608,7 @@ export function ThreadPopover({
               {comment.description && <p className="request-description">{comment.description}</p>}
             </div>
           )}
-          {(showDetail || !asRequest) && comment.source && <RequestSourceNote source={comment.source} enteredBy={comment.author} />}
+          {(showDetail || !asRequest) && comment.source && <RequestSourceNote source={comment.source} enteredBy={comment.figma ? undefined : comment.author} figmaUrl={comment.figma?.url} />}
           {(showDetail || !asRequest) && comment.site && <SiteCapture site={comment.site} />}
           {/* What can be done, apart from what the request says (as on its card): last, kept in view while the bubble scrolls. */}
           {showDetail && ((kind === "outside" && proposal) || (onQualify && canWrite)) && (

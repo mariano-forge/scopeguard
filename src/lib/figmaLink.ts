@@ -29,6 +29,11 @@ export type FigmaRound = {
   /** The pages the agency put up for review: comments elsewhere (drafts, archive) stay in Figma. */
   reviewed: string[];
   version: FigmaVersion;
+  /**
+   * Which page each top-level screen of the round's version is on (screen id -> page id), read at the
+   * round's first import (src/db/figmaImport.ts): Figma pins a comment on a screen without naming its page.
+   */
+  frames?: Record<string, string>;
 };
 
 /**

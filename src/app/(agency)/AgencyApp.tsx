@@ -45,6 +45,7 @@ import { maxBytesOf, deliverableKinds, formatBytes, kindFromFile, type Deliverab
 import { NewDeliverableDialog, type NewDeliverable } from "./NewDeliverableDialog";
 import { LinkVersionDialog } from "./LinkVersionDialog";
 import { FigmaVersionDialog } from "./FigmaVersionDialog";
+import { FigmaAgencyPanel } from "./FigmaAgencyPanel";
 import type { FigmaChoice, FigmaRound } from "@/lib/figmaLink";
 import { NoDeciderBanner } from "./NoDeciderBanner";
 import { NewProjectDialog } from "./NewProjectDialog";
@@ -2003,6 +2004,11 @@ export function AgencyApp() {
             <ReviewCanvas
               deliverable={currentDeliverable}
               agency
+              figmaPanel={
+                currentDeliverable.type === "Figma" && currentDeliverable.figma ? (
+                  <FigmaAgencyPanel deliverableId={currentDeliverable.id} versionIds={viewVersions.map((version) => version.id)} round={currentDeliverable.figma} readOnly={isReadOnlyVersion} />
+                ) : undefined
+              }
               siteSetup={
                 currentDeliverable.type === "Link" && currentDeliverable.url ? (
                   <SiteToolbarSnippet siteUrl={currentDeliverable.url} deliverableId={currentDeliverable.id} />

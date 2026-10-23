@@ -149,7 +149,8 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
       createdAt: typeof data.createdAt === "number" ? new Date(data.createdAt).toISOString() : null,
       source: source
         ? {
-            line: sourceLine(source, text(data.author)),
+            // Brought in from Figma: nobody entered it; the name is the one Figma shows, which Kora did not check.
+            line: data.figma ? `${sourceLine(source)} : commentaire de ${text(data.author)} (nom affiché par Figma, non vérifié par Kora), importé par Kora` : sourceLine(source, text(data.author)),
             excerpt: source.excerpt ?? null,
             captureSha256: fingerprintOf(source.capture),
           }
