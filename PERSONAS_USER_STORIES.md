@@ -1113,7 +1113,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 **Contraintes de Figma** (relevées le 23 octobre 2026) :
 
 - Une application OAuth privée ne sert qu'à l'équipe Figma qui l'a créée ; pour d'autres agences, il faut la publier et la faire approuver par Figma : à demander dès les premiers pilotes.
-- Les commentaires sont limités à 25, 50 ou 100 lectures par minute selon l'offre Figma du fichier ; l'image d'un cadre, bien moins, et presque pas avec une place « lecteur » : le compte connecté doit avoir une place d'éditeur.
+- Limites de Figma (constatées le 23 octobre 2026 : un compte Starter gratuit a épuisé ses lectures en quelques essais, bloqué 4 jours et demi). La lecture d'un fichier, de ses écrans ou d'une image est limitée à **20 par mois** avec une place « lecteur » ou « collaborateur », à 10 à 20 par minute avec une place d'éditeur. Les commentaires et l'historique : 5 par minute avec une place « lecteur », 25 à 100 avec une place d'éditeur. Kora lit donc les pages une fois par livrable ; le classement des commentaires par page et les captures devront tenir dans une lecture par tournée, et peut-être être facultatifs pour les comptes à limite basse. Kora fonctionne au mieux avec une place d'éditeur.
 - L'API ne sait pas marquer un commentaire comme résolu.
 - Figma ne garde qu'une clé active par compte Figma et par application : un même compte Figma connecté à deux agences Kora déconnecterait la première. Chaque agence connecte son propre compte.
 - Les notifications de Figma (`FILE_COMMENT`) se créent sur un fichier par quelqu'un qui peut le modifier ; une offre minimale est peut-être exigée, à vérifier sur un vrai compte. À défaut, Kora relit à l'ouverture et sur « Actualiser ».

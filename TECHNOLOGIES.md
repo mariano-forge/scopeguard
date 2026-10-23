@@ -81,7 +81,7 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 
 | Technologie | Rôle |
 | --- | --- |
-| **API web de Figma** (OAuth 2 avec PKCE, appels HTTP sans SDK) | Commentaires des fichiers Figma qualifiés dans Kora (US-054, `src/lib/figma.ts`). Faits : la connexion d'une agence à son compte Figma, clés scellées en base (AES-256-GCM, `src/lib/sealed.ts`) et renouvelées avant expiration ; le livrable « Figma » (fichier, pages en revue, version enregistrée dans Figma). Un plugin Figma ne peut pas lire les commentaires : seule cette API le peut. |
+| **API web de Figma** (OAuth 2 avec PKCE, appels HTTP sans SDK) | Commentaires des fichiers Figma qualifiés dans Kora (US-054, `src/lib/figma.ts`). Faits : la connexion d'une agence à son compte Figma, clés scellées en base (AES-256-GCM, `src/lib/sealed.ts`) et renouvelées avant expiration ; le livrable « Figma » (fichier, pages en revue, version enregistrée dans Figma). La lecture d'un fichier est limitée par Figma à 20 par mois pour une place « lecteur » : Kora la fait une fois par livrable et garde une attestation signée de ce qu'il a lu (`src/lib/figmaReceipt.ts`). Un plugin Figma ne peut pas lire les commentaires : seule cette API le peut. |
 
 ### Tests et qualité
 
