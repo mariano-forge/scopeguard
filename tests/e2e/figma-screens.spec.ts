@@ -85,6 +85,13 @@ test("the agency picks Figma screens, page by page; they are copied into Kora an
   await expect(canvas.locator("figcaption")).toHaveText(["Accueil mobile", "Accueil desktop", "Formulaire"]);
   await expect(canvas.locator(".canvas-screens")).toHaveCSS("grid-template-columns", /^\S+ \S+$/);
   await expect.poll(() => canvas.getByRole("img", { name: "Accueil mobile" }).evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  // Each screen shown whole: its page as tall as its picture, never cropped to a fixed frame.
+  const whole = async (index: number) =>
+    page.locator(".canvas-page-content").nth(index).evaluate((box) => {
+      const media = box.querySelector("img, canvas")!.getBoundingClientRect();
+      return Math.abs(box.getBoundingClientRect().height - media.height) < 2 && media.height > 0;
+    });
+  await expect.poll(() => whole(0)).toBe(true);
   const [record] = await records(org);
   expect(record.data).toMatchObject({
     type: "Screens",
@@ -215,6 +222,12 @@ test("a new version copies the screens again; the client sees the shared version
   await page.context().addCookies([{ name, value, url: baseURL }]);
   await page.goto(`/review/${token}`);
   await expect(page.getByRole("region", { name: "Canevas" }).locator("figcaption")).toHaveText(["Accueil desktop", "Accueil mobile"]);
+  // PDF screens drawn whole too (a portrait page in a landscape frame was cropped, 23 October 2026).
+  const content = page.locator(".canvas-page-content").first();
+  await expect(content.locator("canvas")).toBeVisible();
+  await expect
+    .poll(() => content.evaluate((box) => Math.abs(box.getBoundingClientRect().height - box.querySelector("canvas")!.getBoundingClientRect().height)))
+    .toBeLessThan(2);
   expect(errors).toEqual([]);
 
   // The proof of V2: each screen, its page and its fingerprint.

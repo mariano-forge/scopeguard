@@ -272,7 +272,10 @@ export function ReviewCanvas({
           ? "video"
           : site
             ? "site"
-            : deliverable.type === "Doc" && deliverable.fileData
+            : // « Écrans Figma »: each screen's page takes its own size (never the mock's fixed frame, which crops).
+              deliverable.type === "Screens"
+              ? "screen"
+              : deliverable.type === "Doc" && deliverable.fileData
               ? "placeholder"
               : "mock";
 
