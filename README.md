@@ -352,6 +352,7 @@ Kora lira les commentaires des fichiers Figma de l'agence pour les qualifier. Un
 - Le serveur relit le fichier auprès de Figma à la création : les pages doivent être celles du fichier, la version une de son historique. Il ne garde rien de ce que la page dit du fichier (nom, pages) : `figma` dans le livrable (`fileKey`, `fileName`, `pages`, `reviewed`, `version`) vient de Figma.
 - Une nouvelle version d'un « Figma » est une **tournée** (« Nouvelle tournée Figma ») : le même fichier, une autre version enregistrée dans Figma, refusée si c'est celle de la tournée en cours.
 - Sur le canevas, côté agence comme côté client, le tableau Figma (`src/app/(agency)/editor/FigmaBoard.tsx`) dit quel fichier, quelle version et quelles pages sont en revue, avec « Ouvrir dans Figma ». Le client y lit comment commenter dans Figma.
+- La preuve d'une tournée nomme le fichier Figma, la version revue (nom, date d'enregistrement dans Figma, auteur, identifiant Figma) et les pages en revue (`figmaOf`, `src/db/proof.ts`).
 - La clé Figma de l'agence est renouvelée un jour avant son expiration (`figmaAccessToken`, `src/db/figmaConnection.ts`). Si Figma la refuse, l'agence reconnecte Figma.
 - Les tests n'appellent jamais Figma : un faux serveur local (`tests/e2e/figmaStandIn.ts`) tient sa place.
 
