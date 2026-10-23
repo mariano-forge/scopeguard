@@ -50,7 +50,7 @@ test("the agency picks Figma screens, page by page; they are copied into Kora an
   await page.getByRole("button", { name: "Ajouter un livrable", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Nouveau livrable" });
   // One « Figma » kind: where the client comments is asked next, « Écrans Figma » is no kind of its own.
-  await expect(dialog.locator(".kind-option")).toHaveText(["Image", "PDF", "Vidéo", "Lien", "Document", "Figma"]);
+  await expect(dialog.locator(".kind-option")).toHaveText(["Image", "PDF", "Vidéo", "Lien", "Figma"]);
   await dialog.locator(".kind-option").filter({ hasText: /^Figma$/ }).click();
   await dialog.getByLabel("Lien du fichier Figma").fill(figmaLink(key));
   // In Kora by default: the screens of each page, a section's too.

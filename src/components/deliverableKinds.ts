@@ -25,8 +25,12 @@ export const deliverableKinds: Record<
 };
 
 export const deliverableTypes = Object.keys(deliverableKinds) as DeliverableType[];
-/** The kinds « Nouveau livrable » offers: « Écrans Figma » is chosen under « Figma » (where the client comments). */
-export const pickableTypes = deliverableTypes.filter((type) => type !== "Screens");
+/**
+ * The kinds « Nouveau livrable » offers: « Écrans Figma » is chosen under « Figma » (where the client comments);
+ * « Document » no longer (decided 24 October 2026: Kora cannot show a Word or PowerPoint file, so nothing in it
+ * can be pinned; reviewing documents together is another tool's job). One made before still shows.
+ */
+export const pickableTypes = deliverableTypes.filter((type) => type !== "Screens" && type !== "Doc");
 
 /** Largest import (MAX_UPLOAD_MB, exposed by next.config.ts); the server checks it again. */
 export const MAX_FILE_BYTES = (Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB) || 50) * 1024 * 1024;

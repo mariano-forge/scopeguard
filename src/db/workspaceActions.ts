@@ -313,6 +313,8 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
     }
     case "livrable.create": {
       if (!project(action.projectId)) return refused("Projet introuvable.", 404);
+      // No new « Document » (src/components/deliverableKinds.ts pickableTypes); one made before keeps its versions.
+      if (action.kind === "Doc") return refused("Kora ne prend plus de livrable « Document » : importez-le en PDF pour que votre client le commente.", 400);
       const undeployed = action.kind === "Link" && action.url ? undeployedSiteProblem(action.url) : null;
       if (undeployed) return refused(undeployed, 400);
       const fileKey = figmaFileKey(action.url ?? "");
