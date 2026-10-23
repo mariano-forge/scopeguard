@@ -341,7 +341,7 @@ Limites de l'essai : testé dans Chrome seulement (Safari et Firefox à vérifie
 
 ### Commentaires Figma (en cours, US-054)
 
-Kora lira les commentaires des fichiers Figma de l'agence pour les qualifier. Un plugin Figma ne peut ni toucher à l'interface de Figma ni lire ses commentaires : seule l'API web de Figma le permet. Faits : la connexion (étape 1) et le livrable « Figma » (étape 2a).
+Kora lira les commentaires des fichiers Figma de l'agence pour les qualifier. Un plugin Figma ne peut ni toucher à l'interface de Figma ni lire ses commentaires : seule l'API web de Figma le permet. Faits : la connexion (étape 1), le livrable « Figma » (étape 2a) et l'import des commentaires (étape 2b).
 
 - Dans « Paramètres de l'agence », le propriétaire ou un administrateur clique sur « Connecter Figma ». Figma demande son accord, puis revient sur Kora (`GET /api/integrations/figma/connect`, puis `/callback`). Un membre voit l'état de la connexion, sans pouvoir la changer.
 - La tentative est liée au membre, à l'agence et au navigateur : un `state` signé (10 minutes), un cookie de ce navigateur avec la même valeur et le vérificateur PKCE (`src/lib/figmaOAuth.ts`). Le code de Figma n'est enregistré que si les trois correspondent, et si le membre peut encore gérer l'agence.
@@ -354,6 +354,12 @@ Kora lira les commentaires des fichiers Figma de l'agence pour les qualifier. Un
 - Une nouvelle version d'un « Figma » est une **tournée** (« Nouvelle tournée Figma ») : le même fichier et les pages lues pour le livrable, une autre version enregistrée dans Figma, refusée si c'est celle de la tournée en cours.
 - Sur le canevas, côté agence comme côté client, le tableau Figma (`src/app/(agency)/editor/FigmaBoard.tsx`) dit quel fichier, quelle version et quelles pages sont en revue, avec « Ouvrir dans Figma ». Le client y lit comment commenter dans Figma.
 - La preuve d'une tournée nomme le fichier Figma, la version revue (nom, date d'enregistrement dans Figma, auteur, identifiant Figma) et les pages en revue (`figmaOf`, `src/db/proof.ts`).
+- **Import des commentaires** (`src/db/figmaImport.ts`, `POST /api/deliverables/:id/figma-import`) : Kora va chercher les commentaires du fichier à l'ouverture du livrable et sur « Actualiser » (au plus toutes les 15 secondes, `FIGMA_IMPORT_QUIET_SECONDS`), dans la tournée en cours seulement. Les notifications de Figma (webhooks) viendront à l'étape 3.
+  - Chaque fil lancé par le client sur une page en revue devient une demande « À clarifier », avec ses réponses : les mots du client, le nom affiché par Figma, la page, la source « Figma » et le lien « Voir le commentaire dans Figma ». Les réponses ajoutées ensuite dans Figma rejoignent le fil tant que la tournée est ouverte. Un fil n'est importé qu'une fois, quelle que soit la tournée.
+  - Restent dans Figma : les fils du compte connecté et des personnes cochées « De l'équipe » (panneau « Personnes vues dans Figma » du tableau, réglage `figmaTeam` de l'agence), les fils résolus avant l'import et ceux des pages décochées. Cocher une personne retire de Kora ses fils encore non qualifiés.
+  - La page d'un commentaire : Figma l'accroche à un écran sans nommer sa page. Kora lit une fois par tournée les écrans de la version (lecture de catégorie 1), gardés avec la tournée (identifiant de l'écran → page). Un commentaire sur un écran inconnu, ou hors de tout écran, est importé : on ne perd jamais une demande du client sur une supposition. Si Figma refuse cette lecture (limite), tout est importé et le tableau le dit ; Kora ne redemande pas avant une heure.
+  - Un fil importé est un **brouillon de l'agence** tant qu'il n'est pas qualifié : le client ne le voit pas, et ses actions dessus répondent 404 (`visibleToClient`). Qualifié, il le voit en entier. Le client ne peut ni modifier ni supprimer des mots venus de Figma (`clientWords`, `src/db/reviewAccess.ts`).
+  - La preuve dit : « Demande reçue sur Figma le … : commentaire de X (nom affiché par Figma, non vérifié par Kora), importé par Kora ». Chaque import laisse un événement `comment.imported` au journal.
 - La clé Figma de l'agence est renouvelée un jour avant son expiration (`figmaAccessToken`, `src/db/figmaConnection.ts`). Si Figma la refuse, l'agence reconnecte Figma.
 - Les tests n'appellent jamais Figma : un faux serveur local (`tests/e2e/figmaStandIn.ts`) tient sa place.
 

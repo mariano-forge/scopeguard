@@ -81,13 +81,13 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 
 | Technologie | Rôle |
 | --- | --- |
-| **API web de Figma** (OAuth 2 avec PKCE, appels HTTP sans SDK) | Commentaires des fichiers Figma qualifiés dans Kora (US-054, `src/lib/figma.ts`). Faits : la connexion d'une agence à son compte Figma, clés scellées en base (AES-256-GCM, `src/lib/sealed.ts`) et renouvelées avant expiration ; le livrable « Figma » (fichier, pages en revue, version enregistrée dans Figma). La lecture d'un fichier est limitée par Figma à 20 par mois pour une place « lecteur » : Kora la fait une fois par livrable et garde une attestation signée de ce qu'il a lu (`src/lib/figmaReceipt.ts`). Un plugin Figma ne peut pas lire les commentaires : seule cette API le peut. |
+| **API web de Figma** (OAuth 2 avec PKCE, appels HTTP sans SDK) | Commentaires des fichiers Figma qualifiés dans Kora (US-054, `src/lib/figma.ts`). Faits : la connexion d'une agence à son compte Figma, clés scellées en base (AES-256-GCM, `src/lib/sealed.ts`) et renouvelées avant expiration ; le livrable « Figma » (fichier, pages en revue, version enregistrée dans Figma) ; l'import des commentaires du client, brouillons de l'agence jusqu'à leur qualification. La lecture d'un fichier est limitée par Figma à 20 par mois pour une place « lecteur » : Kora la fait une fois par livrable et garde une attestation signée de ce qu'il a lu (`src/lib/figmaReceipt.ts`). Un plugin Figma ne peut pas lire les commentaires : seule cette API le peut. |
 
 ### Tests et qualité
 
 | Technologie | Version | Rôle |
 | --- | --- | --- |
-| **Playwright Test** | 1.63 | 186 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`, environ 2 min 30 à 3 min) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier, un faux serveur Figma (`tests/e2e/figmaStandIn.ts`) ; 4 fichiers de test à la fois, les tests d'un fichier à la suite. Couvre la connexion, les agences et leurs rôles, chaque geste de l'agence et du client dans l'interface et par l'API (refus compris), l'accès client et ses rôles, les fichiers, la preuve, les relances et les notifications. |
+| **Playwright Test** | 1.63 | 191 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`, environ 2 min 30 à 3 min) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier, un faux serveur Figma (`tests/e2e/figmaStandIn.ts`) ; 4 fichiers de test à la fois, les tests d'un fichier à la suite. Couvre la connexion, les agences et leurs rôles, chaque geste de l'agence et du client dans l'interface et par l'API (refus compris), l'accès client et ses rôles, les fichiers, la preuve, les relances et les notifications. |
 | **ESLint** | 9.39 | Analyse du code, avec la configuration de Next.js. |
 | **Prettier** | 3.9 | Mise en forme. |
 
