@@ -159,8 +159,17 @@ test("the server reads the file again from Figma: anything else is refused, and 
   expect((await call(`/api/deliverables/${deliverableId}/versions`, { person: owner, body: { type: "PDF", size: 1, fileData: "/api/files/00000000-0000-4000-8000-000000000000" } })).status).toBe(400);
   await seedState(owner, { lists: { deliverables: { upsert: [{ id: 99, projectId: 7, name: "Cahier", type: "PDF", version: 1, status: "En attente client", importedAt: "x", locked: false, size: 1 }], remove: [] } } });
   expect((await nextRound({ figma: round(["0:1"], "102") }, 99)).status).toBe(400);
-  expect((await nextRound({ figma: round(["0:1"], "102") })).status).toBe(200);
+  const second = await nextRound({ figma: round(["0:1"], "102") });
+  expect(second.status).toBe(200);
   expect((await deliverablesOf(org)).filter((row) => row.data.type === "Figma").map((row) => row.version)).toEqual([1, 2]);
+
+  // The proof of a round names the file, the version saved in Figma that was reviewed, and its pages.
+  const proof = (await call(`/api/proof/${second.json.id}`, { person: owner })).json as { deliverable: { url: string; file: unknown; figma: unknown } };
+  expect(proof.deliverable).toMatchObject({
+    url: `https://www.figma.com/design/${key}`,
+    file: null,
+    figma: { fileKey: key, fileName: `Maquette ${key}`, version: { id: "102", label: "V2 envoyée au client", savedAt: "2026-10-22T10:00:00Z", savedBy: "Mariano" }, pages: ["Accueil"] },
+  });
 });
 
 test("the agency's Figma token is renewed before it expires, and a connection Figma no longer honours asks to connect again", async () => {

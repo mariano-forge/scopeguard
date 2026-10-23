@@ -3,6 +3,7 @@
 // who made it, the server's time and the request's origin. The audit trail it reads is append-only.
 
 import type { SiteAnchor } from "@/lib/siteReview";
+import type { FigmaRound } from "@/lib/figmaLink";
 import "server-only";
 import { createHash } from "node:crypto";
 import { and, asc, eq, inArray, or } from "drizzle-orm";
@@ -180,6 +181,7 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
       importedAt: text(version.importedAt),
       reviewStatus: record.reviewStatus ?? "pending",
       file: file ? { sha256: file.sha256, mimeType: file.mimeType, size: file.size, originalName: "originalName" in file ? file.originalName : null } : null,
+      figma: figmaOf(version),
     },
     approval: record.reviewStatus === "approved" ? last("deliverable.approved") : null,
     changesRequested: record.reviewStatus === "changes-requested" ? last("review.changes-requested") : null,
@@ -194,3 +196,18 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
 }
 
 export type Proof = NonNullable<Awaited<ReturnType<typeof buildProof>>>;
+
+/**
+ * A « Figma » version's round, as Figma told it when the round was made (src/lib/figmaLink.ts): the file,
+ * the version saved in its history that was reviewed, and the pages up for review. Null for other kinds.
+ */
+function figmaOf(version: Record<string, unknown>) {
+  const round = version.figma as FigmaRound | undefined;
+  if (version.type !== "Figma" || !round?.version) return null;
+  return {
+    fileKey: round.fileKey,
+    fileName: round.fileName,
+    version: { id: round.version.id, label: round.version.label, savedAt: round.version.createdAt, savedBy: round.version.author },
+    pages: round.pages.filter((page) => round.reviewed.includes(page.id)).map((page) => page.name),
+  };
+}
