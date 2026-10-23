@@ -247,7 +247,7 @@ export { makePdf } from "./makePdf";
 /** Uploads a file through POST /api/files, as the agency page does. */
 export async function upload(member: Person, content: Buffer, name: string, placement: Record<string, string | number>) {
   const form = new FormData();
-  form.set("file", new Blob([new Uint8Array(content)], { type: name.endsWith(".pdf") ? "application/pdf" : name.endsWith(".png") ? "image/png" : name.endsWith(".webm") ? "video/webm" : "application/octet-stream" }), name);
+  form.set("file", new Blob([new Uint8Array(content)], { type: ({ pdf: "application/pdf", png: "image/png", webm: "video/webm", svg: "image/svg+xml", html: "text/html" } as Record<string, string>)[name.split(".").pop() ?? ""] ?? "application/octet-stream" }), name);
   for (const [key, value] of Object.entries(placement)) form.set(key, String(value));
   const response = await fetch(`${baseURL}/api/files`, { method: "POST", headers: { cookie: member.cookie, "x-forwarded-for": member.ip }, body: form });
   return { status: response.status, json: (await response.json()) as { href?: string; sha256?: string; error?: string } };
