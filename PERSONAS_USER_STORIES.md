@@ -1078,13 +1078,15 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 **afin de** garder l'habitude de mes clients sans perdre la qualification, les devis et la preuve.
 
 > Demandé par le porteur du produit le 23 octobre 2026 : un bouton « Qualifier » sur les commentaires de Figma. **Impossible tel quel** : un plugin Figma n'a pas le droit de toucher à l'interface de Figma, ni même de lire les commentaires. Seule l'API web de Figma lit et écrit les commentaires. Retenu : Kora se connecte à Figma, importe les commentaires et répond dans leur fil ; un plugin, plus tard, montre la même liste dans un panneau à côté du fichier.
+>
+> Décidé avec le porteur du produit le 23 octobre 2026 : **comme pour un site de recette** : le livrable est le fichier entier, chaque commentaire arrive avec la capture de son écran, une version est une tournée de revue déclarée par l'agence ; le compte connecté et les personnes cochées « équipe » sont de l'agence, leurs commentaires ne sont pas importés ; Kora répond toujours dans le fil Figma à la qualification.
 
 **Comment ça marche**
 
 1. L'agence connecte son compte Figma à Kora, une seule fois (OAuth Figma). Kora garde la clé de connexion chiffrée en base, ne la renvoie jamais à la page, et la connexion se retire depuis les réglages.
-2. Elle crée un livrable « Figma » à partir du lien d'un fichier, ou d'une page ou d'un cadre de ce fichier. Kora en fait une image, conservée comme la version (la preuve repose sur une image, pas sur le fichier qui change).
+2. Elle crée un livrable « Figma » à partir du lien du fichier, comme un « Lien » à partir de l'adresse du site. Une version est une tournée de revue qu'elle déclare (« V3 envoyée »).
 3. Les commentaires du fichier arrivent dans Kora : à l'ouverture du livrable, par « Actualiser », et dès qu'ils sont postés quand Figma prévient Kora.
-4. Chaque commentaire Figma devient une demande, au même endroit sur l'image si Figma le situe, avec sa source « Figma » (auteur Figma, date, lien vers le commentaire). Ses réponses dans Figma forment son fil.
+4. Chaque commentaire du client devient une demande de la version en cours, avec la capture de l'écran Figma où il a été posté (le point visé marqué), comme la capture prise au clic sur un site, et sa source « Figma » (auteur Figma, date, lien vers le commentaire). Ses réponses dans Figma forment son fil. Les commentaires de l'agence (compte connecté, personnes cochées « équipe ») restent dans Figma.
 5. L'agence qualifie dans Kora comme toute demande. Kora répond dans le fil Figma (« Kora · Hors scope : un devis va vous être proposé », avec le lien de la revue).
 6. Les devis et la validation se décident sur la page de revue Kora, par les décideurs invités, comme pour le site de recette.
 
@@ -1102,9 +1104,9 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 **Étapes de réalisation**, chacune livrable seule, avec ses tests :
 
 1. **Connexion** : OAuth Figma, clé chiffrée (nouvelle table réservée à l'agence), déconnexion, droits du propriétaire et des administrateurs.
-2. **Livrable « Figma » et import** : création depuis un lien, image de la version, import des commentaires et de leurs réponses en demandes sans repère, source « Figma », « Actualiser ».
+2. **Livrable « Figma » et import** : création depuis le lien du fichier, import des commentaires du client et de leurs réponses, source « Figma », « Actualiser », liste « équipe ».
 3. **Réponse dans Figma et notifications** : réponse à la qualification, webhook `FILE_COMMENT` et relecture.
-4. **Repères** : le commentaire placé sur l'image, au point visé dans Figma ; « Nouvelle version » refait l'image.
+4. **Captures** : l'image de l'écran de chaque commentaire, le point visé marqué, demandées par lot à Figma, conservées et reprises dans la preuve.
 5. **Plugin Figma** : un panneau dans Figma qui liste les demandes du fichier et permet de les qualifier, connecté par la session Kora de l'agence, jamais par une clé collée.
 
 **Contraintes de Figma** (relevées le 23 octobre 2026) :
@@ -1284,10 +1286,5 @@ Si ce scénario fonctionne avec trois agences pilotes, Kora possède une base pr
 2. **Essai sur une préversion Vercel**, avec le vrai Azure : une vidéo de plusieurs centaines de Mo à 1 Go envoyée par blocs, une vraie vidéo MP4 (aucun avertissement, sauts nets), la capture GNOME (avertissement), la barre détectée sur le site de démo Café Boréal, Safari et Firefox.
 3. **Notes internes** : le designer revient sur le fait de montrer tout le fil d'une demande qualifiée au client. Le README décrit encore l'ancien comportement (notes internes, « Hors scope » visible une fois le devis envoyé), AGENTS.md le nouveau : aligner l'un sur l'autre une fois son retour fait.
 4. **Test instable du designer** : glisser une épingle sur une capture d'un « Lien » (`site-toolbar.spec.ts`) échoue parfois dans la suite complète. Cause probable : `ReviewCanvas.tsx` lit au relâchement un état `moving` pas encore rendu ; le corriger par une référence (`useRef`).
-5. **Commentaires Figma (US-054)**, demandé le 23 octobre 2026. Questions à trancher avec le porteur du produit avant l'étape 1 :
-   - **Qui est l'agence dans Figma ?** Figma ne donne pas l'adresse e-mail des auteurs. Proposé : le compte connecté et les personnes que l'agence désigne comme « équipe » sont de l'agence, les autres du client.
-   - **Les commentaires de l'équipe** : importés comme notes internes, ou pas importés ?
-   - **Livrable = fichier entier, page ou cadre ?** Proposé : un cadre ou une page, pour que l'image de la version corresponde aux commentaires importés.
-   - **La réponse dans Figma** : toujours, ou réglable par livrable ?
-   - L'application Figma est créée par le porteur du produit sur figma.com/developers (identifiant et secret dans `.env.local`).
+5. **Commentaires Figma (US-054)**, demandé et cadré le 23 octobre 2026. Prêt pour l'étape 1 (connexion), testée avec un faux serveur Figma. Pour un essai réel : l'application Figma, créée par le porteur du produit sur figma.com/developers (identifiant et secret dans `.env.local`).
 6. **Propositions en attente d'un oui** : un bouton « Comparer » dans le panneau « Versions », des boutons de zoom dans la comparaison, la surbrillance automatique des différences ; vidéo : capture de l'image au clic, reconversion des captures d'écran, plages de temps ; Jira (US-047) ; la page « Pilotage » (branche locale `feat/dashboard`, jamais poussée).
