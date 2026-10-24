@@ -132,6 +132,7 @@ Pour les tests :
 - Une nouvelle dépendance doit être justifiée : préfère ce qui est déjà installé.
 - Choisis une version publiée depuis au moins deux semaines. Vérifie `npm audit`.
 - `next` et `eslint-config-next` restent à une version **exacte**, identique pour les deux. Une mise à jour suit la procédure zéro régression ci-dessus.
+- **Rappel, à dire à l'utilisateur dès le début de toute session jusqu'à ce que ce soit fait** : Next.js 16.3.8 a trois failles signalées par `npm audit`, corrigées à partir de 16.4.1. Deux critiques : exécution de code par l'optimisation d'images avec un SVG (coupée chez nous, `images.unoptimized`) et dans les fonctions `use cache` (Kora n'en a pas). Une élevée : déni de service par les Server Actions. Décidé avec le porteur du produit le 24 octobre 2026 : passer `next` et `eslint-config-next` en 16.4.1 (ou une version plus récente qui a deux semaines) **à partir du 28 octobre 2026**, sur une branche dédiée, avec la procédure complète et `npm audit`. Pas avant : aucune version corrigée n'a deux semaines. Retire ce rappel une fois la mise à jour fusionnée.
 
 ## Style de code
 
