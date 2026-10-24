@@ -124,6 +124,63 @@ test("on a low screen, the qualifying bubble of a request placed low stays whole
   expect(errors).toEqual([]);
 });
 
+test("a request without pin: changing its qualification back and forth never moves the canvas behind its bubble", async ({ browser }) => {
+  const { alice, org } = await agency();
+  expect((await call("/api/comments", { method: "POST", person: alice, body: { request: { deliverableId: 1, decision: "À qualifier", title: "Page Équipe" } } })).status).toBe(200);
+  const [{ id }] = await sql<{ id: string }>("select id from comments where organization_id = $1 and data->>'title' = 'Page Équipe'", [org]);
+  const { page, errors } = await editor(browser, alice.email);
+  await page.getByRole("button", { name: `Demande à clarifier #${id}` }).click();
+  const bubble = page.getByRole("dialog", { name: `Demande à clarifier #${id}` });
+  await bubble.getByRole("button", { name: "Modifier", exact: true }).click();
+  const canvas = page.locator(".artboard-transform-content");
+  const transform = () => canvas.evaluate((node) => getComputedStyle(node).transform);
+  // Once the canvas has settled from fitting the page to its width.
+  let last = "";
+  await expect.poll(async () => last === (last = await transform())).toBe(true);
+  const before = last;
+  // The cited line's field comes and goes with « Inclus »: the bubble grows and shrinks, the canvas stays.
+  for (const choice of [/^Inclus/, /Hors scope/, /^Inclus/, /^À clarifier/, /^Inclus/]) {
+    await page.getByRole("radio", { name: choice }).click();
+    await expect(page.getByRole("radio", { name: choice })).toBeChecked();
+  }
+  await expect(page.getByLabel("Ligne du périmètre")).toBeVisible();
+  // A pan would show within its animation and the checks after it (src/app/(agency)/editor/ReviewCanvas.tsx).
+  await expect.poll(async () => last === (last = await transform())).toBe(true);
+  expect(last).toBe(before);
+  await expect(page.getByRole("button", { name: "Enregistrer" })).toBeInViewport();
+  expect(errors).toEqual([]);
+});
+
+test("a request back to clarify is suggested again when modified, its title kept; an « Inclus » already settled is not", async ({ browser }) => {
+  const { alice, org } = await agency();
+  const create = async (title: string, decision: string) => {
+    expect((await call("/api/comments", { method: "POST", person: alice, body: { request: { deliverableId: 1, decision, title } } })).status).toBe(200);
+    return (await sql<{ id: string }>("select id from comments where organization_id = $1 and data->>'title' = $2", [org, title]))[0].id;
+  };
+  const clarify = await create("Formulaire de contact cassé", "À qualifier");
+  const settled = await create("Bandeau cookies", "Inclus");
+  const asked: string[] = [];
+  const { page, errors } = await editor(browser, alice.email);
+  page.on("request", (request) => request.url().endsWith("/suggestion") && asked.push(new URL(request.url()).pathname));
+
+  await page.getByRole("button", { name: `Demande à clarifier #${clarify}` }).click();
+  await page.getByRole("dialog", { name: `Demande à clarifier #${clarify}` }).getByRole("button", { name: "Modifier", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Suggestion de l’IA" })).toContainText("Suggestion : Inclus");
+  await expect(page.getByRole("radio", { name: /^Inclus/ })).toBeChecked();
+  await expect(page.getByLabel("Ligne du périmètre")).toHaveValue("1");
+  // The title the agency gave stays.
+  await expect(page.getByLabel("Titre de la demande")).toHaveValue("Formulaire de contact cassé");
+  await page.getByRole("button", { name: "Annuler" }).click();
+
+  await page.getByRole("tab", { name: /^Inclus/ }).click();
+  await page.getByRole("button", { name: `Demande incluse #${settled}` }).click();
+  await page.getByRole("dialog", { name: `Demande incluse #${settled}` }).getByRole("button", { name: "Modifier", exact: true }).click();
+  await expect(page.getByLabel("Titre de la demande")).toHaveValue("Bandeau cookies");
+  await expect(page.getByRole("region", { name: "Suggestion de l’IA" })).toHaveCount(0);
+  expect(asked).toEqual([`/api/comments/${clarify}/suggestion`]);
+  expect(errors).toEqual([]);
+});
+
 test("without an active scope, the form says what would bring suggestions, and offers no line to cite", async ({ browser }) => {
   const { alice } = await agency({ active: false });
   const { page, errors } = await editor(browser, alice.email);

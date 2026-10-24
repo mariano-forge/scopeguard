@@ -282,6 +282,8 @@ export function ReviewCanvas({
     const panel = panelRef.current;
     const bubble = panel?.querySelector<HTMLElement>(".thread");
     if (!panel || !bubble) return;
+    // A request without pin has its bubble docked by the panel, outside the pages: moving them never brings it closer.
+    if (bubble.closest(".canvas-docked-thread")) return;
     let settle = 0;
     const reveal = (attempt = 0) => {
       const zoomApi = transformRef.current;
