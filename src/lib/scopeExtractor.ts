@@ -1,6 +1,7 @@
 // The engine behind « Lancer l'extraction » (src/lib/scopeExtraction.ts): reads pasted text or a PDF and
-// proposes the scope's items. Chosen by SCOPE_EXTRACTION_PROVIDER; none yet in production, so the page
-// says extraction is not configured and the agency types its items by hand.
+// proposes the scope's items. Chosen by AI_PROVIDER, the one setting of Kora's AI (src/lib/ai/provider.ts):
+// "fake" gives the tests' fixed reading; "anthropic" has no extraction engine yet, so, like no setting at
+// all, the page says extraction is not configured and the agency types its items by hand.
 //
 // To plug in the AI: add a provider here, with the same signature, whose output goes through
 // readExtracted (bounds) like every other. The PDF arrives as bytes, read by the server from the agency's
@@ -13,7 +14,7 @@ export type ExtractionInput = { text: string } | { pdf: { name: string; bytes: B
 type Extractor = (input: ExtractionInput) => Promise<unknown>;
 
 /**
- * For the tests only (SCOPE_EXTRACTION_PROVIDER=test): no AI, a fixed reading. One item a line, « Title —
+ * For the tests only (AI_PROVIDER=fake): no AI, a fixed reading. One item a line, « Title —
  * 5 pages » read as its quantity and unit; the lines after a « Non inclus » heading are exclusions. A PDF
  * gives one item named after it.
  */
@@ -38,10 +39,11 @@ const testExtractor: Extractor = async (input) => {
   });
 };
 
-const providers: Record<string, Extractor> = { test: testExtractor };
+/** The engine for each AI_PROVIDER: Claude's comes when its extraction is written (« anthropic » not yet). */
+const providers: Record<string, Extractor> = { fake: testExtractor };
 
 /** The engine configured, or none (extraction not offered yet). */
-export const extractionProvider = () => providers[process.env.SCOPE_EXTRACTION_PROVIDER ?? ""];
+export const extractionProvider = (): Extractor | undefined => providers[process.env.AI_PROVIDER ?? ""];
 
 export const extractionOff = () =>
   Response.json({ error: "L’extraction automatique n’est pas encore configurée : ajoutez les éléments à la main en attendant.", code: "EXTRACTION_OFF" }, { status: 503 });

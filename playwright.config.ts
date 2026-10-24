@@ -57,7 +57,7 @@ export default defineConfig({
       UPLOADS_PER_HOUR: "5",
       WRITES_PER_MINUTE: "120",
       // The scope's extraction, read by the tests' fixed engine (src/lib/scopeExtractor.ts): no AI.
-      SCOPE_EXTRACTION_PROVIDER: "test",
+      AI_PROVIDER: "fake",
       EXTRACTIONS_PER_HOUR: "30",
       // Figma (US-054): its API is the run's stand-in (tests/e2e/figmaStandIn.ts), its consent page an
       // address the tests intercept; a fixed key seals the tokens.
