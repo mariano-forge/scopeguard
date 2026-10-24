@@ -12,6 +12,8 @@ const scope = (active: boolean) => ({
   lines: [
     { id: 1, title: "Page Contact avec formulaire" },
     { id: 2, title: "Pages vitrine", quantity: 5, unit: "pages" },
+    // A line as long as real quotes have: the list of lines must not widen the form.
+    { id: 3, title: "Flyer Pains au chocolat : visuel principal, déclinaisons pour les réseaux sociaux et version imprimable A5 recto verso" },
   ],
   exclusions: [{ id: 1, title: "Rédaction des textes" }],
   ...(active ? { activatedAt: Date.now(), activatedBy: "Alice Martin" } : {}),
@@ -74,6 +76,8 @@ test("qualifying a request: the AI's suggestion pre-fills the form, the cited li
   await expect(page.getByRole("radio", { name: /^Inclus/ })).toBeChecked();
   await expect(page.getByLabel("Ligne du périmètre")).toHaveValue("1");
   await expect(page.getByLabel("Titre de la demande")).toHaveValue("Le formulaire de contact n’envoie rien");
+  // The bubble keeps its width: nothing to scroll sideways.
+  expect(await page.locator(".thread").evaluate((bubble) => bubble.scrollWidth <= bubble.clientWidth)).toBe(true);
   expect((await commentData(org, 30)).decision).toBe("À qualifier");
   await page.getByRole("button", { name: "Créer la demande" }).click();
 
