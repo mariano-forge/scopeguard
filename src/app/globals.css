@@ -10489,3 +10489,45 @@ body.is-resizing {
 .pdf-sharp-layer .react-pdf__Page {
   background-color: transparent !important;
 }
+
+/* Where a request came from (src/components/SourceIcon.tsx), in its card's bottom right corner. */
+.thread-row {
+  position: relative;
+}
+.thread-row:has(.thread-row-source) {
+  padding-right: calc(var(--s-4) + 22px);
+}
+.thread-row-source {
+  position: absolute;
+  right: var(--s-4);
+  bottom: var(--s-3);
+  display: inline-flex;
+}
+.source-icon {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+}
+.source-icon .lucide {
+  width: 70%;
+  height: 70%;
+}
+.source-icon-email {
+  background: var(--status-low-bg);
+  color: var(--status-low-text);
+}
+.source-icon-call {
+  background: var(--status-resolved-bg);
+  color: var(--status-resolved-text);
+}
+.source-icon-meeting {
+  background: var(--status-scope-bg);
+  color: var(--status-scope-text);
+}
+.source-icon-other {
+  background: var(--mist);
+  color: var(--graphite);
+}
+.source-icon-kora {
+  color: var(--ink);
+}

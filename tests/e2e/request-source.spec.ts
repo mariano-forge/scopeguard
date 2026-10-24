@@ -109,3 +109,38 @@ test("sources are checked: known channel, real date, bounded words, an image the
   expect(await commentData(org, question.json.id as number)).toMatchObject({ decision: "À qualifier", kind: "remark", source: { channel: "call" } });
   expect(await sql("select 1 from comments where organization_id = $1 and data->>'title' in ('Mal formée', 'PDF', 'Volée')", [org])).toHaveLength(0);
 });
+
+test("each request's card shows where it came from, at a glance: a brand's logo, a Kora glyph, or Kora's mark when made in Kora", async ({ browser }) => {
+  const { alice, org, act } = await agency();
+  const made = async (title: string, channel?: string) => {
+    const answer = await act(alice, { decision: "À qualifier", title, ...(channel ? { source: { channel, receivedAt: "2026-10-20" } } : {}) });
+    expect(answer.status).toBe(200);
+    return answer.json.id as number;
+  };
+  const byMail = await made("Ajouter un blog", "email");
+  const byTeams = await made("Changer le logo", "teams");
+  const bySlack = await made("Revoir le menu", "slack");
+  const inKora = await made("Question sur la police");
+  // Teams is a source like the others, and the server says so in the proof's words.
+  expect((await commentData(org, byTeams)).source).toEqual({ channel: "teams", receivedAt: "2026-10-20" });
+
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1/livrables/1");
+  const card = (id: number) => page.getByRole("button", { name: new RegExp(`#${id}$`) });
+  await expect(card(byMail)).toBeVisible();
+  // The source is read after the card's name, and told on hover; the name itself is unchanged.
+  await expect(card(byMail)).toHaveAccessibleDescription("Demande reçue par e-mail le 20/10/2026");
+  await expect(card(byMail).locator(".thread-row-source")).toHaveAttribute("title", "Demande reçue par e-mail le 20/10/2026");
+  await expect(card(byMail).locator(".source-icon-email")).toBeVisible();
+  await expect(card(byTeams)).toHaveAccessibleDescription("Demande reçue sur Teams le 20/10/2026");
+  await expect(card(byTeams).locator(".thread-row-source svg linearGradient")).toHaveCount(1);
+  await expect(card(bySlack).locator(".thread-row-source svg path")).toHaveCount(4);
+  // Made in Kora (entered without a source, as a pin on the deliverable): Kora's mark.
+  await expect(card(inKora)).toHaveAccessibleDescription("Faite dans Kora");
+  await expect(card(inKora).locator(".thread-row-source .source-icon-kora")).toBeVisible();
+  // Teams is offered in « + Demande ».
+  await page.getByRole("button", { name: "Ajouter une demande" }).click();
+  await expect(page.getByLabel("Source").locator("option", { hasText: "Teams" })).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
