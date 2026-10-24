@@ -1,6 +1,6 @@
 // GPT on Azure (Microsoft Foundry), through the OpenAI v1 API of an Azure resource: a plain HTTP call, no
-// SDK to add. Chosen for Kora because it runs in the EU data zone (decided with the product owner on
-// 24 October 2026: Claude is not offered there). The model must answer by calling the one tool it is given
+// SDK to add. Chosen for Kora because it can run in the EU data zone, a « Data Zone Standard » deployment,
+// where Claude is not offered (decided with the product owner on 24 October 2026; trials run on « Global »). The model must answer by calling the one tool it is given
 // (`tool_choice`, `strict`), so its answer is data in a known shape, checked afterwards like any other.
 // Azure caches a long identical start of the request by itself: the instructions and the scope come first.
 

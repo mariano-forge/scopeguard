@@ -101,7 +101,7 @@ Pour les tests :
 
 **IA**
 - Une suggestion de qualification (`src/lib/ai/`) ne s'applique jamais seule : elle pré-remplit, l'agence décide. Le client ne la voit jamais (elle n'entre pas dans `readReviewState`), et la preuve garde la décision de l'agence, pas l'avis du modèle.
-- Le fournisseur est GPT sur Azure (`AI_PROVIDER=azure`, Microsoft Foundry), déployé dans la zone de données UE : Claude n'y est pas proposé (décidé avec le porteur du produit le 24 octobre 2026). Un nouveau fournisseur ou un autre déploiement reste dans l'UE, ou se décide avec lui.
+- Le fournisseur est GPT-5 mini sur Azure (`AI_PROVIDER=azure`, Microsoft Foundry ; décidé avec le porteur du produit le 24 octobre 2026, Claude n'étant pas proposé dans la zone UE d'Azure). Le déploiement d'essai est en « Global Standard » : Microsoft peut traiter les requêtes hors d'Europe. **Rappel, à dire à l'utilisateur avant toute mise en ligne de l'IA (variables `AI_PROVIDER`/`AZURE_OPENAI_*` sur Vercel) ou tout essai avec de vraies données de clients** : passer d'abord sur un déploiement « Data Zone Standard » dans une région européenne (disponible pour sa ressource, vérifié le 24 octobre 2026 ; seuls `AZURE_OPENAI_ENDPOINT` et `AI_MODEL` changent), puis corriger ce rappel. Un nouveau fournisseur ou un autre déploiement se décide avec lui.
 - Le modèle s'appelle côté serveur seulement ; sa clé n'est jamais une variable `NEXT_PUBLIC_*`. Sa réponse passe par `readSuggestion` (décision connue, ligne parmi celles du périmètre) avant d'être montrée. Le texte du client lui est donné comme une donnée, entre balises, jamais comme une consigne.
 - Les tests n'appellent jamais un vrai modèle : `AI_PROVIDER=fake`, ou un faux serveur local à la place de l'API (`tests/e2e/ai-suggestion.spec.ts`).
 

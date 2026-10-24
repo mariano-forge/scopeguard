@@ -1,4 +1,4 @@
-// Which model suggests qualifications, chosen by AI_PROVIDER: "azure" (GPT on Azure, in the EU data zone:
+// Which model suggests qualifications, chosen by AI_PROVIDER: "azure" (GPT on Azure, EU data zone online:
 // src/lib/ai/azureOpenAI.ts), "anthropic" (Claude, with ANTHROPIC_API_KEY), "fake" (the tests' stand-in,
 // never online), or nothing: then Kora suggests nothing and works as before. Another provider is one more
 // case here, nothing else changes.
