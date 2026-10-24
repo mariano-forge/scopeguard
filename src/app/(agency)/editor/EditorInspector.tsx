@@ -15,7 +15,6 @@ import { outsideFilters, outsideStatusView, type OutsideStatus, type StatusTone 
 import { sideOf } from "@/lib/authors";
 
 /** What a card made in Kora says of its source (pinned on the deliverable, or entered without one). */
-const madeInKora = "Faite dans Kora";
 
 /** « draft »: the agency's pins with no status yet; « closed »: discussions closed (archived). */
 export type InspectorTab = RequestKind | "draft" | "closed";
@@ -248,7 +247,7 @@ export function RequestPanel({
                     aria-current={comment.id === selectedId ? "true" : undefined}
                     aria-label={`${itemLabel(comment)} #${comment.id}`}
                     // Where it came from, read after its name (the name stays the card's own).
-                    aria-describedby={`source-${comment.id}`}
+                    aria-describedby={comment.source ? `source-${comment.id}` : undefined}
                     onClick={() => onFocus(comment.id)}
                   >
                     {(comment.closed || status) && (
@@ -271,13 +270,15 @@ export function RequestPanel({
                         {fresh > 0 ? `${plural(fresh, "message")} non lu${fresh > 1 ? "s" : ""}` : plural(replies, "réponse")}
                       </span>
                     )}
-                    {/* Where it came from, at a glance: received elsewhere (an e-mail, a call, Slack, Teams, Figma…), or made in Kora. */}
-                    <span className="thread-row-source" title={comment.source ? sourceLine(comment.source) : madeInKora}>
-                      <SourceIcon channel={comment.source?.channel ?? null} />
-                      <span id={`source-${comment.id}`} className="sr-only">
-                        {comment.source ? sourceLine(comment.source) : madeInKora}
+                    {/* Where it came from, at a glance, when received elsewhere (an e-mail, a call, Slack, Teams, Figma…). Made in Kora: nothing to say. */}
+                    {comment.source && (
+                      <span className="thread-row-source" title={sourceLine(comment.source)}>
+                        <SourceIcon channel={comment.source.channel} />
+                        <span id={`source-${comment.id}`} className="sr-only">
+                          {sourceLine(comment.source)}
+                        </span>
                       </span>
-                    </span>
+                    )}
                   </button>
                   {stage && !comment.closed && (
                     // A click beside the buttons selects the card, as a click on the card does.

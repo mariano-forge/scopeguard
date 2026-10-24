@@ -10582,9 +10582,6 @@ body.is-resizing {
   background: var(--mist);
   color: var(--graphite);
 }
-.source-icon-kora {
-  color: var(--ink);
-}
 
 /* The AI's suggestion in a qualifying form (src/app/(agency)/editor/QualifyAssist.tsx): a note above the
    choice, never a decision; and the line of the active scope an « Inclus » cites. */

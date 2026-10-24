@@ -137,9 +137,10 @@ test("each request's card shows where it came from, at a glance: a brand's logo,
   await expect(card(byTeams)).toHaveAccessibleDescription("Demande reçue sur Teams le 20/10/2026");
   await expect(card(byTeams).locator(".thread-row-source svg linearGradient")).toHaveCount(1);
   await expect(card(bySlack).locator(".thread-row-source svg path")).toHaveCount(4);
-  // Made in Kora (entered without a source, as a pin on the deliverable): Kora's mark.
-  await expect(card(inKora)).toHaveAccessibleDescription("Faite dans Kora");
-  await expect(card(inKora).locator(".thread-row-source .source-icon-kora")).toBeVisible();
+  // Made in Kora (entered without a source, as a pin on the deliverable): no mark, nothing more read.
+  await expect(card(inKora)).toBeVisible();
+  await expect(card(inKora).locator(".thread-row-source")).toHaveCount(0);
+  await expect(card(inKora)).toHaveAccessibleDescription("");
   // Teams is offered in « + Demande ».
   await page.getByRole("button", { name: "Ajouter une demande" }).click();
   await expect(page.getByLabel("Source").locator("option", { hasText: "Teams" })).toHaveCount(1);

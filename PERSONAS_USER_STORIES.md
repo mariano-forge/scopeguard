@@ -916,7 +916,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 **Critères d'acceptation**
 
 - « + Demande » crée une demande « À clarifier », « Inclus » ou « Hors scope », pour une demande reçue ailleurs ou portant sur tout le livrable (une zone qu'on ne peut pas pointer).
-- La source est facultative : E-mail, Appel, Réunion, Slack, Teams, Figma ou Autre, avec la date de la demande d'origine. La carte de la demande la montre d'un coup d'œil par une icône (logo officiel pour Slack, Teams et Figma ; symbole de Kora pour ce qui est fait dans Kora).
+- La source est facultative : E-mail, Appel, Réunion, Slack, Teams, Figma ou Autre, avec la date de la demande d'origine. La carte de la demande la montre d'un coup d'œil par une icône (logo officiel pour Slack, Teams et Figma) ; une demande faite dans Kora n'en a pas.
 - L'agence peut coller le texte du client (l'extrait) et joindre une capture (image collée dans l'extrait ou choisie) ; les deux sont indiqués « Visible par le client ».
 - La demande affiche « Demande reçue par e-mail le 14/10/2026, saisie par Alice Martin », avec l'extrait et la capture, chez l'agence comme chez le client.
 - Le serveur n'accepte qu'un canal connu, une date valide, un extrait de 5 000 caractères au plus, et une image importée par l'agence elle-même.
