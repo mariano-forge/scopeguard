@@ -9745,7 +9745,8 @@ body.is-resizing {
 /* The bubble never outgrows the canvas: its header stays, its content scrolls. */
 .thread,
 .thread.is-qualifying {
-  max-height: min(460px, calc(100dvh - 180px));
+  /* --bubble-room: the room left between the top of the canvas and its toolbar (ReviewCanvas.tsx). */
+  max-height: min(460px, calc(100dvh - 180px), var(--bubble-room, 100dvh));
   overflow-y: auto;
   overscroll-behavior: contain;
 }

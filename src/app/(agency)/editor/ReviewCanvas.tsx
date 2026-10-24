@@ -276,19 +276,25 @@ export function ReviewCanvas({
     element.currentTime = openedTimecode;
   }, [openedTimecode, selectedId]);
   // An open bubble (or the new-comment form) stays fully visible: when it opens or grows (qualify form),
-  // the canvas pans so it sits between the top of the canvas and the toolbar.
+  // the canvas pans so it sits between the top of the canvas and the toolbar, and it is never taller than that.
   const bubbleKey = `${threadOpen ? `${selectedId}-${selected?.decision}` : ""}|${composer ? `${composer.page}-${composer.x}-${composer.y}` : ""}`;
   useEffect(() => {
     const panel = panelRef.current;
     const bubble = panel?.querySelector<HTMLElement>(".thread");
     if (!panel || !bubble) return;
-    const reveal = () => {
+    let settle = 0;
+    const reveal = (attempt = 0) => {
       const zoomApi = transformRef.current;
       const frame = panel.querySelector(".artboard-transform-wrapper")?.getBoundingClientRect();
       if (!zoomApi || !frame) return;
-      const box = bubble.getBoundingClientRect();
       const toolbarTop = panel.querySelector(".canvas-toolbar")?.getBoundingClientRect().top ?? frame.bottom;
       const margin = 12;
+      // Never taller than the room between the top of the canvas and the toolbar (a banner, a low window):
+      // its content scrolls instead, its buttons stay in view.
+      const room = Math.max(240, Math.floor(toolbarTop - frame.top - 2 * margin));
+      const cap = `${room}px`;
+      if (bubble.style.getPropertyValue("--bubble-room") !== cap) bubble.style.setProperty("--bubble-room", cap);
+      const box = bubble.getBoundingClientRect();
       let dy = 0;
       if (box.bottom > toolbarTop - margin) dy = toolbarTop - margin - box.bottom;
       if (box.top + dy < frame.top + margin) dy = frame.top + margin - box.top;
@@ -298,10 +304,16 @@ export function ReviewCanvas({
       if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
       const { positionX, positionY, scale } = zoomApi.state;
       zoomApi.setTransform(positionX + dx, positionY + dy, scale, 200);
+      // A move asked while the previous one still animates can be lost: checked again once it is over.
+      window.clearTimeout(settle);
+      if (attempt < 3) settle = window.setTimeout(() => reveal(attempt + 1), 250);
     };
-    const resize = new ResizeObserver(() => requestAnimationFrame(reveal));
+    const resize = new ResizeObserver(() => requestAnimationFrame(() => reveal()));
     resize.observe(bubble);
-    return () => resize.disconnect();
+    return () => {
+      resize.disconnect();
+      window.clearTimeout(settle);
+    };
   }, [bubbleKey, transformRef]);
   const pageKind =
     deliverable.type === "PDF" && deliverable.fileData

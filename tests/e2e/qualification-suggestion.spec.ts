@@ -100,6 +100,30 @@ test("qualifying a request: the AI's suggestion pre-fills the form, the cited li
   expect(errors).toEqual([]);
 });
 
+test("on a low screen, the qualifying bubble of a request placed low stays whole between the top of the canvas and its toolbar", async ({ browser }) => {
+  const { alice } = await agency();
+  await sql("update comments set data = jsonb_set(data, '{position}', '{\"x\": 50, \"y\": 90}') where organization_id = $1 and id = 30", [alice.organizationId]);
+  const { page, errors } = await newPerson(browser);
+  await page.setViewportSize({ width: 1366, height: 640 });
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1/livrables/1");
+  await expect(page.locator("[data-page]").first()).toBeVisible();
+  await page.locator('[data-pin="30"]').click();
+  await page.getByRole("button", { name: "Qualifier", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Suggestion de l’IA" })).toContainText("Suggestion : Inclus");
+  // Once the canvas has moved (and the bubble shrunk to the room, if need be): whole, its buttons in view.
+  const gaps = () =>
+    page.evaluate(() => {
+      const bubble = document.querySelector(".thread")!.getBoundingClientRect();
+      const toolbar = document.querySelector(".canvas-toolbar")!.getBoundingClientRect();
+      const frame = document.querySelector(".artboard-transform-wrapper")!.getBoundingClientRect();
+      return Math.min(toolbar.top - bubble.bottom, bubble.top - frame.top);
+    });
+  await expect.poll(gaps).toBeGreaterThanOrEqual(0);
+  await expect(page.getByRole("button", { name: "Créer la demande" })).toBeInViewport();
+  expect(errors).toEqual([]);
+});
+
 test("without an active scope, the form says what would bring suggestions, and offers no line to cite", async ({ browser }) => {
   const { alice } = await agency({ active: false });
   const { page, errors } = await editor(browser, alice.email);
