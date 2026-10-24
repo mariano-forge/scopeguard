@@ -715,7 +715,19 @@ export function ThreadPopover({
                 <div className="request-actions">
                   {/* Out-of-scope requests are edited from their "Chiffrer / Modifier" button. */}
                   {kind !== "outside" && (
-                    <button type="button" className="thread-link" onClick={() => setQualifying(true)}>
+                    <button
+                      type="button"
+                      className="thread-link"
+                      onClick={() => {
+                        setQualifying(true);
+                        // Back to clarify: the agency hesitates again, the client may have answered since; asked
+                        // again. Not for an « Inclus » the agency already settled.
+                        if (kind === "comment") {
+                          touched.current = false;
+                          suggestion.ask();
+                        }
+                      }}
+                    >
                       <Tag aria-hidden="true" /> Modifier
                     </button>
                   )}

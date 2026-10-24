@@ -57,8 +57,8 @@ export function SuggestionNote({ state }: { state: SuggestionState }) {
         <>
           <p>
             <Sparkles aria-hidden="true" /> <b>Suggestion : {decisionLabels[state.suggestion.decision]}</b>
-            {state.suggestion.line && <> · ligne « {state.suggestion.line.title} »</>}
           </p>
+          {state.suggestion.line && <p className="qualify-suggestion-line">Ligne « {state.suggestion.line.title} »</p>}
           <p className="qualify-suggestion-reason">{state.suggestion.reason}</p>
           <small>Le formulaire est pré-rempli : vérifiez avant d’enregistrer, la décision reste la vôtre.</small>
         </>
@@ -71,7 +71,7 @@ export function SuggestionNote({ state }: { state: SuggestionState }) {
 export function CitedLineField({ id, lines, value, onChange }: { id: string; lines: CitedLine[]; value: number | undefined; onChange: (value: number | undefined) => void }) {
   if (!lines.length) return null;
   return (
-    <label htmlFor={id}>
+    <label htmlFor={id} className="qualify-line-field">
       Ligne du périmètre
       <select id={id} className="qualify-line" value={value ?? ""} onChange={(event) => onChange(event.target.value ? Number(event.target.value) : undefined)}>
         <option value="">Aucune</option>

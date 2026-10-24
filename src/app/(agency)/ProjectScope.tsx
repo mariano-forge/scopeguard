@@ -241,18 +241,25 @@ export function ProjectScopeEditor({ projectId, scope, amendments }: { projectId
     );
 
   const dirty = saved(draft) !== saved(scope);
-  const update = (change: Partial<ProjectScope>) => setDraft({ ...draft, ...change });
+  // Each change starts from the latest draft, not from the one of the last render: gestures in quick
+  // succession on a busy machine (typing, then « Dupliquer ») otherwise undid each other.
+  const updateWith = (change: (current: ProjectScope) => Partial<ProjectScope>) => setDraft((current) => current && { ...current, ...change(current) });
+  const update = (change: Partial<ProjectScope>) => updateWith(() => change);
   const rowsOf = (list: RowList) => draft[list] as Row[];
-  const setRow = <K extends RowList>(list: K, id: number, change: Partial<ProjectScope[K][number]>) => update({ [list]: rowsOf(list).map((row) => (row.id === id ? { ...row, ...change } : row)) });
+  const setRow = <K extends RowList>(list: K, id: number, change: Partial<ProjectScope[K][number]>) =>
+    updateWith((current) => ({ [list]: (current[list] as Row[]).map((row) => (row.id === id ? { ...row, ...change } : row)) }));
   const addRow = (list: RowList, after?: Row) => {
     const id = newId();
-    const rows = rowsOf(list);
-    const copy = after ? { ...after, id } : { id, title: "" };
-    const at = after ? rows.findIndex((row) => row.id === after.id) + 1 : rows.length;
-    update({ [list]: [...rows.slice(0, at), copy, ...rows.slice(at)] });
+    updateWith((current) => {
+      const rows = current[list] as Row[];
+      // A duplicate copies the row as it is now (its latest words), placed right after it.
+      const source = after && rows.find((row) => row.id === after.id);
+      const at = source ? rows.indexOf(source) + 1 : rows.length;
+      return { [list]: [...rows.slice(0, at), source ? { ...source, id } : { id, title: "" }, ...rows.slice(at)] };
+    });
     setFocusId(id);
   };
-  const removeRow = (list: RowList, id: number) => update({ [list]: rowsOf(list).filter((row) => row.id !== id) });
+  const removeRow = (list: RowList, id: number) => updateWith((current) => ({ [list]: (current[list] as Row[]).filter((row) => row.id !== id) }));
   /** Enter in a row (Shift+Enter breaks the line of a long text): the next row's title, or a new row after the last one. */
   const onRowKey = (event: React.KeyboardEvent, list: RowList, index: number) => {
     if (event.key !== "Enter" || event.shiftKey || !(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)) return;
@@ -298,7 +305,7 @@ export function ProjectScopeEditor({ projectId, scope, amendments }: { projectId
   const addExtracted = (items: ExtractedItem[]) => {
     const lines = items.filter((item) => item.kind === "included").map((item) => ({ id: newId(), title: item.title, quantity: item.quantity, unit: item.unit }));
     const exclusions = items.filter((item) => item.kind === "excluded").map((item) => ({ id: newId(), title: item.title }));
-    update({ lines: [...filled(draft.lines), ...lines], exclusions: [...filled(draft.exclusions), ...exclusions] });
+    updateWith((current) => ({ lines: [...filled(current.lines), ...lines], exclusions: [...filled(current.exclusions), ...exclusions] }));
     toast.success(`${items.length} élément${items.length > 1 ? "s" : ""} ajouté${items.length > 1 ? "s" : ""} : relisez, puis enregistrez.`);
   };
 

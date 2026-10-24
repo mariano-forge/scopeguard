@@ -85,6 +85,10 @@ test("the agency types what is included and not, then activates it as the refere
   await page.getByLabel("Quantité de la ligne 1").fill("5");
   await page.getByLabel("Unité de la ligne 1").click();
   await page.getByRole("option", { name: "pages", exact: true }).click();
+  // The list of units closed first: closing, it gives the focus back to its button, which on a loaded
+  // machine came after Enter and took the focus from the new line.
+  await expect(page.getByRole("listbox")).toBeHidden();
+  await expect(page.getByLabel("Unité de la ligne 1")).toBeFocused();
   await page.getByLabel("Quantité de la ligne 1").press("Enter");
   await expect(page.getByLabel("Désignation de la ligne 2")).toBeFocused();
   await page.keyboard.type("Formulaire de contact");

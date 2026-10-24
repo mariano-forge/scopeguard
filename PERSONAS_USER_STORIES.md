@@ -982,7 +982,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 > - **Côté client** : il lit le périmètre actif depuis sa page de revue (inclus, non inclus, avenants de sa version), et a sa propre cloche : réponses de l'agence, devis à valider, ses demandes qualifiées, nouvelle version partagée.
 > - Un onglet « Clients » (organisation, contacts et leurs accès) a été essayé puis abandonné le 23 octobre 2026 : les invités des livrables suffisent.
 >
-> - **IA** (24 octobre 2026, GPT-5 mini sur Azure) : « Extraire avec l'IA » lit le devis (texte ou PDF, lu par le serveur) ; à la qualification d'une demande, l'IA suggère « Inclus », « Hors scope » ou « À clarifier », la ligne du périmètre actif et un titre, ce qui pré-remplit le formulaire (automatiquement à l'ouverture, ou par « Suggérer avec l'IA » dans « + Demande »). L'agence décide ; e-mails et téléphones masqués avant l'envoi. Une demande « Inclus » cite la ligne du périmètre choisie par l'agence : le client et la preuve la lisent.
+> - **IA** (24 octobre 2026, GPT-5 mini sur Azure) : « Extraire avec l'IA » lit le devis (texte ou PDF, lu par le serveur) ; à la qualification d'une demande, l'IA suggère « Inclus », « Hors scope » ou « À clarifier », la ligne du périmètre actif et un titre, ce qui pré-remplit le formulaire (automatiquement à l'ouverture, et de nouveau quand on modifie une demande remise « À clarifier », ou par « Suggérer avec l'IA » dans « + Demande »). L'agence décide ; e-mails et téléphones masqués avant l'envoi. Une demande « Inclus » cite la ligne du périmètre choisie par l'agence : le client et la preuve la lisent.
 >
 > À venir : la confirmation du périmètre par le client, la suggestion dans la barre du site de recette.
 

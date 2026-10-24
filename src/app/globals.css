@@ -9745,7 +9745,8 @@ body.is-resizing {
 /* The bubble never outgrows the canvas: its header stays, its content scrolls. */
 .thread,
 .thread.is-qualifying {
-  max-height: min(460px, calc(100dvh - 180px));
+  /* --bubble-room: the room left between the top of the canvas and its toolbar (ReviewCanvas.tsx). */
+  max-height: min(460px, calc(100dvh - 180px), var(--bubble-room, 100dvh));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -10588,6 +10589,8 @@ body.is-resizing {
 .qualify-suggestion {
   display: grid;
   gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
   border: 1px solid var(--border);
   border-radius: var(--r-field);
   background: var(--status-low-bg);
@@ -10607,13 +10610,29 @@ body.is-resizing {
   height: 14px;
   flex: none;
 }
+.qualify-suggestion .qualify-suggestion-reason,
+.qualify-suggestion .qualify-suggestion-line {
+  display: block;
+}
 .qualify-suggestion .qualify-suggestion-reason {
   color: var(--ink);
 }
 .qualify-suggestion small {
   color: var(--graphite);
 }
+/* A native list is as wide as its longest option: a long line of the quote widened the whole form. */
+.qualify-form {
+  grid-template-columns: minmax(0, 1fr);
+}
+.qualify-line-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
 .qualify-line {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
   border: 1px solid var(--border-input);
   border-radius: var(--r-field);
   background: var(--paper);

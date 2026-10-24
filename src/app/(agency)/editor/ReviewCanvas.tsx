@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
 import { Eye, EyeOff, Hand, Maximize, MessageCirclePlus, Minus, Plus } from "lucide-react";
 import { DeliverableContent, type CanvasVideo } from "@/components/DeliverableContent";
@@ -276,19 +276,27 @@ export function ReviewCanvas({
     element.currentTime = openedTimecode;
   }, [openedTimecode, selectedId]);
   // An open bubble (or the new-comment form) stays fully visible: when it opens or grows (qualify form),
-  // the canvas pans so it sits between the top of the canvas and the toolbar.
+  // the canvas pans so it sits between the top of the canvas and the toolbar, and it is never taller than that.
   const bubbleKey = `${threadOpen ? `${selectedId}-${selected?.decision}` : ""}|${composer ? `${composer.page}-${composer.x}-${composer.y}` : ""}`;
   useEffect(() => {
     const panel = panelRef.current;
     const bubble = panel?.querySelector<HTMLElement>(".thread");
     if (!panel || !bubble) return;
-    const reveal = () => {
+    // A request without pin has its bubble docked by the panel, outside the pages: moving them never brings it closer.
+    if (bubble.closest(".canvas-docked-thread")) return;
+    let settle = 0;
+    const reveal = (attempt = 0) => {
       const zoomApi = transformRef.current;
       const frame = panel.querySelector(".artboard-transform-wrapper")?.getBoundingClientRect();
       if (!zoomApi || !frame) return;
-      const box = bubble.getBoundingClientRect();
       const toolbarTop = panel.querySelector(".canvas-toolbar")?.getBoundingClientRect().top ?? frame.bottom;
       const margin = 12;
+      // Never taller than the room between the top of the canvas and the toolbar (a banner, a low window):
+      // its content scrolls instead, its buttons stay in view.
+      const room = Math.max(240, Math.floor(toolbarTop - frame.top - 2 * margin));
+      const cap = `${room}px`;
+      if (bubble.style.getPropertyValue("--bubble-room") !== cap) bubble.style.setProperty("--bubble-room", cap);
+      const box = bubble.getBoundingClientRect();
       let dy = 0;
       if (box.bottom > toolbarTop - margin) dy = toolbarTop - margin - box.bottom;
       if (box.top + dy < frame.top + margin) dy = frame.top + margin - box.top;
@@ -298,11 +306,44 @@ export function ReviewCanvas({
       if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
       const { positionX, positionY, scale } = zoomApi.state;
       zoomApi.setTransform(positionX + dx, positionY + dy, scale, 200);
+      // A move asked while the previous one still animates can be lost: checked again once it is over.
+      window.clearTimeout(settle);
+      if (attempt < 3) settle = window.setTimeout(() => reveal(attempt + 1), 250);
     };
-    const resize = new ResizeObserver(() => requestAnimationFrame(reveal));
+    const resize = new ResizeObserver(() => requestAnimationFrame(() => reveal()));
     resize.observe(bubble);
-    return () => resize.disconnect();
+    return () => {
+      resize.disconnect();
+      window.clearTimeout(settle);
+    };
   }, [bubbleKey, transformRef]);
+  // A request without pin: its bubble, docked by the panel, faces its card in the list (kept between the top
+  // of the canvas and its toolbar), and follows it as the list scrolls.
+  const dockedRef = useRef<HTMLDivElement>(null);
+  const dockedId = threadOpen && !moving && selected && !selected.position ? selected.id : null;
+  useLayoutEffect(() => {
+    const docked = dockedRef.current;
+    const area = docked?.offsetParent;
+    if (dockedId === null || !docked || !(area instanceof HTMLElement)) return;
+    const place = () => {
+      const bounds = area.getBoundingClientRect();
+      const card = document.querySelector(".inspector-row.is-selected")?.getBoundingClientRect();
+      const toolbarTop = area.querySelector(".canvas-toolbar")?.getBoundingClientRect().top ?? bounds.bottom;
+      const margin = 16;
+      const lowest = toolbarTop - bounds.top - margin - docked.offsetHeight;
+      docked.style.top = `${Math.max(margin, Math.min(card ? card.top - bounds.top : margin, lowest))}px`;
+    };
+    place();
+    const resize = new ResizeObserver(place);
+    resize.observe(docked);
+    document.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      resize.disconnect();
+      document.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [dockedId]);
   const pageKind =
     deliverable.type === "PDF" && deliverable.fileData
       ? "pdf"
@@ -631,7 +672,11 @@ export function ReviewCanvas({
       </div>
 
       {/* A request without pin: its bubble by the panel, outside the zoomed pages. */}
-      {threadOpen && !moving && selected && !selected.position && <div className="canvas-docked-thread">{renderThread(selected)}</div>}
+      {dockedId !== null && selected && (
+        <div ref={dockedRef} className="canvas-docked-thread">
+          {renderThread(selected)}
+        </div>
+      )}
       {video && (
         <VideoBar
           controls={videoControls}
