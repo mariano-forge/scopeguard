@@ -244,8 +244,11 @@ test("a quantity given apart is taken out of the title where the model leaves it
   expect(tidy("Bannières : 12 visuels", 12, "visuels")).toBe("Bannières");
   expect(tidy("Charte graphique – 1,5 jour", 1.5, "jours")).toBe("Charte graphique");
   expect(tidy("2 tours de corrections sur les maquettes", 2, "tours de corrections")).toBe("Tours de corrections sur les maquettes");
+  // The number taken out by the model, its unit left behind the dash.
+  expect(tidy("Intégration WordPress — pages", 6, "pages")).toBe("Intégration WordPress");
   // Elsewhere, or another number, or no quantity apart: as written.
   expect(tidy("Galerie — 40 photos fournies par le client", 40, "photos")).toBe("Galerie — 40 photos fournies par le client");
+  expect(tidy("Galerie — photos fournies par le client", 40, "photos")).toBe("Galerie — photos fournies par le client");
   expect(tidy("Formation — 3 heures", 2, "heures")).toBe("Formation — 3 heures");
   expect(tidy("Hébergement — 12 mois", null, null)).toBe("Hébergement — 12 mois");
   expect(tidy("Top 10 des pages", 10, "pages")).toBe("Top 10 des pages");
