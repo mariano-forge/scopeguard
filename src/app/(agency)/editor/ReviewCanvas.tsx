@@ -6,6 +6,7 @@ import { Hand, Maximize, MessageCirclePlus, Minus, Plus } from "lucide-react";
 import { DeliverableContent, type CanvasVideo } from "@/components/DeliverableContent";
 import { SiteBoard, sitePages } from "./SiteBoard";
 import { FigmaBoard } from "./FigmaBoard";
+import { CanvasZoom } from "@/components/SharpPdfPage";
 import type { FigmaRound } from "@/lib/figmaLink";
 import type { StoredScreen } from "@/lib/figmaScreens";
 import type { DeliverableType } from "@/components/deliverableKinds";
@@ -204,6 +205,12 @@ export function ReviewCanvas({
   };
   const panelRef = useRef<HTMLElement>(null);
   const [zoom, setZoom] = useState(100);
+  // The zoom once it stops moving: PDF pages are drawn finer for it (SharpPdfPage), not at each turn of the wheel.
+  const [settledZoom, setSettledZoom] = useState(100);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledZoom(zoom), 300);
+    return () => clearTimeout(timer);
+  }, [zoom]);
   const [dragging, setDragging] = useState(false);
   const [hover, setHover] = useState<{ page: number; box: TargetBox; element: Element } | null>(null);
   const [drawing, setDrawing] = useState<{ page: number; box: TargetBox } | null>(null);
@@ -580,7 +587,9 @@ export function ReviewCanvas({
               ) : figma ? (
                 <FigmaBoard url={deliverable.url} round={deliverable.figma} comments={givenComments} agency={Boolean(agency)} panel={figmaPanel} />
               ) : (
-                <DeliverableContent deliverable={deliverable} renderPage={renderPage} video={video ? videoEvents : undefined} />
+                <CanvasZoom.Provider value={settledZoom / 100}>
+                  <DeliverableContent deliverable={deliverable} renderPage={renderPage} video={video ? videoEvents : undefined} />
+                </CanvasZoom.Provider>
               )}
             </div>
           </TransformComponent>

@@ -7,6 +7,7 @@ import { ArrowUpRight, Download } from "lucide-react";
 import { DeliverableCover } from "./DeliverableCover";
 import { MockArtboard } from "./MockArtboard";
 import { PdfDocument, PdfPage } from "./Pdf";
+import { SharpPdfPage } from "./SharpPdfPage";
 import type { DeliverableType } from "./deliverableKinds";
 import type { StoredScreen } from "@/lib/figmaScreens";
 
@@ -87,7 +88,7 @@ export function DeliverableContent({
           {Array.from({ length: pageCount }, (_, index) =>
             <div key={index + 1}>
               {/* Text layer on: each text line can be targeted by a comment. */}
-              {renderPage(index + 1, <PdfPage pageNumber={index + 1} width={pagesWidth} renderTextLayer renderAnnotationLayer={false} />)}
+              {renderPage(index + 1, <SharpPdfPage pageNumber={index + 1} width={pagesWidth} renderTextLayer renderAnnotationLayer={false} />)}
             </div>,
           )}
         </div>
@@ -105,7 +106,7 @@ export function DeliverableContent({
               index + 1,
               screen.mimeType === "application/pdf" ? (
                 <PdfDocument file={screen.fileData} loading="Chargement…">
-                  <PdfPage pageNumber={1} width={screen.width} renderTextLayer renderAnnotationLayer={false} />
+                  <SharpPdfPage pageNumber={1} width={screen.width} renderTextLayer renderAnnotationLayer={false} />
                 </PdfDocument>
               ) : (
                 // A stored file, served by /api/files: shown as it is (Next's optimiser is off, next.config.ts), and at

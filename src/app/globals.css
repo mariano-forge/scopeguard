@@ -10475,3 +10475,17 @@ body.is-resizing {
   align-items: center;
   gap: var(--s-2);
 }
+
+/* A PDF page and, while zoomed in, its finer copy drawn over it (src/components/SharpPdfPage.tsx). */
+.pdf-sharp-frame {
+  position: relative;
+}
+.pdf-sharp-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+/* react-pdf's page is white: a copy still drawing must not hide the page under it. */
+.pdf-sharp-layer .react-pdf__Page {
+  background-color: transparent !important;
+}
