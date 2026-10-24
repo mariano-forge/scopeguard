@@ -76,7 +76,8 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 
 | Technologie | Rôle |
 | --- | --- |
-| **Claude** (API Messages d'Anthropic, Haiku 5.5 par défaut) | Suggestion de qualification d'une demande par rapport au périmètre vendu (US-045, `src/lib/ai/`) : décision, ligne du devis citée, une phrase de raison, que l'agence confirme toujours. Un simple appel HTTP, sans SDK ; la réponse est imposée par un outil au schéma fixé, puis vérifiée. Choisi par `AI_PROVIDER` : un autre fournisseur (Claude ou OpenAI sur Azure) s'ajoute sans rien réécrire. Sans réglage, Kora ne suggère rien. Les données partent chez Anthropic (États-Unis par défaut) : à mentionner aux agences (registre des traitements). |
+| **GPT sur Azure** (Microsoft Foundry, un modèle « mini », zone de données UE ; `src/lib/ai/azureOpenAI.ts`) | Le fournisseur choisi (`AI_PROVIDER=azure`, 24 octobre 2026) : suggestion de qualification d'une demande par rapport au périmètre vendu (US-045, `src/lib/ai/`) et lecture d'un devis ou d'un cahier des charges en éléments du périmètre (« Extraire avec l'IA », `src/lib/scopeExtractor.ts`). Un simple appel HTTP à l'API v1 de la ressource Azure, sans SDK ; la réponse est imposée par un outil au schéma strict, puis vérifiée (`readSuggestion`, `readExtracted`). Un PDF ne part jamais : le serveur en lit le texte avec pdf.js (`src/lib/pdfText.ts`). Les textes restent chez Microsoft, dans l'UE : à mentionner aux agences (registre des traitements). |
+| **Claude** (API Messages d'Anthropic, Haiku 5.5 par défaut) | Même suggestion, `AI_PROVIDER=anthropic` (pas encore d'extraction). Gardé pour plus tard : non proposé dans la zone UE d'Azure, et l'API d'Anthropic traite aux États-Unis par défaut. Sans réglage, Kora ne suggère rien et n'extrait rien. |
 
 ### Figma
 
