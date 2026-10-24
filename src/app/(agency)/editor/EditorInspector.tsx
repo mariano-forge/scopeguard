@@ -34,7 +34,8 @@ const commentTabs: TabOption[] = [
   { kind: "draft", label: "Mes brouillons", emptyTitle: "Aucun brouillon", empty: "Vos commentaires restent ici, internes, tant que vous ne les avez pas qualifiés." },
   { kind: "closed", label: "Discussions clôturées", emptyTitle: "Aucune discussion clôturée", empty: "Une discussion clôturée s’affiche ici, en lecture seule ; rouvrez-la pour y répondre." },
 ];
-const closedTab: TabOption = { kind: "closed", label: "Closes", emptyTitle: "Aucune discussion close", empty: "Les discussions closes par l’agence s’affichent ici." };
+// The client's word for it is the agency's (« Clôturer la discussion », « Discussions clôturées »).
+const closedTab: TabOption = { kind: "closed", label: "Clôturées", emptyTitle: "Aucune discussion clôturée", empty: "Les discussions clôturées par l’agence s’affichent ici, en lecture seule." };
 
 /** Markdown summary of every request of the version (copy / export). */
 export function threadsToMarkdown(title: string, comments: ThreadComment[]) {
@@ -252,7 +253,7 @@ export function RequestPanel({
                   >
                     {(comment.closed || status) && (
                       <span className="thread-row-status">
-                        {comment.closed ? <StatusPill label="Close" tone="waiting" /> : status?.label && <StatusPill label={status.label} tone={status.tone} />}
+                        {comment.closed ? <StatusPill label="Clôturée" tone="waiting" /> : status?.label && <StatusPill label={status.label} tone={status.tone} />}
                       </span>
                     )}
                     <span className={`thread-row-text ${kind !== "comment" || comment.title ? "is-title" : ""}`}>{requestText(comment)}</span>
@@ -347,6 +348,7 @@ export function EditorInspector({
   onAddRequest,
   onShare,
   onPreview,
+  scopeAction,
   width,
   onResize,
   notifications,
@@ -369,6 +371,8 @@ export function EditorInspector({
   onShare: () => void;
   /** Opens the page the client sees, in a new tab. */
   onPreview: () => void;
+  /** What was agreed for the project (ProjectScope.tsx), at the head of the panel. */
+  scopeAction?: React.ReactNode;
   width: number;
   onResize: (width: number) => void;
   /** The bell, at the head of the panel. */
@@ -396,6 +400,7 @@ export function EditorInspector({
       <header className="requests-header">
         {notifications}
         <div className="requests-actions">
+          {scopeAction}
           <Hint label="Aperçu : la page que voit le client">
             <Button variant="outline" size="icon" className="icon-action" onClick={onPreview} aria-label="Aperçu client">
               <Eye />

@@ -343,6 +343,7 @@ export type PanelMode = "livrables";
 export function ProjectSidebar({
   livrableName,
   livrableMenu,
+  project,
   systemMenu,
   versions,
   view,
@@ -359,6 +360,8 @@ export function ProjectSidebar({
   livrableName: string;
   /** Shortcuts of the open deliverable, under its name. */
   livrableMenu: MenuEntry[];
+  /** The deliverable's project: the breadcrumb before its name leads back to it, and only there. */
+  project: { name: string; href: string };
   /** Main menu, under the logo. */
   systemMenu: MenuEntry[];
   versions: SidebarVersion[];
@@ -432,7 +435,14 @@ export function ProjectSidebar({
       {panel && (
         <div className="panel" style={{ width: panelWidth }}>
           <ResizeHandle edge="right" width={panelWidth} min={200} max={420} defaultWidth={248} label="Largeur du panneau des versions" onResize={onPanelResize} />
-          <div className="panel-header">
+          {/* One line: the project to go back to, then the open deliverable, whose name opens its menu. */}
+          <nav className="panel-header panel-breadcrumb" aria-label="Fil d’Ariane">
+            <Link href={project.href}>
+              <span>{project.name}</span>
+            </Link>
+            <span className="panel-breadcrumb-separator" aria-hidden="true">
+              /
+            </span>
             <MenuButton
               className="panel-title"
               label={`Actions du livrable ${livrableName}`}
@@ -445,7 +455,7 @@ export function ProjectSidebar({
               menuClassName="livrable-menu"
               entries={livrableMenu}
             />
-          </div>
+          </nav>
 
           <div className="panel-scroll">
             <section className="panel-section" aria-label="Versions">

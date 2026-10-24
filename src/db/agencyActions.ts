@@ -78,6 +78,7 @@ export type ActionParams = { commentId?: string; replyId?: string; email?: strin
 
 const workspaceTypes = new Set<string>([
   "space.create", "space.rename", "space.delete", "project.create", "project.rename", "project.move", "project.delete",
+  "project.scope", "project.scope.activate", "project.scope.deactivate",
   "livrable.create", "version.import", "livrable.rename", "livrable.move", "livrable.delete",
   "link.auto-expire", "trash.restore", "trash.purge", "trash.purge-expired",
 ]);

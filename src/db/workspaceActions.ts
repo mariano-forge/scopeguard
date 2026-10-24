@@ -7,6 +7,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { readVideoDuration } from "@/lib/timecode";
 import type { Entity, ListChange, SharedState, StateChanges } from "@/lib/sharedState";
 import { undeployedSiteProblem, withoutToolbarFlag } from "@/lib/siteReview";
+import { readScope, type ProjectScope } from "@/lib/projectScope";
 import { figmaFileKey, figmaFileUrl, readFigmaChoice, type FigmaChoice, type FigmaRound } from "@/lib/figmaLink";
 import { id, noChanges, text, trail, type Data } from "./actions";
 import type { Db } from "./client";
@@ -39,6 +40,10 @@ export type WorkspaceAction =
   | { type: "project.rename"; projectId: number; name: string }
   | { type: "project.move"; projectId: number; clientId: number }
   | { type: "project.delete"; projectId: number }
+  // The project's reference scope (src/lib/projectScope.ts): written whole, then made the reference.
+  | { type: "project.scope"; projectId: number; scope: ProjectScope }
+  | { type: "project.scope.activate"; projectId: number }
+  | { type: "project.scope.deactivate"; projectId: number }
   | ({ type: "livrable.create"; id?: number; projectId: number; name: string; url?: string; coverData?: string } & NewFile)
   // A version is of its deliverable's nature: a « Lien » by its address, a « Figma » by its round, any other kind by its file.
   | ({ type: "version.import"; livrableId: number; id?: number; fileData?: string; url?: string } & NewFile)
@@ -95,9 +100,18 @@ export function readWorkspaceAction(type: WorkspaceAction["type"], body: Data, p
     }
     case "project.delete":
       return projectId ? { type, projectId } : null;
+    case "project.scope": {
+      const scope = readScope(body.scope);
+      return projectId && scope ? { type, projectId, scope } : null;
+    }
+    case "project.scope.activate":
+    case "project.scope.deactivate":
+      return projectId ? { type, projectId } : null;
     case "livrable.create": {
       const target = id(body.projectId);
       const kind = deliverableType(body.type);
+      // No new « Document » (22 October 2026): refused with what to do instead (workspaceChanges); those
+      // already imported keep their versions.
       if (!target || !name || !kind) return null;
       if ((body.fileData !== undefined && !fileHref(body.fileData)) || (body.coverData !== undefined && !fileHref(body.coverData))) return null;
       if (body.url !== undefined && !webAddress(body.url)) return null;
@@ -311,6 +325,40 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
       log.add("project.deleted", `Projet « ${target.name} » placé dans la corbeille`);
       break;
     }
+    case "project.scope": {
+      const target = project(action.projectId);
+      if (!target) return refused("Projet introuvable.", 404);
+      // Its documents: PDFs the agency imported itself, nothing else.
+      if (!(await ownPdfs(db, org, action.scope.sources.flatMap((source) => (source.file ? [source.file] : []))))) return refused("Document introuvable.", 404);
+      const stored = target.scope as ProjectScope | undefined;
+      // Activation stays as the server wrote it.
+      const scope = { ...action.scope, ...(stored?.activatedAt ? { activatedAt: stored.activatedAt, activatedBy: stored.activatedBy } : {}) };
+      upsert(changes, "projects", [{ ...target, scope }]);
+      return { changes, id: target.id };
+    }
+    case "project.scope.activate": {
+      const target = project(action.projectId);
+      if (!target) return refused("Projet introuvable.", 404);
+      const stored = target.scope as ProjectScope | undefined;
+      if (!stored?.lines.length) return refused("Ajoutez au moins une ligne incluse avant d’activer le périmètre.");
+      if (stored.activatedAt) return { changes, id: target.id };
+      upsert(changes, "projects", [{ ...target, scope: { ...stored, activatedAt: Date.now(), activatedBy: actor } }]);
+      log.add("project.scope.activated", `Périmètre du projet « ${target.name} » activé (${stored.lines.length} ligne${stored.lines.length > 1 ? "s" : ""} incluse${stored.lines.length > 1 ? "s" : ""})`);
+      break;
+    }
+    case "project.scope.deactivate": {
+      // Back to a draft: no longer the project's reference, until activated again.
+      const target = project(action.projectId);
+      if (!target) return refused("Projet introuvable.", 404);
+      const stored = target.scope as ProjectScope | undefined;
+      if (!stored?.activatedAt) return { changes, id: target.id };
+      const draft: ProjectScope = { ...stored };
+      delete draft.activatedAt;
+      delete draft.activatedBy;
+      upsert(changes, "projects", [{ ...target, scope: draft }]);
+      log.add("project.scope.deactivated", `Périmètre du projet « ${target.name} » repassé en brouillon`);
+      break;
+    }
     case "livrable.create": {
       if (!project(action.projectId)) return refused("Projet introuvable.", 404);
       // No new « Document » (src/components/deliverableKinds.ts pickableTypes); one made before keeps its versions.
@@ -456,6 +504,17 @@ export async function workspaceChanges(db: Db, org: string, actor: string, actio
   }
   log.into(changes);
   return { changes };
+}
+
+/** PDFs the agency imported itself: a scope's documents. */
+async function ownPdfs(db: Db, org: string, hrefs: string[]) {
+  if (!hrefs.length) return true;
+  const fileIds = [...new Set(hrefs.map((href) => href.split("/").at(-1)!))];
+  const found = await db
+    .select({ id: storedFiles.id, mimeType: storedFiles.mimeType })
+    .from(storedFiles)
+    .where(and(eq(storedFiles.organizationId, org), inArray(storedFiles.id, fileIds)));
+  return found.length === fileIds.length && found.every((file) => file.mimeType === "application/pdf");
 }
 
 /**

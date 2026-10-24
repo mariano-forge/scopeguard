@@ -21,6 +21,7 @@ import {
   MAX_COVER_BYTES,
   maxBytesOf,
   deliverableKinds,
+  documentRefused,
   pickableTypes,
   formatBytes,
   isHttpUrl,
@@ -119,7 +120,8 @@ export function NewDeliverableDialog({
       setVideoCheck({ file: next, warning: null, done: false });
       void videoWarning(next).then((warning) => setVideoCheck({ file: next, warning, done: true }));
     }
-    if (guessed && guessed !== type) setType(guessed);
+    if (guessed === "Doc") setError(documentRefused);
+    else if (guessed && guessed !== type) setType(guessed);
     if (!name.trim()) setName(next.name);
   }
 
@@ -145,6 +147,7 @@ export function NewDeliverableDialog({
       if (undeployed) return setError(undeployed);
     } else {
       if (!file) return setError(`Importez le fichier (${kind.hint}).`);
+      if (kindFromFile(file) === "Doc") return setError(documentRefused);
       if (kindFromFile(file) !== type) return setError(`Ce fichier ne correspond pas au type « ${kind.label} ».`);
       if (file.size > maxBytesOf(type))
         return setError(`Fichier trop lourd : ${formatBytes(file.size)} (maximum ${formatBytes(maxBytesOf(type))}).`);

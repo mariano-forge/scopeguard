@@ -41,7 +41,8 @@ test("« + Demande »: received by e-mail, with the client’s words and a captu
   await expect(dialog.getByRole("img", { name: "Aperçu de la capture" })).toBeVisible();
   await dialog.getByRole("button", { name: "Créer la demande" }).click();
 
-  await expect.poll(async () => (await sql("select 1 from comments where organization_id = $1 and data->>'title' = 'Page Équipe'", [org])).length).toBe(1);
+  // (The capture is uploaded first: it takes longer on a loaded machine.)
+  await expect.poll(async () => (await sql("select 1 from comments where organization_id = $1 and data->>'title' = 'Page Équipe'", [org])).length, { timeout: 30_000 }).toBe(1);
   const [{ id }] = await sql<{ id: string }>("select id from comments where organization_id = $1 and data->>'title' = 'Page Équipe'", [org]);
   const stored = await commentData(org, Number(id));
   expect(stored).toMatchObject({ decision: "Inclus", from: "agency", author: "Alice Martin", source: { channel: "email", receivedAt: "2026-10-14", excerpt: "Pouvez-vous ajouter une page Équipe avec nos 6 portraits ?" } });

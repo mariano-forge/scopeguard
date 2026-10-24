@@ -1,0 +1,158 @@
+/* The « Suivi » tab (ProjectTracking.tsx): shadcn cards and charts on Kora's tokens. Marks in Kora's mark
+   colours and its UI blue against its coral (validated with the dataviz checks); the paler ones, below 3:1
+   on the surface, always come with their value written beside them. */
+.tracking {
+  display: grid;
+  gap: var(--s-4);
+  max-width: 1120px;
+}
+/* The project's four figures, in one card: side by side, a hairline between them. */
+.tracking-figures[data-slot="card"] {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  padding: 0;
+}
+.tracking-figure {
+  display: grid;
+  align-content: start;
+  gap: var(--s-1);
+  min-width: 0;
+  padding: var(--s-4) var(--s-5, 20px);
+}
+.tracking-figure + .tracking-figure {
+  border-left: 1px solid var(--border);
+}
+.tracking-figure-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--graphite);
+  font: 500 var(--t-caption) var(--font-ui);
+}
+.tracking-figure-label svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.tracking-figure-value {
+  margin-top: var(--s-1);
+  overflow: hidden;
+  color: var(--ink);
+  font: 600 24px / 32px var(--font-heading);
+  letter-spacing: var(--t-h2-tracking);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A section's filters, on the right of its title: fields of fixed width, a long name cut in the field and whole in its list. */
+.tracking-filters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+.tracking-select[data-slot="select-trigger"] {
+  width: 200px;
+  min-width: 0;
+}
+.tracking-select.is-period[data-slot="select-trigger"] {
+  width: 176px;
+}
+.tracking-select [data-slot="select-value"] {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A chart and, beside it, what is left to do. */
+.tracking-split {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+  align-items: center;
+  gap: var(--s-6);
+}
+
+/* What is left to do: one row each, what on the left, how much on the right. */
+.tracking-notes {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+}
+.tracking-notes > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+}
+.tracking-notes > div + div {
+  border-top: 1px solid var(--border);
+}
+.tracking-notes dt {
+  color: var(--graphite);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.tracking-notes dd {
+  margin: 0;
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tracking-notes .is-warn dt,
+.tracking-notes .is-warn dd {
+  color: var(--attention-text);
+}
+
+.tracking-change {
+  flex: none;
+  margin-left: var(--s-2);
+  padding: 0 var(--s-2);
+  border-radius: 999px;
+  font: 600 var(--t-caption) var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.tracking-change.is-good {
+  background: var(--status-resolved-bg);
+  color: var(--status-resolved-text);
+}
+.tracking-change.is-warn {
+  background: var(--status-high-bg);
+  color: var(--status-high-text);
+}
+
+@media (max-width: 900px) {
+  .tracking-figures[data-slot="card"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .tracking-figure:nth-child(3) {
+    border-left: 0;
+  }
+  .tracking-figure:nth-child(n + 3) {
+    border-top: 1px solid var(--border);
+  }
+  .tracking-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tracking-notes {
+    padding: var(--s-3) 0 0;
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+}
+@media (max-width: 560px) {
+  .tracking-figures[data-slot="card"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tracking-figure + .tracking-figure {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+  .tracking-select {
+    flex: 1 1 100%;
+  }
+}

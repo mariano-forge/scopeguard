@@ -11,6 +11,7 @@
 // What the client writes is signed by the server with their name and verified address, whatever the page sends.
 // Nothing can be written once the version is approved or replaced.
 
+import { clientScope } from "@/lib/projectScope";
 import { and, eq, inArray } from "drizzle-orm";
 import { sameValue, type ListChange, type MapChange, type SharedState, type StateChanges } from "@/lib/sharedState";
 import { initialsOf, sideOf } from "@/lib/authors";
@@ -144,11 +145,20 @@ export async function readReviewState(db: Db, access: ReviewAccess) {
   // A request out of draft shows whole: its first words and every reply (decided 19 October 2026).
   const shown = (state.comments ?? []).filter((comment) => comment.deliverableId === access.deliverableId && visibleToClient(comment));
   const ids = new Set(shown.map((comment) => String(comment.id)));
+  // When the agency last qualified each of the client's own requests (its log, « scope.classified »): for
+  // the client's notifications. A time only, never the log's words.
+  const qualifiedAt = new Map<string, number>();
+  for (const event of state.auditEvents ?? []) {
+    if (event.type !== "scope.classified" || typeof event.commentId !== "number" || typeof event.id !== "number" || !ids.has(String(event.commentId))) continue;
+    const at = event.id > 1e14 ? Math.floor(event.id / 1000) : event.id;
+    qualifiedAt.set(String(event.commentId), Math.max(at, qualifiedAt.get(String(event.commentId)) ?? 0));
+  }
   // A pin tied to a request the client does not see (src/db/agencyActions.ts pinnedOn) does not name it.
   const versionComments = shown.map((comment) => {
-    if (comment.pinnedOn === undefined || ids.has(String(comment.pinnedOn))) return comment;
-    const rest = { ...comment };
-    delete rest.pinnedOn;
+    const rest: typeof comment = { ...comment };
+    if (comment.pinnedOn !== undefined && !ids.has(String(comment.pinnedOn))) delete rest.pinnedOn;
+    const at = qualifiedAt.get(String(comment.id));
+    if (at !== undefined && byClient(comment)) rest.qualifiedAt = at;
     return rest;
   });
   const only = (map: Record<string, unknown> | undefined) => Object.fromEntries(Object.entries(map ?? {}).filter(([key]) => ids.has(key)));
@@ -160,7 +170,8 @@ export async function readReviewState(db: Db, access: ReviewAccess) {
 
   const filtered: SharedState = {
     clients: client ? [{ id: client.id, name: client.name }] : [],
-    projects: project ? [{ id: project.id, name: project.name, clientId: project.clientId }] : [],
+    // The project's scope, once active, read as agreed: what is included and what is not (src/lib/projectScope.ts clientScope).
+    projects: project ? [{ id: project.id, name: project.name, clientId: project.clientId, ...(clientScope(project.scope) ? { scope: clientScope(project.scope) } : {}) }] : [],
     deliverables: record ? [record] : [],
     comments: versionComments,
     notifications: [],
