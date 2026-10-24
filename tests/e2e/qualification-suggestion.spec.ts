@@ -151,6 +151,22 @@ test("a request without pin: changing its qualification back and forth never mov
   expect(errors).toEqual([]);
 });
 
+test("a request without pin opens its bubble facing its card in the list, not at the top of the canvas", async ({ browser }) => {
+  const { alice, org } = await agency();
+  for (const title of ["Demande A", "Demande B", "Demande C", "Demande D", "Demande E", "Demande F"])
+    expect((await call("/api/comments", { method: "POST", person: alice, body: { request: { deliverableId: 1, decision: "À qualifier", title } } })).status).toBe(200);
+  const { page, errors } = await editor(browser, alice.email);
+  const top = (selector: string) => page.locator(selector).evaluate((node) => node.getBoundingClientRect().top);
+  for (const title of ["Demande A", "Demande F"]) {
+    const [{ id }] = await sql<{ id: string }>("select id from comments where organization_id = $1 and data->>'title' = $2", [org, title]);
+    await page.getByRole("button", { name: `Demande à clarifier #${id}` }).click();
+    await expect(page.getByRole("dialog", { name: `Demande à clarifier #${id}` })).toBeVisible();
+    // Level with its card (within a few pixels), as long as it fits above the toolbar.
+    await expect.poll(async () => Math.abs((await top(".canvas-docked-thread")) - (await top(".inspector-row.is-selected")))).toBeLessThan(4);
+  }
+  expect(errors).toEqual([]);
+});
+
 test("a request back to clarify is suggested again when modified, its title kept; an « Inclus » already settled is not", async ({ browser }) => {
   const { alice, org } = await agency();
   const create = async (title: string, decision: string) => {
