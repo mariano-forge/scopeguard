@@ -242,35 +242,32 @@ export async function signInPage(page: Page, email: string) {
 
 // ——— Files ———
 
-/** A small valid PDF of `pages` pages showing `label`, built here so tests need no file on disk. */
-export function makePdf(label: string, pages = 1) {
-  const objects: string[] = [];
-  const pageIds = Array.from({ length: pages }, (_, index) => 4 + index * 2);
-  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
-  objects[2] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pages} >>`;
-  objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
-  pageIds.forEach((id, index) => {
-    const stream = `BT /F1 24 Tf 72 720 Td (${label} - page ${index + 1}) Tj ET`;
-    objects[id] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${id + 1} 0 R >>`;
-    objects[id + 1] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
-  });
-  let body = "%PDF-1.4\n";
-  const offsets: number[] = [];
-  for (let id = 1; id < objects.length; id++) {
-    offsets[id] = body.length;
-    body += `${id} 0 obj\n${objects[id]}\nendobj\n`;
-  }
-  const xref = body.length;
-  body += `xref\n0 ${objects.length}\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("")}`;
-  body += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
-  return Buffer.from(body, "latin1");
-}
+export { makePdf } from "./makePdf";
 
 /** Uploads a file through POST /api/files, as the agency page does. */
 export async function upload(member: Person, content: Buffer, name: string, placement: Record<string, string | number>) {
   const form = new FormData();
-  form.set("file", new Blob([new Uint8Array(content)], { type: name.endsWith(".pdf") ? "application/pdf" : name.endsWith(".png") ? "image/png" : name.endsWith(".webm") ? "video/webm" : "application/octet-stream" }), name);
+  form.set("file", new Blob([new Uint8Array(content)], { type: ({ pdf: "application/pdf", png: "image/png", webm: "video/webm", svg: "image/svg+xml", html: "text/html" } as Record<string, string>)[name.split(".").pop() ?? ""] ?? "application/octet-stream" }), name);
   for (const [key, value] of Object.entries(placement)) form.set(key, String(value));
   const response = await fetch(`${baseURL}/api/files`, { method: "POST", headers: { cookie: member.cookie, "x-forwarded-for": member.ip }, body: form });
   return { status: response.status, json: (await response.json()) as { href?: string; sha256?: string; error?: string } };
 }
+
+// ——— Figma (US-054) ———
+
+/**
+ * The agency of `owner` connected to an account of the Figma stand-in (figmaStandIn.ts), through the OAuth
+ * flow as a browser goes through it: Figma's consent is the code the stand-in accepts for this attempt.
+ */
+export async function connectFigma(owner: Member, handle = unique("figma")) {
+  const started = await call("/api/integrations/figma/connect", { person: owner });
+  const consent = new URL(started.response.headers.get("location") ?? "");
+  const attempt = started.response.headers.getSetCookie().find((cookie) => cookie.startsWith("kora_figma_attempt="))?.split(";")[0] ?? "";
+  const query = new URLSearchParams({ code: `ok:${handle}:${consent.searchParams.get("code_challenge")}`, state: consent.searchParams.get("state") ?? "" });
+  const done = await call(`/api/integrations/figma/callback?${query}`, { person: { ...owner, cookie: `${owner.cookie}; ${attempt}` } });
+  if (!done.response.headers.get("location")?.includes("figma=connected")) throw new Error(`Figma connection of ${owner.email} failed`);
+  return handle;
+}
+
+/** A link to a file of the Figma stand-in, as Figma's « Copier le lien » gives it. */
+export const figmaLink = (key: string) => `https://www.figma.com/design/${key}/Maquette-accueil?node-id=1-2&t=AbCdEf-1`;

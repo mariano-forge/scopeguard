@@ -5,6 +5,10 @@ import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from 
 import { Hand, Maximize, MessageCirclePlus, Minus, Plus } from "lucide-react";
 import { DeliverableContent, type CanvasVideo } from "@/components/DeliverableContent";
 import { SiteBoard, sitePages } from "./SiteBoard";
+import { FigmaBoard } from "./FigmaBoard";
+import { CanvasZoom } from "@/components/SharpPdfPage";
+import type { FigmaRound } from "@/lib/figmaLink";
+import type { StoredScreen } from "@/lib/figmaScreens";
 import type { DeliverableType } from "@/components/deliverableKinds";
 import { areaFromPin } from "@/lib/pinArea";
 import { CommentPin, TargetHighlight, describeTarget, itemLabel, requestKind, type Area, type TargetBox, type ThreadComment } from "./CanvasComments";
@@ -28,7 +32,7 @@ export type CanvasComposer = {
   timecode?: number;
 };
 type CanvasComment = ThreadComment & { page?: number };
-type ViewedDeliverable = { name: string; type: DeliverableType; fileData?: string; url?: string; coverData?: string };
+type ViewedDeliverable = { name: string; type: DeliverableType; fileData?: string; url?: string; coverData?: string; figma?: FigmaRound; screens?: StoredScreen[]; columns?: number };
 
 const areaBox = (area: Area): TargetBox => ({ left: area.x, top: area.y, width: area.w, height: area.h, label: "" });
 
@@ -59,6 +63,8 @@ export function ReviewCanvas({
   isUnread,
   onMovePin,
   siteSetup,
+  agency,
+  figmaPanel,
 }: {
   deliverable: ViewedDeliverable;
   comments: CanvasComment[];
@@ -88,16 +94,25 @@ export function ReviewCanvas({
   onMovePin?: (commentId: number, page: number, x: number, y: number) => void;
   /** A « Lien », for the agency: how to set the staging site's toolbar up. */
   siteSetup?: React.ReactNode;
+  /** The agency's page (a « Figma »'s board speaks to the agency or to the client). */
+  agency?: boolean;
+  /** A « Figma », for the agency: bringing its comments in, telling its team from the client (FigmaAgencyPanel). */
+  figmaPanel?: React.ReactNode;
 }) {
   // A « Lien » is commented on its staging site, with the toolbar: here, its requests are pages of the
   // canvas (SiteBoard), their pins where they were placed on the site. The agency (`siteSetup`) may pin a
   // comment on a capture too, tied to its request; the client comments on the site only.
+  // A page of the canvas, as a comment's place says it: an « Écrans Figma »'s screen by its name.
+  const pageLabel = (page: number) => (deliverable.type === "Screens" && deliverable.screens?.[page - 1] ? `Écran « ${deliverable.screens[page - 1].name} »` : `Page ${page}`);
   const site = deliverable.type === "Link";
+  // A « Figma » is commented in Figma: its requests come without a pin, their thread docked.
+  const figma = deliverable.type === "Figma";
   const placement = site ? sitePages(givenComments) : null;
-  const comments = placement ? placement.comments : givenComments;
+  const comments = placement ? placement.comments : figma ? givenComments.map((comment) => ({ ...comment, page: undefined, position: undefined, area: undefined })) : givenComments;
   const pinning = site && Boolean(siteSetup);
-  const tool: CanvasTool = site && !pinning ? "move" : chosenTool;
-  const tools = site && !pinning ? offeredTools.filter((option) => option === "move") : offeredTools;
+  const handOnly = (site && !pinning) || figma;
+  const tool: CanvasTool = handOnly ? "move" : chosenTool;
+  const tools = handOnly ? offeredTools.filter((option) => option === "move") : offeredTools;
   // On a « Lien », only a pin the agency dropped in Kora moves, on its own capture: one placed on the
   // site marks where it was clicked there.
   const canMove = site ? (comment: CanvasComment) => (comment as CanvasComment & { pinnedOn?: number }).pinnedOn !== undefined && Boolean(movable?.(comment)) : movable;
@@ -190,6 +205,12 @@ export function ReviewCanvas({
   };
   const panelRef = useRef<HTMLElement>(null);
   const [zoom, setZoom] = useState(100);
+  // The zoom once it stops moving: PDF pages are drawn finer for it (SharpPdfPage), not at each turn of the wheel.
+  const [settledZoom, setSettledZoom] = useState(100);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledZoom(zoom), 300);
+    return () => clearTimeout(timer);
+  }, [zoom]);
   const [dragging, setDragging] = useState(false);
   const [hover, setHover] = useState<{ page: number; box: TargetBox; element: Element } | null>(null);
   const [drawing, setDrawing] = useState<{ page: number; box: TargetBox } | null>(null);
@@ -258,7 +279,10 @@ export function ReviewCanvas({
           ? "video"
           : site
             ? "site"
-            : deliverable.type === "Doc" && deliverable.fileData
+            : // « Écrans Figma »: each screen's page takes its own size (never the mock's fixed frame, which crops).
+              deliverable.type === "Screens"
+              ? "screen"
+              : deliverable.type === "Doc" && deliverable.fileData
               ? "placeholder"
               : "mock";
 
@@ -318,7 +342,7 @@ export function ReviewCanvas({
       page: point.page,
       element,
       box: element.matches("[data-page]")
-        ? { left: 0, top: 0, width: 100, height: 100, label: `Page ${point.page}` }
+        ? { left: 0, top: 0, width: 100, height: 100, label: pageLabel(point.page) }
         : boxIn(element, point.bounds, describeTarget(element)),
     });
   }
@@ -403,7 +427,7 @@ export function ReviewCanvas({
         page: drawing.page,
         x: area.x,
         y: area.y,
-        target: `Page ${drawing.page} · Zone sélectionnée`,
+        target: `${pageLabel(drawing.page)} · Zone sélectionnée`,
         area,
       });
     }
@@ -442,7 +466,7 @@ export function ReviewCanvas({
       page: point.page,
       x: point.x,
       y: point.y,
-      target: [`Page ${point.page}`, element ? describeTarget(element) : null].filter(Boolean).join(" · "),
+      target: [pageLabel(point.page), element ? describeTarget(element) : null].filter(Boolean).join(" · "),
     });
   }
 
@@ -521,7 +545,7 @@ export function ReviewCanvas({
     <section
       className={`preview-panel canvas tool-${tool} ${site ? "is-site" : ""} ${moving ? "is-moving-pin" : ""}`}
       ref={panelRef}
-      aria-label={site ? "Tableau de recette" : "Canevas"}
+      aria-label={site ? "Tableau de recette" : figma ? "Tableau Figma" : "Canevas"}
     >
       {overlay}
       {/* No browser autoscroll on a wheel-button press: it pans the canvas. */}
@@ -560,8 +584,12 @@ export function ReviewCanvas({
             >
               {site ? (
                 <SiteBoard siteUrl={deliverable.url} comments={givenComments} renderPage={renderPage} setup={siteSetup} />
+              ) : figma ? (
+                <FigmaBoard url={deliverable.url} round={deliverable.figma} comments={givenComments} agency={Boolean(agency)} panel={figmaPanel} />
               ) : (
-                <DeliverableContent deliverable={deliverable} renderPage={renderPage} video={video ? videoEvents : undefined} />
+                <CanvasZoom.Provider value={settledZoom / 100}>
+                  <DeliverableContent deliverable={deliverable} renderPage={renderPage} video={video ? videoEvents : undefined} />
+                </CanvasZoom.Provider>
               )}
             </div>
           </TransformComponent>

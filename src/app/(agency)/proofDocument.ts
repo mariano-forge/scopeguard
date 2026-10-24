@@ -76,7 +76,15 @@ export function proofHtml(proof: Proof) {
         .join("")}</tbody></table>`
     : "<p>Aucun événement enregistré pour cette version.</p>";
 
-  const file = deliverable.file
+  const figmaDay = (iso: string) => (iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Paris" }) : "");
+  const screens = deliverable.screens
+    ? `<ul class="screens">${deliverable.screens.map((screen) => `<li>${escapeHtml(screen.name)}${screen.page ? ` · ${escapeHtml(screen.page)}` : ""}<small>SHA-256 ${escapeHtml(screen.sha256 ?? "—")}</small></li>`).join("")}</ul>`
+    : "";
+  const file = deliverable.screens
+    ? `Écrans Figma copiés dans Kora : ${deliverable.screens.length}, depuis ${escapeHtml(deliverable.url ?? "")}${screens}`
+    : deliverable.figma
+    ? `Fichier Figma « ${escapeHtml(deliverable.figma.fileName)} » : ${escapeHtml(deliverable.url ?? "")}<small>Version revue « ${escapeHtml(deliverable.figma.version.label)} »${deliverable.figma.version.savedAt ? `, enregistrée dans Figma le ${escapeHtml(figmaDay(deliverable.figma.version.savedAt))}` : ""}${deliverable.figma.version.savedBy ? ` par ${escapeHtml(deliverable.figma.version.savedBy)}` : ""} · identifiant Figma ${escapeHtml(deliverable.figma.version.id)} · pages en revue : ${escapeHtml(deliverable.figma.pages.join(", "))}</small>`
+    : deliverable.file
     ? `${deliverable.file.originalName ? `${escapeHtml(deliverable.file.originalName)} · ` : ""}SHA-256 ${escapeHtml(deliverable.file.sha256)}${deliverable.file.size ? ` · ${size(deliverable.file.size)}` : ""}`
     : deliverable.url
       ? `Page web : ${escapeHtml(deliverable.url)}`

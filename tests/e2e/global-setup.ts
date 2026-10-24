@@ -1,10 +1,12 @@
-// Before the run: a fresh test database with every migration, and an empty mail outbox.
+// Before the run: a fresh test database with every migration, an empty mail outbox, and the stand-in for
+// Figma's API (figmaStandIn.ts), stopped after the run.
 
 import { execSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { Client } from "pg";
-import { mailOutbox, testDatabaseUrl } from "../../playwright.config";
+import { baseURL, mailOutbox, testDatabaseUrl } from "../../playwright.config";
+import { startFigmaStandIn } from "./figmaStandIn";
 
 export default async function globalSetup() {
   const admin = new Client({ connectionString: testDatabaseUrl.replace(/\/kora_test$/, "/kora") });
@@ -21,4 +23,7 @@ export default async function globalSetup() {
 
   mkdirSync(dirname(mailOutbox), { recursive: true });
   writeFileSync(mailOutbox, "");
+
+  const figma = await startFigmaStandIn(`${baseURL}/api/integrations/figma/callback`);
+  return () => new Promise<void>((resolve) => figma.close(() => resolve()));
 }
