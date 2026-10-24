@@ -2,7 +2,7 @@
 // own words or a capture: every request lands in the same register, whatever its channel. Shared by
 // the server, which checks it, and the pages, which show it (the agency's and the client's).
 
-export const requestChannels = { email: "E-mail", call: "Appel", meeting: "Réunion", slack: "Slack", figma: "Figma", other: "Autre" } as const;
+export const requestChannels = { email: "E-mail", call: "Appel", meeting: "Réunion", slack: "Slack", teams: "Teams", figma: "Figma", other: "Autre" } as const;
 export type RequestChannel = keyof typeof requestChannels;
 
 export type RequestSource = {
@@ -36,6 +36,7 @@ const channelPhrases: Record<RequestChannel, string> = {
   call: "par téléphone",
   meeting: "en réunion",
   slack: "sur Slack",
+  teams: "sur Teams",
   figma: "sur Figma",
   other: "par un autre canal",
 };

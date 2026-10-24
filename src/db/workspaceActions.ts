@@ -110,8 +110,9 @@ export function readWorkspaceAction(type: WorkspaceAction["type"], body: Data, p
     case "livrable.create": {
       const target = id(body.projectId);
       const kind = deliverableType(body.type);
-      // No new « Document » (22 October 2026): those already imported keep their versions.
-      if (!target || !name || !kind || kind === "Doc") return null;
+      // No new « Document » (22 October 2026): refused with what to do instead (workspaceChanges); those
+      // already imported keep their versions.
+      if (!target || !name || !kind) return null;
       if ((body.fileData !== undefined && !fileHref(body.fileData)) || (body.coverData !== undefined && !fileHref(body.coverData))) return null;
       if (body.url !== undefined && !webAddress(body.url)) return null;
       const duration = kind === "Video" ? readVideoDuration(body.duration) : undefined;

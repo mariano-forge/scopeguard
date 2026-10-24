@@ -77,7 +77,8 @@ test("« Document » is no longer a kind of deliverable: not offered, a Word fil
   await page.goto("/projets/1");
   await page.getByRole("button", { name: "Ajouter un livrable", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("radio")).toHaveCount(4);
+  // The kinds offered, Figma's screens included (US-054), « Document » no longer.
+  await expect(dialog.locator(".kind-option")).toHaveText(["Image", "PDF", "Vidéo", "Lien", "Figma"]);
   await expect(dialog.getByRole("radio", { name: "Document" })).toHaveCount(0);
   await dialog.locator('input[type="file"]').first().setInputFiles({ name: "notes.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: Buffer.from("PK") });
   await expect(dialog).toContainText("Les documents Word, PowerPoint ou Excel ne sont plus pris en charge : exportez-le en PDF.");
