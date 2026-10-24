@@ -13,6 +13,7 @@ import { organizations, users } from "./auth-schema";
 import { auditEvents, clients, commentProposals, comments, deliverables, files, projects, proposalVersions, storedFiles } from "./schema";
 import { deciderEventTypes } from "@/lib/clientRoles";
 import { sourceLine, type RequestSource } from "@/lib/requestSource";
+import { readCitedLine } from "@/lib/scopeCitation";
 
 type Data = Record<string, unknown>;
 
@@ -162,6 +163,8 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
       screen: typeof data.page === "number" && screenList[data.page - 1] ? screenList[data.page - 1].name : null,
       qualification: text(data.decision),
       title: text(data.title),
+      // An « Inclus »: the line of the active scope the agency cited (src/lib/scopeCitation.ts).
+      scopeLine: readCitedLine(data.scopeLine)?.title ?? null,
       createdAt: typeof data.createdAt === "number" ? new Date(data.createdAt).toISOString() : null,
       source: source
         ? {

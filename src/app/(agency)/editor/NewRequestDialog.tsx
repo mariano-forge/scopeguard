@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AddonInput, Field, Modal, selectClassName } from "@/components/modal";
 import { excerptMaxLength, requestChannels, type RequestChannel } from "@/lib/requestSource";
 import { ScopeChoice, type Qualification, type Qualified } from "./CanvasComments";
+import { CitedLineField, SuggestionNote, useSuggestion, type ScopeAssist } from "./QualifyAssist";
 
 /** What the dialog gives back: the request, where it came from, and a capture to import first. */
 export type NewRequest = Qualified & { source?: { channel: RequestChannel; receivedAt?: string; excerpt?: string }; capture?: File };
@@ -22,16 +24,19 @@ export function NewRequestDialog({
   initial,
   onClose,
   onCreate,
+  assist,
 }: {
   /** Qualification picked in the menu; null = closed. */
   initial: Qualification | null;
   onClose: () => void;
   onCreate: (request: NewRequest) => void;
+  /** The project's active scope: the line an « Inclus » cites, and the AI's suggestion on what is typed. */
+  assist?: ScopeAssist;
 }) {
-  return initial ? <RequestForm key={initial} initial={initial} onClose={onClose} onCreate={onCreate} /> : null;
+  return initial ? <RequestForm key={initial} initial={initial} onClose={onClose} onCreate={onCreate} assist={assist} /> : null;
 }
 
-function RequestForm({ initial, onClose, onCreate }: { initial: Qualification; onClose: () => void; onCreate: (request: NewRequest) => void }) {
+function RequestForm({ initial, onClose, onCreate, assist }: { initial: Qualification; onClose: () => void; onCreate: (request: NewRequest) => void; assist?: ScopeAssist }) {
   const [channel, setChannel] = useState<RequestChannel | "">("");
   const [receivedAt, setReceivedAt] = useState("");
   const [excerpt, setExcerpt] = useState("");
@@ -49,6 +54,14 @@ function RequestForm({ initial, onClose, onCreate }: { initial: Qualification; o
   const [amount, setAmount] = useState("");
   const [days, setDays] = useState("");
   const [counter, setCounter] = useState(false);
+  const [lineId, setLineId] = useState<number>();
+  // Asked by the agency once the request is described: its answer pre-fills the qualification.
+  const suggestion = useSuggestion(assist?.suggestionPath, (suggested) => {
+    setDecision(suggested.decision);
+    setLineId(suggested.line?.id);
+    if (suggested.title) setTitle((typed) => typed.trim() || suggested.title!);
+  });
+  const described = Boolean(title.trim() || description.trim() || excerpt.trim());
   const outside = decision === "Hors périmètre";
   const ready = title.trim() && (!outside || !quoteOn || Number(amount) > 0);
 
@@ -68,6 +81,7 @@ function RequestForm({ initial, onClose, onCreate }: { initial: Qualification; o
           quote: outside && quoteOn ? { amount: Number(amount), days: Number(days) || 0, counter } : undefined,
           source: channel ? { channel, ...(receivedAt ? { receivedAt } : {}), ...(excerpt.trim() ? { excerpt: excerpt.trim() } : {}) } : undefined,
           capture: channel ? capture?.file : undefined,
+          scopeLineId: decision === "Inclus" ? lineId : undefined,
         });
       }}
       footer={
@@ -85,12 +99,28 @@ function RequestForm({ initial, onClose, onCreate }: { initial: Qualification; o
         <span className="scope-field-label">Qualifier la demande</span>
         <ScopeChoice value={decision} onChange={setDecision} clarify />
       </div>
+      {decision === "Inclus" && <CitedLineField id="request-line" lines={assist?.lines ?? []} value={lineId} onChange={setLineId} />}
       <Field id="request-title" label="Titre de la demande">
         <Input id="request-title" autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex. : Ajouter une section témoignages" />
       </Field>
       <Field id="request-description" label="Description" optional>
         <Textarea id="request-description" value={description} onChange={(event) => setDescription(event.target.value)} rows={3} placeholder="Précisions utiles : où, comment, contraintes…" />
       </Field>
+      {suggestion.offered && (
+        <div className="grid gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="justify-self-start"
+            disabled={!described || suggestion.state.status === "asking"}
+            onClick={() => suggestion.ask({ title: title.trim(), description: description.trim(), excerpt: excerpt.trim() })}
+          >
+            <Sparkles aria-hidden="true" /> Suggérer avec l’IA
+          </Button>
+          <SuggestionNote state={suggestion.state} />
+        </div>
+      )}
       <Field id="request-source" label="Source" optional hint="D’où vient la demande, si le client l’a faite en dehors de Kora.">
         <select id="request-source" className={selectClassName} value={channel} onChange={(event) => setChannel(event.target.value as RequestChannel | "")}>
           <option value="">Aucune (demande de l’agence)</option>

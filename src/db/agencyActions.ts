@@ -13,6 +13,7 @@ import { initialsOf, sideOf } from "@/lib/authors";
 import { clientRoleLabels, readClientRole, roleOfInvite, type ClientRole } from "@/lib/clientRoles";
 import { formatProposalAmount, formatProposalDeadline } from "@/lib/proposalFormat";
 import { readRequestSource, sourceLine, type RequestSource } from "@/lib/requestSource";
+import { citedLine, type CitedLine } from "@/lib/scopeCitation";
 import type { ListChange, StateChanges } from "@/lib/sharedState";
 import {
   trail,
@@ -40,6 +41,7 @@ import { visibleToClient } from "./reviewAccess";
 import { mailQuoteToClient, versionDeciders, type AgencyQuoteEvent } from "./reviewMails";
 import { applyChanges, type Writer } from "./state";
 import { figmaImportChanges, figmaTeamChanges } from "./figmaImport";
+import { activeScopeOf } from "./qualificationSuggestion";
 import { readWorkspaceAction, workspaceChanges, type WorkspaceAction, type WorkspaceParams } from "./workspaceActions";
 
 type Qualification = "Inclus" | "Hors périmètre" | "À qualifier";
@@ -49,12 +51,13 @@ export type AgencyAction =
   | WorkspaceAction
   // `pinnedOn`: the request of the staging site whose capture the pin was dropped on, in Kora (src/app/(agency)/editor/SiteBoard.tsx).
   | { type: "comment.create"; deliverableId: number; id?: number; message: string; location?: string; page?: number; position?: { x: number; y: number }; area?: Area; timecode?: number; site?: SiteAnchor; pinnedOn?: number }
-  | { type: "request.create"; deliverableId: number; decision: Qualification; title: string; description?: string; quote?: Quote; source?: RequestSource }
+  // `scopeLineId`: the line of the project's active scope an « Inclus » cites (src/lib/scopeCitation.ts).
+  | { type: "request.create"; deliverableId: number; decision: Qualification; title: string; description?: string; quote?: Quote; source?: RequestSource; scopeLineId?: number }
   | { type: "comment.restore"; comment: Data }
   | { type: "comment.edit"; commentId: number; message: string }
   | { type: "comment.move"; commentId: number; page: number; x: number; y: number }
   | { type: "comment.delete"; commentId: number }
-  | { type: "comment.qualify"; commentId: number; decision: Qualification; title?: string; description?: string; quote?: Quote }
+  | { type: "comment.qualify"; commentId: number; decision: Qualification; title?: string; description?: string; quote?: Quote; scopeLineId?: number }
   | { type: "comment.close"; commentId: number; closed: boolean }
   | { type: "reply.create"; commentId: number; id?: number; message: string }
   | { type: "reply.edit"; commentId: number; replyId: number; message: string }
@@ -118,7 +121,7 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
       const decision = request.decision === "Inclus" || request.decision === "Hors périmètre" || request.decision === "À qualifier" ? request.decision : null;
       const source = readRequestSource(request.source);
       if (!deliverableId || !title || !decision || source === null) return null;
-      return { type, deliverableId, decision, title, description: text(request.description), quote: readQuote(request.quote), source };
+      return { type, deliverableId, decision, title, description: text(request.description), quote: readQuote(request.quote), source, scopeLineId: id(request.scopeLineId) };
     }
     case "comment.restore": {
       const comment = body.restore && typeof body.restore === "object" && !Array.isArray(body.restore) ? (body.restore as Data) : null;
@@ -137,7 +140,7 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
       const decision = body.decision === "Inclus" || body.decision === "Hors périmètre" || body.decision === "À qualifier" ? body.decision : null;
       const title = text(body.title, 300);
       if (!commentId || !decision || (decision !== "À qualifier" && !title)) return null;
-      return { type, commentId, decision, title, description: text(body.description), quote: readQuote(body.quote) };
+      return { type, commentId, decision, title, description: text(body.description), quote: readQuote(body.quote), scopeLineId: id(body.scopeLineId) };
     }
     case "comment.close":
       return commentId && typeof body.closed === "boolean" ? { type, commentId, closed: body.closed } : null;
@@ -189,6 +192,19 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
 // ——— Turning an action into changes ———
 
 /** A draft quote for an out-of-scope request: replaces an earlier draft, keeps the quotes sent before. */
+const uncitable = "Cette ligne n’est pas dans le périmètre actif du projet.";
+
+/**
+ * The line an « Inclus » cites, as the active scope reads it now (src/lib/scopeCitation.ts): undefined
+ * when none is cited (or the decision is not « Inclus »), null when the line is not in the active scope.
+ */
+async function citation(db: Db, org: string, deliverableId: number | null, decision: Qualification, lineId: number | undefined) {
+  if (decision !== "Inclus" || lineId === undefined || deliverableId === null) return undefined;
+  return citedLine(await activeScopeOf(db, org, deliverableId), lineId) ?? null;
+}
+
+const citedNote = (line: CitedLine | undefined) => (line ? ` (ligne du périmètre : ${line.title})` : "");
+
 async function draftQuote(db: Db, org: string, changes: StateChanges, commentId: number, description: string, quote: Quote) {
   const [proposal] = await db.select({ state: commentProposals.state }).from(commentProposals).where(and(eq(commentProposals.organizationId, org), eq(commentProposals.commentId, commentId))).limit(1);
   if (proposal?.state === "sent") return false;
@@ -369,6 +385,8 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
     } else {
       // A capture must be an image the agency imported itself (src/lib/upload.ts).
       if (action.source?.capture && !(await ownImage(db, org, action.source.capture))) return refused("Capture introuvable.", 404);
+      const cited = await citation(db, org, deliverableId, action.decision, action.scopeLineId);
+      if (cited === null) return refused(uncitable);
       upsertComment({
         ...base,
         message: action.description || action.title,
@@ -379,10 +397,11 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
         title: action.title,
         ...(action.description ? { description: action.description } : {}),
         ...(action.source ? { source: action.source } : {}),
+        ...(cited ? { scopeLine: cited } : {}),
         page: 1,
       });
       const origin = action.source ? ` (${sourceLine(action.source).replace("Demande reçue ", "reçue ")})` : "";
-      log.add("scope.classified", `Demande créée « ${scopeLabel(action.decision)} » : ${action.title}${origin}`, commentId);
+      log.add("scope.classified", `Demande créée « ${scopeLabel(action.decision)} » : ${action.title}${origin}${citedNote(cited)}`, commentId);
       if (action.quote && action.decision === "Hors périmètre" && (await draftQuote(db, org, changes, commentId, action.title, action.quote)))
         log.add("proposal.drafted", `Chiffrage préparé : ${action.quote.amount} € · ${action.quote.days} j`, commentId);
     }
@@ -426,19 +445,25 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
         if (action.title) {
           const rest = { ...comment };
           delete rest.description;
+          delete rest.scopeLine;
           upsertComment({ ...rest, decision: "À qualifier", kind: "remark", title: action.title, ...(action.description ? { description: action.description } : {}) });
           log.add("scope.classified", `Demande qualifiée « À clarifier » : ${action.title}`, action.commentId);
           break;
         }
-        upsertComment({ ...comment, decision: "À qualifier", kind: "remark" });
+        const rest = { ...comment };
+        delete rest.scopeLine;
+        upsertComment({ ...rest, decision: "À qualifier", kind: "remark" });
         log.add("scope.classified", "Demande remise à clarifier", action.commentId);
         break;
       }
-      // The description is the one given now (none removes the earlier one), as the page did.
+      const cited = await citation(db, org, stored.deliverableId, action.decision, action.scopeLineId);
+      if (cited === null) return refused(uncitable);
+      // The description and the cited line are the ones given now (none removes the earlier one), as the page did.
       const rest = { ...comment };
       delete rest.description;
-      upsertComment({ ...rest, decision: action.decision, kind: "request", title: action.title, ...(action.description ? { description: action.description } : {}) });
-      log.add("scope.classified", `Demande qualifiée « ${scopeLabel(action.decision)} » : ${action.title}`, action.commentId);
+      delete rest.scopeLine;
+      upsertComment({ ...rest, decision: action.decision, kind: "request", title: action.title, ...(action.description ? { description: action.description } : {}), ...(cited ? { scopeLine: cited } : {}) });
+      log.add("scope.classified", `Demande qualifiée « ${scopeLabel(action.decision)} » : ${action.title}${citedNote(cited)}`, action.commentId);
       if (action.quote && action.decision === "Hors périmètre" && (await draftQuote(db, org, changes, action.commentId, action.title!, action.quote)))
         log.add("proposal.drafted", `Chiffrage préparé : ${action.quote.amount} € · ${action.quote.days} j`, action.commentId);
       break;

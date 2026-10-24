@@ -18,7 +18,7 @@ export const defaultAnthropicModel = "claude-haiku-5-5";
 
 export function anthropicModel({ apiKey, model = defaultAnthropicModel, baseUrl = "https://api.anthropic.com", timeoutMs = 10_000 }: AnthropicOptions): SuggestionModel {
   return {
-    async suggest({ scope, request }) {
+    async suggest({ scope, exclusions, request }) {
       const response = await fetch(`${baseUrl.replace(/\/$/, "")}/v1/messages`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
@@ -27,7 +27,7 @@ export function anthropicModel({ apiKey, model = defaultAnthropicModel, baseUrl 
           max_tokens: 400,
           system: [
             { type: "text", text: suggestionInstructions },
-            { type: "text", text: scopeBlock(scope), cache_control: { type: "ephemeral" } },
+            { type: "text", text: scopeBlock(scope, exclusions), cache_control: { type: "ephemeral" } },
           ],
           tools: [suggestionTool],
           tool_choice: { type: "tool", name: suggestionTool.name },

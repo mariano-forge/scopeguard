@@ -22,11 +22,13 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@azure/storage-blob", "@azure/storage-common", "pdfjs-dist"],
   outputFileTracingIncludes: { "/api/projects/\\[projectId\\]/scope/extraction": ["./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"] },
   // The import limits, known to the pages too (the server checks them again in /api/files); whether « Nouveau
-  // livrable » offers Figma comments (FIGMA_COMMENTS, src/lib/figmaLink.ts).
+  // livrable » offers Figma comments (FIGMA_COMMENTS, src/lib/figmaLink.ts); whether the qualifying forms ask
+  // the AI for a suggestion (AI_PROVIDER set, src/lib/qualificationSuggestion.ts).
   env: {
     NEXT_PUBLIC_MAX_UPLOAD_MB: process.env.MAX_UPLOAD_MB ?? "50",
     NEXT_PUBLIC_MAX_VIDEO_UPLOAD_MB: process.env.MAX_VIDEO_UPLOAD_MB ?? "1024",
     NEXT_PUBLIC_FIGMA_COMMENTS: process.env.FIGMA_COMMENTS ?? "",
+    NEXT_PUBLIC_AI_SUGGESTIONS: process.env.AI_PROVIDER ? "1" : "",
   },
   // pdf.js 6 relies on JavaScript only the latest browsers have (Map.getOrInsertComputed, Math.sumPrecise):
   // its legacy build carries polyfills, so a PDF also opens in an older Safari or a Firefox ESR.

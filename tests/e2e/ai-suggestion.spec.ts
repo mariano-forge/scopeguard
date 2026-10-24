@@ -12,7 +12,8 @@ import { readingText, readingTool, withoutRepeatedQuantity } from "../../src/lib
 import { readExtracted } from "../../src/lib/scopeExtraction";
 import { makePdf } from "./makePdf";
 import { fakeModel, suggestionModel } from "../../src/lib/ai/provider";
-import { readSuggestion, suggestQualification, suggestionTool, type ScopeLine } from "../../src/lib/ai/scopeSuggestion";
+import { maskContacts, readSuggestion, suggestQualification, suggestionTool, type ScopeLine } from "../../src/lib/ai/scopeSuggestion";
+import { requestOfComment } from "../../src/db/qualificationSuggestion";
 
 const scope: ScopeLine[] = [
   { id: "l1", title: "Page Contact avec formulaire" },
@@ -265,4 +266,22 @@ test("a quantity given apart is taken out of the title where the model leaves it
   } finally {
     await azure.close();
   }
+});
+
+test("a client's contact details never reach the model: e-mail addresses and phone numbers masked, who said what kept", () => {
+  expect(maskContacts("Écrivez à claire.dubois@nordic-studio.fr ou au 06 12 34 56 78, ou +33 (0)6.12.34.56.78.")).toBe("Écrivez à [adresse masquée] ou au [téléphone masqué], ou [téléphone masqué].");
+  // Numbers that are not phones stay: a quantity, a year, a price.
+  expect(maskContacts("Ajouter 5 pages en 2026 pour 1 200 €")).toBe("Ajouter 5 pages en 2026 pour 1 200 €");
+  const request = requestOfComment({
+    from: "client",
+    author: "Claire",
+    message: "Le bouton ne marche pas, appelez-moi au 0612345678",
+    title: "Bouton d’envoi",
+    location: "Page 2",
+    replies: [
+      { from: "agency", author: "Alice", message: "Lequel ?" },
+      { from: "client", author: "Claire", message: "Celui du formulaire, réponse à claire@nordic.test" },
+    ],
+  });
+  expect(request).toEqual({ text: "Client : Le bouton ne marche pas, appelez-moi au [téléphone masqué]\nAgence : Lequel ?\nClient : Celui du formulaire, réponse à [adresse masquée]", title: "Bouton d’envoi", location: "Page 2" });
 });

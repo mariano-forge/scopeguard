@@ -65,8 +65,8 @@ const suggestionSchema = { ...suggestionTool, input_schema: { ...suggestionTool.
 /** Comparing a request with a few lines needs little reasoning: quick, as the agency waits for it. */
 export function azureSuggestionModel(options: AzureOpenAIOptions): SuggestionModel {
   return {
-    suggest: ({ scope, request }) =>
-      callTool(options, { system: [suggestionInstructions, scopeBlock(scope)], user: requestBlock(request), tool: suggestionSchema, effort: "low", maxTokens: 2_000, timeoutMs: 15_000 }),
+    suggest: ({ scope, exclusions, request }) =>
+      callTool(options, { system: [suggestionInstructions, scopeBlock(scope, exclusions)], user: requestBlock(request), tool: suggestionSchema, effort: "low", maxTokens: 2_000, timeoutMs: 15_000 }),
   };
 }
 

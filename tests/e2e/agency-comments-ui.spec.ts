@@ -22,7 +22,8 @@ async function editor(browser: Browser) {
   const { page, errors } = await newPerson(browser);
   const writes: string[] = [];
   page.on("request", (request) => {
-    if (request.method() !== "GET" && request.url().includes("/api/")) writes.push(`${request.method()} ${new URL(request.url()).pathname}`);
+    // The AI's suggestion, asked as a qualifying form opens, is sent by POST but writes nothing (src/db/qualificationSuggestion.ts).
+    if (request.method() !== "GET" && request.url().includes("/api/") && !request.url().endsWith("/suggestion")) writes.push(`${request.method()} ${new URL(request.url()).pathname}`);
   });
   await signInPage(page, alice.email);
   await page.goto("/projets/1/livrables/1");

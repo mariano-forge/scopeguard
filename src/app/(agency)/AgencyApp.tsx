@@ -65,6 +65,7 @@ import {
 import { EditorInspector, inspectorTabOf, threadsToMarkdown, type InspectorTab } from "./editor/EditorInspector";
 import { outsideStatusOf, outsideStatusView } from "@/lib/outsideStatus";
 import { NewRequestDialog, type NewRequest } from "./editor/NewRequestDialog";
+import { citableLines } from "@/lib/scopeCitation";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "./editor/ReviewCanvas";
 import { toast } from "sonner";
 import { videoDuration, videoWarning, videoWarningText } from "@/lib/videoCheck";
@@ -665,6 +666,8 @@ export function AgencyApp() {
   const isReadOnlyVersion = Boolean(
     currentDeliverable?.locked || currentDeliverable?.status === "Approuvée" || currentDeliverable?.status === "Remplacée",
   );
+  // The lines an « Inclus » may cite: the active scope of the version's project (src/lib/scopeCitation.ts).
+  const scopeLines = citableLines(projects.find((project) => project.id === (currentDeliverable?.projectId ?? 1))?.scope);
   const activeComments = comments.filter(
     (comment) => (comment.deliverableId ?? deliverables[0]?.id) === currentDeliverable?.id,
   );
@@ -933,6 +936,7 @@ export function AgencyApp() {
       title: qualified.title,
       description: qualified.description,
       quote: qualified.quote,
+      scopeLineId: qualified.scopeLineId,
     });
   }
 
@@ -1133,7 +1137,7 @@ export function AgencyApp() {
     setInspectorTab(request.decision === "Inclus" ? "correction" : request.decision === "Hors périmètre" ? "outside" : "comment");
     const source = request.source ? { ...request.source, ...(captureHref ? { capture: captureHref } : {}) } : undefined;
     const result = await agencyAction("comments", "POST", {
-      request: { deliverableId: currentDeliverable.id, decision: request.decision, title: request.title, description: request.description, quote: request.quote, source },
+      request: { deliverableId: currentDeliverable.id, decision: request.decision, title: request.title, description: request.description, quote: request.quote, source, scopeLineId: request.scopeLineId },
     });
     if (!result?.id) return;
     setSelectedId(result.id);
@@ -2147,6 +2151,7 @@ export function AgencyApp() {
                   me="agency"
                   onEditMessage={(messageId, message) => editMessage(comment.id, messageId, message)}
                   onDeleteMessage={(messageId) => deleteMessage(comment.id, messageId)}
+                  assist={{ lines: scopeLines, suggestionPath: `/api/comments/${comment.id}/suggestion` }}
                   // Once a proposal has been sent to the client, the qualification no longer changes.
                   onQualify={
                     proposalStateFor(comment.id) === "sent"
@@ -2238,7 +2243,12 @@ export function AgencyApp() {
           </div>
           </>
         )}
-          <NewRequestDialog initial={newRequestKind} onClose={() => setNewRequestKind(null)} onCreate={addRequest} />
+          <NewRequestDialog
+            initial={newRequestKind}
+            onClose={() => setNewRequestKind(null)}
+            onCreate={addRequest}
+            assist={currentDeliverable ? { lines: scopeLines, suggestionPath: `/api/deliverables/${currentDeliverable.id}/suggestion` } : undefined}
+          />
           {reshare && (
             <ReshareDialog
               key={reshare.deliverableId}
