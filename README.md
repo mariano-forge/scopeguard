@@ -220,6 +220,29 @@ npm run test:e2e             # la suite de tests : base de test kora_test recré
 - `npm run db:studio` : explore les données.
 - Le journal d'audit (`audit_events`) est en ajout seul : la base refuse toute modification ou suppression d'un événement.
 
+### Migrations, pas à pas
+
+Trois bases, trois règles :
+
+| Base | Qui la migre | Commande |
+| --- | --- | --- |
+| Test `kora_test` (Docker) | La suite de tests, à chaque lancement : recréée puis migrée par `tests/e2e/global-setup.ts` | Rien à faire : `npm run test:e2e` |
+| Développement `kora` (Docker) | Vous, après chaque migration ajoutée ou récupérée | `npm run db:up` puis `npm run db:migrate`, avec `DATABASE_TARGET=local` dans `.env.local` |
+| En ligne (Supabase) | Seulement avec l'accord explicite du porteur du produit, **avant** de déployer le code qui en dépend | `DATABASE_TARGET=remote npm run db:migrate` |
+
+Avant `npm run db:migrate`, vérifiez la valeur de `DATABASE_TARGET` dans `.env.local` : `remote` vise la base en ligne. La base locale `kora` est une copie de la base en ligne, avec de vraies adresses de clients : gardez `MAIL_TRANSPORT=console`.
+
+**Écrire une migration**
+1. Modifier `src/db/schema.ts`.
+2. `npm run db:generate -- --name <sujet>` : crée `drizzle/<n>_<sujet>.sql` et son instantané `drizzle/meta/<n>_snapshot.json`.
+3. Une **nouvelle table** : ajouter à la fin du fichier SQL, avant de l'appliquer, `--> statement-breakpoint` puis `ALTER TABLE "<table>" ENABLE ROW LEVEL SECURITY;` (voir `drizzle/0007_request_limits.sql`).
+4. `npm run db:migrate` sur la base locale, puis `npm run test:e2e`.
+5. Vérifier une table : `docker exec kora-postgres psql -U kora -d kora -c '\d <table>'`.
+
+**SQL écrit à la main** (renommer une colonne, changer une clé, migrer des données) : `npx drizzle-kit generate --custom --name <sujet>`, puis écrire le SQL dans le fichier créé. Piège : pour un renommage, `drizzle-kit generate` pose une question interactive, impossible sans terminal (« Interactive prompts require a TTY »). Dans ce cas, mettez à jour à la main l'instantané `drizzle/meta/<n>_snapshot.json` du fichier personnalisé pour qu'il décrive le schéma après la migration, puis vérifiez que `npx drizzle-kit generate` répond « No schema changes, nothing to migrate ». Exemple : `drizzle/0010_figma_personal_connections.sql`.
+
+**Ne jamais modifier une migration déjà appliquée**, même seulement sur votre base locale : la base retient qu'elle est passée et ne la rejouera pas. Écrivez-en une nouvelle.
+
 ### Déploiement
 
 L'application tourne sur Vercel, dans la région de Francfort (`fra1`, fixée par [vercel.json](vercel.json)), à côté de la base Supabase : une base éloignée multiplie la latence de chaque action. À chaque déploiement :

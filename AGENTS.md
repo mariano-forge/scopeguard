@@ -91,7 +91,7 @@ Pour les tests :
 - Une notification porte ce qu'elle concerne (`deliverableId`, et `commentId` ou `open` quand il y a lieu) : la cloche de l'agence l'ouvre (`notificationHref`, `src/app/(agency)/routes.ts`).
 
 **Base de données**
-- Toute modification du schéma passe par `npm run db:generate`, et le SQL personnalisé par `npx drizzle-kit generate --custom`. Ne modifie jamais une migration déjà appliquée.
+- Toute modification du schéma passe par `npm run db:generate`, et le SQL personnalisé par `npx drizzle-kit generate --custom`. Ne modifie jamais une migration déjà appliquée, même seulement en local. La marche à suivre (base de test migrée par les tests, base locale `kora` par `npm run db:migrate`, renommage sans terminal interactif) : [README.md](README.md), « Migrations, pas à pas ». Vérifie `DATABASE_TARGET` dans `.env.local` avant toute migration : `remote` vise la base en ligne.
 - Toute nouvelle table active la sécurité par ligne dans sa migration (`ALTER TABLE … ENABLE ROW LEVEL SECURITY`) : sans elle, l'API publique de Supabase l'exposerait.
 - `readState` (`src/db/state.ts`) lit tout l'état d'une agence en **une seule requête SQL**. Une nouvelle collection s'y ajoute dans la même requête ; ne la remplace pas par une suite de requêtes : chacune coûte un aller-retour vers la base en ligne.
 - Une migration ne s'applique sur la base en ligne (`DATABASE_TARGET=remote npm run db:migrate`) qu'avec l'accord explicite de l'utilisateur, et avant le déploiement du code qui en dépend.
