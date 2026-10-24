@@ -109,8 +109,13 @@ test("the client's bell: the agency's reply, the quote to decide, their request 
   ]);
   // Opening one: the quote, to decide; everything shown is then seen.
   await list.getByRole("button", { name: /Devis à valider/ }).click();
-  await expect(page.getByRole("dialog", { name: "Proposition · demande n°21" })).toBeVisible();
+  const quote = page.getByRole("dialog", { name: "Proposition · demande n°21" });
+  await expect(quote).toBeVisible();
+  // The bell's list closed, the focus stays in the quote (not back on the bell, whose hint would take Escape).
+  await expect(list).toBeHidden();
+  await expect.poll(() => quote.evaluate((node) => node.contains(document.activeElement))).toBe(true);
   await page.keyboard.press("Escape");
+  await expect(quote).toBeHidden();
   await expect(bell).toHaveAccessibleName("Notifications");
   await bell.click();
   await expect(page.getByRole("dialog", { name: "Notifications" })).toContainText("Rien de nouveau.");
