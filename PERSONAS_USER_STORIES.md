@@ -975,6 +975,15 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - Une qualification `Inclus` ou `Hors périmètre` peut citer la ligne de devis concernée.
 - Le dépassement du nombre de rounds est signalé.
 
+> **Avancement (24 octobre 2026) :** le projet a trois onglets : Livrables, Périmètre, Suivi. Décidé avec le porteur du produit : le périmètre est la référence du projet, pas un livrable, et il se définit avant les livrables.
+>
+> - **Périmètre** (`/projets/:id/perimetre`) : il se remplit de deux façons, au choix et dans n'importe quel ordre. « Extraire avec l'IA », la plus rapide, lit le PDF du devis ou du cahier des charges, ou un texte collé ; le moteur reste à configurer, et l'agence relit chaque proposition avant de l'ajouter. Sinon, la saisie à la main. Quatre sections : l'extraction, « Inclus », « Non inclus » (une ligne par élément : désignation en texte long, quantité, unité) et « Avenants », qui ne sont que les devis hors scope acceptés dans Kora. Le périmètre s'active comme référence (signé par le serveur, inscrit au journal) et peut repasser en brouillon. Le cadre (budget, tours, dates), la liste des documents de référence, la source, l'échéance et le livrable de chaque ligne ont été retirés à la demande du porteur du produit ; les périmètres déjà saisis gardent leur budget et leurs tours, que « Suivi » lit encore.
+> - **Suivi** : ce que Kora rapporte, calculé de ce qui existe déjà. Le hors scope de la demande repérée au devis accepté (montants gagnés, en attente, refusés, demandes encore à chiffrer), les allers-retours de chaque livrable (ses versions), les demandes version après version (tous les livrables, ou l'un d'eux), les demandes semaine par semaine en courbes par qualification, et le délai de première réponse de l'équipe au client. Chaque section a ses propres filtres (livrable, période).
+> - **Côté client** : il lit le périmètre actif depuis sa page de revue (inclus, non inclus, avenants de sa version), et a sa propre cloche : réponses de l'agence, devis à valider, ses demandes qualifiées, nouvelle version partagée.
+> - Un onglet « Clients » (organisation, contacts et leurs accès) a été essayé puis abandonné le 23 octobre 2026 : les invités des livrables suffisent.
+>
+> À venir : la confirmation du périmètre par le client, la ligne citée à la qualification, le branchement du moteur d'extraction.
+
 #### US-046 : offrir une demande hors périmètre
 
 **En tant que** dirigeant d'agence,  
