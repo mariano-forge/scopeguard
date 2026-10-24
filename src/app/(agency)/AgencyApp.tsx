@@ -49,6 +49,7 @@ import {
   ThreadPopover,
   isAgencyDraft,
   requestKind,
+  requestText,
   type ProposalStage,
   type Qualification,
   type Qualified,
@@ -74,6 +75,8 @@ import { useCurrentUser } from "./CurrentUser";
 import { sideOf, type Side } from "@/lib/authors";
 import { proofHtml } from "./proofDocument";
 import { ExportMenu } from "./editor/ExportMenu";
+import type { ProjectScope, ScopeAmendment } from "@/lib/projectScope";
+import { ScopeButton } from "./ProjectScope";
 import { uploadFile as sendFile, type UploadPlacement } from "@/lib/upload";
 import { agencyAction } from "@/lib/agencyActions";
 import type { ClientRole } from "@/lib/clientRoles";
@@ -136,6 +139,7 @@ type Project = {
   clientId?: number;
   client: string;
   status: "Brouillon" | "En cours";
+  scope?: ProjectScope;
 };
 
 type Client = {
@@ -371,7 +375,7 @@ export function AgencyApp() {
     view.kind === "recents" ||
     view.kind === "shared" ||
     view.kind === "trash" ||
-    view.kind === "spaces" || view.kind === "client" || view.kind === "project" || view.kind === "not-found";
+    view.kind === "spaces" || view.kind === "client" || view.kind === "project" || view.kind === "scope" || view.kind === "tracking" || view.kind === "not-found";
 
   const [comments, setComments] = useState(initialComments);
   const [selectedId, setSelectedId] = useState(1);
@@ -1525,6 +1529,18 @@ export function AgencyApp() {
 
   // Home overview for a set of deliverables (null = all). Each home section has its own selection.
   // Proposals count whatever version they were raised on.
+  /** A project's amendments: its out-of-scope requests whose quote the client accepted (ProjectScope.tsx). */
+  const amendmentsFor = (projectId: number): ScopeAmendment[] =>
+    comments
+      .filter((comment) => comment.decision === "Hors périmètre" && proposalDecisionFor(comment.id) === "accepted")
+      .flatMap((comment) => {
+        const record = deliverables.find((item) => item.id === comment.deliverableId);
+        if (!record || (record.projectId ?? 1) !== projectId) return [];
+        const proposal = activeProposalFor(comment.id);
+        const link = `${href.deliverable(projectId, livrableIdOf(record, deliverables), record.version)}?demande=${comment.id}`;
+        return [{ commentId: comment.id, title: requestText(comment), deliverable: `${record.name} · V${String(record.version).padStart(2, "0")}`, amount: parseNumericAmount(proposal?.amount), days: parseNumericDays(proposal?.deadline), href: link }];
+      });
+
   function overviewFor(selection: number[] | null): HomeOverview {
     const chosen = selection === null ? null : new Set(selection);
     const scopeRecords = chosen ? deliverables.filter((record) => chosen.has(livrableIdOf(record, deliverables))) : deliverables;
@@ -1890,6 +1906,7 @@ export function AgencyApp() {
           onPanelResize={(width) => resizePanel("panel", width)}
           livrableName={viewVersions[0]?.name ?? "Livrable"}
           livrableMenu={livrableMenu}
+          project={{ name: selectedProject.name, href: href.project(selectedProject.id) }}
           systemMenu={systemMenu}
           versions={sidebarVersions}
           view={view}
@@ -1923,6 +1940,17 @@ export function AgencyApp() {
               projects={projects}
               deliverables={deliverables}
               comments={comments}
+              amendmentsFor={amendmentsFor}
+              trackingFor={(projectId) => ({
+                projectId,
+                scope: projects.find((project) => project.id === projectId)?.scope,
+                versions: deliverables,
+                requests: comments,
+                quoteOf: (commentId) => ({
+                  status: outsideStatusOf({ state: proposalStateFor(commentId), decision: proposalDecisionFor(commentId), adaptation: adaptationRequests[commentId] }),
+                  amount: parseNumericAmount(activeProposalFor(commentId)?.amount),
+                }),
+              })}
               recentLivrableIds={recentLivrableIds}
               todoItems={todoItems}
               error={deliverableError}
@@ -2103,6 +2131,11 @@ export function AgencyApp() {
             </ViewTransition>
 
             <EditorInspector
+              scopeAction={
+                selectedProject && (
+                  <ScopeButton projectId={selectedProject.id} scope={selectedProject.scope} amendments={amendmentsFor(selectedProject.id)} />
+                )
+              }
               comments={activeComments}
               selectedId={threadOpen ? (selectedComment?.id ?? null) : null}
               tab={inspectorTab}

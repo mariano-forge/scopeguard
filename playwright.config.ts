@@ -55,6 +55,9 @@ export default defineConfig({
       // Low enough for the limit tests, high enough for every other test's person.
       UPLOADS_PER_HOUR: "5",
       WRITES_PER_MINUTE: "120",
+      // The scope's extraction, read by the tests' fixed engine (src/lib/scopeExtractor.ts): no AI.
+      SCOPE_EXTRACTION_PROVIDER: "test",
+      EXTRACTIONS_PER_HOUR: "30",
     },
   },
 });

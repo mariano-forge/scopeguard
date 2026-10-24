@@ -1000,6 +1000,9 @@ test("on a « Lien »'s canvas, the agency pins a comment on a request's capture
   // (Its thread opened once published: closed first, as the agency would, so that it covers no pin.)
   const thread = page.getByRole("dialog", { name: /^Commentaire #/ });
   await expect(thread).toBeVisible();
+  // Published: the panel turns to the agency's drafts as the thread opens. Closed only then, so that the
+  // end of the publishing does not open it again (and glide the canvas) under the drag.
+  await expect(page.getByRole("complementary", { name: "Demandes" }).getByRole("tab", { name: /^Mes brouillons/ })).toHaveAttribute("aria-selected", "true");
   await thread.getByRole("button", { name: "Fermer" }).click();
   await expect(thread).toHaveCount(0);
   const before = (await pinned())!.position as { x: number; y: number };

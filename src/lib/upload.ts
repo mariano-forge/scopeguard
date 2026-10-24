@@ -13,7 +13,8 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 export type UploadPlacement =
   | { kind: "version"; projectId: number; livrableId: number; version: number }
   | { kind: "cover"; projectId: number; livrableId: number }
-  | { kind: "request"; projectId: number; livrableId: number };
+  | { kind: "request"; projectId: number; livrableId: number }
+  | { kind: "scope"; projectId: number };
 
 /** How far an import is, from 0 to 1: reading the file, then sending it. */
 export type UploadProgress = (step: "reading" | "sending", done: number) => void;

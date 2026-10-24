@@ -8,6 +8,8 @@
 //   /espaces                                       all client spaces
 //   /espaces/:clientId                             projects of a client space
 //   /projets/:projectId                            deliverables of a project
+//   /projets/:projectId/perimetre                  its reference scope (src/lib/projectScope.ts)
+//   /projets/:projectId/suivi                      its tracking: figures and charts from its scope and requests
 //   /projets/:projectId/livrables/:livrableId      latest version of a deliverable
 //   /projets/:projectId/livrables/:livrableId/versions/:version
 //   /projets/:projectId/livrables/:livrableId/tableau-de-bord   (old) redirects to the home analytics filtered on it
@@ -23,6 +25,8 @@ export type AgencyView =
   | { kind: "spaces" }
   | { kind: "client"; clientId: number }
   | { kind: "project"; projectId: number }
+  | { kind: "scope"; projectId: number }
+  | { kind: "tracking"; projectId: number }
   | { kind: "dashboard"; projectId: number; livrableId: number }
   | { kind: "deliverable"; projectId: number; livrableId: number; version?: number }
   | { kind: "not-found" };
@@ -47,6 +51,8 @@ export function parseAgencyPath(pathname: string): AgencyView {
     const projectId = id(second);
     if (projectId === null) return { kind: "not-found" };
     if (!third) return { kind: "project", projectId };
+    if (third === "perimetre" && !fourth) return { kind: "scope", projectId };
+    if (third === "suivi" && !fourth) return { kind: "tracking", projectId };
     const livrableId = id(fourth);
     if (third === "livrables" && livrableId !== null) {
       if (!fifth) return { kind: "deliverable", projectId, livrableId };
@@ -72,6 +78,8 @@ export const href = {
   /** A client space ("espace"). */
   client: (clientId: number) => `/espaces/${clientId}`,
   project: (projectId: number) => `/projets/${projectId}`,
+  scope: (projectId: number) => `/projets/${projectId}/perimetre`,
+  tracking: (projectId: number) => `/projets/${projectId}/suivi`,
   dashboard: (projectId: number, livrableId: number) => `/projets/${projectId}/livrables/${livrableId}/tableau-de-bord`,
   deliverable: (projectId: number, livrableId: number, version?: number) =>
     `/projets/${projectId}/livrables/${livrableId}${version ? `/versions/${version}` : ""}`,

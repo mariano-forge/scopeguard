@@ -1,0 +1,553 @@
+/* The project's sections (BrowserView): its deliverables, its scope. */
+.project-tabs {
+  display: flex;
+  gap: var(--s-1);
+  margin-bottom: var(--s-6);
+  border-bottom: 1px solid var(--border);
+}
+.project-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: -1px;
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 2px solid transparent;
+  color: var(--graphite);
+  font: 500 var(--t-ui) var(--font-ui);
+  text-decoration: none;
+}
+.project-tab:hover {
+  color: var(--ink);
+}
+.project-tab[aria-current="page"] {
+  border-bottom-color: var(--ink);
+  color: var(--ink);
+}
+.project-tab small {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--mist);
+  color: var(--graphite);
+  font: 600 var(--t-caption) var(--font-ui);
+}
+.project-tab small.is-active {
+  background: var(--status-resolved-bg);
+  color: var(--status-resolved-text);
+}
+
+/* The « Périmètre » tab (ProjectScope.tsx): a status line, then its sections one after another. */
+.scope {
+  display: grid;
+  gap: var(--s-4);
+  max-width: 960px;
+  /* Its layout follows its own width, not the window's: the sidebar takes part of it. */
+  container-type: inline-size;
+}
+.scope-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-2);
+  max-width: 480px;
+  margin: var(--s-6) auto;
+  padding: var(--s-8) var(--s-6);
+  border: 1px dashed var(--border-input);
+  border-radius: var(--r-button);
+  text-align: center;
+}
+.scope-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: var(--status-low-bg);
+  color: var(--status-low-text);
+}
+.scope-empty-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.scope-empty b {
+  font: 600 16px var(--font-ui);
+}
+.scope-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--s-2);
+}
+.scope-empty p {
+  margin: 0 0 var(--s-2);
+  color: var(--graphite);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+
+/* Where the scope stands, and what to do with it: kept in sight while the page scrolls. */
+.scope-status {
+  position: sticky;
+  /* Under Kora's tab bar, which stays on top of the page as it scrolls; on the page's own white. */
+  top: var(--tab-bar-height);
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3) var(--s-4);
+  padding: var(--s-4) 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--paper);
+}
+.scope-status-text {
+  display: grid;
+  gap: var(--s-1);
+}
+.scope-status-text h2 {
+  margin: 0;
+  color: var(--ink);
+  font: 600 var(--t-h3) var(--font-heading);
+}
+.scope-status-text [role="status"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.scope-status.is-active .scope-status-text [role="status"] {
+  color: var(--status-resolved-text);
+}
+.scope-status-text svg {
+  width: 13px;
+  height: 13px;
+}
+.scope-status-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* The main section (« Extraire avec l'IA »): more room, a larger title, its icon in a tile. */
+.scope-card.is-feature {
+  gap: var(--s-4);
+  padding: var(--s-6);
+}
+.scope-card.is-feature .scope-card-head h2 {
+  gap: var(--s-3);
+  font: 600 var(--t-h3) var(--font-heading);
+}
+.scope-card.is-feature .scope-note {
+  max-width: 72ch;
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.scope-card-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-button);
+  background: var(--status-low-bg);
+  color: var(--action-ui);
+}
+.scope-card-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* A section: a card, its title and count on top. */
+.scope-card {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--paper);
+}
+.scope-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.scope-card-head h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.scope-count {
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--mist);
+  color: var(--graphite);
+  font: 600 var(--t-caption) var(--font-ui);
+}
+/* What to put in an empty section. */
+.scope-note {
+  margin: 0;
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+/* The PDF to read: dropped in a dashed zone, or chosen. */
+.scope-dropzone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px dashed var(--border-input);
+  border-radius: var(--r-button);
+  background: var(--canvas);
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+/* A PDF there: named, in a plain frame, « Modifier » to read another (still a place to drop one). */
+.scope-dropzone.has-file {
+  border-style: solid;
+  border-color: var(--border);
+  background: var(--paper);
+}
+.scope-dropzone.has-file .scope-dropzone-text b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scope-dropzone.is-over {
+  border-color: var(--action-ui);
+  background: var(--status-low-bg);
+}
+.scope-dropzone-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--paper);
+  color: var(--graphite);
+}
+.scope-dropzone-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.scope-dropzone-text {
+  display: grid;
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.scope-dropzone-text b {
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.scope-dropzone-text small {
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.scope-dropzone-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .scope-dropzone {
+    transition: none;
+  }
+}
+/* Before any scope: two ways in, side by side — the AI reads a document, or the agency types it. */
+.scope-start {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-2);
+  max-width: 720px;
+  margin: var(--s-6) auto;
+  text-align: center;
+}
+.scope-start > p {
+  margin: 0;
+  color: var(--graphite);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.scope-start-title {
+  color: var(--ink);
+  font: 600 var(--t-h3) var(--font-heading);
+}
+.scope-start-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+  width: 100%;
+  margin-top: var(--s-4);
+  text-align: left;
+}
+.scope-start-option {
+  display: grid;
+  align-content: start;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--paper);
+}
+.scope-start-option > svg {
+  width: 20px;
+  height: 20px;
+  color: var(--action-ui);
+}
+.scope-start-option b {
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.scope-start-option p {
+  margin: 0;
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.scope-start-option .scope-empty-actions {
+  justify-content: flex-start;
+  margin-top: var(--s-1);
+}
+
+/* « Extraire avec l'IA »: a PDF or a text, then the items proposed, ticked, to add. */
+.scope-intake {
+  gap: var(--s-3);
+}
+.scope-intake-body {
+  display: grid;
+  gap: var(--s-3);
+}
+.scope-intake-hint {
+  margin: 0;
+  color: var(--graphite);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.scope-intake-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+.scope-intake-error {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-field);
+  background: var(--status-medium-bg);
+  color: var(--status-medium-text);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.scope-intake-review {
+  display: grid;
+  gap: var(--s-3);
+}
+.scope-intake-lead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  color: var(--ink);
+  font: 500 var(--t-ui) var(--font-ui);
+}
+.scope-intake-lead svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--action-ui);
+}
+.scope-intake-items {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  list-style: none;
+}
+.scope-intake-items li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 132px;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--border);
+}
+.scope-intake-items li:last-child {
+  border-bottom: 0;
+}
+/* Unticked: still there to tick again, read as set aside. */
+.scope-intake-items li.is-off .scope-intake-title {
+  opacity: 0.5;
+}
+.scope-intake-title {
+  display: grid;
+  min-width: 0;
+}
+.scope-intake-title b {
+  overflow: hidden;
+  color: var(--ink);
+  font: 500 var(--t-ui) var(--font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scope-intake-title small {
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.scope-intake-kind.is-excluded {
+  color: var(--status-high-text);
+}
+
+
+/* Figures in fields: digits of one width (Inter's tabular figures). */
+.scope [data-slot="input"] {
+  font-variant-numeric: tabular-nums;
+}
+/* Read: one line per row, its quantity, its source. */
+.scope-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.scope-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--mist);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.scope-list li:first-child {
+  padding-top: 0;
+}
+.scope-list li:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.scope-list-title {
+  color: var(--ink);
+  font-weight: 500;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+a.scope-list-title:hover {
+  text-decoration: underline;
+}
+.scope-list li > span:not(.scope-list-title) {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.scope-list small {
+  overflow: hidden;
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Edit: one clean line per item, the same columns for the head and every row: what (a text that grows
+   with what it says), how many, the unit, its buttons. */
+.scope-table {
+  display: grid;
+  gap: var(--s-2);
+}
+.scope-row,
+.scope-table-head {
+  display: grid;
+  align-items: start;
+  gap: var(--s-2);
+}
+.scope-table.is-lines .scope-row,
+.scope-table.is-lines .scope-table-head {
+  grid-template-columns: minmax(0, 1fr) 88px 140px 68px;
+}
+.scope-table.is-exclusions .scope-row {
+  grid-template-columns: minmax(0, 1fr) 68px;
+}
+.scope-table-head {
+  color: var(--graphite);
+  font: 500 var(--t-caption) var(--font-ui);
+}
+.scope-row-title[data-slot="textarea"] {
+  min-height: 36px;
+  padding-block: 7px;
+  resize: none;
+}
+.scope-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+.scope-list-main {
+  display: grid;
+  min-width: 0;
+}
+.scope-list-main small {
+  text-align: left;
+}
+/* « Ajouter une ligne » and its likes: in the action blue, to be found at once. */
+.scope-add[data-slot="button"] {
+  justify-self: start;
+  color: var(--action-text);
+}
+.scope-add[data-slot="button"]:hover {
+  background: var(--status-low-bg);
+  color: var(--action-text);
+}
+
+/* From an open deliverable: the same sections, in a large window that scrolls. */
+.scope-dialog {
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.scope-in-dialog {
+  max-width: none;
+}
+
+@container (max-width: 640px) {
+  .scope-card.is-feature {
+    padding: var(--s-4);
+  }
+  .scope-start-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .scope-intake-items li {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .scope-intake-items li > :last-child {
+    grid-column: 2;
+  }
+  /* Narrow: what on its own line, then how many and the unit. */
+  .scope-table.is-lines .scope-row {
+    grid-template-columns: 88px minmax(0, 1fr) 68px;
+  }
+  .scope-table.is-lines .scope-row > :first-child {
+    grid-column: 1 / -1;
+  }
+  .scope-table.is-lines .scope-table-head {
+    display: none;
+  }
+}
+
+/* The project's header: its settings right after its name, not pushed to the far end. */
+.page-identity.has-settings .page-title {
+  flex: 0 1 auto;
+}
+/* (Elsewhere a header's blocks share its width: here the settings keep their own size.) */
+.page-identity.has-settings > div {
+  flex: none;
+}
+.page-identity.has-settings {
+  gap: var(--s-1);
+}
+.page-identity.has-settings .page-icon {
+  margin-right: var(--s-3);
+}
+/* Its rename button reaches into the margin by a little: the title takes that margin, the button keeps its whole width. */
+.page-identity.has-settings .page-title {
+  margin-left: calc(var(--s-1) * -1);
+}
+.page-identity.has-settings .title-button {
+  margin-left: 0;
+}

@@ -13,21 +13,24 @@ body {
   color: var(--ink);
   font-family: var(--font-ui);
 }
-button,
-input,
-textarea {
-  font: inherit;
-}
-button {
-  cursor: pointer;
-}
-/* Lucide icons follow the surrounding text size and color */
-.lucide {
-  display: inline-block;
-  width: 1.15em;
-  height: 1.15em;
-  flex-shrink: 0;
-  vertical-align: -0.2em;
+/* Defaults, in Tailwind's base layer: a shadcn component's own classes (text-sm, size-4…) win over them. */
+@layer base {
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+  /* Lucide icons follow the surrounding text size and color */
+  .lucide {
+    display: inline-block;
+    width: 1.15em;
+    height: 1.15em;
+    flex-shrink: 0;
+    vertical-align: -0.2em;
+  }
 }
 .app-frame {
   display: flex;
@@ -3126,6 +3129,41 @@ button.rail-avatar {
   gap: var(--s-1);
   padding: var(--s-3) var(--s-2) 0 var(--s-4);
 }
+/* One line: back to the project (cut first when names are long), then the deliverable's name and its menu. */
+.panel-breadcrumb {
+  justify-content: flex-start;
+  gap: 2px;
+  padding-left: var(--s-3);
+}
+.panel-breadcrumb a {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+  max-width: 45%;
+  padding: var(--s-1);
+  border-radius: var(--r-field);
+  color: var(--graphite);
+  font: 500 var(--t-caption) var(--font-ui);
+  text-decoration: none;
+}
+.panel-breadcrumb a:hover {
+  background: var(--mist);
+  color: var(--ink);
+}
+.panel-breadcrumb a span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel-breadcrumb-separator {
+  flex: none;
+  color: var(--border-input);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.panel-breadcrumb button.panel-title {
+  margin-left: 0;
+}
 .panel-title {
   display: flex;
   align-items: center;
@@ -4132,10 +4170,19 @@ button.rail-avatar {
   filter: none;
 }
 
-/* Project icon: neutral (feedback) */
+/* Page icon (spaces, projects): in outline, quieter than the title beside it. */
+/* The page's icon says what the page is: a sign, not a button (no frame, no fill). */
 .page-icon {
-  background: var(--ink);
-  color: var(--paper);
+  width: auto;
+  height: auto;
+  border: 0;
+  background: none;
+  color: var(--graphite);
+}
+.page-icon .lucide {
+  width: 30px;
+  height: 30px;
+  stroke-width: 1.5;
 }
 
 /* Home sidebar: search back to a field, a little more air */

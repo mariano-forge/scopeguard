@@ -4,6 +4,7 @@
 // new deliverable dialog.
 
 import { expect, test, type Browser } from "@playwright/test";
+import { baseURL } from "../../playwright.config";
 import { call, createAgency, newPerson, seedState, signInPage, signUp, sql, unique, verifiedClient, type Member } from "./helpers";
 
 const quote = (id: number, commentId: number, status: string) => ({ id, commentId, version: 1, amount: 900, deadline: 3, status, createdAt: "x", description: "Devis" });
@@ -229,6 +230,17 @@ test("a closed discussion is read-only for both sides until the agency reopens i
   expect((await agencyReply(alice, 30, "Une précision")).status).toBe(409);
   const seen = (await call(`/api/review/${token}`, { person: client })).json as { state: { comments: { id: number; closed?: boolean }[] } };
   expect(seen.state.comments.find((comment) => comment.id === 30)?.closed).toBe(true);
+  // On their page, under the agency's word for it: « Clôturées ».
+  const { page: clientPage, errors: clientErrors } = await newPerson(browser);
+  const [name, value] = client.cookie.split(";")[0].split("=");
+  await clientPage.context().addCookies([{ name, value, url: baseURL }]);
+  await clientPage.goto(`/review/${token}`);
+  const closedTab = clientPage.getByRole("tab", { name: /^Clôturées\s*1/ });
+  await closedTab.click();
+  await expect(closedTab).toHaveAttribute("aria-selected", "true");
+  await expect(clientPage.getByRole("tabpanel")).toContainText("Le logo plus grand");
+  await expect(clientPage.getByRole("tabpanel")).toContainText("Clôturée");
+  expect(clientErrors).toEqual([]);
   // An event in the journal, for the proof.
   expect((await sql("select 1 from audit_events where organization_id = $1 and type = 'comment.closed'", [org])).length).toBe(1);
 
@@ -385,9 +397,9 @@ test("the project's list tells, on each deliverable, how many messages of the cl
   const { page, errors, clientReply } = await sharedVersion(browser);
   expect((await clientReply(30, "Et la couleur du bouton ?")).status).toBe(200);
   await page.goto("/projets/1");
-  // Said in words, short on the row and whole for a screen reader.
+  // A number on the row, said whole for a screen reader.
   const pill = page.locator(".unread-pill").first();
-  await expect(pill).toContainText("2 nouveaux");
+  await expect(pill.locator("[aria-hidden='true']").last()).toHaveText("2");
   await expect(pill).toContainText("2 nouveaux messages du client");
   await expect(pill).toHaveAttribute("title", "2 nouveaux messages du client");
   expect(errors).toEqual([]);

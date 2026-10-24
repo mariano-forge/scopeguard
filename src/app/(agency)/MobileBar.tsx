@@ -21,7 +21,7 @@ const titles: Partial<Record<AgencyView["kind"], string>> = {
 /** The name of the page: its own (a space, a project, a deliverable) or the section's. */
 export function mobileTitle(view: AgencyView, names: { space?: string; project?: string; livrable?: string }) {
   if (view.kind === "client") return names.space ?? "Espace";
-  if (view.kind === "project") return names.project ?? "Projet";
+  if (view.kind === "project" || view.kind === "scope" || view.kind === "tracking") return names.project ?? "Projet";
   if (view.kind === "deliverable" || view.kind === "dashboard") return names.livrable ?? "Livrable";
   return titles[view.kind] ?? "Kora";
 }
