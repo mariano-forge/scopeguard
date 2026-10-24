@@ -36,7 +36,7 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 | **shadcn/ui** et **Radix UI** | 4.21 / 1.8 | Composants accessibles : fenêtres, menus, onglets, infobulles. |
 | **lucide-react** | 1.56 | Icônes. |
 | **sonner** | 2.0 | Notifications à l'écran. |
-| **react-pdf** et **pdf.js** | 11.0 / 6.3 | Affichage des PDF. pdf.js est chargé dans sa version « legacy » (`next.config.ts`) : la version moderne exige des navigateurs très récents. |
+| **react-pdf** et **pdf.js** | 11.0 / 6.3 | Affichage des PDF. pdf.js est chargé dans sa version « legacy » (`next.config.ts`) : la version moderne exige des navigateurs très récents. Zoomée, une page du canevas est redessinée plus finement par-dessus elle-même, par paliers une fois le zoom stabilisé, pour les seules pages visibles et dans un budget de 10 millions de pixels par page (`src/components/SharpPdfPage.tsx`, `src/lib/pdfSharpness.ts`) : nette sans remplir la mémoire. |
 | **react-zoom-pan-pinch** | 4.2 | Zoom et déplacement sur le plan de travail. |
 | **input-otp** | 1.5 | Le champ du code à 6 chiffres, en six cases (accès client, confirmation). |
 | **Inter, Manrope, IBM Plex Mono** | `next/font` | Polices de l'interface, du titrage et du code, servies par l'application elle-même (`src/app/layout.tsx`, `src/theme/tokens.css`). |
@@ -87,7 +87,7 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 
 | Technologie | Version | Rôle |
 | --- | --- | --- |
-| **Playwright Test** | 1.63 | 196 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`, environ 2 min 30 à 3 min) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier, un faux serveur Figma (`tests/e2e/figmaStandIn.ts`) ; 4 fichiers de test à la fois, les tests d'un fichier à la suite. Couvre la connexion, les agences et leurs rôles, chaque geste de l'agence et du client dans l'interface et par l'API (refus compris), l'accès client et ses rôles, les fichiers, la preuve, les relances et les notifications. |
+| **Playwright Test** | 1.63 | 198 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`, environ 2 min 30 à 3 min) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier, un faux serveur Figma (`tests/e2e/figmaStandIn.ts`) ; 4 fichiers de test à la fois, les tests d'un fichier à la suite. Couvre la connexion, les agences et leurs rôles, chaque geste de l'agence et du client dans l'interface et par l'API (refus compris), l'accès client et ses rôles, les fichiers, la preuve, les relances et les notifications. |
 | **ESLint** | 9.39 | Analyse du code, avec la configuration de Next.js. |
 | **Prettier** | 3.9 | Mise en forme. |
 

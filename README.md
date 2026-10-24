@@ -374,6 +374,10 @@ Kora lira les commentaires des fichiers Figma de l'agence pour les qualifier. Un
 - La clé Figma de l'agence est renouvelée un jour avant son expiration (`figmaAccessToken`, `src/db/figmaConnection.ts`). Si Figma la refuse, l'agence reconnecte Figma.
 - Les tests n'appellent jamais Figma : un faux serveur local (`tests/e2e/figmaStandIn.ts`) tient sa place.
 
+### PDF nets au zoom
+
+Sur le canevas, pdf.js dessine une page une fois, à sa taille ; le zoom l'étire, donc la floute. Une fois le zoom stabilisé (0,3 s), une copie plus fine de chaque page **visible** se dessine par-dessus (`src/components/SharpPdfPage.tsx`), par paliers (×1,5, ×2, ×3, ×4, fois la densité de l'écran). Rien ne clignote : la copie reste transparente tant qu'elle se dessine (la page de react-pdf est blanche sinon), et la copie du palier précédent reste affichée jusqu'à ce que la suivante soit prête. Pour ne pas remplir la mémoire : jamais de copie pour une page hors de l'écran (elle la perd en sortant), un budget de 10 millions de pixels par page, soit 40 Mo au plus (`src/lib/pdfSharpness.ts`), et la copie disparaît, mémoire comprise, quand on dézoome. Pas encore dans la comparaison de versions.
+
 ### Preuve de validation
 
 « Synthèse & export » produit, depuis la base et non depuis la page, la preuve d'une version : empreinte SHA-256 du fichier validé, chaque demande avec sa qualification et ses devis, chaque décision avec l'identité constatée par le serveur (membre de l'agence ou adresse e-mail vérifiée du client), l'heure du serveur et l'adresse IP, puis le journal complet de la version et l'empreinte du récapitulatif (`src/db/proof.ts`). Le journal est en ajout seul, IP et navigateur compris.

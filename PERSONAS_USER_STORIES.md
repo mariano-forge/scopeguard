@@ -1139,6 +1139,7 @@ Discutées avec le porteur du produit ; à reprendre telles quelles :
 
 #### Décisions notées (24 octobre 2026)
 
+- **PDF nets au zoom** : une page zoomée du canevas est redessinée plus finement, par-dessus elle-même (rien ne clignote), par paliers (×1,5, ×2, ×3, ×4) une fois le zoom stabilisé, pour les seules pages visibles, dans un budget de 10 millions de pixels par page ; dézoomée, la copie et sa mémoire disparaissent. Pour les livrables PDF et les écrans Figma en PDF ; pas encore dans la comparaison de versions.
 - **Commentaires faits dans Figma retirés de l'interface** : trop de lectures Figma (commentaires, écrans de chaque tournée) pour les offres personnelles, et vite pour les agences. Le code reste et ses tests tournent (`FIGMA_COMMENTS=1` le remet) ; à rouvrir quand des agences le demandent. « Figma » dans « Nouveau livrable » mène aux écrans copiés dans Kora.
 - **Plus de livrable « Document »** (Word, PowerPoint, Excel…) : Kora ne sait pas l'afficher, rien ne s'y épingle ni ne s'y qualifie précisément ; relire un document à plusieurs est le métier d'un autre outil. Retiré de « Nouveau livrable », refusé par le serveur ; aucun n'existait dans la copie de la base. Un « Document » créé avant s'affiche toujours. À l'agence qui en a un : l'importer en PDF.
 
