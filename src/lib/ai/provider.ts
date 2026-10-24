@@ -1,8 +1,10 @@
-// Which model suggests qualifications, chosen by AI_PROVIDER: "anthropic" (Claude, with ANTHROPIC_API_KEY),
-// "fake" (the tests' stand-in, never online), or nothing: then Kora suggests nothing and works as before.
-// Another provider (Claude or OpenAI on Azure) is one more case here, nothing else changes.
+// Which model suggests qualifications, chosen by AI_PROVIDER: "azure" (GPT on Azure, in the EU data zone:
+// src/lib/ai/azureOpenAI.ts), "anthropic" (Claude, with ANTHROPIC_API_KEY), "fake" (the tests' stand-in,
+// never online), or nothing: then Kora suggests nothing and works as before. Another provider is one more
+// case here, nothing else changes.
 
 import { anthropicModel } from "./anthropic";
+import { azureOptionsFromEnv, azureSuggestionModel } from "./azureOpenAI";
 import type { ScopeLine, SuggestionModel } from "./scopeSuggestion";
 
 /** The tests' model: « inclus » when a word of a line's title is in the request, citing that line; otherwise « hors scope ». */
@@ -22,6 +24,10 @@ export function suggestionModel(): SuggestionModel | null {
   switch (process.env.AI_PROVIDER) {
     case "anthropic":
       return process.env.ANTHROPIC_API_KEY ? anthropicModel({ apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.AI_MODEL || undefined }) : null;
+    case "azure": {
+      const options = azureOptionsFromEnv();
+      return options ? azureSuggestionModel(options) : null;
+    }
     case "fake":
       return fakeModel;
     default:

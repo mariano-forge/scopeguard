@@ -16,8 +16,11 @@ const nextConfig: NextConfig = {
   },
   // The storage SDK is loaded by Node, once: bundled, a reload of the dev server could evaluate a second
   // copy of @azure/storage-common, whose key class the first copy's SAS signing no longer recognises
-  // (« Invalid sharedKeyCredential »: every file answered 503, src/lib/storage.ts).
-  serverExternalPackages: ["@azure/storage-blob", "@azure/storage-common"],
+  // (« Invalid sharedKeyCredential »: every file answered 503, src/lib/storage.ts). pdf.js too, on the server
+  // (src/lib/pdfText.ts): loaded by Node, it finds its worker file next to it, a file it imports by a name
+  // the build cannot see, so the extraction's route is given it.
+  serverExternalPackages: ["@azure/storage-blob", "@azure/storage-common", "pdfjs-dist"],
+  outputFileTracingIncludes: { "/api/projects/\\[projectId\\]/scope/extraction": ["./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"] },
   // The import limits, known to the pages too (the server checks them again in /api/files); whether « Nouveau
   // livrable » offers Figma comments (FIGMA_COMMENTS, src/lib/figmaLink.ts).
   env: {
