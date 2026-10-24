@@ -1,5 +1,5 @@
 /** The kinds of deliverable an agency can submit for review. */
-export type DeliverableType = "PDF" | "Image" | "Video" | "Link" | "Doc";
+export type DeliverableType = "PDF" | "Image" | "Video" | "Link" | "Doc" | "Figma" | "Screens";
 
 /** Tone = a Kora status pair (background + text, all ≥ 7:1), used for the default cover. */
 export type KindTone = "resolved" | "clarify" | "scope" | "low" | "medium";
@@ -19,14 +19,18 @@ export const deliverableKinds: Record<
     accept: ".doc,.docx,.odt,.pptx,.key,.xlsx,.txt,.md,.rtf",
     hint: "Word, PowerPoint, Excel, texte",
   },
+  Figma: { label: "Figma", badge: "FIG", tone: "low", hint: "Lien d’un fichier Figma" },
+  // Screens of a Figma file copied into Kora (src/lib/figmaScreens.ts): chosen under « Figma » in the dialog.
+  Screens: { label: "Écrans Figma", badge: "FIG", tone: "resolved", hint: "Écrans d’un fichier Figma, commentés dans Kora" },
 };
 
 export const deliverableTypes = Object.keys(deliverableKinds) as DeliverableType[];
 /**
- * The kinds a new deliverable may take: no more « Document » (Word, PowerPoint…, which Kora could only offer
- * to download), decided with the product owner on 22 October 2026. Those already imported stay readable.
+ * The kinds « Nouveau livrable » offers: « Écrans Figma » is chosen under « Figma » (where the client comments);
+ * « Document » no longer (decided 24 October 2026: Kora cannot show a Word or PowerPoint file, so nothing in it
+ * can be pinned; reviewing documents together is another tool's job). One made before still shows.
  */
-export const newDeliverableTypes = deliverableTypes.filter((type) => type !== "Doc");
+export const pickableTypes = deliverableTypes.filter((type) => type !== "Screens" && type !== "Doc");
 /** Said when a document is chosen anyway: what to do instead. */
 export const documentRefused = "Les documents Word, PowerPoint ou Excel ne sont plus pris en charge : exportez-le en PDF.";
 

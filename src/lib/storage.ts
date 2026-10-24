@@ -211,8 +211,23 @@ export const fileLinkSeconds = () => Math.max(1, Number(process.env.FILE_LINK_SE
  */
 export const videoLinkSeconds = (duration: number) => Math.max(fileLinkSeconds(), Math.min(duration, 3 * 60 * 60) + 15 * 60);
 
-/** Read-only address of a stored file, valid `seconds`: opened in the page, or saved under its name (`attachment`). */
-export async function readableUrl(file: { container: string; path: string; originalName: string | null }, seconds = fileLinkSeconds(), disposition: "inline" | "attachment" = "inline") {
+/**
+ * Types a browser shows without running anything: pictures, PDF, sound and film. Any other file (an SVG, an
+ * HTML page…) opened at its address would run its scripts on the storage's origin: it is downloaded instead.
+ * The canvas still shows an SVG, as an <img>, which never runs scripts.
+ */
+const shownInline = (mimeType: string) => /^(image\/(png|jpeg|gif|webp|avif)|application\/pdf|video\/[\w.+-]+|audio\/[\w.+-]+)$/.test(mimeType);
+
+/**
+ * Read-only address of a stored file, valid `seconds`: opened in the page when that is safe, or saved under its
+ * name when asked (`attachment`); a type that is not safe to open is always saved, whatever is asked.
+ */
+export async function readableUrl(
+  file: { container: string; path: string; originalName: string | null; mimeType: string },
+  seconds = fileLinkSeconds(),
+  disposition: "inline" | "attachment" = "inline",
+) {
+  const shown = disposition === "inline" && shownInline(file.mimeType) ? "inline" : "attachment";
   const { service, credential, ready } = storage();
   await ready;
   const blob = service.getContainerClient(file.container).getBlobClient(file.path);
@@ -224,7 +239,7 @@ export async function readableUrl(file: { container: string; path: string; origi
       permissions: BlobSASPermissions.parse("r"),
       startsOn: new Date(now - 60 * 1000),
       expiresOn: new Date(now + seconds * 1000),
-      contentDisposition: file.originalName ? `${disposition}; filename*=UTF-8''${encodeURIComponent(file.originalName)}` : disposition,
+      contentDisposition: `${shown}${file.originalName ? `; filename*=UTF-8''${encodeURIComponent(file.originalName)}` : ""}`,
     },
     credential,
   );

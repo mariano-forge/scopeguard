@@ -6647,6 +6647,11 @@ button.rail-logo .lucide {
 .request-source-line {
   margin: 0;
 }
+.request-source-open {
+  justify-self: start;
+  color: var(--action-text);
+  text-decoration: underline;
+}
 .request-source-excerpt {
   margin: 0;
   color: var(--ink);
@@ -10369,4 +10374,172 @@ body.is-resizing {
   color: var(--graphite);
   font: 400 var(--t-caption) var(--font-ui);
   text-align: right;
+}
+
+/* « Figma » deliverable (US-054): the round chosen in the dialogs, and the board's sheet. */
+.figma-pages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.figma-pages legend {
+  margin-bottom: var(--s-1);
+  padding: 0;
+  font-weight: 600;
+}
+.figma-page {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.figma-page input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--action-ui);
+}
+.figma-sheet .site-hero {
+  grid-template-columns: minmax(0, 1fr);
+}
+.figma-round {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+}
+.figma-round dt {
+  color: var(--graphite);
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.figma-round dd {
+  margin: 0;
+  font: 400 var(--t-body) var(--font-ui);
+}
+.figma-agency {
+  display: grid;
+  gap: var(--s-3);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border);
+}
+.figma-agency-sync {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-4);
+}
+.figma-people {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.figma-people legend {
+  margin-bottom: var(--s-1);
+  padding: 0;
+  font-weight: 600;
+}
+
+/* « Écrans Figma » (US-054): the screens copied into Kora, in rows, each with its name above it. */
+.canvas-screens {
+  display: grid;
+  align-items: start;
+  gap: 48px 40px;
+  width: max-content;
+}
+.canvas-screen {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.canvas-screen figcaption {
+  color: var(--graphite);
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.canvas-screen-image {
+  display: block;
+  max-width: none;
+  height: auto;
+}
+.figma-screen-page {
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-2) 0;
+}
+.figma-screen-page + .figma-screen-page {
+  border-top: 1px solid var(--border);
+}
+/* « Disposer les écrans »: the grid of thumbnails the agency reorders. */
+.screens-layout {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.screens-layout-tile {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--paper);
+  cursor: grab;
+}
+.screens-layout-tile.is-dragged {
+  opacity: 0.5;
+}
+.screens-layout-thumb {
+  display: grid;
+  place-items: center;
+  height: 140px;
+  overflow: hidden;
+  border-radius: calc(var(--r-field) - 2px);
+  background: var(--mist);
+}
+.screens-layout-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.screens-layout-name {
+  display: grid;
+  min-width: 0;
+}
+.screens-layout-name b,
+.screens-layout-name small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.screens-layout-name small {
+  color: var(--graphite);
+}
+.screens-layout-moves {
+  display: flex;
+  justify-content: flex-end;
+}
+.figma-screen-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.figma-screen-format-all {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* A PDF page and, while zoomed in, its finer copy drawn over it (src/components/SharpPdfPage.tsx). */
+.pdf-sharp-frame {
+  position: relative;
+}
+.pdf-sharp-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+/* react-pdf's page is white: a copy still drawing must not hide the page under it. */
+.pdf-sharp-layer .react-pdf__Page {
+  background-color: transparent !important;
 }

@@ -34,7 +34,9 @@ async function clientMaySee(db: Db, org: string, id: string) {
     .from(deliverables)
     .where(and(eq(deliverables.organizationId, org), inArray(deliverables.id, links.map((link) => link.deliverableId!))));
   const href = fileHref(id);
-  if (versions.some(({ data }) => (data as Record<string, unknown>).fileData === href || (data as Record<string, unknown>).coverData === href)) return true;
+  // The version's file, its cover, or one of its screens copied from Figma (src/db/figmaScreens.ts).
+  const screensOf = (data: Record<string, unknown>) => (Array.isArray(data.screens) ? (data.screens as { fileData?: unknown }[]).map((screen) => screen.fileData) : []);
+  if (versions.some(({ data }) => { const record = data as Record<string, unknown>; return record.fileData === href || record.coverData === href || screensOf(record).includes(href); })) return true;
   // The capture of a request they see on one of those versions: joined by the agency (src/lib/requestSource.ts)
   // or taken on the staging site (src/lib/siteCapture.ts).
   const captureOf = (data: Record<string, unknown>) => [(data.source as Record<string, unknown> | undefined)?.capture, (data.site as Record<string, unknown> | undefined)?.capture];

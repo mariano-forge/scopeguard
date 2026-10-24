@@ -2,7 +2,7 @@
 
 Ce document récapitule les technologies utilisées par Kora (nom de code ScopeGuard), leur rôle et la raison de leur choix. Il complète [README.md](README.md), qui explique comment lancer le projet, et [AZURE_PRODUCTION_TRAJECTORY.md](AZURE_PRODUCTION_TRAJECTORY.md), qui décrit la cible de production.
 
-État au 22 octobre 2026.
+État au 23 octobre 2026.
 
 ## Vue d'ensemble
 
@@ -37,7 +37,7 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 | **lucide-react** | 1.56 | Icônes. |
 | **sonner** | 2.0 | Notifications à l'écran. |
 | **Recharts** | 3.10 | Graphes de l'onglet « Suivi », par le composant Chart de shadcn (`src/components/ui/chart.tsx`), aux couleurs de Kora. |
-| **react-pdf** et **pdf.js** | 11.0 / 6.3 | Affichage des PDF. pdf.js est chargé dans sa version « legacy » (`next.config.ts`) : la version moderne exige des navigateurs très récents. |
+| **react-pdf** et **pdf.js** | 11.0 / 6.3 | Affichage des PDF. pdf.js est chargé dans sa version « legacy » (`next.config.ts`) : la version moderne exige des navigateurs très récents. Zoomée, une page du canevas est redessinée plus finement par-dessus elle-même, par paliers une fois le zoom stabilisé, pour les seules pages visibles et dans un budget de 10 millions de pixels par page (`src/components/SharpPdfPage.tsx`, `src/lib/pdfSharpness.ts`) : nette sans remplir la mémoire. |
 | **react-zoom-pan-pinch** | 4.2 | Zoom et déplacement sur le plan de travail. |
 | **input-otp** | 1.5 | Le champ du code à 6 chiffres, en six cases (accès client, confirmation). |
 | **Inter, Manrope, IBM Plex Mono** | `next/font` | Polices de l'interface, du titrage et du code, servies par l'application elle-même (`src/app/layout.tsx`, `src/theme/tokens.css`). |
@@ -72,11 +72,23 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 | --- | --- |
 | **Resend** (API HTTP) | Invitations, codes d'accès, relances, réinitialisations, devis envoyés, décisions du client et demandes de démo. Domaine `gmmforge.com` vérifié (SPF, DKIM, DMARC). Chaque e-mail part en HTML et en texte, avec « Répondre à » vers le membre de l'agence concerné (`src/lib/mail.ts`, `src/lib/mailTemplates.ts`). |
 
+### IA
+
+| Technologie | Rôle |
+| --- | --- |
+| **Claude** (API Messages d'Anthropic, Haiku 5.5 par défaut) | Suggestion de qualification d'une demande par rapport au périmètre vendu (US-045, `src/lib/ai/`) : décision, ligne du devis citée, une phrase de raison, que l'agence confirme toujours. Un simple appel HTTP, sans SDK ; la réponse est imposée par un outil au schéma fixé, puis vérifiée. Choisi par `AI_PROVIDER` : un autre fournisseur (Claude ou OpenAI sur Azure) s'ajoute sans rien réécrire. Sans réglage, Kora ne suggère rien. Les données partent chez Anthropic (États-Unis par défaut) : à mentionner aux agences (registre des traitements). |
+
+### Figma
+
+| Technologie | Rôle |
+| --- | --- |
+| **API web de Figma** (OAuth 2 avec PKCE, appels HTTP sans SDK) | Commentaires des fichiers Figma qualifiés dans Kora (US-054, `src/lib/figma.ts`). Faits : la connexion de chaque membre à son compte Figma, clés scellées en base (AES-256-GCM, `src/lib/sealed.ts`) et renouvelées avant expiration ; le livrable « Figma » (fichier, pages en revue, version enregistrée dans Figma) ; l'import des commentaires du client, brouillons de l'agence jusqu'à leur qualification ; les écrans d'un fichier copiés dans Kora et commentés par le client sans compte Figma. La lecture d'un fichier est limitée par Figma à 20 par mois pour une place « lecteur » : Kora la fait une fois par livrable et garde une attestation signée de ce qu'il a lu (`src/lib/figmaReceipt.ts`). Un plugin Figma ne peut pas lire les commentaires : seule cette API le peut. |
+
 ### Tests et qualité
 
 | Technologie | Version | Rôle |
 | --- | --- | --- |
-| **Playwright Test** | 1.63 | 166 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`, environ 2 min 15) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier ; 4 fichiers de test à la fois, les tests d'un fichier à la suite. Couvre la connexion, les agences et leurs rôles, chaque geste de l'agence et du client dans l'interface et par l'API (refus compris), l'accès client et ses rôles, les fichiers, la preuve, les relances et les notifications. |
+| **Playwright Test** | 1.63 | 198 tests de bout en bout (`tests/e2e/`, `npm run test:e2e`, environ 2 min 30 à 3 min) : l'application compilée pour la production, une base de test recréée à chaque lancement, Azurite, e-mails écrits dans un fichier, un faux serveur Figma (`tests/e2e/figmaStandIn.ts`) ; 4 fichiers de test à la fois, les tests d'un fichier à la suite. Couvre la connexion, les agences et leurs rôles, chaque geste de l'agence et du client dans l'interface et par l'API (refus compris), l'accès client et ses rôles, les fichiers, la preuve, les relances et les notifications. |
 | **ESLint** | 9.39 | Analyse du code, avec la configuration de Next.js. |
 | **Prettier** | 3.9 | Mise en forme. |
 
@@ -119,7 +131,8 @@ Les e-mails partent par Resend dès que `RESEND_API_KEY` et `MAIL_FROM` sont ren
 | `src/app/review/[token]/site/`, `src/app/review/site/[key]/` | Le panneau Kora sur le site de recette, ouvert par la barre (`public/kora-toolbar.js`) avec le jeton d'une version ou la clé fixe du livrable. |
 | `src/app/api/` | Les routes API. |
 | `src/db/` | Schéma, lecture de l'état (`state.ts`), actions de l'agence (`agencyActions.ts`, `workspaceActions.ts`) et du client (`reviewActions.ts`, règles dans `reviewAccess.ts`), accès client (`reviewAuth.ts`), droits (`agencyPermissions.ts`), preuve (`proof.ts`). |
-| `src/lib/` | Authentification, sessions, stockage, e-mails, rôles client (`clientRoles.ts`), lecture de l'état et envoi des actions côté navigateur (`stateSync.ts`, `actionRequest.ts`). |
+| `src/app/(agency)/editor/` | Le canevas partagé par l'agence et le client (`ReviewCanvas.tsx`, qui pose aussi les « Écrans Figma » en lignes, `src/components/DeliverableContent.tsx`), ses fils et épingles (`CanvasComments.tsx`), le panneau des demandes (`EditorInspector.tsx`), la barre vidéo (`VideoBar.tsx`), le tableau « Lien » (`SiteBoard.tsx`), le tableau « Figma » (`FigmaBoard.tsx`), la comparaison de versions (`VersionCompare.tsx`). |
+| `src/lib/` | Authentification, sessions, stockage, e-mails, rôles client (`clientRoles.ts`), lecture de l'état et envoi des actions côté navigateur (`stateSync.ts`, `actionRequest.ts`), envoi des fichiers (`upload.ts`), vidéo (`timecode.ts`, `videoCheck.ts`), suggestion IA (`ai/`). |
 | `src/proxy.ts` | Sans session : `/` montre la page d'accueil publique, le reste redirige vers `/connexion` (l'ancien « middleware » de Next.js). |
 | `drizzle/` | Migrations SQL, à appliquer avant chaque déploiement qui en ajoute. |
 | `tests/e2e/` | La suite de tests. |
@@ -131,12 +144,13 @@ Les e-mails partent par Resend dès que `RESEND_API_KEY` et `MAIL_FROM` sont ren
 - **Clients** : ils n'accèdent qu'à la version partagée avec eux, sans voir qui d'autre est invité. Seuls les décideurs désignés par l'agence prennent les décisions (devis, validation) ; les contributeurs commentent. Ils écrivent une action à la fois, que le serveur construit depuis la base : leurs propres commentaires, leurs décisions et la validation. Le serveur signe ce qu'ils écrivent avec leur nom et leur adresse vérifiée (`src/db/reviewActions.ts`, `src/db/reviewAccess.ts`).
 - **Journal d'audit** : il est en ajout seul, et un trigger PostgreSQL refuse toute modification ou suppression. Chaque événement garde l'heure du serveur, l'identité constatée, l'IP et le navigateur. Il alimente la preuve de validation (`src/db/proof.ts`).
 - **Base** : la sécurité par ligne est activée sur toutes les tables, ce qui ferme l'API publique de Supabase.
-- **Fichiers** : les conteneurs sont privés, l'accès est vérifié avant chaque lecture, et l'adresse signée n'est valable que 5 minutes (une vidéo : sa durée plus 15 minutes, plafonnée). Une adresse d'import ne permet que de créer un fichier (et d'écrire ses blocs pour un gros fichier), jamais de le lire ; le serveur verrouille le fichier reçu par un bail permanent, recalcule son empreinte et supprime tout fichier non conforme : un fichier enregistré ne peut plus être remplacé.
+- **Fichiers** : seuls les types qui n'exécutent rien s'ouvrent dans la page (images hors SVG, PDF, vidéo, son) ; un SVG ou une page HTML est servi en téléchargement, pour que son code ne s'exécute jamais (`src/lib/storage.ts`). Les conteneurs sont privés, l'accès est vérifié avant chaque lecture, et l'adresse signée n'est valable que 5 minutes (une vidéo : sa durée plus 15 minutes, plafonnée). Une adresse d'import ne permet que de créer un fichier (et d'écrire ses blocs pour un gros fichier), jamais de le lire ; le serveur verrouille le fichier reçu par un bail permanent, recalcule son empreinte et supprime tout fichier non conforme : un fichier enregistré ne peut plus être remplacé.
 - **Adresses IP** : seule l'adresse ajoutée par un proxy de confiance est retenue (`TRUSTED_PROXY_HOPS`). Sinon, elle est marquée « non vérifiée ».
 - **En-têtes HTTP** (`next.config.ts`, `src/lib/securityHeaders.ts`) : politique de sécurité du contenu en production (scripts et connexions limités au site et au stockage, pas de plugin, `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS en HTTPS. Next.js ne s'annonce plus. Les scripts gardent `'unsafe-inline'` : une politique à nonces rendrait toutes les pages dynamiques.
 - **Requêtes d'un autre site** : toute écriture dont l'origine n'est pas le site est refusée (`src/proxy.ts`, `crossSiteWrite`), en plus des cookies `SameSite=Lax`.
 - **Panneau sur le site de recette** (US-048) : la seule page que Kora laisse afficher dans un cadre, `/review/:token/site`, et seulement par le site du livrable (`frame-ancestors` posé par `src/proxy.ts`, origine vérifiée par la page). Ses sessions (client, agence) sont des cookies partitionnés, propres à ce site ; celle de l'agence vient d'un ticket signé remis par une fenêtre Kora, et n'ouvre que commenter, répondre et qualifier sur la version du lien. Une demande n'y nomme qu'une capture envoyée par son auteur (image JPEG ou PNG reconnue à ses octets, `src/lib/siteCapture.ts`) : jamais un autre fichier de l'agence. Le script du site et le panneau vérifient l'origine et la fenêtre de chaque message, et le site ne reçoit jamais le texte des demandes.
 - **Limites de débit** (`src/db/requestLimits.ts`), comptées en base : imports par heure, enregistrements par minute, invitations par heure, demandes de code d'accès par heure et par adresse IP, demandes de démo par heure, toutes réglables par variable d'environnement. Elles s'ajoutent aux limites de connexion (Better Auth) et des codes client.
+- **Connexions à d'autres services** (Figma, US-054) : leurs clés sont scellées en base (AES-256-GCM, `TOKEN_ENCRYPTION_KEY`, distincte du secret de connexion) et jamais envoyées à une page. Une connexion OAuth n'est enregistrée que pour la tentative lancée par ce membre, dans ce navigateur (`state` signé, cookie, PKCE) : chaque membre ne connecte que son propre compte.
 - **Adresses `/api` inconnues** : elles répondent `404 { error }` (`src/app/api/[...unknown]/route.ts`) au lieu de retomber sur les pages.
 
 ## Points d'attention

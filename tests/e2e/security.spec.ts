@@ -82,3 +82,25 @@ test("files kept in Postgres before Azure storage are no longer served", async (
   expect((await call(`/api/files/${"a".repeat(64)}`, { person: alice })).status).toBe(404);
   expect((await call(`/api/files/${"a".repeat(64)}`)).status).toBe(404);
 });
+
+test("a stored file opens in the page only when that runs nothing: an SVG or an HTML page is downloaded instead", async () => {
+  const alice = await signUp("Alice Martin");
+  await createAgency(alice, "Studio Fichiers sûrs");
+  const placement = { kind: "version", projectId: 7, livrableId: 70, version: 1 };
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><script>alert(1)</script><rect width="10" height="10"/></svg>');
+  const html = Buffer.from("<!doctype html><script>alert(1)</script><p>Reconnectez-vous</p>");
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+  /** How the storage tells the browser to treat the file, at the address /api/files sends it to. */
+  const disposition = async (content: Buffer, name: string) => {
+    const href = (await upload(alice, content, name, placement)).json.href!;
+    const sent = await call(href, { person: alice });
+    expect(sent.status).toBe(302);
+    const stored = await fetch(sent.response.headers.get("location")!);
+    await stored.arrayBuffer();
+    return stored.headers.get("content-disposition") ?? "";
+  };
+  expect(await disposition(svg, "logo.svg")).toMatch(/^attachment/);
+  expect(await disposition(html, "page.html")).toMatch(/^attachment/);
+  expect(await disposition(png, "maquette.png")).toMatch(/^inline/);
+  expect(await disposition(makePdf("Devis"), "devis.pdf")).toMatch(/^inline/);
+});

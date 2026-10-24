@@ -64,6 +64,20 @@
       "when": 1792101683831,
       "tag": "0008_verify_existing_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792751971665,
+      "tag": "0009_figma_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792783723654,
+      "tag": "0010_figma_personal_connections",
+      "breakpoints": true
     }
   ]
 }

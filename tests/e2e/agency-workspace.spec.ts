@@ -58,6 +58,10 @@ test("files: a deliverable may only point at the agency's own imports", async ()
   expect((await act(alice, "deliverables", "POST", { projectId: 1, name: "x.pdf", type: "PDF", size: 1, fileData: "https://evil.example/x.pdf" })).status).toBe(400);
   expect((await act(alice, "deliverables", "POST", { projectId: 1, name: "site", type: "Link", size: 0, url: "javascript:alert(1)" })).status).toBe(400);
   expect((await act(alice, "deliverables", "POST", { projectId: 1, name: "site", type: "Exe", size: 0 })).status).toBe(400);
+  // No new « Document » (24 October 2026): Kora cannot show one, so nothing in it could be pinned.
+  const doc = await upload(alice, makePdf("compte rendu"), "compte-rendu.pdf", { kind: "version", projectId: 1, livrableId: 9, version: 1 });
+  const refusedDoc = await act(alice, "deliverables", "POST", { projectId: 1, name: "Compte rendu", type: "Doc", size: 1, fileData: doc.json.href });
+  expect([refusedDoc.status, refusedDoc.json.error]).toEqual([400, expect.stringContaining("importez-le en PDF")]);
   const link = await act(alice, "deliverables", "POST", { projectId: 1, name: "site", type: "Link", size: 0, url: "https://exemple.fr" });
   expect(link.status).toBe(200);
   expect(await data(org, "deliverables", link.json.id as number)).toMatchObject({ type: "Link", url: "https://exemple.fr", version: 1 });

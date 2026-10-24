@@ -21,6 +21,7 @@ import { loadSharedState, subscribeSharedState } from "@/lib/stateSync";
 import { reviewAction } from "@/lib/reviewActions";
 import type { ClientRole } from "@/lib/clientRoles";
 import { AccessGate, ProfileGate } from "./AccessGate";
+import { ClientCompare } from "./ClientCompare";
 import { AuthShell } from "@/components/AuthShell";
 import { GateHeading } from "@/components/GatePieces";
 import { initialsOf, sideOf, type Side } from "@/lib/authors";
@@ -795,6 +796,7 @@ export default function ClientReviewPage() {
               </span>
             </Hint>
           </div>
+          <ClientCompare token={params.token} currentVersion={deliverable.version} />
           {/* One call to action on this page: validating. Feedback goes through comments. */}
           {canValidate && (
             <Button onClick={() => setApprovalOpen(true)}>

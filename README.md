@@ -102,6 +102,8 @@ Le MVP doit permettre de tester ce positionnement avec un flux complet, sans con
 - Projets associes a un client.
 - Import de PDF, d'images et de vidéos (jusqu'à `MAX_VIDEO_UPLOAD_MB`, 1 Go par défaut).
 - Revue d'un site de recette : le livrable « Lien » et la barre Kora sur le site (US-048), qui remplacent la capture d'une page depuis une URL.
+- Fichiers Figma : écrans copiés dans Kora, ou commentaires faits dans Figma (US-054).
+- Plus de livrable « Document » (Word, PowerPoint…) depuis le 24 octobre 2026 : Kora ne sait pas l'afficher, donc rien ne s'y épingle. Le serveur refuse d'en créer ; un « Document » créé avant s'affiche toujours (couverture et téléchargement).
 - Versions de livrables avec statut clair : brouillon, en revue, modifications demandees, approuve.
 
 ### Revue client
@@ -110,6 +112,7 @@ Le MVP doit permettre de tester ce positionnement avec un flux complet, sans con
 - Commentaires positionnes sur un point precis du document.
 - Sur une vidéo, commentaires posés sur un moment et un endroit de l'image : la frise montre un repère par commentaire, et ouvrir un commentaire ramène la vidéo à son moment (US-052). À l'import, Kora prévient l'agence, sans bloquer, d'une vidéo que le navigateur ne lit pas ou dont les sauts « baveront » (images clés trop rares, fréquent avec les enregistreurs d'écran).
 - Fils de discussion, et discussion close par l'agence : lecture seule pour tous jusqu'à sa réouverture.
+- Comparaison de deux versions d'une image ou d'un PDF, côté agence comme côté client (US-053) : la frise des versions, côte à côte avec le zoom synchronisé ou un rideau avant/après, les demandes de l'ancienne version posées dessus, les PDF page par page. Le client ne compare que les versions qui lui sont partagées ; une version non partagée entre elles n'apparaît que par son numéro.
 - Boutons explicites `Demander des modifications` *(regle serveur faite, bouton a ajouter cote client)* et `Approuver la version`.
 - Relances par e-mail pour les validations en attente.
 - Revue d'un site de recette, à la manière de la barre de Vercel : le client commente directement le site *(essai, voir plus bas)*.
@@ -217,6 +220,29 @@ npm run test:e2e             # la suite de tests : base de test kora_test recré
 - `npm run db:studio` : explore les données.
 - Le journal d'audit (`audit_events`) est en ajout seul : la base refuse toute modification ou suppression d'un événement.
 
+### Migrations, pas à pas
+
+Trois bases, trois règles :
+
+| Base | Qui la migre | Commande |
+| --- | --- | --- |
+| Test `kora_test` (Docker) | La suite de tests, à chaque lancement : recréée puis migrée par `tests/e2e/global-setup.ts` | Rien à faire : `npm run test:e2e` |
+| Développement `kora` (Docker) | Vous, après chaque migration ajoutée ou récupérée | `npm run db:up` puis `npm run db:migrate`, avec `DATABASE_TARGET=local` dans `.env.local` |
+| En ligne (Supabase) | Seulement avec l'accord explicite du porteur du produit, **avant** de déployer le code qui en dépend | `DATABASE_TARGET=remote npm run db:migrate` |
+
+Avant `npm run db:migrate`, vérifiez la valeur de `DATABASE_TARGET` dans `.env.local` : `remote` vise la base en ligne. La base locale `kora` est une copie de la base en ligne, avec de vraies adresses de clients : gardez `MAIL_TRANSPORT=console`.
+
+**Écrire une migration**
+1. Modifier `src/db/schema.ts`.
+2. `npm run db:generate -- --name <sujet>` : crée `drizzle/<n>_<sujet>.sql` et son instantané `drizzle/meta/<n>_snapshot.json`.
+3. Une **nouvelle table** : ajouter à la fin du fichier SQL, avant de l'appliquer, `--> statement-breakpoint` puis `ALTER TABLE "<table>" ENABLE ROW LEVEL SECURITY;` (voir `drizzle/0007_request_limits.sql`).
+4. `npm run db:migrate` sur la base locale, puis `npm run test:e2e`.
+5. Vérifier une table : `docker exec kora-postgres psql -U kora -d kora -c '\d <table>'`.
+
+**SQL écrit à la main** (renommer une colonne, changer une clé, migrer des données) : `npx drizzle-kit generate --custom --name <sujet>`, puis écrire le SQL dans le fichier créé. Piège : pour un renommage, `drizzle-kit generate` pose une question interactive, impossible sans terminal (« Interactive prompts require a TTY »). Dans ce cas, mettez à jour à la main l'instantané `drizzle/meta/<n>_snapshot.json` du fichier personnalisé pour qu'il décrive le schéma après la migration, puis vérifiez que `npx drizzle-kit generate` répond « No schema changes, nothing to migrate ». Exemple : `drizzle/0010_figma_personal_connections.sql`.
+
+**Ne jamais modifier une migration déjà appliquée**, même seulement sur votre base locale : la base retient qu'elle est passée et ne la rejouera pas. Écrivez-en une nouvelle.
+
 ### Déploiement
 
 L'application tourne sur Vercel, dans la région de Francfort (`fra1`, fixée par [vercel.json](vercel.json)), à côté de la base Supabase : une base éloignée multiplie la latence de chaque action. À chaque déploiement :
@@ -235,6 +261,8 @@ Les fichiers vont dans Azure Blob Storage (`src/lib/storage.ts`), choisi par `ST
 agence-<agence>/projets/<id>/livrables/<id>/v<version>/<sha256>.<ext>
 agence-<agence>/projets/<id>/livrables/<id>/couverture/<sha256>.<ext>
 ```
+
+Un fichier qui pourrait exécuter du code s'il était ouvert à son adresse (SVG, page HTML…) est servi en téléchargement ; images, PDF, vidéos et sons s'ouvrent dans la page. Le canevas affiche toujours un SVG, en image (corrigé le 23 octobre 2026).
 
 Le fichier est nommé par son empreinte SHA-256 : une version ne peut pas changer de contenu sans changer de nom. Les chemins utilisent les identifiants, pas les noms, et ne bougent pas si l'on renomme ou déplace un projet (la base fait foi). Les pages n'accèdent jamais au stockage : `/api/files/<id>` vérifie que la personne est membre de l'agence, ou client vérifié invité sur une revue qui montre ce fichier, puis redirige vers une adresse en lecture seule valable 5 minutes (`FILE_LINK_SECONDS`). Une vidéo se lit par morceaux, chacun avec cette adresse : la sienne dure donc sa longueur plus 15 minutes (longueur lue par le navigateur de l'agence à l'import, comptée jusqu'à 3 heures), et si elle expire quand même (pause, onglet laissé ouvert), le canevas en redemande une et reprend au même moment. La taille maximale d'un import est `MAX_UPLOAD_MB` (50 par défaut) ; une vidéo importée comme version a la sienne, `MAX_VIDEO_UPLOAD_MB` (1 024 par défaut), car un film pèse bien plus qu'une maquette.
 
@@ -278,6 +306,7 @@ La page du client écrit une action à la fois, chacune sur sa route (`src/db/re
 | `POST proposals/:id/decision` | Accepter ou refuser un devis envoyé, une seule fois |
 | `POST proposals/:id/adaptation` | Demander une adaptation, si l'agence l'a permise |
 | `POST changes-request` | Demander des modifications |
+| `GET versions` | Les versions de ce livrable partagées avec ce client, chacune comme sa page la montrerait, pour les comparer |
 | `POST approval` | Valider la version, ce qui la verrouille ; refusé tant qu'un devis envoyé attend la décision du client (la fenêtre de validation les liste, à accepter ou refuser). Les remarques encore « À clarifier » sont abandonnées en validant : la fenêtre le dit et les liste, le journal les nomme |
 
 Dans la cloche, chaque activité ouvre ce qu'elle concerne : une décision du client ouvre la demande, une demande d'accès reçue avant leur retrait ouvre « Partager la revue » sur le livrable, une relance ouvre la version (`notificationHref`, `src/app/(agency)/routes.ts`). Les notifications plus anciennes, ou dont le livrable a disparu, restent du simple texte.
@@ -336,6 +365,41 @@ Pour un livrable « Lien », dont l'adresse est le site de recette, le tableau d
 - Les devis et la validation restent sur la page de revue : une page que l'agence contrôle ne doit pas pouvoir piéger un clic sur une décision. Le panneau signale ce qui attend le client (« 1 devis attend votre décision ») et ouvre la revue dans un onglet sans redemander de code : l'onglet reçoit du panneau un ticket signé (2 minutes, cette adresse et ce lien, `src/lib/siteHandoff.ts`), échangé contre la session habituelle tant que l'adresse reste invitée.
 
 Limites de l'essai : testé dans Chrome seulement (Safari et Firefox à vérifier à la main) ; le site de l'agence doit accepter le script et le cadre de Kora s'il a sa propre politique de sécurité ; les numéros des épingles diffèrent entre la vue de l'agence (pins internes compris) et celle du client.
+
+### Commentaires Figma (en cours, US-054)
+
+Kora lira les commentaires des fichiers Figma de l'agence pour les qualifier. Un plugin Figma ne peut ni toucher à l'interface de Figma ni lire ses commentaires : seule l'API web de Figma le permet. Faits : la connexion (étape 1), le livrable « Figma » (étape 2a) et l'import des commentaires (étape 2b).
+
+- **Chaque membre connecte son propre compte Figma** : menu du compte › « Compte Figma » › « Connecter mon compte Figma ». Figma demande son accord, puis revient sur Kora (`GET /api/integrations/figma/connect`, puis `/callback`). Une connexion par membre et par agence (`figma_connections`, migration 0010) : les fichiers sont souvent partagés avec chaque designer, et Figma compte ses lectures par compte. Un membre ne voit et ne retire que la sienne. Un compte Figma connecté entre dans l'équipe de l'agence (`figmaTeam`) et y reste après une déconnexion : ses commentaires restent dans Figma. Figma ne garde qu'une clé active par compte : un même compte Figma connecté par un second membre retire la connexion du premier.
+- La tentative est liée au membre, à l'agence et au navigateur : un `state` signé (10 minutes), un cookie de ce navigateur avec la même valeur et le vérificateur PKCE (`src/lib/figmaOAuth.ts`). Le code de Figma n'est enregistré que si les trois correspondent, et si le membre peut encore gérer l'agence.
+- Les clés de Figma sont scellées en base (AES-256-GCM, `TOKEN_ENCRYPTION_KEY`, `src/lib/sealed.ts`), dans `figma_connections`, une ligne par agence. Elles ne sont jamais envoyées à une page : `GET /api/integrations/figma` ne donne que le nom du compte Figma et qui l'a connecté.
+- « Déconnecter Figma » efface les clés (`DELETE /api/integrations/figma`). Figma ne permet pas de les révoquer : on retire aussi Kora dans les paramètres du compte Figma.
+- À configurer : une application OAuth sur figma.com/developers, avec l'adresse de retour `<BETTER_AUTH_URL>/api/integrations/figma/callback` et les autorisations de `figmaScopes` (`src/lib/figma.ts`). Puis `FIGMA_CLIENT_ID`, `FIGMA_CLIENT_SECRET` et `TOKEN_ENCRYPTION_KEY` (voir [.env.example](.env.example)). Sans eux, la section Figma n'apparaît pas. Une application privée ne sert qu'à l'équipe Figma qui l'a créée : pour d'autres agences, Figma doit l'approuver.
+- Un livrable « Figma » se crée depuis le lien du fichier (« Partager › Copier le lien » dans Figma, `src/lib/figmaLink.ts`). Kora lit le fichier avec le compte Figma du membre (`GET /api/integrations/figma/files/:clé`) : son nom, ses pages et les versions **nommées** de son historique (les enregistrements automatiques sans nom sont écartés). L'agence coche les pages en revue (les commentaires des autres resteront dans Figma) et choisit la version Figma envoyée au client.
+- **Les lectures du fichier sont comptées par Figma** : la lecture de ses pages (et plus tard des écrans et des captures) est limitée à **20 par mois** pour un compte avec une place « lecteur » ou « collaborateur » (offre Starter gratuite comprise), à 10 à 20 par minute pour une place d'éditeur (Full ou Dev). L'historique des versions et les commentaires sont bien moins limités. Kora lit donc les pages **une fois par livrable** : la fenêtre les demande une fois le lien collé, et la réponse porte une attestation signée de cette lecture (`src/lib/figmaReceipt.ts`, 30 minutes), renvoyée à la création. « Relire le fichier » et une nouvelle tournée ne relisent que l'historique. Une limite atteinte est dite telle quelle, avec sa date de fin (`429 FIGMA_RATE_LIMITED`). Kora fonctionne au mieux avec un compte Figma ayant une place d'éditeur.
+- À la création, le serveur ne croit que sa propre lecture : les pages doivent être dans l'attestation (signée pour cette agence et ce fichier), la version une de l'historique, relu auprès de Figma. Il ne garde rien de ce que la page dit du fichier : `figma` dans le livrable (`fileKey`, `fileName`, `pages`, `reviewed`, `version`) vient de Figma.
+- Une nouvelle version d'un « Figma » est une **tournée** (« Nouvelle tournée Figma ») : le même fichier et les pages lues pour le livrable, une autre version enregistrée dans Figma, refusée si c'est celle de la tournée en cours.
+- Sur le canevas, côté agence comme côté client, le tableau Figma (`src/app/(agency)/editor/FigmaBoard.tsx`) dit quel fichier, quelle version et quelles pages sont en revue, avec « Ouvrir dans Figma ». Le client y lit comment commenter dans Figma.
+- **Commentaires faits dans Figma : retirés de l'interface** depuis le 24 octobre 2026 (lire les commentaires et les écrans de chaque tournée coûte trop de lectures Figma pour les offres personnelles, et vite pour les agences). Le code reste, testé : `FIGMA_COMMENTS=1` remet le choix « Dans Figma » dans « Nouveau livrable » (`figmaCommentsOffered`, `src/lib/figmaLink.ts`). Un livrable créé ainsi avant fonctionne toujours. Ce qui suit sur le livrable « Figma » et l'import des commentaires décrit ce mode.
+- **Écrans Figma revus dans Kora** (étape 2c, `src/db/figmaScreens.ts`) : c'est ce que propose « Figma » dans « Nouveau livrable ». Kora lit les écrans du fichier (cadres en haut de chaque page, et ceux rangés dans une section) ; elle coche ceux à faire valider (30 au plus), chacun dans l'un des quatre formats de Figma, dans son ordre : PNG (par défaut), JPEG, SVG ou PDF. Un menu « Format de tous les écrans » les règle d'un coup, un menu par écran fait les exceptions ; PNG et JPEG sont dessinés en 2x. Figma dessine un format par demande (`POST …/screens/draw`) : un import qui mélange les formats coûte autant de lectures de catégorie 1, et la fenêtre le dit. Puis le serveur recopie chaque écran dans le stockage de l'agence (`POST …/screens/store`, une requête par écran, avec la progression affichée) : uniquement depuis le stockage de Figma, reconnu à ses octets comme le format demandé. Un SVG ouvert à son adresse est téléchargé, jamais exécuté ; le canevas l'affiche en image. Le livrable (`Screens`) est fait de ces copies, avec les noms et tailles de la lecture du serveur (attestation signée), jamais ceux de la page.
+  - « Disposer les écrans » ouvre ensuite une grande fenêtre (`src/app/(agency)/ScreensLayoutDialog.tsx`) : les vignettes des copies avec leur nom, dans l'ordre de Figma, que l'agence réordonne en les glissant ou avec leurs flèches (au clavier), et le nombre d'écrans par ligne (1 à 6). « Importer » crée le livrable dans cet ordre. Une grille, pas un placement libre : des écrans éloignés dans Figma garderaient un écart inutile.
+  - Sur le canevas, les écrans sont posés en lignes, dans cet ordre, chacun à sa taille dans Figma, avec son nom ; épingles, zones, fils et qualification comme sur une page de PDF. Une épingle est décrite par son écran (« Écran « Accueil mobile » »).
+  - Le client commente dans Kora, sans compte Figma. Il n'ouvre que les écrans d'une version qui lui est partagée (`/api/files`).
+  - « Réimporter depuis Figma » crée la version suivante : les mêmes écrans, dans le même ordre et chacun dans son format, dans leur état actuel. Un écran supprimé dans Figma est nommé, pas ignoré.
+  - Lectures de catégorie 1 par import : une pour les écrans, puis une par format choisi. La preuve liste chaque écran, sa page et son empreinte SHA-256.
+- La preuve d'une tournée nomme le fichier Figma, la version revue (nom, date d'enregistrement dans Figma, auteur, identifiant Figma) et les pages en revue (`figmaOf`, `src/db/proof.ts`).
+- **Import des commentaires** (`src/db/figmaImport.ts`, `POST /api/deliverables/:id/figma-import`) : avec le compte Figma de qui a créé la tournée (`figmaImports`, réglage de l'agence) ; si ce compte n'est plus connecté, le membre qui importe reprend la tournée avec le sien. Kora va chercher les commentaires du fichier à l'ouverture du livrable et sur « Actualiser » (au plus toutes les 15 secondes, `FIGMA_IMPORT_QUIET_SECONDS`), dans la tournée en cours seulement. Les notifications de Figma (webhooks) viendront à l'étape 3.
+  - Chaque fil lancé par le client sur une page en revue devient une demande « À clarifier », avec ses réponses : les mots du client, le nom affiché par Figma, la page, la source « Figma » et le lien « Voir le commentaire dans Figma ». Les réponses ajoutées ensuite dans Figma rejoignent le fil tant que la tournée est ouverte. Un fil n'est importé qu'une fois, quelle que soit la tournée.
+  - Restent dans Figma : les fils du compte connecté et des personnes cochées « De l'équipe » (panneau « Personnes vues dans Figma » du tableau, réglage `figmaTeam` de l'agence), les fils résolus avant l'import et ceux des pages décochées. Cocher une personne retire de Kora ses fils encore non qualifiés.
+  - La page d'un commentaire : Figma l'accroche à un écran sans nommer sa page. Kora lit une fois par tournée les écrans de la version (lecture de catégorie 1), gardés avec la tournée (identifiant de l'écran → page). Vérifié avec le vrai Figma le 23 octobre : un commentaire posé sur un écran est accroché à l'écran de premier niveau. Un commentaire sur un écran inconnu, ou hors de tout écran, est importé : on ne perd jamais une demande du client sur une supposition. Si Figma refuse cette lecture (limite), tout est importé et le tableau le dit ; Kora ne redemande pas avant une heure.
+  - Un fil importé est un **brouillon de l'agence** tant qu'il n'est pas qualifié : le client ne le voit pas, et ses actions dessus répondent 404 (`visibleToClient`). Qualifié, il le voit en entier. Le client ne peut ni modifier ni supprimer des mots venus de Figma (`clientWords`, `src/db/reviewAccess.ts`).
+  - La preuve dit : « Demande reçue sur Figma le … : commentaire de X (nom affiché par Figma, non vérifié par Kora), importé par Kora ». Chaque import laisse un événement `comment.imported` au journal.
+- La clé Figma de l'agence est renouvelée un jour avant son expiration (`figmaAccessToken`, `src/db/figmaConnection.ts`). Si Figma la refuse, l'agence reconnecte Figma.
+- Les tests n'appellent jamais Figma : un faux serveur local (`tests/e2e/figmaStandIn.ts`) tient sa place.
+
+### PDF nets au zoom
+
+Sur le canevas, pdf.js dessine une page une fois, à sa taille ; le zoom l'étire, donc la floute. Une fois le zoom stabilisé (0,3 s), une copie plus fine de chaque page **visible** se dessine par-dessus (`src/components/SharpPdfPage.tsx`), par paliers (×1,5, ×2, ×3, ×4, fois la densité de l'écran). Rien ne clignote : la copie reste transparente tant qu'elle se dessine (la page de react-pdf est blanche sinon), et la copie du palier précédent reste affichée jusqu'à ce que la suivante soit prête. Pour ne pas remplir la mémoire : jamais de copie pour une page hors de l'écran (elle la perd en sortant), un budget de 10 millions de pixels par page, soit 40 Mo au plus (`src/lib/pdfSharpness.ts`), et la copie disparaît, mémoire comprise, quand on dézoome. Pas encore dans la comparaison de versions.
 
 ### Preuve de validation
 

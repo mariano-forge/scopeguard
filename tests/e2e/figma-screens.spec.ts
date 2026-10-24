@@ -1,0 +1,259 @@
+// Figma screens reviewed in Kora (US-054, step 2c): the agency picks screens of a Figma file, each in one of
+// Figma's four formats (PNG by default); Kora has Figma draw them in one request and copies each into the agency's storage; the client
+// comments on them in Kora, without a Figma account. Names and sizes come from the server's own reading of
+// the file, the pictures from Figma's storage only, the files from the agency's own copies. Figma is the run's
+// stand-in (figmaStandIn.ts), which counts its tightest reads.
+
+import { expect, test } from "@playwright/test";
+import { baseURL } from "../../playwright.config";
+import { call, connectFigma, createAgency, figmaLink, makePdf, newPerson, seedState, signInPage, signUp, sql, unique, upload, verifiedClient, type Member } from "./helpers";
+import { figmaReads } from "./figmaStandIn";
+
+const fileKey = (prefix = "File") => `${prefix}${unique("k").replace(/[^A-Za-z0-9]/g, "")}`;
+
+async function agency(name = "Alice Martin") {
+  const owner = await signUp(name);
+  const org = await createAgency(owner, "Studio Écrans");
+  await seedState(owner, {
+    lists: {
+      clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
+      projects: { upsert: [{ id: 7, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },
+    },
+  });
+  await connectFigma(owner);
+  return { owner, org };
+}
+
+const screensApi = (key: string) => `/api/integrations/figma/files/${key}/screens`;
+const readScreens = async (member: Member, key: string) => (await call(screensApi(key), { person: member })).json as { name: string; screens: { id: string; name: string }[]; receipt: string };
+const draw = (member: Member, key: string, body: Record<string, unknown>) => call(`${screensApi(key)}/draw`, { person: member, body });
+const store = (member: Member, key: string, body: Record<string, unknown>) => call(`${screensApi(key)}/store`, { person: member, body: { projectId: 7, livrableId: 500, version: 1, ...body } });
+
+/** Screens copied through the API, as the dialog does: read, drawn in one request, each one stored. */
+async function copied(member: Member, key: string, ids: string[], format = "png", placement: Record<string, number> = {}) {
+  const { receipt } = await readScreens(member, key);
+  const { ticket } = (await draw(member, key, { receipt, formats: Object.fromEntries(ids.map((id) => [id, format])) })).json as { ticket: string };
+  const screens = [];
+  for (const id of ids) screens.push({ id, fileData: (await store(member, key, { ticket, id, ...placement })).json.fileData as string });
+  return { receipt, ticket, screens };
+}
+const createScreens = (member: Member, key: string, body: Record<string, unknown>) =>
+  call("/api/deliverables", { person: member, body: { id: 500, projectId: 7, name: "Écrans", type: "Screens", size: 0, url: figmaLink(key), columns: 2, ...body } });
+const records = (org: string) => sql<{ id: string; version: number; data: Record<string, unknown> }>("select id, version, data from deliverables where organization_id = $1 order by version", [org]);
+
+test("the agency picks Figma screens, page by page; they are copied into Kora and laid out on the canvas, a pin on one names it", async ({ browser }) => {
+  const { owner, org } = await agency();
+  const key = fileKey();
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, owner.email);
+  await page.goto("/projets/7");
+  await page.getByRole("button", { name: "Ajouter un livrable", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Nouveau livrable" });
+  // One « Figma » kind: where the client comments is asked next, « Écrans Figma » is no kind of its own.
+  await expect(dialog.locator(".kind-option")).toHaveText(["Image", "PDF", "Vidéo", "Lien", "Figma"]);
+  await dialog.locator(".kind-option").filter({ hasText: /^Figma$/ }).click();
+  await dialog.getByLabel("Lien du fichier Figma").fill(figmaLink(key));
+  // In Kora by default: the screens of each page, a section's too.
+  await expect(dialog.getByRole("radio", { name: /Dans Kora/ })).toBeChecked();
+  const home = dialog.getByRole("group", { name: "Page Accueil" });
+  await expect(home.getByRole("checkbox")).toHaveCount(2);
+  await home.getByRole("checkbox", { name: /Accueil mobile/ }).check();
+  await home.getByRole("checkbox", { name: /Accueil desktop/ }).check();
+  await dialog.getByRole("group", { name: "Page Contact" }).getByRole("checkbox", { name: /Formulaire/ }).check();
+  // PNG for all to start with; each screen ticked has its own menu: one in JPEG, one in SVG.
+  await expect(dialog.getByRole("combobox", { name: "Format de tous les écrans" })).toHaveText("PNG");
+  await expect(dialog.getByRole("combobox", { name: /^Format de « / })).toHaveCount(3);
+  await dialog.getByRole("combobox", { name: "Format de « Accueil mobile »" }).click();
+  await expect(page.getByRole("option")).toHaveText(["PNG", "JPEG", "SVG", "PDF"]);
+  await page.getByRole("option", { name: "JPEG" }).click();
+  await dialog.getByRole("combobox", { name: "Format de « Formulaire »" }).click();
+  await page.getByRole("option", { name: "SVG" }).click();
+  // Figma draws one format per request: said, with what it costs.
+  await expect(dialog.getByRole("note")).toContainText("Cet import utilisera 3 dessins Figma");
+  await dialog.getByRole("button", { name: "Disposer les écrans" }).click();
+
+  // Laid out: thumbnails in Figma's order, whatever order they were ticked in; moved by keyboard and by dragging.
+  const layout = page.getByRole("dialog", { name: "Disposer les écrans" });
+  const tiles = layout.getByRole("list", { name: "Ordre des écrans" }).getByRole("listitem");
+  const names = async () => (await tiles.evaluateAll((items) => items.map((item) => item.getAttribute("aria-label"))));
+  await expect.poll(names).toEqual(["1. Accueil desktop", "2. Accueil mobile", "3. Formulaire"]);
+  // Each thumbnail is the copy in Kora (its name, written under it, is its text).
+  await expect.poll(() => layout.locator(".screens-layout-thumb img").first().evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  await layout.getByRole("button", { name: "Déplacer « Formulaire » avant" }).click();
+  await expect.poll(names).toEqual(["1. Accueil desktop", "2. Formulaire", "3. Accueil mobile"]);
+  await tiles.nth(2).dragTo(tiles.nth(0));
+  await expect.poll(names).toEqual(["1. Accueil mobile", "2. Accueil desktop", "3. Formulaire"]);
+  await layout.getByRole("combobox", { name: "Écrans par ligne" }).click();
+  await page.getByRole("option", { name: "2", exact: true }).click();
+  await layout.getByRole("button", { name: "Importer 3 écrans" }).click();
+
+  await page.waitForURL(/livrables\/\d+/);
+  const canvas = page.getByRole("region", { name: "Canevas" });
+  // In Figma's order, whatever order they were ticked in, each with its name.
+  await expect(canvas.getByRole("figure")).toHaveCount(3);
+  await expect(canvas.locator("figcaption")).toHaveText(["Accueil mobile", "Accueil desktop", "Formulaire"]);
+  await expect(canvas.locator(".canvas-screens")).toHaveCSS("grid-template-columns", /^\S+ \S+$/);
+  await expect.poll(() => canvas.getByRole("img", { name: "Accueil mobile" }).evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  // Each screen shown whole: its page as tall as its picture, never cropped to a fixed frame.
+  const whole = async (index: number) =>
+    page.locator(".canvas-page-content").nth(index).evaluate((box) => {
+      const media = box.querySelector("img, canvas")!.getBoundingClientRect();
+      return Math.abs(box.getBoundingClientRect().height - media.height) < 2 && media.height > 0;
+    });
+  await expect.poll(() => whole(0)).toBe(true);
+  const [record] = await records(org);
+  expect(record.data).toMatchObject({
+    type: "Screens",
+    name: `Maquette ${key}`,
+    url: `https://www.figma.com/design/${key}`,
+    columns: 2,
+    figmaFile: { fileKey: key, fileName: `Maquette ${key}` },
+    screens: [
+      { id: "1:5", name: "Accueil mobile", pageName: "Accueil", width: 375, height: 812, mimeType: "image/jpeg" },
+      { id: "1:1", name: "Accueil desktop", pageName: "Accueil", width: 1440, height: 900, mimeType: "image/png" },
+      { id: "2:1", name: "Formulaire", pageName: "Contact", width: 1440, height: 900, mimeType: "image/svg+xml" },
+    ],
+  });
+  // Figma's tightest reads: the screens once, then one drawing per format.
+  expect((await figmaReads(key)).file).toBe(4);
+  // The SVG screen shows on the canvas, as an image (opened at its address, it would be downloaded).
+  await expect.poll(() => canvas.getByRole("img", { name: "Formulaire" }).evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+
+  // A pin on the second screen (Accueil desktop, moved there): its place names the screen.
+  await page.locator("[data-page]").nth(1).click({ position: { x: 60, y: 60 } });
+  await page.getByRole("textbox", { name: "Commentaire" }).fill("Le menu est trop haut");
+  await page.getByRole("button", { name: "Publier" }).click();
+  await expect
+    .poll(async () => (await sql<{ data: Record<string, unknown> }>("select data from comments where organization_id = $1", [org]))[0]?.data)
+    .toMatchObject({ page: 2, location: expect.stringMatching(/^Écran « Accueil desktop »/) });
+
+  // A new version: the same screens copied again, in the same order, as they are in Figma now; never a file.
+  const versions = page.getByRole("region", { name: "Versions" });
+  await expect(versions.locator('input[type="file"]')).toHaveCount(0);
+  await versions.getByRole("button", { name: "Réimporter depuis Figma" }).click();
+  const again = page.getByRole("dialog", { name: "Réimporter depuis Figma" });
+  await expect(again.getByRole("listitem")).toHaveText([/Accueil mobile/, /Accueil desktop/, /Formulaire/]);
+  await again.getByRole("button", { name: "Réimporter" }).click();
+  await expect(again).toHaveCount(0);
+  await expect.poll(async () => (await records(org)).map((row) => [row.version, row.data.status, (row.data.screens as { name: string }[]).map((screen) => screen.name).join(", ")])).toEqual([
+    [1, "Remplacée", "Accueil mobile, Accueil desktop, Formulaire"],
+    [2, "En attente client", "Accueil mobile, Accueil desktop, Formulaire"],
+  ]);
+  // Each screen again in its format: the screens read, then three drawings.
+  expect((await figmaReads(key)).file).toBe(8);
+  expect((await records(org))[1].data.screens).toMatchObject([{ mimeType: "image/jpeg" }, { mimeType: "image/png" }, { mimeType: "image/svg+xml" }]);
+  expect(errors).toEqual([]);
+});
+
+test("screens come from the server's reading and Figma's storage only, as the agency's own files; anything else is refused", async () => {
+  const { owner, org } = await agency();
+  const key = fileKey();
+
+  // Not connected: said.
+  const stranger = await signUp("Oscar Autre");
+  await createAgency(stranger, "Studio Autre");
+  expect((await call(screensApi(key), { person: stranger })).json.code).toBe("FIGMA_NOT_CONNECTED");
+
+  const { receipt } = await readScreens(owner, key);
+  // Drawing: a reading altered, a screen it does not have, too many, an unknown format; nothing drawn.
+  expect((await draw(owner, key, { receipt: `${receipt}x`, formats: { "1:1": "png" } })).json.error).toContain("a expiré");
+  expect((await draw(owner, key, { receipt, formats: { "9:9": "png" } })).json.error).toContain("n’est pas dans le fichier Figma");
+  expect((await draw(owner, key, { receipt, formats: Object.fromEntries(Array.from({ length: 31 }, (_, index) => [`1:${index}`, "png"])) })).status).toBe(400);
+  expect((await draw(owner, key, { receipt, formats: { "1:1": "gif" } })).status).toBe(400);
+  const blank = fileKey("Blank");
+  expect((await draw(owner, blank, { receipt: (await readScreens(owner, blank)).receipt, formats: { "1:1": "png" } })).status).toBe(502);
+
+  // Storing: a ticket altered or of another agency, a screen Figma did not draw.
+  const { ticket } = (await draw(owner, key, { receipt, formats: { "1:1": "png", "2:1": "png" } })).json as { ticket: string };
+  expect((await store(owner, key, { ticket: `${ticket}x`, id: "1:1" })).json.error).toContain("a expiré");
+  expect((await store(owner, key, { ticket, id: "3:1" })).status).toBe(404);
+  await connectFigma(stranger);
+  expect((await store(stranger, key, { ticket, id: "1:1" })).json.error).toContain("a expiré");
+  const first = (await store(owner, key, { ticket, id: "1:1" })).json as { fileData: string; mimeType: string };
+  expect(first.mimeType).toBe("image/png");
+  const second = (await store(owner, key, { ticket, id: "2:1" })).json.fileData as string;
+
+  // Making the deliverable: its screens as read, its files the agency's own copies from Figma, formats mixed as chosen.
+  const pdf = (await copied(owner, key, ["3:1"], "pdf")).screens[0];
+  expect((await sql<{ mime_type: string }>("select mime_type from stored_files where id = $1", [pdf.fileData.split("/").at(-1)]))[0].mime_type).toBe("application/pdf");
+  const othersFile = (await copied(stranger, key, ["1:1"])).screens[0].fileData;
+  // A file of the agency that is no copy of a screen: a page it uploaded.
+  const page = (await upload(owner, Buffer.from("<!doctype html><p>Page</p>"), "page.html", { kind: "version", projectId: 7, livrableId: 500, version: 1 })).json.href!;
+  const refusals: [Record<string, unknown>, number, string?][] = [
+    [{ receipt: `${receipt}x`, screens: [{ id: "1:1", fileData: first.fileData }] }, 400, "a expiré"],
+    [{ receipt, screens: [{ id: "9:9", fileData: first.fileData }] }, 400, "n’est pas dans le fichier Figma"],
+    [{ receipt, screens: [{ id: "1:1", fileData: othersFile }] }, 404],
+    [{ receipt, screens: [{ id: "1:1", fileData: page }] }, 400, "n’est pas une image ou un PDF copié depuis Figma"],
+    [{ receipt, screens: [{ id: "1:1", fileData: first.fileData }, { id: "1:1", fileData: second }] }, 400],
+    [{ receipt, screens: [] }, 400],
+  ];
+  for (const [body, status, error] of refusals) {
+    const refused = await createScreens(owner, key, body);
+    expect(refused.status, JSON.stringify(body).slice(0, 120)).toBe(status);
+    if (error) expect(refused.json.error).toContain(error);
+  }
+  expect(await records(org)).toEqual([]);
+
+  // Formats mixed as chosen: a PNG and a PDF in one deliverable.
+  expect((await createScreens(owner, key, { id: 501, name: "Mélange", receipt, screens: [{ id: "1:1", fileData: first.fileData }, { id: "3:1", fileData: pdf.fileData }] })).status).toBe(200);
+  await sql("delete from deliverables where organization_id = $1", [org]);
+
+  // Their names and sizes are the server's reading, never what the page says.
+  const made = await createScreens(owner, key, { receipt, screens: [{ id: "2:1", fileData: second, name: "Piraté", width: 1 }, { id: "1:1", fileData: first.fileData }] });
+  expect(made.status).toBe(200);
+  const [record] = await records(org);
+  expect((record.data.screens as { name: string; width: number }[]).map((screen) => [screen.name, screen.width])).toEqual([
+    ["Formulaire", 1440],
+    ["Accueil desktop", 1440],
+  ]);
+  expect(record.data.columns).toBe(2);
+});
+
+test("a new version copies the screens again; the client sees the shared version's screens, never another's; the proof keeps each one", async ({ browser }) => {
+  const { owner, org } = await agency();
+  const key = fileKey();
+  const v1 = await copied(owner, key, ["1:1", "1:5"], "png", { livrableId: 500, version: 1 });
+  expect((await createScreens(owner, key, { receipt: v1.receipt, screens: v1.screens })).status).toBe(200);
+  const v2 = await copied(owner, key, ["1:1", "1:5"], "pdf", { livrableId: 500, version: 2 });
+  // A version of « Écrans Figma » is screens again: not a file, not another file's screens.
+  const pdfFile = (await upload(owner, makePdf("Cahier"), "doc.pdf", { kind: "version", projectId: 7, livrableId: 500, version: 2 })).json.href;
+  expect(pdfFile).toMatch(/^\/api\/files\//);
+  expect((await call("/api/deliverables/500/versions", { person: owner, body: { type: "PDF", size: 100, fileData: pdfFile } })).status).toBe(400);
+  const next = await call("/api/deliverables/500/versions", { person: owner, body: { type: "Screens", receipt: v2.receipt, screens: v2.screens, columns: 1 } });
+  expect(next.status).toBe(200);
+  const rows = await records(org);
+  expect(rows.map((row) => [row.version, row.data.status, (row.data.screens as { mimeType: string }[])[0].mimeType])).toEqual([
+    [1, "Remplacée", "image/png"],
+    [2, "En attente client", "application/pdf"],
+  ]);
+
+  // The client of V2 opens its screens, not V1's.
+  const token = unique("tok-screens");
+  const v2Id = next.json.id as number;
+  await seedState(owner, { maps: { reviewLinks: { upsert: { [`${v2Id}:2`]: { token, active: true, expiresAt: "01/01/2099", autoExpire: true, deliverableId: v2Id, version: 2 } }, remove: [] } } });
+  const email = `${unique("claire")}@client.test`;
+  await call("/api/review-access/invite", { person: owner, body: { linkKey: `${v2Id}:2`, emails: [email] } });
+  const client = await verifiedClient(token, email);
+  expect((await call(v2.screens[0].fileData, { person: client })).status).toBe(302);
+  expect((await call(v1.screens[0].fileData, { person: client })).status).toBe(404);
+  const { page, errors } = await newPerson(browser);
+  const [name, value] = client.cookie.split(";")[0].split("=");
+  await page.context().addCookies([{ name, value, url: baseURL }]);
+  await page.goto(`/review/${token}`);
+  await expect(page.getByRole("region", { name: "Canevas" }).locator("figcaption")).toHaveText(["Accueil desktop", "Accueil mobile"]);
+  // PDF screens drawn whole too (a portrait page in a landscape frame was cropped, 23 October 2026).
+  const content = page.locator(".canvas-page-content").first();
+  await expect(content.locator("canvas")).toBeVisible();
+  await expect
+    .poll(() => content.evaluate((box) => Math.abs(box.getBoundingClientRect().height - box.querySelector("canvas")!.getBoundingClientRect().height)))
+    .toBeLessThan(2);
+  expect(errors).toEqual([]);
+
+  // The proof of V2: each screen, its page and its fingerprint.
+  const proof = (await call(`/api/proof/${v2Id}`, { person: owner })).json as { deliverable: { screens: { name: string; page: string; sha256: string | null }[] } };
+  expect(proof.deliverable.screens.map((screen) => [screen.name, screen.page])).toEqual([
+    ["Accueil desktop", "Accueil"],
+    ["Accueil mobile", "Accueil"],
+  ]);
+  expect(proof.deliverable.screens.every((screen) => /^[0-9a-f]{64}$/.test(screen.sha256 ?? ""))).toBe(true);
+});

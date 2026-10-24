@@ -5,6 +5,7 @@
 
 import { defineConfig } from "@playwright/test";
 import { resolve } from "node:path";
+import { figmaClient, figmaStandInPort } from "./tests/e2e/figmaStandIn";
 
 const port = 3199;
 export const baseURL = `http://localhost:${port}`;
@@ -58,6 +59,17 @@ export default defineConfig({
       // The scope's extraction, read by the tests' fixed engine (src/lib/scopeExtractor.ts): no AI.
       SCOPE_EXTRACTION_PROVIDER: "test",
       EXTRACTIONS_PER_HOUR: "30",
+      // Figma (US-054): its API is the run's stand-in (tests/e2e/figmaStandIn.ts), its consent page an
+      // address the tests intercept; a fixed key seals the tokens.
+      FIGMA_CLIENT_ID: figmaClient.id,
+      FIGMA_CLIENT_SECRET: figmaClient.secret,
+      FIGMA_API_URL: `http://127.0.0.1:${figmaStandInPort}`,
+      FIGMA_OAUTH_URL: "https://www.figma.test/oauth",
+      TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
+      // A file's comments read again after 1 s instead of 15: « Actualiser » right after the opening's import.
+      FIGMA_IMPORT_QUIET_SECONDS: "1",
+      // « Dans Figma » offered in « Nouveau livrable », off online: its tests keep it working while it sleeps.
+      FIGMA_COMMENTS: "1",
     },
   },
 });

@@ -18,8 +18,13 @@ const nextConfig: NextConfig = {
   // copy of @azure/storage-common, whose key class the first copy's SAS signing no longer recognises
   // (« Invalid sharedKeyCredential »: every file answered 503, src/lib/storage.ts).
   serverExternalPackages: ["@azure/storage-blob", "@azure/storage-common"],
-  // The import limits, known to the pages too (the server checks them again in /api/files).
-  env: { NEXT_PUBLIC_MAX_UPLOAD_MB: process.env.MAX_UPLOAD_MB ?? "50", NEXT_PUBLIC_MAX_VIDEO_UPLOAD_MB: process.env.MAX_VIDEO_UPLOAD_MB ?? "1024" },
+  // The import limits, known to the pages too (the server checks them again in /api/files); whether « Nouveau
+  // livrable » offers Figma comments (FIGMA_COMMENTS, src/lib/figmaLink.ts).
+  env: {
+    NEXT_PUBLIC_MAX_UPLOAD_MB: process.env.MAX_UPLOAD_MB ?? "50",
+    NEXT_PUBLIC_MAX_VIDEO_UPLOAD_MB: process.env.MAX_VIDEO_UPLOAD_MB ?? "1024",
+    NEXT_PUBLIC_FIGMA_COMMENTS: process.env.FIGMA_COMMENTS ?? "",
+  },
   // pdf.js 6 relies on JavaScript only the latest browsers have (Map.getOrInsertComputed, Math.sumPrecise):
   // its legacy build carries polyfills, so a PDF also opens in an older Safari or a Firefox ESR.
   turbopack: {
