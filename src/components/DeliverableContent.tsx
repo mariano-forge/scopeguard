@@ -152,8 +152,18 @@ function SinglePage({
 
   // On the canvas, a click on the picture pins a comment on that moment: the bar plays and seeks.
   if (deliverable.type === "Video" && source && video)
+    // Full screen, the browser's controls show without their menu (download, speed, picture in picture):
+    // play, time, sound, and beside the sound the way back out of full screen.
     return (
-      <video className="real-deliverable-video" src={source} playsInline preload="metadata" {...video}>
+      <video
+        className="real-deliverable-video"
+        src={source}
+        playsInline
+        preload="metadata"
+        controlsList="nodownload noplaybackrate noremoteplayback"
+        disablePictureInPicture
+        {...video}
+      >
         Votre navigateur ne lit pas cette vidéo.
       </video>
     );

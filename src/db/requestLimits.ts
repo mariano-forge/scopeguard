@@ -16,6 +16,8 @@ export const requestLimit = {
   invitations: () => ({ max: limit("INVITATIONS_PER_HOUR", 60), seconds: 3600 }),
   /** Code requests on review links, per address: each one says whether an address is invited. */
   accessCodes: () => ({ max: limit("ACCESS_CODES_PER_HOUR", 30), seconds: 3600 }),
+  /** Scope extractions a member may launch per hour: each one may call a paid AI. */
+  extractions: () => ({ max: limit("EXTRACTIONS_PER_HOUR", 30), seconds: 3600 }),
   /** Demo requests from the public landing page, per address: a mail goes out, from anyone. */
   demo: () => ({ max: limit("DEMO_REQUESTS_PER_HOUR", 5), seconds: 3600 }),
 };

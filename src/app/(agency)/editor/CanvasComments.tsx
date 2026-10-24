@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ArrowUp, BadgeEuro, ClipboardCheck, EyeOff, Pencil, Tag, Trash2, Undo2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowUp, BadgeEuro, ClipboardCheck, EyeOff, Film, Pencil, Tag, Trash2, Undo2, X } from "lucide-react";
 import { Hint } from "@/components/hint";
 import { SiteCapture } from "@/components/SiteCapture";
 import type { SiteAnchor } from "@/lib/siteReview";
@@ -111,6 +111,17 @@ export function RequestSourceNote({ source, enteredBy, figmaUrl }: { source: Req
 /** The moment of a comment on a video, as its thread and the panel's list show it. */
 export const TimecodeChip = ({ seconds }: { seconds: number }) => (
   <span className="timecode-chip">
+    <Film aria-hidden="true" />
+    <span className="sr-only">À </span>
+    {formatTimecode(seconds)}
+    <span className="sr-only"> dans la vidéo</span>
+  </span>
+);
+
+/** The same moment, quieter, beside when the comment was written (a thread's header): a film, not a clock. */
+const TimecodeNote = ({ seconds }: { seconds: number }) => (
+  <span className="timecode-note">
+    <Film aria-hidden="true" />
     <span className="sr-only">À </span>
     {formatTimecode(seconds)}
     <span className="sr-only"> dans la vidéo</span>
@@ -457,8 +468,13 @@ export function ThreadPopover({
       <header className="thread-header">
         <span className="thread-title">
           <b>{comment.author}</b>
-          {timeLabel(comment, now) && <small>{timeLabel(comment, now)}</small>}
-          {comment.timecode !== undefined && <TimecodeChip seconds={comment.timecode} />}
+          {(timeLabel(comment, now) || comment.timecode !== undefined) && (
+            <span className="thread-when">
+              {timeLabel(comment, now) && <small>{timeLabel(comment, now)}</small>}
+              {timeLabel(comment, now) && comment.timecode !== undefined && <span aria-hidden="true">·</span>}
+              {comment.timecode !== undefined && <TimecodeNote seconds={comment.timecode} />}
+            </span>
+          )}
         </span>
         <span className="thread-header-actions">
           {!asRequest && onQualify && canWrite && !qualifying && (

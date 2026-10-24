@@ -36,6 +36,7 @@ Une seule application Next.js porte l'interface et le serveur. Le navigateur ne 
 | **shadcn/ui** et **Radix UI** | 4.21 / 1.8 | Composants accessibles : fenêtres, menus, onglets, infobulles. |
 | **lucide-react** | 1.56 | Icônes. |
 | **sonner** | 2.0 | Notifications à l'écran. |
+| **Recharts** | 3.10 | Graphes de l'onglet « Suivi », par le composant Chart de shadcn (`src/components/ui/chart.tsx`), aux couleurs de Kora. |
 | **react-pdf** et **pdf.js** | 11.0 / 6.3 | Affichage des PDF. pdf.js est chargé dans sa version « legacy » (`next.config.ts`) : la version moderne exige des navigateurs très récents. Zoomée, une page du canevas est redessinée plus finement par-dessus elle-même, par paliers une fois le zoom stabilisé, pour les seules pages visibles et dans un budget de 10 millions de pixels par page (`src/components/SharpPdfPage.tsx`, `src/lib/pdfSharpness.ts`) : nette sans remplir la mémoire. |
 | **react-zoom-pan-pinch** | 4.2 | Zoom et déplacement sur le plan de travail. |
 | **input-otp** | 1.5 | Le champ du code à 6 chiffres, en six cases (accès client, confirmation). |

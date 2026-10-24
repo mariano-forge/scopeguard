@@ -13,21 +13,24 @@ body {
   color: var(--ink);
   font-family: var(--font-ui);
 }
-button,
-input,
-textarea {
-  font: inherit;
-}
-button {
-  cursor: pointer;
-}
-/* Lucide icons follow the surrounding text size and color */
-.lucide {
-  display: inline-block;
-  width: 1.15em;
-  height: 1.15em;
-  flex-shrink: 0;
-  vertical-align: -0.2em;
+/* Defaults, in Tailwind's base layer: a shadcn component's own classes (text-sm, size-4…) win over them. */
+@layer base {
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+  /* Lucide icons follow the surrounding text size and color */
+  .lucide {
+    display: inline-block;
+    width: 1.15em;
+    height: 1.15em;
+    flex-shrink: 0;
+    vertical-align: -0.2em;
+  }
 }
 .app-frame {
   display: flex;
@@ -3126,6 +3129,41 @@ button.rail-avatar {
   gap: var(--s-1);
   padding: var(--s-3) var(--s-2) 0 var(--s-4);
 }
+/* One line: back to the project (cut first when names are long), then the deliverable's name and its menu. */
+.panel-breadcrumb {
+  justify-content: flex-start;
+  gap: 2px;
+  padding-left: var(--s-3);
+}
+.panel-breadcrumb a {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+  max-width: 45%;
+  padding: var(--s-1);
+  border-radius: var(--r-field);
+  color: var(--graphite);
+  font: 500 var(--t-caption) var(--font-ui);
+  text-decoration: none;
+}
+.panel-breadcrumb a:hover {
+  background: var(--mist);
+  color: var(--ink);
+}
+.panel-breadcrumb a span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel-breadcrumb-separator {
+  flex: none;
+  color: var(--border-input);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.panel-breadcrumb button.panel-title {
+  margin-left: 0;
+}
 .panel-title {
   display: flex;
   align-items: center;
@@ -4132,10 +4170,19 @@ button.rail-avatar {
   filter: none;
 }
 
-/* Project icon: neutral (feedback) */
+/* Page icon (spaces, projects): in outline, quieter than the title beside it. */
+/* The page's icon says what the page is: a sign, not a button (no frame, no fill). */
 .page-icon {
-  background: var(--ink);
-  color: var(--paper);
+  width: auto;
+  height: auto;
+  border: 0;
+  background: none;
+  color: var(--graphite);
+}
+.page-icon .lucide {
+  width: 30px;
+  height: 30px;
+  stroke-width: 1.5;
 }
 
 /* Home sidebar: search back to a field, a little more air */
@@ -7311,26 +7358,33 @@ body.is-resizing {
   position: relative;
   display: grid;
 }
+/* The client's messages nobody has read yet: in the blue of Kora's notifications (the bell's count). */
 .unread-pill {
   display: inline-flex;
+  flex: none;
   align-items: center;
-  gap: 4px;
-  height: 24px;
-  padding: 0 var(--s-2);
-  border-radius: var(--r-full);
-  background: var(--ink);
-  color: var(--paper);
-  font: 600 var(--t-caption-size) var(--font-ui);
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px 0 7px;
+  border-radius: 999px;
+  background: var(--status-low-bg);
+  color: var(--status-low-text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--action-ui) 22%, transparent);
+  font: 600 var(--t-caption-size) / 1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .unread-pill .lucide {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
 }
+/* On a cover (any picture under it): a card of its own. */
 .file-card-cover .unread-pill {
   position: absolute;
   bottom: var(--s-2);
   left: var(--s-2);
+  background: var(--paper);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--action-ui) 22%, transparent), 0 2px 6px color-mix(in srgb, var(--ink) 14%, transparent);
 }
 
 /* List rows: thumbnail, name (+ status), columns; the star sits beside the link */

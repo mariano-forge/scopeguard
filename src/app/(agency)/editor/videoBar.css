@@ -151,13 +151,40 @@
 /* The moment of a comment on a video, in its thread and in the panel's list. */
 .timecode-chip {
   display: inline-flex;
+  flex: none;
   justify-self: start;
   width: fit-content;
+  height: 20px;
   align-items: center;
-  border-radius: var(--r-field);
-  padding: 0 var(--s-1);
-  background: var(--mist);
-  color: var(--ink);
-  font-size: var(--t-caption-size);
+  gap: 4px;
+  border-radius: 999px;
+  padding: 0 7px 0 6px;
+  background: var(--status-low-bg);
+  color: var(--status-low-text);
+  font: 600 var(--t-caption-size) / 1 var(--font-ui);
   font-variant-numeric: tabular-nums;
+}
+.timecode-chip svg {
+  width: 12px;
+  height: 12px;
+}
+/* In a thread's header, under the author: when it was written, then the moment, quieter than the list's chip. */
+.thread-when {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.timecode-note {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.timecode-note svg {
+  width: 12px;
+  height: 12px;
 }

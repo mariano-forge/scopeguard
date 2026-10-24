@@ -25,7 +25,11 @@ import { ClientCompare } from "./ClientCompare";
 import { AuthShell } from "@/components/AuthShell";
 import { GateHeading } from "@/components/GatePieces";
 import { initialsOf, sideOf, type Side } from "@/lib/authors";
-import { outsideStatusOf } from "@/lib/outsideStatus";
+import { outsideStatusOf, outsideStatusView } from "@/lib/outsideStatus";
+import { ExportMenu } from "@/app/(agency)/editor/ExportMenu";
+import { ClientScopeButton } from "@/app/(agency)/ProjectScope";
+import type { ClientScope, ScopeAmendment } from "@/lib/projectScope";
+import { ClientNotifications, type ClientNotice } from "./ClientNotifications";
 
 
 
@@ -101,6 +105,8 @@ type ClientComment = {
   title?: string;
   sourceId?: number;
   area?: Area;
+  /** When the agency last qualified it, for the client's own requests (src/db/reviewAccess.ts). */
+  qualifiedAt?: number;
 };
 
 type ProposalState = "none" | "draft" | "sent";
@@ -176,6 +182,8 @@ export default function ClientReviewPage() {
   const [composer, setComposer] = useState<CanvasComposer | null>(null);
   const [panelTab, setPanelTab] = useState<InspectorTab>("comment");
   const [proposalStates, setProposalStates] = useState<ProposalStates>({});
+  /** The project's scope, once active: what was agreed (src/lib/projectScope.ts clientScope). */
+  const [projectScope, setProjectScope] = useState<ClientScope | undefined>();
   const [proposalDecisions, setProposalDecisions] = useState<ProposalDecisions>({});
   const [adaptationRequests, setAdaptationRequests] = useState<AdaptationRequests>({});
   const [proposalVersions, setProposalVersions] = useState<ProposalVersions>({});
@@ -237,7 +245,7 @@ export default function ClientReviewPage() {
           reviewStatus?: "pending" | "changes-requested" | "approved";
           approvedAt?: string | null;
           proposalVersions?: ProposalVersions;
-          projects?: { id: number; name: string; clientId?: number }[];
+          projects?: { id: number; name: string; clientId?: number; scope?: ClientScope }[];
           clients?: { id: number; name: string }[];
         };
         const savedLinks = Object.values(parsedState.reviewLinks ?? {});
@@ -279,6 +287,7 @@ export default function ClientReviewPage() {
           if (parsedState.proposalDecisions) setProposalDecisions(parsedState.proposalDecisions);
           if (parsedState.adaptationRequests) setAdaptationRequests(parsedState.adaptationRequests);
           if (parsedState.proposalVersions) setProposalVersions(parsedState.proposalVersions);
+          setProjectScope(parsedState.projects?.[0]?.scope);
         }
       } catch {
         setAccessState("denied");
@@ -305,8 +314,8 @@ export default function ClientReviewPage() {
           proposalDecisions?: ProposalDecisions;
           adaptationRequests?: AdaptationRequests;
           proposalVersions?: ProposalVersions;
+          projects?: { scope?: ClientScope }[];
         };
-
 
         const savedLinks = Object.values(parsedState.reviewLinks ?? {});
         const currentLink =
@@ -331,6 +340,7 @@ export default function ClientReviewPage() {
         if (parsedState.adaptationRequests) setAdaptationRequests(parsedState.adaptationRequests);
         else setAdaptationRequests({});
         if (parsedState.proposalVersions) setProposalVersions(parsedState.proposalVersions);
+        setProjectScope(parsedState.projects?.[0]?.scope);
       } catch {
         // Ignore malformed external updates.
       }
@@ -725,6 +735,41 @@ export default function ClientReviewPage() {
   };
   const canDecide = (commentId: number) => !isReadOnlyVersion() && !contributor && !isCommercialDecisionLocked(commentId) && !adaptationRequests[commentId];
 
+  const requestName = (comment: ClientComment) => comment.title?.trim() || comment.message;
+  const excerpt = (text: string) => (text.length > 90 ? `${text.slice(0, 89)}…` : text);
+  const qualificationLabel = (comment: ClientComment) => (comment.decision === "Inclus" ? "Inclus" : comment.decision === "Hors périmètre" ? "Hors scope" : "À clarifier");
+  // The bell: the agency's replies, the quotes to decide, the client's requests qualified, a newer version.
+  const notices: ClientNotice[] = [
+    ...sharedComments.flatMap((comment) =>
+      (comment.replies ?? [])
+        .filter((reply) => sideOf(reply) === "agency")
+        .map((reply) => ({
+          key: `r${reply.id}`,
+          at: reply.createdAt ?? (reply.id > 1e12 ? reply.id : undefined),
+          title: "Réponse de l’agence",
+          detail: `« ${excerpt(reply.message)} » · ${requestName(comment)}`,
+          onOpen: () => focusThread(comment.id),
+        })),
+    ),
+    ...quotesToDecide.flatMap((comment) => {
+      const proposal = activeProposalFor(comment.id);
+      return proposal
+        ? [{ key: `p${proposal.id}`, at: proposal.id > 1e12 ? proposal.id : undefined, title: "Devis à valider", detail: `${requestName(comment)} · ${formatProposalAmount(proposal.amount)} HT`, onOpen: () => openProposalModal(comment.id) }]
+        : [];
+    }),
+    ...sharedComments
+      .filter((comment) => comment.qualifiedAt !== undefined && sideOf(comment) === "client")
+      .map((comment) => ({ key: `q${comment.id}:${comment.qualifiedAt}`, at: comment.qualifiedAt, title: `Demande qualifiée : ${qualificationLabel(comment)}`, detail: requestName(comment), onOpen: () => focusThread(comment.id) })),
+    ...(newerVersion ? [{ key: `v${newerVersion.version}`, title: `La ${versionName(newerVersion.version)} vous a été partagée`, detail: "Ouvrir la nouvelle version", onOpen: () => window.location.assign(newerVersion.href) }] : []),
+  ];
+  // The scope's amendments, as the client sees them: the accepted out-of-scope quotes of this version.
+  const amendments: ScopeAmendment[] = sharedComments
+    .filter((comment) => comment.decision === "Hors périmètre" && proposalDecisions[comment.id] === "accepted")
+    .map((comment) => {
+      const proposal = activeProposalFor(comment.id);
+      return { commentId: comment.id, title: requestName(comment), deliverable: `${deliverable.name} · ${versionLabel}`, amount: parseNumericAmount(proposal?.amount), days: parseNumericDays(proposal?.deadline) };
+    });
+
   return (
     <main className="client-app">
       <header className="client-topbar">
@@ -789,6 +834,21 @@ export default function ClientReviewPage() {
           transformRef={transformRef}
           canMove={(comment) => sideOf(comment) === "client" && requestKind(comment) === "comment"}
           onMovePin={moveComment}
+          toolbarExtra={
+            <ExportMenu
+              title={`${deliverable.name} — ${versionLabel}`}
+              comments={canvasComments}
+              statusOf={(comment) =>
+                comment.decision === "Hors périmètre"
+                  ? outsideStatusView(
+                      outsideStatusOf({ state: proposalStates[comment.id] === "sent" ? "sent" : "none", decision: proposalDecisions[comment.id] ?? "none", adaptation: adaptationRequests[comment.id] }),
+                      "client",
+                    ).label
+                  : null
+              }
+              file={deliverable.fileData}
+            />
+          }
           overlay={
             newerVersion ? (
               <div className="canvas-banner" role="status">
@@ -871,6 +931,10 @@ export default function ClientReviewPage() {
           <ResizeHandle edge="left" width={panelWidth} min={300} max={560} defaultWidth={340} label="Largeur du panneau des retours" onResize={setPanelWidth} />
           <header className="requests-header">
             <h2>Vos retours</h2>
+            <div className="requests-actions">
+              <ClientNotifications notices={notices} seen={seen} onSeen={markSeen} />
+              <ClientScopeButton scope={projectScope} amendments={amendments} />
+            </div>
           </header>
           <RequestPanel
             comments={canvasComments}

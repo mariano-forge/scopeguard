@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Ellipsis, FolderInput, Pencil, Pin, Settings, Trash2 } from "lucide-react";
-import { Select } from "@/components/Select";
+import { Ellipsis, Pencil, Pin, Settings, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,13 +15,11 @@ import {
 import { Field, FormError, Modal } from "@/components/modal";
 import { Hint } from "@/components/hint";
 
-type Target = { id: number; label: string };
-
 /** What to type to confirm a space deletion: its name in capitals, without spaces ("NORTHSTARSTUDIO"). */
 export const confirmPhraseOf = (name: string) => name.toUpperCase().replace(/\s+/g, "");
 
 /**
- * Settings of a space or a project: rename, move (projects), delete with a confirmation
+ * Settings of a space or a project: rename, delete with a confirmation
  * that spells out what goes with it.
  */
 export function EntitySettings({
@@ -32,9 +29,6 @@ export function EntitySettings({
   onRename,
   onDelete,
   deleteLocked = false,
-  moveTargets,
-  currentTargetId,
-  onMove,
 }: {
   kind: "espace" | "projet";
   name: string;
@@ -44,12 +38,8 @@ export function EntitySettings({
   onDelete: () => void;
   /** Members cannot delete a space or a project: the entry stays, greyed, with the reason. */
   deleteLocked?: boolean;
-  /** Projects only: the spaces it can move to. */
-  moveTargets?: Target[];
-  currentTargetId?: number;
-  onMove?: (targetId: number) => void;
 }) {
-  const [dialog, setDialog] = useState<"rename" | "move" | "delete" | null>(null);
+  const [dialog, setDialog] = useState<"rename" | "delete" | null>(null);
   const label = kind === "espace" ? "l’espace" : "le projet";
 
   return (
@@ -57,7 +47,7 @@ export function EntitySettings({
       <DropdownMenu>
         <Hint label="Réglages">
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label={`Réglages de ${label}`}>
+            <Button variant="outline" size="icon" aria-label={`Réglages de ${label}`}>
               <Settings />
             </Button>
           </DropdownMenuTrigger>
@@ -66,11 +56,6 @@ export function EntitySettings({
           <DropdownMenuItem onSelect={() => setDialog("rename")}>
             <Pencil /> Renommer
           </DropdownMenuItem>
-          {moveTargets && onMove && (
-            <DropdownMenuItem onSelect={() => setDialog("move")}>
-              <FolderInput /> Déplacer vers un autre espace
-            </DropdownMenuItem>
-          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" disabled={deleteLocked} onSelect={() => setDialog("delete")}>
             <Trash2 />
@@ -89,18 +74,6 @@ export function EntitySettings({
           onClose={() => setDialog(null)}
           onSave={(next) => {
             onRename(next);
-            setDialog(null);
-          }}
-        />
-      )}
-      {dialog === "move" && moveTargets && onMove && (
-        <MoveDialog
-          name={name}
-          targets={moveTargets}
-          currentTargetId={currentTargetId}
-          onClose={() => setDialog(null)}
-          onMove={(targetId) => {
-            onMove(targetId);
             setDialog(null);
           }}
         />
@@ -164,55 +137,6 @@ export function RenameDialog({
         <Input id="rename-input" autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} onFocus={(event) => event.target.select()} />
       </Field>
       {error && <FormError>{error}</FormError>}
-    </Modal>
-  );
-}
-
-function MoveDialog({
-  name,
-  targets,
-  currentTargetId,
-  onClose,
-  onMove,
-}: {
-  name: string;
-  targets: Target[];
-  currentTargetId?: number;
-  onClose: () => void;
-  onMove: (targetId: number) => void;
-}) {
-  const others = targets.filter((target) => target.id !== currentTargetId);
-  const [targetId, setTargetId] = useState(String(others[0]?.id ?? ""));
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={`Déplacer « ${name} »`}
-      description={others.length === 0 ? "Il n’y a pas d’autre espace. Créez-en un pour y déplacer ce projet." : undefined}
-      size="sm"
-      className="settings-dialog"
-      footer={
-        others.length > 0 ? (
-          <>
-            <Button variant="outline" onClick={onClose}>
-              Annuler
-            </Button>
-            <Button onClick={() => onMove(Number(targetId))}>Déplacer</Button>
-          </>
-        ) : undefined
-      }
-    >
-      {others.length > 0 && (
-        <div className="grid gap-1.5">
-          <span className="text-sm font-medium text-foreground">Vers l’espace</span>
-          <Select
-            label="Espace de destination"
-            value={targetId}
-            options={others.map((target) => ({ value: String(target.id), label: target.label }))}
-            onChange={setTargetId}
-          />
-        </div>
-      )}
     </Modal>
   );
 }

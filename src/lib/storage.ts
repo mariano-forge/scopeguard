@@ -133,11 +133,14 @@ export type FilePlacement =
   | { kind: "cover"; projectId: number; livrableId: number }
   /** A capture attached to a request (an e-mail, a message): projets/<projectId>/livrables/<livrableId>/demandes/<sha256>.<ext> */
   | { kind: "request"; projectId: number; livrableId: number }
+  /** A document of the project's scope (signed quote, client's brief): projets/<projectId>/perimetre/<sha256>.<ext> */
+  | { kind: "scope"; projectId: number }
   /** A file that reached the server without its place (older pages): divers/<sha256>.<ext> */
   | { kind: "other" };
 
 /** The place a page asks for (upload routes): its kind and numeric ids, or null when malformed. */
 export function readPlacement(kind: unknown, projectId: number | null, livrableId: number | null, version: number | null): FilePlacement | null {
+  if (kind === "scope") return projectId === null ? null : { kind, projectId };
   if (projectId === null || livrableId === null) return null;
   if (kind === "cover" || kind === "request") return { kind, projectId, livrableId };
   return kind === "version" && version !== null ? { kind: "version", projectId, livrableId, version } : null;
@@ -146,6 +149,7 @@ export function readPlacement(kind: unknown, projectId: number | null, livrableI
 function pathOf(placement: FilePlacement, sha256: string, extension: string) {
   const name = `${sha256}.${extension}`;
   if (placement.kind === "other") return `divers/${name}`;
+  if (placement.kind === "scope") return `projets/${placement.projectId}/perimetre/${name}`;
   const livrable = `projets/${placement.projectId}/livrables/${placement.livrableId}`;
   if (placement.kind === "version") return `${livrable}/v${placement.version}/${name}`;
   return placement.kind === "cover" ? `${livrable}/couverture/${name}` : `${livrable}/demandes/${name}`;
@@ -182,6 +186,21 @@ export async function storeFile(
 
 export const fileHref = (id: string) => `/api/files/${id}`;
 
+/**
+ * A PDF the agency imported itself, read by the server (to extract a scope from it): null when the
+ * address is not one of its PDFs. Never an address handed out: the bytes stay on the server.
+ */
+export async function readOwnPdf(db: Db, org: string, href: string) {
+  const id = /^\/api\/files\/([0-9a-f-]{36})$/.exec(href)?.[1];
+  if (!id) return null;
+  const [file] = await db.select().from(storedFiles).where(and(eq(storedFiles.organizationId, org), eq(storedFiles.id, id))).limit(1);
+  if (!file || file.mimeType !== "application/pdf") return null;
+  const { service, ready } = storage();
+  await ready;
+  const bytes = await service.getContainerClient(file.container).getBlobClient(file.path).downloadToBuffer();
+  return { name: file.originalName ?? "document.pdf", bytes };
+}
+
 /** How long a read-only address of a file stays valid (FILE_LINK_SECONDS, 5 minutes by default). */
 export const fileLinkSeconds = () => Math.max(1, Number(process.env.FILE_LINK_SECONDS) || 300);
 
@@ -199,8 +218,16 @@ export const videoLinkSeconds = (duration: number) => Math.max(fileLinkSeconds()
  */
 const shownInline = (mimeType: string) => /^(image\/(png|jpeg|gif|webp|avif)|application\/pdf|video\/[\w.+-]+|audio\/[\w.+-]+)$/.test(mimeType);
 
-/** Read-only address of a stored file, valid `seconds`: opened in the page when that is safe, downloaded otherwise. */
-export async function readableUrl(file: { container: string; path: string; originalName: string | null; mimeType: string }, seconds = fileLinkSeconds()) {
+/**
+ * Read-only address of a stored file, valid `seconds`: opened in the page when that is safe, or saved under its
+ * name when asked (`attachment`); a type that is not safe to open is always saved, whatever is asked.
+ */
+export async function readableUrl(
+  file: { container: string; path: string; originalName: string | null; mimeType: string },
+  seconds = fileLinkSeconds(),
+  disposition: "inline" | "attachment" = "inline",
+) {
+  const shown = disposition === "inline" && shownInline(file.mimeType) ? "inline" : "attachment";
   const { service, credential, ready } = storage();
   await ready;
   const blob = service.getContainerClient(file.container).getBlobClient(file.path);
@@ -212,7 +239,7 @@ export async function readableUrl(file: { container: string; path: string; origi
       permissions: BlobSASPermissions.parse("r"),
       startsOn: new Date(now - 60 * 1000),
       expiresOn: new Date(now + seconds * 1000),
-      contentDisposition: `${shownInline(file.mimeType) ? "inline" : "attachment"}${file.originalName ? `; filename*=UTF-8''${encodeURIComponent(file.originalName)}` : ""}`,
+      contentDisposition: `${shown}${file.originalName ? `; filename*=UTF-8''${encodeURIComponent(file.originalName)}` : ""}`,
     },
     credential,
   );

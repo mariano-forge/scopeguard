@@ -4,7 +4,7 @@
 // timeline with a mark for each comment at its moment, in its pin's colour. A mark opens its comment, which
 // brings the video to that moment (ReviewCanvas). Outside the zoomed pages: a click on it pins nothing.
 
-import { Pause, Play, Volume2, VolumeX } from "lucide-react";
+import { Fullscreen, Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { Hint } from "@/components/hint";
 import { formatTimecode } from "@/lib/timecode";
 import type { RequestKind } from "./CanvasComments";
@@ -13,7 +13,7 @@ import "./videoBar.css";
 export type VideoMark = { id: number; timecode: number; kind: RequestKind; agency: boolean; label: string };
 
 /** What the bar asks of the canvas's video, which the canvas owns. */
-export type VideoControls = { toggle: () => void; seek: (seconds: number) => void; toggleSound: () => void };
+export type VideoControls = { toggle: () => void; seek: (seconds: number) => void; toggleSound: () => void; fullScreen: () => void };
 
 export function VideoBar({
   controls,
@@ -37,7 +37,7 @@ export function VideoBar({
   const known = Number.isFinite(duration) && duration > 0;
   const at = (seconds: number) => `${known ? Math.min(100, (seconds / duration) * 100) : 0}%`;
 
-  const { toggle, seek, toggleSound } = controls;
+  const { toggle, seek, toggleSound, fullScreen } = controls;
 
   return (
     <div className="video-bar" role="group" aria-label="Lecture de la vidéo">
@@ -83,6 +83,11 @@ export function VideoBar({
       <Hint label={muted ? "Rétablir le son" : "Couper le son"} side="top">
         <button type="button" className="video-bar-button" aria-label={muted ? "Rétablir le son" : "Couper le son"} onClick={toggleSound}>
           {muted ? <VolumeX /> : <Volume2 />}
+        </button>
+      </Hint>
+      <Hint label="Vidéo en plein écran" side="top">
+        <button type="button" className="video-bar-button" aria-label="Vidéo en plein écran" onClick={fullScreen}>
+          <Fullscreen />
         </button>
       </Hint>
     </div>

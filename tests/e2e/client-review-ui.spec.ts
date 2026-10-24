@@ -49,6 +49,22 @@ const commentsOf = (org: string) =>
 const eventsOf = (org: string, type: string) => sql<{ actor: string; recorded_by: string }>("select data->>'actor' as actor, recorded_by from audit_events where organization_id = $1 and data->>'type' = $2", [org, type]);
 const notificationsOf = async (org: string) => (await sql<{ message: string }>("select data->>'message' as message from notifications where organization_id = $1", [org])).map((row) => row.message);
 
+test("the client puts the pins away with the eye of the canvas's toolbar, and brings them back", async ({ browser }) => {
+  const { page, errors } = await clientPage(browser);
+  await page.locator("[data-page]").first().click({ position: { x: 120, y: 90 } });
+  await page.getByRole("textbox", { name: "Commentaire" }).fill("Le logo est trop petit");
+  await page.getByRole("button", { name: "Publier" }).click();
+  const pins = page.locator("[data-page] .canvas-pin");
+  await expect(pins).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  const eye = page.getByRole("toolbar", { name: "Outils du canevas" }).getByRole("button", { name: "Masquer les commentaires" });
+  await eye.click();
+  await expect(pins).toHaveCount(0);
+  await eye.click();
+  await expect(pins).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
 test("the client comments, replies, edits and deletes on the page; the server signs each write", async ({ browser }) => {
   const { org, email, page, errors, writes } = await clientPage(browser);
 

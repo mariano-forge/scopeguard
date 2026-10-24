@@ -2,6 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
+import { baseURL } from "../../playwright.config";
 import {
   addColleague,
   call,
@@ -21,6 +22,45 @@ import {
   verifiedClient,
   clientAction,
 } from "./helpers";
+
+test("the deliverable's file is saved from the canvas's menu, by the agency and the invited client; nobody else gets it", async ({ browser }) => {
+  const alice = await signUp("Alice Martin");
+  await createAgency(alice, "Studio Téléchargement");
+  const { href } = (await upload(alice, makePdf("Maquette"), "maquette.pdf", { kind: "version", projectId: 1, livrableId: 1, version: 1 })).json as { href: string };
+  const token = unique("tok-dl");
+  await seedState(alice, {
+    lists: {
+      clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
+      projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },
+      deliverables: { upsert: [{ id: 1, projectId: 1, name: "maquette.pdf", type: "PDF", fileData: href, version: 1, status: "En attente client", importedAt: "22/10/2026 10:00", locked: false }], remove: [] },
+    },
+    maps: { reviewLinks: { upsert: { "1:1": { token, active: true, expiresAt: "01/01/2099", autoExpire: true, deliverableId: 1, version: 1 } }, remove: [] } },
+  });
+  // ?download: the same file, saved under its name, to the agency; shown otherwise.
+  const saved = await call(`${href}?download`, { person: alice });
+  expect(saved.status).toBe(302);
+  expect(decodeURIComponent(saved.response.headers.get("location")!)).toContain("attachment; filename*=UTF-8''maquette.pdf");
+  expect(decodeURIComponent((await call(href, { person: alice })).response.headers.get("location")!)).toContain("inline; filename*=UTF-8''maquette.pdf");
+  // Nobody else: another agency, or someone without a session.
+  const stranger = await signUp("Sam Dehors");
+  await createAgency(stranger, "Autre Studio");
+  expect((await call(`${href}?download`, { person: stranger })).status).toBe(404);
+  expect((await call(`${href}?download`)).status).toBe(404);
+
+  // The invited client, from the canvas's menu of the review page: the file is saved.
+  const email = `${unique("claire")}@client.test`;
+  await call("/api/review-access/invite", { person: alice, body: { linkKey: "1:1", emails: [email] } });
+  const client = await verifiedClient(token, email);
+  const { page, errors } = await newPerson(browser);
+  const [name, value] = client.cookie.split(";")[0].split("=");
+  await page.context().addCookies([{ name, value, url: baseURL }]);
+  await page.goto(`/review/${token}`);
+  await page.getByRole("button", { name: "Exporter ou télécharger" }).click();
+  await expect(page.getByRole("menuitem", { name: "Exporter les commentaires en PDF" })).toBeVisible();
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("menuitem", { name: "Télécharger le livrable" }).click()]);
+  expect(download.suggestedFilename()).toBe("maquette.pdf");
+  expect(errors).toEqual([]);
+});
 
 test("a PDF imported from the agency page is stored by version, shown, and served only to who may see it", async ({ browser }) => {
   const alice = await signUp("Alice Martin");

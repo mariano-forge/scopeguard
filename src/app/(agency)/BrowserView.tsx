@@ -3,7 +3,7 @@
 import { ViewTransition, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, FolderClosed, LayoutGrid, List, MessageSquare, Pencil, Plus, RotateCcw, Share2, Star, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderClosed, LayoutGrid, List, MessageSquareDot, Pencil, Plus, RotateCcw, Share2, Star, Trash2 } from "lucide-react";
 import { DeliverableCover } from "@/components/DeliverableCover";
 import { Select } from "@/components/Select";
 import { GettingStarted } from "./GettingStarted";
@@ -16,9 +16,13 @@ import { DeliverableIcon } from "@/components/DeliverableIcon";
 import { RegisterTable, ScopeCharts, type HomeAnalyticsData } from "./HomeAnalytics";
 import { LivrableFilter, type LivrableGroup } from "./LivrableFilter";
 import type { DeliverableType } from "@/components/deliverableKinds";
+import type { ProjectScope, ScopeAmendment } from "@/lib/projectScope";
+import { ProjectScopeEditor } from "./ProjectScope";
+import { ProjectTracking, type TrackingInput } from "./ProjectTracking";
+import { ScopeRecommendation } from "./ScopeRecommendation";
 
 type Client = { id: number; name: string; email: string };
-type Project = { id: number; name: string; clientId?: number; status: string };
+type Project = { id: number; name: string; clientId?: number; status: string; scope?: ProjectScope };
 type Deliverable = {
   id: number;
   projectId?: number;
@@ -61,6 +65,10 @@ type BrowserViewProps = {
   projects: Project[];
   deliverables: Deliverable[];
   comments: Comment[];
+  /** A project's accepted out-of-scope quotes: its scope's amendments. */
+  amendmentsFor: (projectId: number) => ScopeAmendment[];
+  /** What a project's « Suivi » is computed from. */
+  trackingFor: (projectId: number) => TrackingInput;
   recentLivrableIds: number[];
   todoItems: TodoItem[];
   /** Home figures for a selection of deliverables (null = all). */
@@ -235,6 +243,8 @@ export function BrowserView({
   projects,
   deliverables,
   comments,
+  amendmentsFor,
+  trackingFor,
   recentLivrableIds,
   todoItems,
   overviewFor,
@@ -357,8 +367,8 @@ export function BrowserView({
     const label = unread > 1 ? `${unread} nouveaux messages du client` : "1 nouveau message du client";
     return (
       <span className="unread-pill" title={label}>
-        <MessageSquare aria-hidden="true" />
-        {unread}
+        <MessageSquareDot aria-hidden="true" />
+        <span aria-hidden="true">{unread}</span>
         <span className="sr-only">{label}</span>
       </span>
     );
@@ -565,24 +575,38 @@ export function BrowserView({
     );
   }
 
-  // ----- Project: its deliverables
-  if (view.kind === "project") {
+  // ----- Project: its deliverables, or its scope
+  if (view.kind === "project" || view.kind === "scope" || view.kind === "tracking") {
     const project = projects.find((candidate) => candidate.id === view.projectId);
     if (!project) return <NotFound />;
     const client = clients.find((candidate) => candidate.id === (project.clientId ?? 1));
     const latest = latestOf(project.id);
     const sorted = sort === "name" ? [...latest].sort((left, right) => left.name.localeCompare(right.name, "fr")) : latest;
+    const tabs = (
+      <nav className="project-tabs" aria-label="Sections du projet">
+        <Link className="project-tab" href={href.project(project.id)} aria-current={view.kind === "project" ? "page" : undefined}>
+          Livrables <small>{latest.length}</small>
+        </Link>
+        <Link className="project-tab" href={href.scope(project.id)} aria-current={view.kind === "scope" ? "page" : undefined}>
+          Périmètre
+        </Link>
+        <Link className="project-tab" href={href.tracking(project.id)} aria-current={view.kind === "tracking" ? "page" : undefined}>
+          Suivi
+        </Link>
+      </nav>
+    );
     return (
       <div className="browser">
         {client ? <PageNav label={client.name} target={href.client(client.id)} /> : <PageNav />}
         <header className="page-header">
           <div className="page-identity">
-            <span className="page-icon">
+            <span className="page-icon" aria-hidden="true">
               <FolderClosed />
             </span>
             <RenamableTitle value={project.name} label="Renommer le projet" onRename={(name) => onRenameProject(project.id, name)} />
           </div>
           <div className="page-actions">
+            {/* Its settings beside the main action, as on a space's page. */}
             <EntitySettings
               kind="projet"
               name={project.name}
@@ -590,26 +614,39 @@ export function BrowserView({
               onRename={(name) => onRenameProject(project.id, name)}
               onDelete={() => onDeleteProject(project.id)}
               deleteLocked={!canManage}
-              moveTargets={clients.map((candidate) => ({ id: candidate.id, label: candidate.name }))}
-              currentTargetId={project.clientId ?? 1}
-              onMove={(clientId) => onMoveProject(project.id, clientId)}
             />
-            <button className="primary-button" onClick={onNewDeliverable}>
-              <Plus /> Ajouter un livrable
-            </button>
+            {view.kind === "project" && (
+              <button className="primary-button" onClick={onNewDeliverable}>
+                <Plus /> Ajouter un livrable
+              </button>
+            )}
           </div>
         </header>
+        {tabs}
         {error && (
           <div className="inline-error" role="alert">
             {error}
           </div>
         )}
+        {view.kind === "tracking" ? (
+          <ProjectTracking input={trackingFor(project.id)} />
+        ) : view.kind === "scope" ? (
+          // Re-keyed on what the server holds: once saved, the draft starts again from it.
+          <ProjectScopeEditor
+            key={JSON.stringify(project.scope ?? null)}
+            projectId={project.id}
+            scope={project.scope}
+            amendments={amendmentsFor(project.id)}
+          />
+        ) : (
+          <>
+        <ScopeRecommendation projectId={project.id} scope={project.scope} />
         <div className="page-toolbar">
           <span className="page-count">{plural(latest.length, "livrable")}</span>
           {viewControls}
         </div>
         {sorted.length === 0 ? (
-          <EmptyState icon={Plus} title="Aucun livrable" text="Importez un PDF ou une image pour lancer la première revue." />
+          <EmptyState icon={Plus} title="Aucun livrable" text="Ajoutez un premier livrable pour commencer : une maquette, un PDF, une vidéo ou le lien d’un site, que votre client commentera." />
         ) : layout === "grid" ? (
           <div className="file-grid">{sorted.map((record) => livrableCard(record))}</div>
         ) : (
@@ -641,6 +678,8 @@ export function BrowserView({
               );
             })}
           </ul>
+        )}
+          </>
         )}
       </div>
     );

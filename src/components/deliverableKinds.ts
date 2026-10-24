@@ -31,6 +31,8 @@ export const deliverableTypes = Object.keys(deliverableKinds) as DeliverableType
  * can be pinned; reviewing documents together is another tool's job). One made before still shows.
  */
 export const pickableTypes = deliverableTypes.filter((type) => type !== "Screens" && type !== "Doc");
+/** Said when a document is chosen anyway: what to do instead. */
+export const documentRefused = "Les documents Word, PowerPoint ou Excel ne sont plus pris en charge : exportez-le en PDF.";
 
 /** Largest import (MAX_UPLOAD_MB, exposed by next.config.ts); the server checks it again. */
 export const MAX_FILE_BYTES = (Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB) || 50) * 1024 * 1024;

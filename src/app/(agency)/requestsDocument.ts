@@ -26,7 +26,7 @@ export function requestsHtml(title: string, comments: ThreadComment[], statusOf:
           const messages = [{ author: comment.author, message: comment.message, createdAt: comment.createdAt }, ...(comment.replies ?? [])]
             .map((message) => `<p class="message"><b>${escapeHtml(message.author)}</b>${day(message.createdAt) ? ` · ${escapeHtml(day(message.createdAt))}` : ""}<br>${escapeHtml(message.message)}</p>`)
             .join("");
-          return `<li><div class="row"><b>${escapeHtml(requestText(comment))}</b>${status ? `<span class="tag">${escapeHtml(status)}</span>` : ""}${comment.closed ? `<span class="tag">Close</span>` : ""}</div>
+          return `<li><div class="row"><b>${escapeHtml(requestText(comment))}</b>${status ? `<span class="tag">${escapeHtml(status)}</span>` : ""}${comment.closed ? `<span class="tag">Clôturée</span>` : ""}</div>
             <small>${escapeHtml(comment.location)}</small>
             ${comment.description ? `<p class="description">${escapeHtml(comment.description)}</p>` : ""}
             <div class="thread">${messages}</div></li>`;

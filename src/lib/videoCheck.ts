@@ -15,10 +15,8 @@ const sparseGapSeconds = 10;
 const maxIndexBytes = 64 * 1024 * 1024;
 
 export const videoWarningText: Record<VideoWarning, string> = {
-  unplayable:
-    "Ce navigateur ne sait pas lire cette vidéo (souvent un ProRes ou un HEVC). Votre client risque de ne pas pouvoir la regarder : exportez une copie en MP4 (H.264). Vous pouvez aussi l’importer telle quelle.",
-  sparse:
-    "Cette vidéo risque de « baver » quand on saute à un moment précis (fréquent avec les enregistreurs d’écran). Pour une lecture nette, réexportez-la en MP4 (H.264) depuis votre logiciel de montage. Vous pouvez aussi l’importer telle quelle.",
+  unplayable: "Votre client risque de ne pas pouvoir regarder cette vidéo. Pour qu’elle se lise partout, exportez-la en MP4 depuis votre logiciel de montage.",
+  sparse: "Le rendu de cette vidéo risque d’être dégradé par moments. Pour une meilleure qualité, exportez-la en MP4 (H.264) avec une image clé toutes les 2 secondes.",
 };
 
 /** What to tell the agency of this video, or null: nothing to say, or nothing could be learnt. */

@@ -4,6 +4,7 @@
 // new deliverable dialog.
 
 import { expect, test, type Browser } from "@playwright/test";
+import { baseURL } from "../../playwright.config";
 import { call, createAgency, newPerson, seedState, signInPage, signUp, sql, unique, verifiedClient, type Member } from "./helpers";
 
 const quote = (id: number, commentId: number, status: string) => ({ id, commentId, version: 1, amount: 900, deadline: 3, status, createdAt: "x", description: "Devis" });
@@ -72,6 +73,32 @@ test("the requests panel is resized by its edge, with the keyboard too, and keep
   // The width is kept for the next visit.
   await page.reload();
   await expect.poll(async () => Math.round((await page.getByRole("complementary", { name: "Demandes" }).boundingBox())!.width)).toBe(Math.round(before) + 104);
+  expect(errors).toEqual([]);
+});
+
+test("the eye of the canvas's toolbar (or H) puts the pins away and brings them back; the comment opened keeps its own", async ({ browser }) => {
+  const { page, errors } = await editor(browser);
+  const pins = page.locator("[data-page] .canvas-pin");
+  const eye = page.getByRole("toolbar", { name: "Outils du canevas" }).getByRole("button", { name: "Masquer les commentaires" });
+  await expect(pins).toHaveCount(2);
+  await expect(eye).toHaveAttribute("aria-pressed", "false");
+  await eye.click();
+  await expect(pins).toHaveCount(0);
+  await expect(eye).toHaveAttribute("aria-pressed", "true");
+  // The keyboard, as the canvas's other tools: H.
+  await page.keyboard.press("h");
+  await expect(pins).toHaveCount(2);
+  await page.keyboard.press("h");
+  await expect(pins).toHaveCount(0);
+  // A comment opened from the panel shows its pin and its thread, the others staying away.
+  const panel = page.getByRole("complementary", { name: "Demandes" });
+  await panel.getByRole("tab", { name: /^À clarifier/ }).click();
+  await panel.getByRole("tabpanel").getByRole("button", { name: /#30$/ }).click();
+  await expect(pins).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /^Commentaire #30 :/ })).toBeVisible();
+  // Typing in the thread is not a shortcut.
+  await page.getByRole("dialog", { name: /#30$/ }).getByRole("textbox").first().fill("h");
+  await expect(eye).toHaveAttribute("aria-pressed", "true");
   expect(errors).toEqual([]);
 });
 
@@ -203,6 +230,17 @@ test("a closed discussion is read-only for both sides until the agency reopens i
   expect((await agencyReply(alice, 30, "Une précision")).status).toBe(409);
   const seen = (await call(`/api/review/${token}`, { person: client })).json as { state: { comments: { id: number; closed?: boolean }[] } };
   expect(seen.state.comments.find((comment) => comment.id === 30)?.closed).toBe(true);
+  // On their page, under the agency's word for it: « Clôturées ».
+  const { page: clientPage, errors: clientErrors } = await newPerson(browser);
+  const [name, value] = client.cookie.split(";")[0].split("=");
+  await clientPage.context().addCookies([{ name, value, url: baseURL }]);
+  await clientPage.goto(`/review/${token}`);
+  const closedTab = clientPage.getByRole("tab", { name: /^Clôturées\s*1/ });
+  await closedTab.click();
+  await expect(closedTab).toHaveAttribute("aria-selected", "true");
+  await expect(clientPage.getByRole("tabpanel")).toContainText("Le logo plus grand");
+  await expect(clientPage.getByRole("tabpanel")).toContainText("Clôturée");
+  expect(clientErrors).toEqual([]);
   // An event in the journal, for the proof.
   expect((await sql("select 1 from audit_events where organization_id = $1 and type = 'comment.closed'", [org])).length).toBe(1);
 
@@ -311,15 +349,17 @@ test("a request without pin opens by the panel; a long one scrolls in its bubble
   expect(errors).toEqual([]);
 });
 
-test("« Exporter en PDF » opens the version's requests as a printable page, without the agency's drafts", async ({ browser }) => {
+test("« Exporter les commentaires en PDF » opens the version's requests as a printable page, without the agency's drafts", async ({ browser }) => {
   const { page, errors } = await editor(browser);
   await page.context().addInitScript(() => {
     window.print = () => {
       document.title = `Imprimée · ${document.title}`;
     };
   });
-  await page.getByRole("button", { name: "Copier ou exporter les demandes" }).click();
-  const [printable] = await Promise.all([page.waitForEvent("popup"), page.getByRole("menuitem", { name: "Exporter en PDF" }).click()]);
+  await page.getByRole("button", { name: "Exporter ou télécharger" }).click();
+  // A deliverable without a file (seeded without one): nothing to download.
+  await expect(page.getByRole("menuitem", { name: "Télécharger le livrable" })).toHaveCount(0);
+  const [printable] = await Promise.all([page.waitForEvent("popup"), page.getByRole("menuitem", { name: "Exporter les commentaires en PDF" }).click()]);
   // A page of its own, which prints itself once loaded (no window asked to print by another).
   expect(printable.url()).toMatch(/^blob:/);
   // It asks to print by itself (print() marked in this test browser instead of opening its dialog).
@@ -350,6 +390,18 @@ test("the conversation goes on once a request is qualified, out of scope too, fo
   expect((await clientReply(42, "Non, à part")).status).toBe(200);
   await expect(bubble).toContainText("Non, à part");
   expect(await replies()).toEqual(["Le blog inclut-il la newsletter ?", "Non, à part"]);
+  expect(errors).toEqual([]);
+});
+
+test("the project's list tells, on each deliverable, how many messages of the client nobody has read", async ({ browser }) => {
+  const { page, errors, clientReply } = await sharedVersion(browser);
+  expect((await clientReply(30, "Et la couleur du bouton ?")).status).toBe(200);
+  await page.goto("/projets/1");
+  // A number on the row, said whole for a screen reader.
+  const pill = page.locator(".unread-pill").first();
+  await expect(pill.locator("[aria-hidden='true']").last()).toHaveText("2");
+  await expect(pill).toContainText("2 nouveaux messages du client");
+  await expect(pill).toHaveAttribute("title", "2 nouveaux messages du client");
   expect(errors).toEqual([]);
 });
 
@@ -393,7 +445,7 @@ test("the hand moves the view, the wheel button too in comment mode; « + » ope
   const toolbar = page.getByRole("toolbar", { name: "Outils du canevas" });
   // No import in the toolbar: a version is added from the sidebar or the deliverable's menu.
   await expect(toolbar.getByRole("button", { name: "Importer une nouvelle version" })).toHaveCount(0);
-  await expect(toolbar.getByRole("button", { name: "Commentaire" })).toHaveAttribute("aria-pressed", "true");
+  await expect(toolbar.getByRole("button", { name: "Commentaire", exact: true })).toHaveAttribute("aria-pressed", "true");
 
   // Comment mode: the wheel button drags the deliverable, no comment is opened.
   const content = page.locator(".artboard-transform-content");
@@ -457,7 +509,7 @@ test("a drawn zone shows on its pin's hover; moving the pin moves its corner onl
   // The active tab keeps its line; a menu's rows keep their size on hover; dialogs on a dark ground.
   const active = page.getByRole("complementary", { name: "Demandes" }).getByRole("tab", { selected: true }).last();
   expect(await active.evaluate((element) => getComputedStyle(element).boxShadow)).toContain("inset");
-  await page.getByRole("button", { name: "Copier ou exporter les demandes" }).click();
+  await page.getByRole("button", { name: "Exporter ou télécharger" }).click();
   const item = page.getByRole("menuitem", { name: "Copier les demandes" });
   // Measured once the menu has finished opening (it grows from 95 %).
   await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"));
