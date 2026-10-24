@@ -8,7 +8,7 @@ import type { AddressInfo } from "node:net";
 import { expect, test } from "@playwright/test";
 import { anthropicModel } from "../../src/lib/ai/anthropic";
 import { azureScopeReader, azureSuggestionModel, completionsUrl } from "../../src/lib/ai/azureOpenAI";
-import { readingText, readingTool } from "../../src/lib/ai/scopeReading";
+import { readingText, readingTool, withoutRepeatedQuantity } from "../../src/lib/ai/scopeReading";
 import { readExtracted } from "../../src/lib/scopeExtraction";
 import { makePdf } from "./makePdf";
 import { fakeModel, suggestionModel } from "../../src/lib/ai/provider";
@@ -233,6 +233,28 @@ test("a PDF without words (a scan) is not sent to the model: the agency is told 
     const blank = Buffer.from(pdf.toString("latin1").replace(/BT .* ET/, (drawn) => " ".repeat(drawn.length)), "latin1");
     await expect(extract({ pdf: { name: "scan.pdf", bytes: blank } })).rejects.toThrow("collez son texte");
     expect(azure.received).toHaveLength(0);
+  } finally {
+    await azure.close();
+  }
+});
+
+test("a quantity given apart is taken out of the title where the model leaves it: at the end after a dash, or the number at the start", async () => {
+  const tidy = (title: string, quantity: number | null, unit: string | null) => withoutRepeatedQuantity({ kind: "included", title, quantity, unit }).title;
+  expect(tidy("Formation à l’administration — 2 heures", 2, "heures")).toBe("Formation à l’administration");
+  expect(tidy("Bannières : 12 visuels", 12, "visuels")).toBe("Bannières");
+  expect(tidy("Charte graphique – 1,5 jour", 1.5, "jours")).toBe("Charte graphique");
+  expect(tidy("2 tours de corrections sur les maquettes", 2, "tours de corrections")).toBe("Tours de corrections sur les maquettes");
+  // Elsewhere, or another number, or no quantity apart: as written.
+  expect(tidy("Galerie — 40 photos fournies par le client", 40, "photos")).toBe("Galerie — 40 photos fournies par le client");
+  expect(tidy("Formation — 3 heures", 2, "heures")).toBe("Formation — 3 heures");
+  expect(tidy("Hébergement — 12 mois", null, null)).toBe("Hébergement — 12 mois");
+  expect(tidy("Top 10 des pages", 10, "pages")).toBe("Top 10 des pages");
+
+  // Applied to what the model proposes.
+  const azure = await standIn(() => ({ status: 200, json: toolCall(readingTool.name, { items: [{ kind: "included", title: "Intégration — 6 pages", quantity: 6, unit: "pages" }] }) }));
+  try {
+    const extract = readingText(azureScopeReader({ endpoint: azure.baseUrl, apiKey: "az", deployment: "kora-mini" }));
+    expect(readExtracted(await extract({ text: "Intégration — 6 pages" }))).toEqual([{ kind: "included", title: "Intégration", quantity: 6, unit: "pages", source: undefined }]);
   } finally {
     await azure.close();
   }
