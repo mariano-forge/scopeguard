@@ -11,6 +11,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { sideOf, type Side } from "@/lib/authors";
 import { sourceLine, type RequestSource } from "@/lib/requestSource";
 import { formatTimecode } from "@/lib/timecode";
+import type { CitedLine } from "@/lib/scopeCitation";
+import { CitedLineField, SuggestionNote, useSuggestion, type ScopeAssist } from "./QualifyAssist";
 
 /**
  * One request, three states:
@@ -73,6 +75,8 @@ export type ThreadComment = {
   sourceId?: number;
   /** Where a request entered by the agency came from (src/lib/requestSource.ts). */
   source?: RequestSource;
+  /** An « Inclus »: the line of the project's active scope the agency cited (src/lib/scopeCitation.ts). */
+  scopeLine?: CitedLine;
   /** A pin the agency dropped (its draft until qualified). */
   internalNote?: boolean;
   /** Placed on the staging site, with the capture of the window (src/lib/siteReview.ts). */
@@ -361,7 +365,8 @@ export type Quote = { amount: number; days: number; counter: boolean };
 /** `retry`: the client refused (or the adaptation was refused): the agency can quote a new version. */
 export type ProposalStage = { stage: "none" } | { stage: "draft" } | { stage: "sent"; label: string; retry?: boolean };
 
-export type Qualified = { title: string; description: string; decision: Qualification; quote?: Quote };
+/** `scopeLineId`: the line of the active scope an « Inclus » cites (src/lib/scopeCitation.ts). */
+export type Qualified = { title: string; description: string; decision: Qualification; quote?: Quote; scopeLineId?: number };
 
 /**
  * Bubble next to its pin (Figma-like). A comment shows its conversation and "Qualifier" (agency);
@@ -384,6 +389,7 @@ export function ThreadPopover({
   me,
   onEditMessage,
   onDeleteMessage,
+  assist,
 }: {
   comment: ThreadComment;
   readOnly: boolean;
@@ -412,6 +418,8 @@ export function ThreadPopover({
   onEditMessage?: (messageId: number, message: string) => void;
   /** Deletes a reply (the comment itself is deleted with onDelete). */
   onDeleteMessage?: (messageId: number) => void;
+  /** Agency: the project's active scope, for the line an « Inclus » cites and the AI's suggestion. */
+  assist?: ScopeAssist;
 }) {
   const kind = requestKind(comment);
   /** A request (qualified, or back to clarify with its title) rather than a comment. */
@@ -431,6 +439,15 @@ export function ThreadPopover({
   const [amount, setAmount] = useState(quote ? String(quote.amount) : "");
   const [days, setDays] = useState(quote ? String(quote.days) : "");
   const [counter, setCounter] = useState(quote?.counter ?? false);
+  const [lineId, setLineId] = useState(comment.scopeLine?.id);
+  // Once the agency changed the form, a suggestion arriving late no longer overwrites it.
+  const touched = useRef(false);
+  const suggestion = useSuggestion(assist?.suggestionPath, (suggested) => {
+    if (touched.current) return;
+    setDecision(suggested.decision);
+    setLineId(suggested.line?.id);
+    if (suggested.title) setTitle((typed) => typed.trim() || suggested.title!);
+  });
   const quoteReady = !quoteOn || decision !== "Hors périmètre" || Number(amount) > 0;
   // Sent incomplete once: each missing required field says so, in red, under it.
   const [tried, setTried] = useState(false);
@@ -479,7 +496,15 @@ export function ThreadPopover({
         <span className="thread-header-actions">
           {!asRequest && onQualify && canWrite && !qualifying && (
             <Hint label="Qualifier en demande : à clarifier, incluse ou hors scope">
-              <Button size="sm" className="thread-create" onClick={() => setQualifying(true)}>
+              <Button
+                size="sm"
+                className="thread-create"
+                onClick={() => {
+                  touched.current = false;
+                  setQualifying(true);
+                  suggestion.ask();
+                }}
+              >
                 <Tag /> Qualifier
               </Button>
             </Hint>
@@ -519,16 +544,36 @@ export function ThreadPopover({
               description: description.trim(),
               decision,
               quote: decision === "Hors périmètre" && quoteOn ? { amount: Number(amount), days: Number(days) || 0, counter } : undefined,
+              scopeLineId: decision === "Inclus" ? lineId : undefined,
             });
             setQualifying(false);
           }}
         >
+          <SuggestionNote state={suggestion.state} />
           <div className="scope-field">
             <span className="scope-field-label" id={`scope-${comment.id}`}>
               Qualifier la demande
             </span>
-            <ScopeChoice value={decision} onChange={setDecision} clarify />
+            <ScopeChoice
+              value={decision}
+              onChange={(value) => {
+                touched.current = true;
+                setDecision(value);
+              }}
+              clarify
+            />
           </div>
+          {decision === "Inclus" && (
+            <CitedLineField
+              id={`line-${comment.id}`}
+              lines={assist?.lines ?? []}
+              value={lineId}
+              onChange={(value) => {
+                touched.current = true;
+                setLineId(value);
+              }}
+            />
+          )}
           <label>
             <span>
               Titre de la demande <span className="text-destructive" aria-hidden="true">*</span>
@@ -537,7 +582,10 @@ export function ThreadPopover({
               autoFocus
               required
               value={title}
-              onChange={(event) => setTitle(event.target.value)}
+              onChange={(event) => {
+                touched.current = true;
+                setTitle(event.target.value);
+              }}
               placeholder="Ex. : Ajouter une section témoignages"
               aria-invalid={titleMissing || undefined}
               aria-describedby={titleMissing ? `title-error-${comment.id}` : undefined}
@@ -621,6 +669,11 @@ export function ThreadPopover({
                 <span className="kind-pill">{kind === "outside" ? "Hors scope" : kind === "correction" ? "Inclus" : "À clarifier"}</span>
               </p>
               <p className="request-title">{requestText(comment)}</p>
+              {kind === "correction" && comment.scopeLine && (
+                <p className="request-cited">
+                  Prévu par la ligne du périmètre : <b>{comment.scopeLine.title}</b>
+                </p>
+              )}
               {comment.description && <p className="request-description">{comment.description}</p>}
             </div>
           )}

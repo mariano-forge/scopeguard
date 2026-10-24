@@ -10582,6 +10582,51 @@ body.is-resizing {
   background: var(--mist);
   color: var(--graphite);
 }
-.source-icon-kora {
+
+/* The AI's suggestion in a qualifying form (src/app/(agency)/editor/QualifyAssist.tsx): a note above the
+   choice, never a decision; and the line of the active scope an « Inclus » cites. */
+.qualify-suggestion {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+  background: var(--status-low-bg);
+  padding: var(--s-2) var(--s-3);
+  color: var(--status-low-text);
+  font: var(--t-caption) var(--font-ui);
+}
+.qualify-suggestion p {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+.qualify-suggestion svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.qualify-suggestion .qualify-suggestion-reason {
   color: var(--ink);
+}
+.qualify-suggestion small {
+  color: var(--graphite);
+}
+.qualify-line {
+  border: 1px solid var(--border-input);
+  border-radius: var(--r-field);
+  background: var(--paper);
+  padding: var(--s-2) var(--s-3);
+  color: var(--ink);
+  font: var(--t-ui) var(--font-ui);
+}
+.request-cited {
+  margin: 0;
+  color: var(--graphite);
+  font: var(--t-caption) var(--font-ui);
+}
+.request-cited b {
+  color: var(--ink);
+  font-weight: 600;
 }

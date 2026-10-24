@@ -268,7 +268,8 @@ test("« Extraire avec l’IA »: a pasted text or a PDF read into items, review
   await page.getByLabel("Document de référence").setInputFiles({ name: "devis-signe.pdf", mimeType: "application/pdf", buffer: makePdf("Devis") });
   await expect(intake).toContainText("devis-signe.pdf");
   await intake.getByRole("button", { name: "Lancer l’extraction" }).click();
-  await expect(intake.getByRole("group", { name: "Éléments proposés" })).toContainText("Contenu de devis-signe.pdf");
+  // Read as a model gets it: the words of the PDF, read by the server.
+  await expect(intake.getByRole("group", { name: "Éléments proposés" })).toContainText("Devis - page 1");
   await intake.getByRole("button", { name: "Ignorer" }).click();
   // The PDF taken away: the zone is free again; the draft is back to what is saved (no document), nothing to save.
   await intake.getByRole("button", { name: "Retirer le PDF à lire (devis-signe.pdf)" }).click();
@@ -301,7 +302,13 @@ test("the extraction reads only what the agency may: a text or one of its own PD
   const own = (await upload(alice, makePdf("Devis"), "devis.pdf", { kind: "scope", projectId: 1 })).json.href!;
   const fromPdf = await extract(alice, { file: own });
   expect(fromPdf.status).toBe(200);
-  expect(fromPdf.json.items).toEqual([{ kind: "included", title: "Contenu de devis.pdf", source: "devis.pdf" }]);
+  expect(fromPdf.json.items).toEqual([{ kind: "included", title: "Devis - page 1", source: "devis.pdf" }]);
+  // A PDF without words (a scan): the agency is told to paste its text.
+  const blank = makePdf("Scan").toString("latin1").replace(/BT .* ET/, (drawn) => " ".repeat(drawn.length));
+  const scan = (await upload(alice, Buffer.from(blank, "latin1"), "scan.pdf", { kind: "scope", projectId: 1 })).json.href!;
+  const fromScan = await extract(alice, { file: scan });
+  expect(fromScan.status).toBe(502);
+  expect(fromScan.json.error).toContain("collez son texte");
   const fromText = await extract(alice, { text: "Logo — 3 formats\nNon inclus\nImpression" });
   expect(fromText.json.items).toEqual([
     { kind: "included", title: "Logo", quantity: 3, unit: "formats" },

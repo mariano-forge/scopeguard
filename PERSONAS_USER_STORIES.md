@@ -916,7 +916,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 **Critères d'acceptation**
 
 - « + Demande » crée une demande « À clarifier », « Inclus » ou « Hors scope », pour une demande reçue ailleurs ou portant sur tout le livrable (une zone qu'on ne peut pas pointer).
-- La source est facultative : E-mail, Appel, Réunion, Slack, Teams, Figma ou Autre, avec la date de la demande d'origine. La carte de la demande la montre d'un coup d'œil par une icône (logo officiel pour Slack, Teams et Figma ; symbole de Kora pour ce qui est fait dans Kora).
+- La source est facultative : E-mail, Appel, Réunion, Slack, Teams, Figma ou Autre, avec la date de la demande d'origine. La carte de la demande la montre d'un coup d'œil par une icône (logo officiel pour Slack, Teams et Figma) ; une demande faite dans Kora n'en a pas.
 - L'agence peut coller le texte du client (l'extrait) et joindre une capture (image collée dans l'extrait ou choisie) ; les deux sont indiqués « Visible par le client ».
 - La demande affiche « Demande reçue par e-mail le 14/10/2026, saisie par Alice Martin », avec l'extrait et la capture, chez l'agence comme chez le client.
 - Le serveur n'accepte qu'un canal connu, une date valide, un extrait de 5 000 caractères au plus, et une image importée par l'agence elle-même.
@@ -982,7 +982,9 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 > - **Côté client** : il lit le périmètre actif depuis sa page de revue (inclus, non inclus, avenants de sa version), et a sa propre cloche : réponses de l'agence, devis à valider, ses demandes qualifiées, nouvelle version partagée.
 > - Un onglet « Clients » (organisation, contacts et leurs accès) a été essayé puis abandonné le 23 octobre 2026 : les invités des livrables suffisent.
 >
-> À venir : la confirmation du périmètre par le client, la ligne citée à la qualification, le branchement du moteur d'extraction.
+> - **IA** (24 octobre 2026, GPT-5 mini sur Azure) : « Extraire avec l'IA » lit le devis (texte ou PDF, lu par le serveur) ; à la qualification d'une demande, l'IA suggère « Inclus », « Hors scope » ou « À clarifier », la ligne du périmètre actif et un titre, ce qui pré-remplit le formulaire (automatiquement à l'ouverture, ou par « Suggérer avec l'IA » dans « + Demande »). L'agence décide ; e-mails et téléphones masqués avant l'envoi. Une demande « Inclus » cite la ligne du périmètre choisie par l'agence : le client et la preuve la lisent.
+>
+> À venir : la confirmation du périmètre par le client, la suggestion dans la barre du site de recette.
 
 #### US-046 : offrir une demande hors périmètre
 
@@ -1280,7 +1282,7 @@ Si ce scénario fonctionne avec trois agences pilotes, Kora possède une base pr
 | US-042 confirmer son identité par un code | ✅ | Nom complet demandé à la première vérification |
 | US-043 demander l'accès à une revue | ⛔ | Pour des raisons de sécurité (21 octobre 2026) ; les demandes déjà reçues se règlent encore |
 | US-044 prévisualiser la page client | ✅ | |
-| US-045 périmètre de référence | 🟡 | En cours : l'écran du périmètre (designer). Le moteur de suggestion IA est prêt (`src/lib/ai/`, Claude ou aucun), à brancher sur ses lignes de devis |
+| US-045 périmètre de référence | 🟡 | Écran du périmètre, extraction par l'IA, suggestion de qualification et ligne citée faits ; reste la confirmation du périmètre par le client |
 | US-046 demande offerte | ⬜ | |
 | US-047 envoi vers Jira ou Notion | ⬜ | |
 | US-048 annoter un site web en ligne | 🟡 | Essai du 17 octobre : barre sur le site, vérification par code dans le panneau, demande posée sur un élément, épingles, « élément introuvable » ; testé dans Chrome. Site en `https` obligatoire. L'agence dans la barre (fenêtre Kora, commentaires, réponses, qualification ; devis et partage refusés depuis le site). Passage vers la revue Kora sans nouveau code, avec l'appel « devis en attente ». Capture de la fenêtre au clic, dans le fil et la preuve. Ligne de script posée une fois (clé fixe du livrable, dernière version partagée), donnée selon l'outil du site, avec la détection en direct de la barre sur le site ; les e-mails d'invitation et de relance mènent au site avec `?kora`. Dans Kora, un tableau de recette : chaque demande en page du canevas, sa capture avec son épingle. À faire : Safari et Firefox à vérifier à la main, mobile |
@@ -1299,7 +1301,7 @@ Si ce scénario fonctionne avec trois agences pilotes, Kora possède une base pr
 
 **Prochaines étapes** (23 octobre 2026), dans l'ordre :
 
-1. **US-045, périmètre et suggestion IA.** L'écran du périmètre est fait (onglets Périmètre et Suivi, 24 octobre 2026, voir US-045). Reste : brancher le moteur d'extraction et la suggestion de qualification sur `AI_PROVIDER` (un seul réglage pour les deux, décidé le 24 octobre 2026), citer la ligne du périmètre à la qualification, la confirmation du périmètre par le client ; choisir le fournisseur (API Claude d'Anthropic, ou Azure : Claude dans Foundry, ou OpenAI en Europe, conseillé pour le RGPD) et une clé d'API pour un essai réel.
+1. **US-045, périmètre et suggestion IA.** L'écran du périmètre est fait (onglets Périmètre et Suivi, 24 octobre 2026, voir US-045). Fournisseur choisi le 24 octobre 2026 : GPT-5 mini sur Azure (Microsoft Foundry ; Claude n'est pas proposé dans la zone UE d'Azure), en « Global Standard » pour les essais, à passer en « Data Zone Standard » européen avant la mise en ligne, un seul réglage `AI_PROVIDER=azure` pour les deux usages. Fait : le moteur d'extraction (le texte des PDF lu par le serveur, essai réel concluant le 24 octobre), la suggestion à la qualification et la ligne citée (essai réel concluant le 24 octobre). Reste : la confirmation du périmètre par le client, la suggestion dans la barre du site de recette, le passage en « Data Zone Standard » avant la mise en ligne.
 2. **Essai sur une préversion Vercel**, avec le vrai Azure : une vidéo de plusieurs centaines de Mo à 1 Go envoyée par blocs, une vraie vidéo MP4 (aucun avertissement, sauts nets), la capture GNOME (avertissement), la barre détectée sur le site de démo Café Boréal, Safari et Firefox.
 3. **Notes internes** : le designer revient sur le fait de montrer tout le fil d'une demande qualifiée au client. Le README décrit encore l'ancien comportement (notes internes, « Hors scope » visible une fois le devis envoyé), AGENTS.md le nouveau : aligner l'un sur l'autre une fois son retour fait.
 4. **Test instable du designer** : glisser une épingle sur une capture d'un « Lien » (`site-toolbar.spec.ts`) échoue parfois dans la suite complète. Vu aussi une fois le 23 octobre 2026 (1 passage complet sur environ 20, branche `feat/figma-comments`, qui ne touche ni la barre ni ce test) : « once in, Kora's logo opens the bar alone » n'a pas trouvé le bouton « Commenter » après la touche C, alors que le panneau de vérification était ouvert ; 20 passages sur 20 seul et 4 passages complets ensuite sans échec, trace perdue : à surveiller, peut-être la même cause (un état relu trop tôt). Cause probable : `ReviewCanvas.tsx` lit au relâchement un état `moving` pas encore rendu ; le corriger par une référence (`useRef`).

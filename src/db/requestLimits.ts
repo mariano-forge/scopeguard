@@ -18,6 +18,8 @@ export const requestLimit = {
   accessCodes: () => ({ max: limit("ACCESS_CODES_PER_HOUR", 30), seconds: 3600 }),
   /** Scope extractions a member may launch per hour: each one may call a paid AI. */
   extractions: () => ({ max: limit("EXTRACTIONS_PER_HOUR", 30), seconds: 3600 }),
+  /** Qualification suggestions a member may ask per hour: one each time a qualifying form opens. */
+  suggestions: () => ({ max: limit("SUGGESTIONS_PER_HOUR", 300), seconds: 3600 }),
   /** Demo requests from the public landing page, per address: a mail goes out, from anyone. */
   demo: () => ({ max: limit("DEMO_REQUESTS_PER_HOUR", 5), seconds: 3600 }),
 };

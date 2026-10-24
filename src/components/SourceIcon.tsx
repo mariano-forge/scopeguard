@@ -2,13 +2,12 @@
 
 // Where a request came from, as a small icon (src/lib/requestSource.ts): the official logo for Slack, Teams
 // and Figma, unchanged, as their brand rules allow to say where something comes from (their colours belong
-// to the logo: the one exception to Kora's tokens); a Kora glyph on a tinted disc for the other channels;
-// Kora's own mark for what was made in Kora (pinned on the deliverable, or entered without a source).
+// to the logo: the one exception to Kora's tokens); a Kora glyph on a tinted disc for the other channels.
+// What was made in Kora shows none: most requests are, a mark on each said nothing (24 October 2026).
 
 import { useId } from "react";
 import { Ellipsis, Mail, Phone, Users, type LucideIcon } from "lucide-react";
 import type { RequestChannel } from "@/lib/requestSource";
-import { KoraMark } from "./KoraMark";
 
 /** Slack's mark (2019), as published by Slack. */
 function SlackLogo({ size }: { size: number }) {
@@ -66,9 +65,7 @@ function TeamsLogo({ size }: { size: number }) {
 /** The other sources: a Kora glyph on a disc tinted with Kora's colours (globals.css .source-icon-*). */
 const glyphs: Partial<Record<RequestChannel, LucideIcon>> = { email: Mail, call: Phone, meeting: Users, other: Ellipsis };
 
-/** `channel` null: made in Kora. */
-export function SourceIcon({ channel, size = 16 }: { channel: RequestChannel | null; size?: number }) {
-  if (channel === null) return <KoraMark className="source-icon-kora" width={size} height={size} />;
+export function SourceIcon({ channel, size = 16 }: { channel: RequestChannel; size?: number }) {
   if (channel === "slack") return <SlackLogo size={size} />;
   if (channel === "teams") return <TeamsLogo size={size} />;
   if (channel === "figma") return <FigmaLogo size={size} />;

@@ -16,14 +16,19 @@ const nextConfig: NextConfig = {
   },
   // The storage SDK is loaded by Node, once: bundled, a reload of the dev server could evaluate a second
   // copy of @azure/storage-common, whose key class the first copy's SAS signing no longer recognises
-  // (« Invalid sharedKeyCredential »: every file answered 503, src/lib/storage.ts).
-  serverExternalPackages: ["@azure/storage-blob", "@azure/storage-common"],
+  // (« Invalid sharedKeyCredential »: every file answered 503, src/lib/storage.ts). pdf.js too, on the server
+  // (src/lib/pdfText.ts): loaded by Node, it finds its worker file next to it, a file it imports by a name
+  // the build cannot see, so the extraction's route is given it.
+  serverExternalPackages: ["@azure/storage-blob", "@azure/storage-common", "pdfjs-dist"],
+  outputFileTracingIncludes: { "/api/projects/\\[projectId\\]/scope/extraction": ["./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"] },
   // The import limits, known to the pages too (the server checks them again in /api/files); whether « Nouveau
-  // livrable » offers Figma comments (FIGMA_COMMENTS, src/lib/figmaLink.ts).
+  // livrable » offers Figma comments (FIGMA_COMMENTS, src/lib/figmaLink.ts); whether the qualifying forms ask
+  // the AI for a suggestion (AI_PROVIDER set, src/lib/qualificationSuggestion.ts).
   env: {
     NEXT_PUBLIC_MAX_UPLOAD_MB: process.env.MAX_UPLOAD_MB ?? "50",
     NEXT_PUBLIC_MAX_VIDEO_UPLOAD_MB: process.env.MAX_VIDEO_UPLOAD_MB ?? "1024",
     NEXT_PUBLIC_FIGMA_COMMENTS: process.env.FIGMA_COMMENTS ?? "",
+    NEXT_PUBLIC_AI_SUGGESTIONS: process.env.AI_PROVIDER ? "1" : "",
   },
   // pdf.js 6 relies on JavaScript only the latest browsers have (Map.getOrInsertComputed, Math.sumPrecise):
   // its legacy build carries polyfills, so a PDF also opens in an older Safari or a Firefox ESR.

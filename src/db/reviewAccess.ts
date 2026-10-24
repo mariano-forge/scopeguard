@@ -225,7 +225,7 @@ function repliesAllowed(before: Reply[], after: Reply[]) {
   return after.every((reply) => known.has(reply.id) || byClient(reply));
 }
 
-const qualificationFields = ["id", "deliverableId", "author", "initials", "from", "authorEmail", "decision", "kind", "title", "description", "sourceId", "createdAt"];
+const qualificationFields = ["id", "deliverableId", "author", "initials", "from", "authorEmail", "decision", "kind", "title", "description", "scopeLine", "sourceId", "createdAt"];
 const placementFields = ["message", "edited", "location", "page", "position", "area", "timecode"];
 
 function commentAllowed(before: Data | undefined, after: Data, deliverableId: number) {
