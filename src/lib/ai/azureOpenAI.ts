@@ -29,7 +29,10 @@ export const completionsUrl = (endpoint: string) => `${endpoint.replace(/\/+$/, 
 type Tool = { name: string; description: string; input_schema: object };
 
 /** One call where the model must answer with `tool`: its arguments, parsed, or null. */
-async function callTool(options: AzureOpenAIOptions, { system, user, tool, maxTokens, timeoutMs }: { system: string[]; user: string; tool: Tool; maxTokens: number; timeoutMs: number }) {
+async function callTool(
+  options: AzureOpenAIOptions,
+  { system, user, tool, effort, maxTokens, timeoutMs }: { system: string[]; user: string; tool: Tool; effort: "low" | "medium"; maxTokens: number; timeoutMs: number },
+) {
   const response = await fetch(completionsUrl(options.endpoint), {
     method: "POST",
     headers: { "content-type": "application/json", "api-key": options.apiKey },
@@ -37,8 +40,7 @@ async function callTool(options: AzureOpenAIOptions, { system, user, tool, maxTo
       model: options.deployment,
       // Reasoning tokens count here too: room enough for a little thinking and the answer.
       max_completion_tokens: maxTokens,
-      // Comparing a request with a few lines, or listing a quote's items, needs little reasoning: quicker, cheaper.
-      reasoning_effort: "low",
+      reasoning_effort: effort,
       messages: [...system.map((content) => ({ role: "system", content })), { role: "user", content: user }],
       tools: [{ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.input_schema, strict: true } }],
       tool_choice: { type: "function", function: { name: tool.name } },
@@ -59,17 +61,22 @@ async function callTool(options: AzureOpenAIOptions, { system, user, tool, maxTo
 /** Strict tools need every object closed: the suggestion's schema, shared with Claude, gets it here. */
 const suggestionSchema = { ...suggestionTool, input_schema: { ...suggestionTool.input_schema, additionalProperties: false } };
 
+/** Comparing a request with a few lines needs little reasoning: quick, as the agency waits for it. */
 export function azureSuggestionModel(options: AzureOpenAIOptions): SuggestionModel {
   return {
     suggest: ({ scope, request }) =>
-      callTool(options, { system: [suggestionInstructions, scopeBlock(scope)], user: requestBlock(request), tool: suggestionSchema, maxTokens: 2_000, timeoutMs: 15_000 }),
+      callTool(options, { system: [suggestionInstructions, scopeBlock(scope)], user: requestBlock(request), tool: suggestionSchema, effort: "low", maxTokens: 2_000, timeoutMs: 15_000 }),
   };
 }
 
-/** Reads a document's text into scope items: what the model proposes, unchecked (readExtracted bounds it). */
+/**
+ * Reads a document's text into scope items: what the model proposes, unchecked (readExtracted bounds it).
+ * More reasoning than a suggestion: rare, and with little of it the mini model dropped quantities (trial of
+ * 24 October 2026).
+ */
 export function azureScopeReader(options: AzureOpenAIOptions) {
   return async (text: string) => {
-    const answer = await callTool(options, { system: [readingInstructions], user: documentBlock(text), tool: readingTool, maxTokens: 16_000, timeoutMs: 120_000 });
+    const answer = await callTool(options, { system: [readingInstructions], user: documentBlock(text), tool: readingTool, effort: "medium", maxTokens: 16_000, timeoutMs: 120_000 });
     return answer && typeof answer === "object" && "items" in answer ? answer.items : null;
   };
 }
