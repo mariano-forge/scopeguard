@@ -808,7 +808,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 **Critères d'acceptation**
 
 - Sans compte, le lien mène à la page de connexion sur l'onglet « Créer un compte », avec le nom de l'agence et l'adresse invitée masquée (« c•••••@agence.fr ») ; la personne saisit elle-même son adresse, que le serveur vérifie à l'acceptation. Quelqu'un qui détiendrait le lien n'apprend pas l'adresse.
-- Après connexion, la page d'invitation propose « Rejoindre l'agence » ou « Refuser ».
+- Après connexion, la page d'invitation propose « Rejoindre l'organisation » ou « Refuser ».
 - Un compte connecté avec une autre adresse voit « Ce n'est pas le bon compte », avec l'adresse invitée masquée, et peut changer de compte.
 - Une invitation expirée, annulée ou déjà utilisée affiche un message clair.
 - Les invitations en attente sont aussi proposées sur la page « Bienvenue ».
@@ -998,6 +998,8 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 - Le tableau de bord affiche les montants facturés, acceptés et offerts.
 - Le client n'est pas sollicité pour une demande offerte.
 
+> **Avancement (24 octobre 2026) :** réalisé, décidé avec le designer. L’offre est l’une des deux façons de la proposition d’une demande hors scope : en la qualifiant, « Préparer la proposition » propose « Facturer » (un devis) ou « Offrir » (valeur obligatoire, délai facultatif). Préparée, l’offre est « Prête pour l’envoi » et le client n’en voit rien ; « Envoyer la proposition » la lui envoie : il la voit « Offerte » avec sa valeur (« Offerte par l’agence · 450 € »), en est prévenu par e-mail et n’a rien à décider. Elle se prépare tant qu’aucune proposition n’a été envoyée (pas sur un devis qui attend sa réponse, ni après un devis refusé ou accepté). « Annuler l’offre » la rend à chiffrer. Un membre la prépare, un administrateur l’envoie ou la retire ; chaque geste est au journal et dans la preuve. Suivi (« Offertes au client ») et l’accueil (« Propositions au client », registre) comptent les offres envoyées et leur valeur.
+
 #### US-047 : envoyer les demandes acceptées vers Jira ou Notion
 
 **En tant que** chef de projet,  
@@ -1137,7 +1139,7 @@ Cette story concerne les sites vitrines, landing pages, interfaces applicatives 
 Discutées avec le porteur du produit ; à reprendre telles quelles :
 
 - **Validation avec réserves** *(à voir avec le designer)* : la fenêtre de validation liste les demandes « Inclus » encore ouvertes ; la version est « validée avec réserves » et la preuve les nomme. Les devis en attente restent bloquants, les « À clarifier » sont abandonnées (déjà fait).
-- **Demande offerte** (US-046) : en attente du designer.
+- **Demande offerte** (US-046) : décidée avec le designer le 24 octobre 2026, réalisée (voir la story).
 - **Qualifier en lot** : sélectionner plusieurs demandes et les qualifier d'un coup.
 - **Devis groupé** : un devis couvrant plusieurs demandes, accepté ou refusé en entier ; le client retire ce qu'il ne veut pas par une contre-proposition (pas d'acceptation partielle).
 - **Alignement « demande »** : abandonner la distinction par le champ `kind` ; la qualification et la présence d'un repère suffisent.
@@ -1283,7 +1285,7 @@ Si ce scénario fonctionne avec trois agences pilotes, Kora possède une base pr
 | US-043 demander l'accès à une revue | ⛔ | Pour des raisons de sécurité (21 octobre 2026) ; les demandes déjà reçues se règlent encore |
 | US-044 prévisualiser la page client | ✅ | |
 | US-045 périmètre de référence | 🟡 | Écran du périmètre, extraction par l'IA, suggestion de qualification et ligne citée faits ; reste la confirmation du périmètre par le client |
-| US-046 demande offerte | ⬜ | |
+| US-046 demande offerte | ✅ | « Facturer » ou « Offrir » en préparant la proposition ; valeur obligatoire ; visible du client une fois envoyée, avec un e-mail, sans décision ; retirable ; journal, preuve, Suivi et accueil |
 | US-047 envoi vers Jira ou Notion | ⬜ | |
 | US-048 annoter un site web en ligne | 🟡 | Essai du 17 octobre : barre sur le site, vérification par code dans le panneau, demande posée sur un élément, épingles, « élément introuvable » ; testé dans Chrome. Site en `https` obligatoire. L'agence dans la barre (fenêtre Kora, commentaires, réponses, qualification ; devis et partage refusés depuis le site). Passage vers la revue Kora sans nouveau code, avec l'appel « devis en attente ». Capture de la fenêtre au clic, dans le fil et la preuve. Ligne de script posée une fois (clé fixe du livrable, dernière version partagée), donnée selon l'outil du site, avec la détection en direct de la barre sur le site ; les e-mails d'invitation et de relance mènent au site avec `?kora`. Dans Kora, un tableau de recette : chaque demande en page du canevas, sa capture avec son épingle. À faire : Safari et Firefox à vérifier à la main, mobile |
 | US-049 rôles des personnes invitées | ✅ | Décideur et contributeur, contrôlés par le serveur |
