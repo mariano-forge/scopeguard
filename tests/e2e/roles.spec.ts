@@ -93,7 +93,7 @@ test("a member sees reserved actions greyed out, with the reason", async ({ brow
   await page.getByRole("button", { name: "Réglages de l’espace" }).click();
   const remove = page.getByRole("menuitem", { name: /Supprimer l’espace/ });
   await expect(remove).toHaveAttribute("data-disabled", "");
-  await expect(remove).toContainText("Réservé aux administrateurs de l’agence");
+  await expect(remove).toContainText("Réservé aux administrateurs de l’organisation");
   expect(errors).toEqual([]);
   expect((await call("/api/state", { person: member })).status).toBe(200);
 });

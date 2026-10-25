@@ -62,7 +62,7 @@ import {
   type Qualified,
   type Area,
   } from "./editor/CanvasComments";
-import { EditorInspector, inspectorTabOf, threadsToMarkdown, type InspectorTab } from "./editor/EditorInspector";
+import { EditorInspector, OfferFigures, inspectorTabOf, threadsToMarkdown, type InspectorTab } from "./editor/EditorInspector";
 import { outsideStatusOf, outsideStatusView } from "@/lib/outsideStatus";
 import { NewRequestDialog, type NewRequest } from "./editor/NewRequestDialog";
 import { citableLines } from "@/lib/scopeCitation";
@@ -94,6 +94,8 @@ import { previousPeople, ReshareDialog, type ReshareChoice } from "./ReshareDial
 import { loadSharedState, refreshSharedState, subscribeSharedState } from "@/lib/stateSync";
 import { linkDeciders } from "@/lib/linkDeciders";
 import { SendProposalDialog } from "./SendProposalDialog";
+import { keyboardShortcuts } from "./shortcuts";
+import { offerOf, offerValue, sentOfferOf } from "@/lib/requestOffer";
 import { ShareDialog } from "./ShareDialog";
 
 
@@ -137,6 +139,7 @@ type Comment = {
   page?: number;
   position?: { x: number; y: number };
   replies?: Reply[];
+  closed?: boolean;
 };
 
 type ProposalState = "none" | "draft" | "sent";
@@ -331,7 +334,7 @@ export function AgencyApp() {
    */
   const canManage = currentUser.role === "owner" || currentUser.role === "admin";
   function adminOnly() {
-    if (!canManage) toast.error("Réservé aux administrateurs de l’agence.");
+    if (!canManage) toast.error("Réservé aux administrateurs de l’organisation.");
     return canManage;
   }
   const router = useRouter();
@@ -389,7 +392,9 @@ export function AgencyApp() {
     view.kind === "recents" ||
     view.kind === "shared" ||
     view.kind === "trash" ||
-    view.kind === "spaces" || view.kind === "client" || view.kind === "project" || view.kind === "scope" || view.kind === "tracking" || view.kind === "not-found";
+    view.kind === "team" ||
+    view.kind === "help" ||
+    view.kind === "spaces" || view.kind === "client" || view.kind === "project" || view.kind === "requests" || view.kind === "scope" || view.kind === "tracking" || view.kind === "not-found";
 
   const [comments, setComments] = useState(initialComments);
   const [selectedId, setSelectedId] = useState(1);
@@ -930,13 +935,14 @@ export function AgencyApp() {
     if (isReadOnlyVersion || isDecisionLocked(commentId)) return;
     const back = qualified.decision === "À qualifier";
     setInspectorTab(back ? "comment" : qualified.decision === "Inclus" ? "correction" : "outside");
-    // The server builds the qualification, its draft quote and their audit events (src/db/agencyActions.ts).
+    // The server builds the qualification, its draft quote or offer and their audit events (src/db/agencyActions.ts).
     void agencyAction(`comments/${commentId}/qualification`, "PUT", {
       decision: qualified.decision,
       title: qualified.title,
       description: qualified.description,
       quote: qualified.quote,
       scopeLineId: qualified.scopeLineId,
+      offer: qualified.offer,
     });
   }
 
@@ -1137,7 +1143,7 @@ export function AgencyApp() {
     setInspectorTab(request.decision === "Inclus" ? "correction" : request.decision === "Hors périmètre" ? "outside" : "comment");
     const source = request.source ? { ...request.source, ...(captureHref ? { capture: captureHref } : {}) } : undefined;
     const result = await agencyAction("comments", "POST", {
-      request: { deliverableId: currentDeliverable.id, decision: request.decision, title: request.title, description: request.description, quote: request.quote, source, scopeLineId: request.scopeLineId },
+      request: { deliverableId: currentDeliverable.id, decision: request.decision, title: request.title, description: request.description, quote: request.quote, offer: request.offer, source, scopeLineId: request.scopeLineId },
     });
     if (!result?.id) return;
     setSelectedId(result.id);
@@ -1169,7 +1175,7 @@ export function AgencyApp() {
   /** An out-of-scope request's status, in the agency's words, for the exported comments (ExportMenu). */
   const agencyStatusOf = (comment: Comment) =>
     comment.decision === "Hors périmètre"
-      ? outsideStatusView(outsideStatusOf({ state: proposalStateFor(comment.id), decision: proposalDecisionFor(comment.id), adaptation: adaptationRequests[comment.id] }), "agency").label
+      ? outsideStatusView(outsideStatusFor(comment.id), "agency").label
       : null;
 
   function replyTo(commentId: number, message: string) {
@@ -1276,14 +1282,22 @@ export function AgencyApp() {
 
   /** Sends the quoted proposal after confirmation: the draft becomes version 1, sent to the client. */
   function sendQuotedProposal(commentId: number) {
+    // A draft quote, or an offer prepared (sent the same way, src/lib/requestOffer.ts).
     const draft = proposalVersions[commentId]?.find((proposal) => proposal.status === "draft");
-    if (!draft || isReadOnlyVersion || !adminOnly()) return;
+    const offer = offerOf(comments.find((comment) => comment.id === commentId) ?? {});
+    if ((!draft && !(offer && !offer.sentAt)) || isReadOnlyVersion || !adminOnly()) return;
     void agencyAction(`comments/${commentId}/proposal/send`, "POST");
     setConfirmSendId(null);
   }
 
   function activeProposalFor(commentId: number) {
     return proposalVersions[commentId]?.find((proposal) => proposal.status === "sent" || proposal.status === "accepted") ?? proposalVersions[commentId]?.at(-1);
+  }
+
+  /** Takes an offer sent to the client back: the request is to answer again. */
+  function unofferRequest(commentId: number) {
+    if (!adminOnly()) return;
+    void agencyAction(`comments/${commentId}/offer`, "DELETE").then((result) => result && toast("Offre retirée"));
   }
 
   /** Opens the quote form on a refused proposal. */
@@ -1416,7 +1430,7 @@ export function AgencyApp() {
   /** Tabs and cards alert on client messages (comments and replies) nobody has opened yet. */
   function statusOf(latest: Deliverable): TabStatus {
     const latestComments = comments.filter((comment) => comment.deliverableId === latest.id);
-    const unread = unreadOf(latest.id).length;
+    const unread = messagesOf(latest.id, false).length;
     const awaitingClient = latestComments.filter(
       (comment) =>
         comment.decision === "Hors périmètre" &&
@@ -1436,8 +1450,8 @@ export function AgencyApp() {
 
   /** Client messages of a thread the agency has not opened yet: a dot on its pin, a count on its card. */
   const unreadIn = (comment: Comment) => [comment, ...(comment.replies ?? [])].filter((message) => sideOf(message) === "client" && !seenIds.includes(message.id)).length;
-  /** Unread messages written in the client space on one version: comments, then replies. */
-  function unreadOf(recordId: number): ClientFeedback[] {
+  /** Messages written in the client space on one version, unread or already read: comments, then replies. */
+  function messagesOf(recordId: number, read: boolean): ClientFeedback[] {
     const record = deliverables.find((candidate) => candidate.id === recordId);
     if (!record) return [];
     const project = projects.find((candidate) => candidate.id === (record.projectId ?? 1));
@@ -1449,7 +1463,7 @@ export function AgencyApp() {
       .flatMap((comment) => {
         const target = `${hrefForRecord(record, deliverables)}?demande=${comment.id}`;
         return [comment, ...(comment.replies ?? [])]
-          .filter((message) => fromClient(message) && !seenIds.includes(message.id))
+          .filter((message) => fromClient(message) && seenIds.includes(message.id) === read)
           .map((message) => ({
             key: `m-${message.id}`,
             id: message.id,
@@ -1489,8 +1503,13 @@ export function AgencyApp() {
         },
       ];
     }),
-    ...deliverables.flatMap((record) => unreadOf(record.id)).sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0)),
+    ...deliverables.flatMap((record) => messagesOf(record.id, false)).sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0)),
   ];
+  // Read, they stay in the bell under « Déjà lus » (marking them read never removes them), the latest first.
+  const readFeedback = deliverables
+    .flatMap((record) => messagesOf(record.id, true))
+    .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+    .slice(0, 20);
   const markAllRead = () => markSeen(clientFeedback.filter((item) => item.kind === "message").map((item) => item.id));
   useArrivalToast(clientFeedback, stateHydrated);
 
@@ -1621,7 +1640,10 @@ export function AgencyApp() {
           }),
         };
     const decided = outsideComments.filter((comment) => proposalDecisionFor(comment.id) !== "none");
+    const offers = outsideComments.flatMap((comment) => sentOfferOf(comment) ?? []);
     const analytics: HomeAnalyticsData = {
+      offeredCount: offers.length,
+      offeredEuros: offers.reduce((total, offer) => total + offer.amount, 0),
       totalDemands: scopeComments.length,
       included: scopeComments.filter((comment) => comment.decision === "Inclus").length,
       outside: outsideComments.length,
@@ -1631,24 +1653,28 @@ export function AgencyApp() {
       acceptedDays: acceptedComments.reduce((total, comment) => total + parseNumericDays(activeProposalFor(comment.id)?.deadline), 0),
       acceptedCount: acceptedComments.length,
       refusedCount: outsideComments.filter((comment) => proposalDecisionFor(comment.id) === "refused").length,
+      refusedEuros: sumAmounts(outsideComments.filter((comment) => proposalDecisionFor(comment.id) === "refused")),
       awaitingCount: pendingComments.length,
+      awaitingEuros: sumAmounts(pendingComments),
       versions: scopeRecords.length,
       register: [...scopeComments]
         .sort((left, right) => right.id - left.id)
         .map((comment) => {
           const record = deliverables.find((candidate) => candidate.id === comment.deliverableId);
           const proposal = comment.decision === "Hors périmètre" ? activeProposalFor(comment.id) : undefined;
+          // Offered: its value stands for a quote's (src/lib/requestOffer.ts).
+          const offer = comment.decision === "Hors périmètre" ? sentOfferOf(comment) : null;
+          const value = offer ? { amount: offer.amount, deadline: offer.days } : proposal;
           return {
             id: comment.id,
             livrable: record?.name ?? "Livrable",
             version: `V${String(record?.version ?? 1).padStart(2, "0")}`,
             message: comment.title ?? comment.message,
-            location: comment.location,
-            initials: comment.initials,
             decision: comment.decision,
-            amount: proposal ? formatProposalAmount(proposal.amount) : undefined,
-            deadline: proposal ? formatProposalDeadline(proposal.deadline) : undefined,
-            clientDecision: proposalDecisionFor(comment.id),
+            amount: value ? formatProposalAmount(value.amount) : undefined,
+            amountValue: value ? parseNumericAmount(value.amount) : undefined,
+            deadline: value ? formatProposalDeadline(value.deadline) : undefined,
+            status: comment.decision === "Hors périmètre" ? outsideStatusFor(comment.id) : null,
             href: record ? `${hrefForRecord(record, deliverables)}?demande=${comment.id}` : href.home(),
           };
         }),
@@ -1756,9 +1782,18 @@ export function AgencyApp() {
             ? "À envoyer"
             : "En attente du client";
 
-  /** Where the proposal of an out-of-scope request stands: to quote, quoted (ready to send), or sent. */
+  /** Where an out-of-scope request stands (src/lib/outsideStatus.ts): an offer prepared is ready to send, sent it is « Offerte ». */
+  const outsideStatusFor = (commentId: number) => {
+    const offer = offerOf(comments.find((comment) => comment.id === commentId) ?? {});
+    const state = offer && !offer.sentAt ? "draft" : proposalStateFor(commentId);
+    return outsideStatusOf({ state, decision: proposalDecisionFor(commentId), adaptation: adaptationRequests[commentId], offered: Boolean(offer?.sentAt) });
+  };
+
+  /** Where the proposal of an out-of-scope request stands: to prepare, prepared (a quote or an offer), sent, or offered. */
   const proposalStageOf = (comment: Comment): ProposalStage | null => {
     if (comment.decision !== "Hors périmètre") return null;
+    const offer = offerOf(comment);
+    if (offer) return offer.sentAt ? { stage: "offered", value: offerValue(offer) } : { stage: "draft", offer: true };
     const state = proposalStateFor(comment.id);
     if (state === "sent") return { stage: "sent", label: proposalLabel(comment) ?? "Voir la proposition", retry: proposalStatusOf(comment.id).retry };
     return state === "draft" ? { stage: "draft" } : { stage: "none" };
@@ -1830,7 +1865,7 @@ export function AgencyApp() {
     { kind: "section", label: "Aide et réglages" },
     { label: "Raccourcis clavier", icon: <Keyboard />, onSelect: () => setShortcutsOpen(true) },
     { label: "Préférences", icon: <Settings />, hint: "Bientôt", disabled: true },
-    { label: "Aide et documentation", icon: <CircleHelp />, hint: "Bientôt", disabled: true },
+    { label: "Aide et documentation", icon: <CircleHelp />, onSelect: () => router.push(href.help()) },
   ];
 
   const sidebarFavorites = favorites.flatMap((key): SidebarFavorite[] => {
@@ -1978,9 +2013,11 @@ export function AgencyApp() {
         <HomeSidebar
           view={view}
           clients={clients}
+          projects={projects}
           favorites={sidebarFavorites}
           notifications={bellNotifications}
           feedback={clientFeedback}
+          readFeedback={readFeedback}
           onMarkAllRead={markAllRead}
           onSearch={() => setPaletteOpen(true)}
           onNewClient={() => setNewClientOpen(true)}
@@ -2002,12 +2039,14 @@ export function AgencyApp() {
                 scope: projects.find((project) => project.id === projectId)?.scope,
                 versions: deliverables,
                 requests: comments,
-                quoteOf: (commentId) => ({
-                  status: outsideStatusOf({ state: proposalStateFor(commentId), decision: proposalDecisionFor(commentId), adaptation: adaptationRequests[commentId] }),
-                  amount: parseNumericAmount(activeProposalFor(commentId)?.amount),
-                }),
+                // An offer sent is worth its value; one only prepared, nothing yet; the others, their quote's.
+                quoteOf: (commentId) => {
+                  const offer = offerOf(comments.find((comment) => comment.id === commentId) ?? {});
+                  return { status: outsideStatusFor(commentId), amount: offer ? (offer.sentAt ? offer.amount : 0) : parseNumericAmount(activeProposalFor(commentId)?.amount) };
+                },
               })}
               recentLivrableIds={recentLivrableIds}
+              isAwaitingClient={(commentId) => outsideStatusFor(commentId) === "sent"}
               todoItems={todoItems}
               error={deliverableError}
               onNewClient={() => setNewClientOpen(true)}
@@ -2036,7 +2075,7 @@ export function AgencyApp() {
               }}
               livrableUnread={(livrableId) => {
                 const latest = versionsOfLivrable(livrableId, deliverables)[0];
-                return latest ? unreadOf(latest.id).length : 0;
+                return latest ? messagesOf(latest.id, false).length : 0;
               }}
             />
           ) : view.kind === "dashboard" || !currentDeliverable ? (
@@ -2143,18 +2182,22 @@ export function AgencyApp() {
                   proposal={proposalStageOf(comment as Comment) ?? undefined}
                   startQuoting={quotingId === comment.id}
                   onSendProposal={() => setConfirmSendId(comment.id)}
-                  quote={(() => {
+                  onUnoffer={() => unofferRequest(comment.id)}
+                  // What was prepared and not sent: its offer, or its draft quote.
+                  prepared={(() => {
+                    const offer = offerOf(comment);
+                    if (offer) return offer.sentAt ? undefined : { offer: { amount: offer.amount, days: offer.days } };
                     const draft = proposalStateFor(comment.id) === "draft" ? activeProposalFor(comment.id) : undefined;
-                    return draft ? { amount: parseNumericAmount(draft.amount), days: parseNumericDays(draft.deadline), counter: draft.allowCounter ?? false } : undefined;
+                    return draft ? { quote: { amount: parseNumericAmount(draft.amount), days: parseNumericDays(draft.deadline), counter: draft.allowCounter ?? false } } : undefined;
                   })()}
                   onReply={(message) => replyTo(comment.id, message)}
                   me="agency"
                   onEditMessage={(messageId, message) => editMessage(comment.id, messageId, message)}
                   onDeleteMessage={(messageId) => deleteMessage(comment.id, messageId)}
                   assist={{ lines: scopeLines, suggestionPath: `/api/comments/${comment.id}/suggestion` }}
-                  // Once a proposal has been sent to the client, the qualification no longer changes.
+                  // Once a proposal (a quote or an offer) has been sent to the client, the qualification no longer changes.
                   onQualify={
-                    proposalStateFor(comment.id) === "sent"
+                    proposalStateFor(comment.id) === "sent" || sentOfferOf(comment)
                       ? undefined
                       : (qualified) => {
                           qualifyComment(comment.id, qualified);
@@ -2170,7 +2213,7 @@ export function AgencyApp() {
                         }
                       : undefined
                   }
-                  // Closed, it moves to « Commentaires · Clôturés »; the client still reads it (agencyActions.ts).
+                  // Closed, it moves to « Discussions · Clôturées »; the client still reads it (agencyActions.ts).
                   onArchive={(closed) => {
                     setInspectorTab(closed ? "closed" : inspectorTabOf({ ...comment, closed: false }));
                     void agencyAction(`comments/${comment.id}/closure`, "PUT", { closed });
@@ -2212,11 +2255,18 @@ export function AgencyApp() {
               onSendProposal={setConfirmSendId}
               onOpenProposal={openProposal}
               onRequote={openRequote}
-              notifications={<Notifications notifications={bellNotifications} feedback={clientFeedback} onMarkAllRead={markAllRead} compact />}
+              notifications={<Notifications notifications={bellNotifications} feedback={clientFeedback} readFeedback={readFeedback} onMarkAllRead={markAllRead} compact />}
               unread={(comment) => unreadIn(comment as Comment)}
-              outsideStatus={(comment) => outsideStatusOf({ state: proposalStateFor(comment.id), decision: proposalDecisionFor(comment.id), adaptation: adaptationRequests[comment.id] })}
+              outsideStatus={(comment) => outsideStatusFor(comment.id)}
+              onUnoffer={unofferRequest}
+              onRequalify={(commentId) => {
+                const request = comments.find((comment) => comment.id === commentId);
+                if (request) qualifyComment(commentId, { title: request.title ?? "", description: request.description ?? "", decision: "À qualifier" });
+              }}
               proposalSummary={(comment) => {
-                // The status is the card's tag (src/lib/outsideStatus.ts): here, what was quoted.
+                // The status is the card's tag (src/lib/outsideStatus.ts): here, what was quoted, or what is offered.
+                const offer = offerOf(comment);
+                if (offer) return <OfferFigures offer={offer} />;
                 if (proposalStateFor(comment.id) === "none") return null;
                 const proposal = activeProposalFor(comment.id);
                 return (
@@ -2285,7 +2335,7 @@ export function AgencyApp() {
                 footer={
                   !sent ? (
                     <>
-                      {!canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Envoi réservé aux administrateurs de l’agence</span>}
+                      {!canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Envoi réservé aux administrateurs de l’organisation</span>}
                       <Button onClick={sendProposal} disabled={!canManage || !newProposalDescription.trim() || !newProposalAmount.trim() || !newProposalDeadline.trim()}>
                         Envoyer au client
                       </Button>
@@ -2303,7 +2353,7 @@ export function AgencyApp() {
                     </>
                   ) : adaptationPending ? (
                     <>
-                      {!canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Réponse réservée aux administrateurs de l’agence</span>}
+                      {!canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Réponse réservée aux administrateurs de l’organisation</span>}
                       <Button variant="outline" disabled={!canManage} onClick={() => decideAdaptation(id, "refused")}>
                         Refuser l’adaptation
                       </Button>
@@ -2423,9 +2473,9 @@ export function AgencyApp() {
               <>
                 <div className={`proposal-preview-status ${previewAdaptationRequest?.decision === "refused" || proposalDecisionFor(previewProposal.commentId) === "refused" ? "refused" : "accepted"}`}>
                   {previewAdaptationRequest?.decision === "accepted"
-                    ? `Acceptée par l’agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}`
+                    ? `Acceptée par l’organisation${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}`
                     : previewAdaptationRequest?.decision === "refused"
-                      ? `Refusée par l’agence${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}`
+                      ? `Refusée par l’organisation${previewAdaptationRequest.decisionBy ? ` · ${previewAdaptationRequest.decisionBy}` : ""}`
                       : proposalDecisionFor(previewProposal.commentId) === "accepted"
                         ? "Acceptée par le client"
                         : "Refusée par le client"}
@@ -2596,7 +2646,7 @@ export function AgencyApp() {
               <Input id="new-space-name" autoFocus value={newClientName} onChange={(event) => setNewClientName(event.target.value)} placeholder="Ex. Atelier Horizon" />
             </Field>
             <Field id="new-space-email" label="Inviter un collaborateur" optional>
-              <Input id="new-space-email" type="email" value={newClientEmail} onChange={(event) => setNewClientEmail(event.target.value)} placeholder="prenom@votre-agence.fr" />
+              <Input id="new-space-email" type="email" value={newClientEmail} onChange={(event) => setNewClientEmail(event.target.value)} placeholder="prenom@exemple.fr" />
             </Field>
             {clientError && <FormError>{clientError}</FormError>}
           </Modal>
@@ -2690,10 +2740,17 @@ export function AgencyApp() {
           {(() => {
             const request = confirmSendId !== null ? comments.find((comment) => comment.id === confirmSendId) : undefined;
             const draft = confirmSendId !== null ? proposalVersions[confirmSendId]?.find((proposal) => proposal.status === "draft") : undefined;
+            const offer = request ? offerOf(request) : null;
             const linkKey = currentDeliverable ? `${currentDeliverable.id}:${currentDeliverable.version}` : "";
             return (
               <SendProposalDialog
-                proposal={request && draft ? { title: request.title ?? request.message, amount: draft.amount, deadline: draft.deadline } : null}
+                proposal={
+                  request && offer && !offer.sentAt
+                    ? { title: request.title ?? request.message, amount: offer.amount, deadline: offer.days, offer: true }
+                    : request && draft
+                      ? { title: request.title ?? request.message, amount: draft.amount, deadline: draft.deadline }
+                      : null
+                }
                 // The proposal goes to the deciders invited on this version; with none, the server refuses it.
                 deciders={linkDeciders(reviewLinks[linkKey]).map((invite) => invite.email)}
                 canManage={canManage}
@@ -2723,16 +2780,7 @@ export function AgencyApp() {
 
           <Modal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} title="Raccourcis clavier" size="sm">
             <dl className="shortcuts-list">
-              {[
-                ["V", "Outil Déplacer"],
-                ["C", "Outil Commentaire"],
-                ["Double-clic", "Déplacer une pin"],
-                ["Échap", "Fermer le fil, annuler"],
-                ["Molette", "Faire défiler les pages"],
-                ["Ctrl + molette", "Zoomer"],
-                ["Ctrl K", "Rechercher"],
-                ["Ctrl \\", "Afficher / masquer le panneau"],
-              ].map(([keys, action]) => (
+              {keyboardShortcuts.map(([keys, action]) => (
                 <div key={keys}>
                   <dt>
                     <kbd>{keys}</kbd>
@@ -2781,7 +2829,7 @@ export function AgencyApp() {
             size="lg"
             footer={
               <>
-                {!requoting && !canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Envoi réservé aux administrateurs de l’agence</span>}
+                {!requoting && !canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Envoi réservé aux administrateurs de l’organisation</span>}
                 <Button type="button" variant="outline" onClick={() => setNewProposalVersionOpen(false)}>
                   Annuler
                 </Button>

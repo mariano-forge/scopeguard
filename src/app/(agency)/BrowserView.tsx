@@ -3,7 +3,7 @@
 import { ViewTransition, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, FolderClosed, LayoutGrid, List, MessageSquareDot, Pencil, Plus, RotateCcw, Share2, Star, Trash2 } from "lucide-react";
+import { BadgeCheck, ChevronLeft, ChevronRight, CircleHelp, FolderClosed, Gift, HandCoins, Hourglass, LayoutGrid, List, MessageSquareDot, Pencil, PieChart, Plus, RotateCcw, Share2, Star, Trash2, TrendingUp } from "lucide-react";
 import { DeliverableCover } from "@/components/DeliverableCover";
 import { Select } from "@/components/Select";
 import { GettingStarted } from "./GettingStarted";
@@ -13,13 +13,22 @@ import { StatusMark, type TabStatus } from "./TabBar";
 import { ConfirmDeleteDialog, EntitySettings, LivrableMenu } from "./EntitySettings";
 import type { TrashItem } from "./AgencyApp";
 import { DeliverableIcon } from "@/components/DeliverableIcon";
-import { RegisterTable, ScopeCharts, type HomeAnalyticsData } from "./HomeAnalytics";
+import { BreakdownTable, KeyFigures, ProposalChart, RegisterTable, ScopeChart, type HomeAnalyticsData } from "./HomeAnalytics";
 import { LivrableFilter, type LivrableGroup } from "./LivrableFilter";
-import type { DeliverableType } from "@/components/deliverableKinds";
+import { deliverableKinds, pickableTypes, type DeliverableType } from "@/components/deliverableKinds";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Hint } from "@/components/hint";
+import { Select as UiSelect, SelectContent as UiSelectContent, SelectItem as UiSelectItem, SelectTrigger as UiSelectTrigger, SelectValue as UiSelectValue } from "@/components/ui/select";
 import type { ProjectScope, ScopeAmendment } from "@/lib/projectScope";
 import { ProjectScopeEditor } from "./ProjectScope";
-import { ProjectTracking, type TrackingInput } from "./ProjectTracking";
+import { ProjectTracking } from "./ProjectTracking";
+import { ProjectRequests } from "./ProjectRequests";
+import type { BoardInput, BoardRequest } from "./requestBoard";
 import { ScopeRecommendation } from "./ScopeRecommendation";
+import { TeamPage } from "./TeamPage";
+import { HelpPage } from "./HelpPage";
+import { SharedWithMe } from "./SharedWithMe";
 
 type Client = { id: number; name: string; email: string };
 type Project = { id: number; name: string; clientId?: number; status: string; scope?: ProjectScope };
@@ -34,7 +43,7 @@ type Deliverable = {
   fileData?: string;
   coverData?: string;
 };
-type Comment = { deliverableId?: number; decision: string };
+type Comment = { id: number; deliverableId?: number; decision: string };
 
 /** Figures for the home overview, computed by AgencyApp for a set of deliverables. */
 export type HomeOverview = {
@@ -68,8 +77,11 @@ type BrowserViewProps = {
   /** A project's accepted out-of-scope quotes: its scope's amendments. */
   amendmentsFor: (projectId: number) => ScopeAmendment[];
   /** What a project's « Suivi » is computed from. */
-  trackingFor: (projectId: number) => TrackingInput;
+  /** A project's figures (« Suivi ») and its requests' board (« Demandes »), from the same reading. */
+  trackingFor: (projectId: number) => BoardInput;
   recentLivrableIds: number[];
+  /** A request whose proposal waits for the client's answer (src/lib/outsideStatus.ts « sent »). */
+  isAwaitingClient: (commentId: number) => boolean;
   todoItems: TodoItem[];
   /** Home figures for a selection of deliverables (null = all). */
   overviewFor: (selection: number[] | null) => HomeOverview;
@@ -105,7 +117,8 @@ type BrowserViewProps = {
 };
 
 type SortKey = "recent" | "name";
-type RecentFilter = "all" | "todo" | "awaiting" | "approved" | "starred";
+/** « Récents »: opened last first, the other way, or by name. */
+type RecentOrder = "recent" | "oldest" | "name";
 type Layout = "grid" | "list";
 
 const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "s" : ""}`;
@@ -246,6 +259,7 @@ export function BrowserView({
   amendmentsFor,
   trackingFor,
   recentLivrableIds,
+  isAwaitingClient,
   todoItems,
   overviewFor,
   livrableGroups,
@@ -274,7 +288,9 @@ export function BrowserView({
   const router = useRouter();
   const [sort, setSort] = useState<SortKey>("recent");
   const [layout, setLayout] = useState<Layout>("grid");
-  const [recentFilter, setRecentFilter] = useState<RecentFilter>("all");
+  const [recentType, setRecentType] = useState<DeliverableType | "all">("all");
+  const [recentOrder, setRecentOrder] = useState<RecentOrder>("recent");
+  const [recentAwaiting, setRecentAwaiting] = useState(false);
 
   useEffect(() => {
     try {
@@ -382,7 +398,7 @@ export function BrowserView({
   function livrableCard(record: Deliverable) {
     const versions = versionsOfLivrable(livrableIdOf(record, deliverables), deliverables);
     const versionLabel = (version: Deliverable) => `V${String(version.version).padStart(2, "0")}`;
-    // Top-right of the cover: latest version by default, every version when there are several.
+    // Top-left of the cover (the star on the right): latest version by default, every version when there are several.
     const corner =
       versions.length > 1 ? (
         <div className="card-version">
@@ -439,6 +455,34 @@ export function BrowserView({
         {corner}
         {menu}
       </>,
+    );
+  }
+
+  /** A deliverable as a row of a list (a project's page, « Récents »): its cover, name, version, status, date. */
+  function livrableRow(record: Deliverable) {
+    const livrableId = livrableIdOf(record, deliverables);
+    return (
+      <li key={record.id} className="browser-row-wrap">
+        <Link className="browser-row" href={hrefForRecord(record, deliverables)}>
+          <span className="row-thumb">
+            {record.coverData ? (
+              // eslint-disable-next-line @next/next/no-img-element -- local data URL cover
+              <img src={record.coverData} alt="" />
+            ) : (
+              <DeliverableIcon type={record.type} />
+            )}
+          </span>
+          <span className="row-title">
+            <b>{record.name}</b>
+            {titleStatus(livrableId)}
+            {unreadPill(livrableId)}
+          </span>
+          <small>V{String(record.version).padStart(2, "0")}</small>
+          <small>{record.status}</small>
+          <small>{record.importedAt}</small>
+        </Link>
+        {starButton(`l:${livrableId}`, record.name)}
+      </li>
     );
   }
 
@@ -559,9 +603,9 @@ export function BrowserView({
               onDelete={() => onDeleteClient(client.id)}
               deleteLocked={!canManage}
             />
-            <button className="primary-button" onClick={onNewProject}>
-              <Plus /> Ajouter un projet
-            </button>
+            <Button size="lg" onClick={onNewProject}>
+              <Plus aria-hidden="true" /> Ajouter un projet
+            </Button>
           </div>
         </header>
         <div className="page-toolbar">
@@ -576,16 +620,24 @@ export function BrowserView({
   }
 
   // ----- Project: its deliverables, or its scope
-  if (view.kind === "project" || view.kind === "scope" || view.kind === "tracking") {
+  if (view.kind === "project" || view.kind === "requests" || view.kind === "scope" || view.kind === "tracking") {
     const project = projects.find((candidate) => candidate.id === view.projectId);
     if (!project) return <NotFound />;
     const client = clients.find((candidate) => candidate.id === (project.clientId ?? 1));
     const latest = latestOf(project.id);
     const sorted = sort === "name" ? [...latest].sort((left, right) => left.name.localeCompare(right.name, "fr")) : latest;
+    // A card of « Demandes » opens its request in the editor, on its version.
+    const requestHref = (request: BoardRequest) => {
+      const record = deliverables.find((candidate) => candidate.id === request.deliverableId);
+      return record ? `${hrefForRecord(record, deliverables)}?demande=${request.id}` : href.project(project.id);
+    };
     const tabs = (
       <nav className="project-tabs" aria-label="Sections du projet">
         <Link className="project-tab" href={href.project(project.id)} aria-current={view.kind === "project" ? "page" : undefined}>
           Livrables <small>{latest.length}</small>
+        </Link>
+        <Link className="project-tab" href={href.requests(project.id)} aria-current={view.kind === "requests" ? "page" : undefined}>
+          Demandes
         </Link>
         <Link className="project-tab" href={href.scope(project.id)} aria-current={view.kind === "scope" ? "page" : undefined}>
           Périmètre
@@ -615,11 +667,10 @@ export function BrowserView({
               onDelete={() => onDeleteProject(project.id)}
               deleteLocked={!canManage}
             />
-            {view.kind === "project" && (
-              <button className="primary-button" onClick={onNewDeliverable}>
-                <Plus /> Ajouter un livrable
-              </button>
-            )}
+            {/* On every tab of the project (feedback of 25 October 2026). */}
+            <Button size="lg" onClick={onNewDeliverable}>
+              <Plus aria-hidden="true" /> Ajouter un livrable
+            </Button>
           </div>
         </header>
         {tabs}
@@ -630,6 +681,8 @@ export function BrowserView({
         )}
         {view.kind === "tracking" ? (
           <ProjectTracking input={trackingFor(project.id)} />
+        ) : view.kind === "requests" ? (
+          <ProjectRequests input={trackingFor(project.id)} hrefOf={requestHref} />
         ) : view.kind === "scope" ? (
           // Re-keyed on what the server holds: once saved, the draft starts again from it.
           <ProjectScopeEditor
@@ -650,34 +703,7 @@ export function BrowserView({
         ) : layout === "grid" ? (
           <div className="file-grid">{sorted.map((record) => livrableCard(record))}</div>
         ) : (
-          <ul className="browser-list">
-            {sorted.map((record) => {
-              const livrableId = livrableIdOf(record, deliverables);
-              return (
-                <li key={record.id} className="browser-row-wrap">
-                  <Link className="browser-row" href={hrefForRecord(record, deliverables)}>
-                    <span className="row-thumb">
-                      {record.coverData ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- local data URL cover
-                        <img src={record.coverData} alt="" />
-                      ) : (
-                        <DeliverableIcon type={record.type} />
-                      )}
-                    </span>
-                    <span className="row-title">
-                      <b>{record.name}</b>
-                      {titleStatus(livrableId)}
-                      {unreadPill(livrableId)}
-                    </span>
-                    <small>V{String(record.version).padStart(2, "0")}</small>
-                    <small>{record.status}</small>
-                    <small>{record.importedAt}</small>
-                  </Link>
-                  {starButton(`l:${livrableId}`, record.name)}
-                </li>
-              );
-            })}
-          </ul>
+          <ul className="browser-list">{sorted.map((record) => livrableRow(record))}</ul>
         )}
           </>
         )}
@@ -693,9 +719,9 @@ export function BrowserView({
         <PageNav />
         <header className="page-header">
           <h1 className="page-title">Tous les espaces</h1>
-          <button className="primary-button" onClick={onNewClient}>
-            <Plus /> Ajouter un espace
-          </button>
+          <Button size="lg" onClick={onNewClient}>
+            <Plus aria-hidden="true" /> Ajouter un espace
+          </Button>
         </header>
         {sorted.length === 0 ? (
           <EmptyState icon={FolderClosed} title="Aucun espace" text="Créez un espace par client pour y ranger ses projets." />
@@ -717,20 +743,14 @@ export function BrowserView({
   }
 
   if (view.kind === "trash") return <TrashPage items={trash} onRestore={onRestore} onPurge={onPurge} canPurge={canManage} />;
+  if (view.kind === "team") return <TeamPage />;
+  if (view.kind === "help") {
+    // The guided tour replays on the deliverable opened last.
+    const latest = recentLivrableIds.map((livrableId) => versionsOfLivrable(livrableId, deliverables)[0]).find(Boolean);
+    return <HelpPage tourHref={latest ? hrefForRecord(latest, deliverables) : undefined} />;
+  }
 
-  if (view.kind === "shared")
-    return (
-      <div className="browser">
-        <header className="page-header">
-          <h1 className="page-title">Partagés avec moi</h1>
-        </header>
-        <EmptyState
-          icon={Share2}
-          title="Rien de partagé pour l’instant"
-          text="Les projets et livrables qu’un collègue partage avec vous apparaîtront ici."
-        />
-      </div>
-    );
+  if (view.kind === "shared") return <SharedWithMe />;
 
   // One card per deliverable, even if older saves stored several ids for it.
   const recentRecords = recentLivrableIds
@@ -739,49 +759,79 @@ export function BrowserView({
     .filter((record, index, list) => list.findIndex((other) => other.id === record.id) === index);
 
   if (view.kind === "recents") {
-    // Quick filters over recently opened deliverables (Figma "Recently viewed").
-    const matches = (record: Deliverable, filter: RecentFilter) => {
-      const livrableId = livrableIdOf(record, deliverables);
-      const status = livrableStatus(livrableId).kind;
-      if (filter === "todo") return status === "changes-requested" || status === "messages";
-      if (filter === "awaiting") return status === "awaiting-client" || status === "none";
-      if (filter === "approved") return status === "approved";
-      if (filter === "starred") return favorites.includes(`l:${livrableId}`);
-      return true;
+    // A proposal sent on one of its versions, waiting for the client's answer.
+    const awaiting = (record: Deliverable) => {
+      const versionIds = new Set(versionsOfLivrable(livrableIdOf(record, deliverables), deliverables).map((version) => version.id));
+      return comments.some((comment) => versionIds.has(comment.deliverableId ?? -1) && isAwaitingClient(comment.id));
     };
-    const filters: { value: RecentFilter; label: string }[] = [
-      { value: "all", label: "Tous" },
-      { value: "todo", label: "À traiter" },
-      { value: "awaiting", label: "En attente du client" },
-      { value: "approved", label: "Approuvés" },
-      { value: "starred", label: "Favoris" },
-    ];
-    const shown = recentRecords.filter((record) => matches(record, recentFilter));
+    // Every kind one can create, Figma's screens under « Figma »; an old « Document » only when one is there.
+    const familyOf = (type: DeliverableType): DeliverableType => (type === "Screens" ? "Figma" : type);
+    const types = [...pickableTypes, ...(recentRecords.some((record) => record.type === "Doc") ? (["Doc"] as const) : [])];
+    const ofType = recentRecords.filter((record) => recentType === "all" || familyOf(record.type) === recentType);
+    // Counted among the deliverables of the type chosen: the number is what the button shows.
+    const awaitingCount = ofType.filter(awaiting).length;
+    const shown = ofType
+      .filter((record) => !recentAwaiting || awaiting(record))
+      .sort((left, right) => (recentOrder === "name" ? left.name.localeCompare(right.name, "fr") : 0));
+    // Opened last first, as kept; the oldest first, the other way.
+    if (recentOrder === "oldest") shown.reverse();
+    const filtered = recentType !== "all" || recentAwaiting;
     return (
       <div className="browser">
         <header className="page-header">
           <h1 className="page-title">Récents</h1>
-          <div className="filter-chips" role="group" aria-label="Filtrer les livrables récents">
-            {filters.map((filter) => (
-              <button
-                key={filter.value}
-                type="button"
-                className={`filter ${recentFilter === filter.value ? "active-filter" : ""}`}
-                aria-pressed={recentFilter === filter.value}
-                onClick={() => setRecentFilter(filter.value)}
-              >
-                {filter.value === "starred" && <Star aria-hidden="true" />}
-                {filter.label} <span>{recentRecords.filter((record) => matches(record, filter.value)).length}</span>
-              </button>
-            ))}
-          </div>
         </header>
+        {recentRecords.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrer les livrables récents">
+            <UiSelect value={recentType} onValueChange={(next) => setRecentType(next as DeliverableType | "all")}>
+              <UiSelectTrigger aria-label="Type de fichier" className="w-48">
+                <UiSelectValue />
+              </UiSelectTrigger>
+              <UiSelectContent position="popper">
+                <UiSelectItem value="all">Tous les types</UiSelectItem>
+                {types.map((type) => (
+                  <UiSelectItem key={type} value={type}>
+                    {deliverableKinds[type]?.label ?? type}
+                  </UiSelectItem>
+                ))}
+              </UiSelectContent>
+            </UiSelect>
+            <UiSelect value={recentOrder} onValueChange={(next) => setRecentOrder(next as RecentOrder)}>
+              <UiSelectTrigger aria-label="Trier" className="w-48">
+                <UiSelectValue />
+              </UiSelectTrigger>
+              <UiSelectContent position="popper">
+                <UiSelectItem value="recent">Plus récents</UiSelectItem>
+                <UiSelectItem value="oldest">Plus anciens</UiSelectItem>
+                <UiSelectItem value="name">Ordre alphabétique</UiSelectItem>
+              </UiSelectContent>
+            </UiSelect>
+            <Button
+              variant="outline"
+              className="h-8 aria-pressed:border-[var(--ink)] aria-pressed:bg-[var(--mist)]"
+              aria-pressed={recentAwaiting}
+              onClick={() => setRecentAwaiting((current) => !current)}
+            >
+              <Hourglass aria-hidden="true" /> Propositions en attente <span className="tabular-nums text-muted-foreground">{awaitingCount}</span>
+            </Button>
+            <div className="segmented ml-auto" role="group" aria-label="Affichage">
+              <button type="button" aria-pressed={layout === "grid"} aria-label="Grille" onClick={() => changeLayout("grid")}>
+                <LayoutGrid />
+              </button>
+              <button type="button" aria-pressed={layout === "list"} aria-label="Liste" onClick={() => changeLayout("list")}>
+                <List />
+              </button>
+            </div>
+          </div>
+        )}
         {recentRecords.length === 0 ? (
           <EmptyState icon={FolderClosed} title="Rien d’ouvert récemment" text="Les livrables que vous ouvrez apparaîtront ici." />
         ) : shown.length === 0 ? (
-          <EmptyState icon={Star} title="Aucun livrable pour ce filtre" text="Essayez un autre filtre ou revenez à « Tous »." />
-        ) : (
+          <EmptyState icon={Hourglass} title="Aucun livrable pour ces filtres" text={filtered ? "Essayez un autre type, ou sans « Propositions en attente »." : "Rien à montrer."} />
+        ) : layout === "grid" ? (
           <div className="file-grid">{shown.map((record) => livrableCard(record))}</div>
+        ) : (
+          <ul className="browser-list">{shown.map((record) => livrableRow(record))}</ul>
         )}
       </div>
     );
@@ -875,36 +925,39 @@ function HomePage({
   /** « Bien démarrer », in a panel on the right while the agency sets itself up (nothing once done or hidden). */
   gettingStarted: React.ReactNode;
 }) {
-  const [filters, setFilters] = useState<Record<"figures" | "charts" | "register" | "breakdown", number[] | null>>({
+  const [filters, setFilters] = useState<Record<"figures" | "scope" | "proposals" | "register" | "breakdown", number[] | null>>({
     figures: null,
-    charts: null,
+    scope: null,
+    proposals: null,
     register: null,
     breakdown: null,
   });
   const setFilter = (section: keyof typeof filters) => (value: number[] | null) => setFilters((current) => ({ ...current, [section]: value }));
   const figures = overviewFor(filters.figures);
-  const charts = overviewFor(filters.charts).analytics;
+  const scope = overviewFor(filters.scope).analytics;
+  const proposals = overviewFor(filters.proposals).analytics;
   const register = overviewFor(filters.register).analytics.register;
   const breakdown = overviewFor(filters.breakdown).breakdown;
   const percent = (value: number | null) => (value === null ? "—" : `${value} %`);
   const tiles = [
-    { label: "En attente du client", value: euros(figures.pendingEuros), note: plural(figures.pendingCount, "proposition") },
-    { label: "Taux de conversion", value: percent(figures.conversionRate), note: "des propositions tranchées acceptées" },
-    { label: "Commentaires à clarifier", value: String(figures.toQualify), note: "demandes pas encore qualifiées" },
-    { label: "Part hors scope", value: percent(figures.outsideRate), note: "des demandes qualifiées" },
-    { label: "Total des demandes", value: String(figures.totalDemands), note: "toutes versions confondues" },
-    { label: "Versions approuvées", value: `${figures.approved} / ${figures.livrables}`, note: "livrables validés par le client" },
+    { label: "En attente du client", value: euros(figures.pendingEuros), icon: Hourglass },
+    { label: "Taux d’acceptation", value: percent(figures.conversionRate), icon: TrendingUp },
+    { label: "À clarifier", value: String(figures.toQualify), icon: CircleHelp },
+    { label: "Part hors scope", value: percent(figures.outsideRate), icon: PieChart },
+    // What the agency gave: offers sent, valued (src/lib/requestOffer.ts); the requests' count heads « Arbitrages de périmètre ».
+    { label: "Offert au client", value: euros(figures.analytics.offeredEuros), icon: Gift },
+    { label: "Livrables validés", value: `${figures.approved} / ${figures.livrables}`, icon: BadgeCheck },
   ];
-  const breakdownTitle = breakdown.kind === "space" ? "Par espace" : "Par livrable";
+  const breakdownTitle = breakdown.kind === "space" ? "Demandes et revenus par espace" : "Demandes et revenus par livrable";
   const breakdownColumns = breakdown.kind === "space" ? ["Espace", "Projets", "Livrables"] : ["Livrable", "Versions"];
 
   return (
     <div className="browser">
       <header className="page-header">
         <h1 className="page-title">Vue d’ensemble</h1>
-        <button className="primary-button" onClick={onNewProject}>
-          <Plus /> Ajouter un projet
-        </button>
+        <Button size="lg" onClick={onNewProject}>
+          <Plus aria-hidden="true" /> Ajouter un projet
+        </Button>
       </header>
 
       {/* The figures, and « Bien démarrer » beside them; alone, they take the whole width. */}
@@ -912,77 +965,40 @@ function HomePage({
       <div className="home-main">
       <section className="browser-section">
         <SectionHeader title="Chiffres clés" filter={filters.figures} onFilter={setFilter("figures")} groups={livrableGroups} />
-        <div className="overview">
-          <div className="hero-stat is-positive">
-            <span className="stat-label">Revenu supplémentaire accepté</span>
-            <span className="hero-value">{euros(figures.acceptedEuros)}</span>
-            <span className="stat-note">
-              {plural(figures.acceptedCount, "proposition acceptée").replace("propositions acceptée", "propositions acceptées")}
-              {figures.acceptedDays > 0 ? ` · +${plural(figures.acceptedDays, "jour")} de délai accordé` : ""}
-            </span>
-          </div>
-          <div className="stat-row">
-            {tiles.map((tile) => (
-              <div className="stat-tile" key={tile.label}>
-                <span className="stat-label">{tile.label}</span>
-                <span className="stat-value">{tile.value}</span>
-                <span className="stat-note">{tile.note}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <KeyFigures
+          hero={{
+            label: "Revenu hors scope accepté",
+            value: euros(figures.acceptedEuros),
+            icon: HandCoins,
+            note: `${plural(figures.acceptedCount, "proposition acceptée").replace("propositions acceptée", "propositions acceptées")}${figures.acceptedDays > 0 ? ` · +${figures.acceptedDays} j` : ""}`,
+          }}
+          tiles={tiles}
+        />
+      </section>
+
+      {/* Two sections, each with its own filter: how the requests were qualified, where the proposals stand. */}
+      <section className="browser-section">
+        <SectionHeader title="Arbitrages de périmètre" filter={filters.scope} onFilter={setFilter("scope")} groups={livrableGroups} />
+        <ScopeChart data={scope} />
       </section>
 
       <section className="browser-section">
-        <SectionHeader title="Pilotage commercial" filter={filters.charts} onFilter={setFilter("charts")} groups={livrableGroups} />
-        <ScopeCharts data={charts} />
+        <SectionHeader title="Propositions au client" filter={filters.proposals} onFilter={setFilter("proposals")} groups={livrableGroups} />
+        <ProposalChart data={proposals} />
+      </section>
+
+      {/* The spaces side by side, then each request: what the agency reads first. */}
+      <section className="browser-section">
+        <SectionHeader title={breakdownTitle} filter={filters.breakdown} onFilter={setFilter("breakdown")} groups={livrableGroups} />
+        <BreakdownTable
+          columns={breakdownColumns}
+          rows={breakdown.rows.map(({ client, ...row }) => ({ ...row, avatar: client && <SpaceAvatar client={client} size="sm" /> }))}
+        />
       </section>
 
       <section className="browser-section">
         <SectionHeader title={`Registre des demandes · ${register.length}`} filter={filters.register} onFilter={setFilter("register")} groups={livrableGroups} />
         <RegisterTable rows={register} />
-      </section>
-
-      <section className="browser-section">
-        <SectionHeader title={breakdownTitle} filter={filters.breakdown} onFilter={setFilter("breakdown")} groups={livrableGroups} />
-        {breakdown.rows.length === 0 ? (
-          <p className="browser-empty">Aucun livrable sélectionné.</p>
-        ) : (
-          <div className="overview-table-wrap">
-            <table className="overview-table">
-              <thead>
-                <tr>
-                  {breakdownColumns.map((column) => (
-                    <th scope="col" key={column}>
-                      {column}
-                    </th>
-                  ))}
-                  <th scope="col">À clarifier</th>
-                  <th scope="col">Hors scope</th>
-                  <th scope="col">Revenu accepté</th>
-                </tr>
-              </thead>
-              <tbody>
-                {breakdown.rows.map((row) => (
-                  <tr key={row.key}>
-                    <th scope="row">
-                      <Link href={row.href}>
-                        {row.client && <SpaceAvatar client={row.client} size="sm" />}
-                        <span>{row.label}</span>
-                      </Link>
-                    </th>
-                    {row.counts.map((count, index) => (
-                      <td key={index}>{count}</td>
-                    ))}
-                    <td>{row.toQualify}</td>
-                    <td>{row.outside}</td>
-                    <td>{euros(row.acceptedEuros)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </section>
       </div>
       <div className="home-aside">{gettingStarted}</div>
@@ -1028,56 +1044,77 @@ function TrashPage({
           <p className="page-subtitle">Les éléments supprimés restent 30 jours ici avant d’être effacés.</p>
         </div>
         {items.length > 0 && (
-          <button
-            type="button"
-            className="ghost-button"
-            disabled={!canPurge}
-            title={canPurge ? undefined : "Réservé aux administrateurs de l’agence"}
-            onClick={() => setConfirm({ title: "Vider la corbeille ?", run: () => onPurge() })}
-          >
-            <Trash2 /> Vider la corbeille
-          </button>
+          // Reserved to administrators: said on hover when it is not one's to do.
+          <Hint label={canPurge ? "Effacer tout pour de bon" : "Réservé aux administrateurs de l’organisation"} side="bottom">
+            <span>
+              <Button size="lg" disabled={!canPurge} onClick={() => setConfirm({ title: "Vider la corbeille ?", run: () => onPurge() })}>
+                <Trash2 aria-hidden="true" /> Vider la corbeille
+              </Button>
+            </span>
+          </Hint>
         )}
       </header>
       {items.length === 0 ? (
         <EmptyState icon={Trash2} title="La corbeille est vide" text="Les espaces, projets et livrables supprimés apparaîtront ici." />
       ) : (
-        <ul className="browser-list">
-          {items.map((item) => (
-            <li key={item.id} className="trash-row">
-              {item.kind === "space" ? (
-                <SpaceAvatar client={item.data.clients[0] ?? { id: item.id, name: item.name, email: "" }} size="sm" />
-              ) : item.kind === "project" ? (
-                <FolderClosed className="folder-icon" aria-hidden="true" />
-              ) : (
-                <DeliverableIcon type={item.data.deliverables[0]?.type ?? "PDF"} className="folder-icon" aria-hidden="true" />
-              )}
-              <span className="trash-name">
-                <b>{item.name}</b>
-                <small>
-                  {trashKinds[item.kind]}
-                  {item.origin ? ` · ${item.origin}` : ""} · {contentOf(item)}
-                </small>
-              </span>
-              <small className="trash-left">
-                {daysLeft(item.deletedAt) === 0 ? "Effacé aujourd’hui" : `Encore ${plural(daysLeft(item.deletedAt), "jour")}`}
-              </small>
-              <button type="button" className="ghost-button" onClick={() => onRestore(item.id)}>
-                <RotateCcw /> Restaurer
-              </button>
-              <button
-                type="button"
-                className="ghost-button icon-only"
-                aria-label={`Supprimer définitivement ${item.name}`}
-                title={canPurge ? "Supprimer définitivement" : "Supprimer définitivement : réservé aux administrateurs de l’agence"}
-                disabled={!canPurge}
-                onClick={() => setConfirm({ title: `Supprimer définitivement « ${item.name} » ?`, run: () => onPurge(item.id) })}
-              >
-                <Trash2 />
-              </button>
-            </li>
-          ))}
-        </ul>
+        <Table aria-label="Éléments supprimés">
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Élément</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Emplacement</TableHead>
+              <TableHead>Contenu</TableHead>
+              <TableHead>Effacement</TableHead>
+              <TableHead className="w-44">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((item) => (
+              <TableRow key={item.id}>
+                <TableHead scope="row" className="h-auto py-2.5 text-sm font-medium text-foreground">
+                  <span className="flex items-center gap-3">
+                    {item.kind === "space" ? (
+                      <SpaceAvatar client={item.data.clients[0] ?? { id: item.id, name: item.name, email: "" }} size="sm" />
+                    ) : item.kind === "project" ? (
+                      <FolderClosed className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    ) : (
+                      <DeliverableIcon type={item.data.deliverables[0]?.type ?? "PDF"} className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    )}
+                    <span className="max-w-64 truncate">{item.name}</span>
+                  </span>
+                </TableHead>
+                <TableCell>{trashKinds[item.kind]}</TableCell>
+                <TableCell className="text-muted-foreground">{item.origin || "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{contentOf(item)}</TableCell>
+                <TableCell className={daysLeft(item.deletedAt) <= 3 ? "text-[var(--status-high-text)]" : "text-muted-foreground"}>
+                  {daysLeft(item.deletedAt) === 0 ? "Aujourd’hui" : `Dans ${plural(daysLeft(item.deletedAt), "jour")}`}
+                </TableCell>
+                <TableCell className="text-right">
+                  <span className="inline-flex items-center gap-1">
+                    <Button variant="outline" size="sm" onClick={() => onRestore(item.id)}>
+                      <RotateCcw aria-hidden="true" /> Restaurer
+                    </Button>
+                    <Hint label={canPurge ? "Supprimer définitivement" : "Supprimer définitivement : réservé aux administrateurs de l’organisation"} side="left">
+                      <span>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Supprimer définitivement ${item.name}`}
+                          disabled={!canPurge}
+                          onClick={() => setConfirm({ title: `Supprimer définitivement « ${item.name} » ?`, run: () => onPurge(item.id) })}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </span>
+                    </Hint>
+                  </span>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       )}
       {confirm && (
         <ConfirmDeleteDialog
@@ -1151,7 +1188,7 @@ function OrphansSection({
             <b>{project.name}</b>
             <small>Projet sans espace</small>
             <Select label={`Rattacher ${project.name}`} value="" options={spaceOptions} onChange={(value) => value && onMoveProject(project.id, Number(value))} />
-            <button type="button" className="ghost-button icon-only" aria-label={`Supprimer ${project.name}`} title={canManage ? "Supprimer" : "Supprimer : réservé aux administrateurs de l’agence"} disabled={!canManage} onClick={() => setConfirm({ title: `Supprimer le projet « ${project.name} » ?`, run: () => onDeleteProject(project.id) })}>
+            <button type="button" className="ghost-button icon-only" aria-label={`Supprimer ${project.name}`} title={canManage ? "Supprimer" : "Supprimer : réservé aux administrateurs de l’organisation"} disabled={!canManage} onClick={() => setConfirm({ title: `Supprimer le projet « ${project.name} » ?`, run: () => onDeleteProject(project.id) })}>
               <Trash2 />
             </button>
           </li>

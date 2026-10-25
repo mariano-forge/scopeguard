@@ -183,8 +183,8 @@ body {
   padding: 11px 15px;
 }
 .secondary-button:hover {
-  border-color: var(--action-ui);
-  color: var(--action-text);
+  border-color: var(--border-input);
+  background: var(--canvas);
 }
 .file-button {
   position: relative;
@@ -563,7 +563,7 @@ body {
   padding: 13px;
 }
 .version-row.current-version {
-  border-color: var(--action-ui);
+  border-color: var(--border-input);
   background: var(--canvas);
 }
 .version-row b,
@@ -946,7 +946,7 @@ body {
 }
 .client-comment-card:hover,
 .selected-client-comment {
-  border-color: var(--action-ui);
+  border-color: var(--border-input);
   background: var(--canvas);
 }
 .client-comment-top {
@@ -2473,7 +2473,7 @@ body {
 /* Browser views: home, client, project */
 .browser {
   display: grid;
-  /* One column no wider than the page: a wide table scrolls in its frame (.overview-table-wrap)
+  /* One column no wider than the page: a wide table scrolls in its frame (src/components/ui/table.tsx)
      instead of stretching the column, and the page with it. */
   grid-template-columns: minmax(0, 1fr);
   gap: var(--s-8);
@@ -4391,12 +4391,6 @@ a.page-nav-label:hover {
   outline-offset: 2px;
 }
 
-/* Home overview: one hero figure, a row of stat tiles, a breakdown table */
-.overview {
-  display: grid;
-  grid-template-columns: minmax(240px, 1fr) 3fr;
-  gap: var(--s-4);
-}
 /* The guided tour (ProductTour.tsx): a bubble beside the feature, the feature ringed. */
 .product-tour {
   width: 300px;
@@ -4551,86 +4545,6 @@ a.page-nav-label:hover {
   color: var(--graphite);
   font: 400 var(--t-caption) var(--font-ui);
 }
-.hero-stat,
-.stat-tile {
-  display: grid;
-  align-content: start;
-  gap: var(--s-1);
-  padding: var(--s-4);
-  border: 1px solid var(--border);
-  border-radius: var(--r-panel);
-  background: var(--paper);
-}
-.hero-stat {
-  align-content: center;
-}
-.stat-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: var(--s-4);
-}
-.stat-label {
-  color: var(--graphite);
-  font: 500 var(--t-caption) var(--font-ui);
-}
-.hero-value {
-  color: var(--ink);
-  font: 600 48px/52px var(--font-ui);
-  letter-spacing: var(--t-display-tracking);
-}
-.stat-value {
-  color: var(--ink);
-  font: 600 var(--t-h2) var(--font-ui);
-}
-.stat-note {
-  color: var(--graphite);
-  font-size: var(--t-caption-size);
-}
-.overview-table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--r-panel);
-  background: var(--paper);
-}
-.overview-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--t-ui-size);
-}
-.overview-table th,
-.overview-table td {
-  padding: var(--s-3) var(--s-4);
-  border-bottom: 1px solid var(--border);
-  text-align: right;
-  white-space: nowrap;
-}
-.overview-table tr:last-child > * {
-  border-bottom: 0;
-}
-.overview-table thead th {
-  color: var(--graphite);
-  font: 500 var(--t-caption) var(--font-ui);
-}
-.overview-table td {
-  font-variant-numeric: tabular-nums;
-}
-.overview-table th:first-child {
-  text-align: left;
-}
-.overview-table tbody th a {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
-  color: var(--ink);
-  font-weight: 500;
-  text-decoration: none;
-}
-.overview-table tbody th a:hover span {
-  text-decoration: underline;
-}
-.overview-table tbody tr:hover {
-  background: var(--canvas);
-}
 .activity-list {
   display: grid;
   margin: 0;
@@ -4656,11 +4570,6 @@ a.page-nav-label:hover {
   white-space: nowrap;
 }
 
-@media (max-width: 900px) {
-  .overview {
-    grid-template-columns: 1fr;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
   .select-menu {
     animation: none;
@@ -4741,10 +4650,9 @@ a.page-nav-label:hover {
   fill: var(--favorite-fill);
 }
 
-/* Cards: blue outline only while pressing (and on keyboard focus) */
+/* Cards: a darker edge while pressing; the blue ring is keyboard focus only (no blue stroke to single one out). */
 .card-wrap > a:active {
-  border-color: var(--action-ui);
-  box-shadow: 0 0 0 1px var(--action-ui);
+  border-color: var(--border-input);
 }
 
 .page-nav-button:disabled {
@@ -4914,9 +4822,9 @@ a.page-nav-label:hover {
   background: var(--canvas);
 }
 .kind-option.is-selected {
-  border-color: var(--action-ui);
-  background: var(--status-low-bg);
-  color: var(--status-low-text);
+  border-color: var(--ink);
+  background: var(--mist);
+  color: var(--ink);
 }
 .kind-option input {
   position: absolute;
@@ -4938,9 +4846,10 @@ a.page-nav-label:hover {
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--s-3);
-  min-height: 64px;
-  padding: var(--s-3) var(--s-4);
+  gap: var(--s-2);
+  /* As tall as a text field: the dialog's fields read as one form (feedback of 25 October 2026). */
+  min-height: 40px;
+  padding: var(--s-2) var(--s-3);
   border: 1px dashed var(--border-input);
   border-radius: var(--r-button);
   background: var(--canvas);
@@ -4966,9 +4875,9 @@ a.page-nav-label:hover {
 }
 .cover-field {
   display: grid;
-  grid-template-columns: 160px 1fr;
+  grid-template-columns: 96px 1fr;
   align-items: center;
-  gap: var(--s-4);
+  gap: var(--s-3);
 }
 .cover-field-preview {
   overflow: hidden;
@@ -5033,15 +4942,15 @@ a.page-nav-label:hover {
   border: 1px solid var(--border);
 }
 
-/* Cards: star top-left, version picker top-right of the cover */
+/* On a card's cover: its version on the left, its favourite star on the right (feedback of 25 October 2026). */
 .card-wrap .star-button {
-  right: auto;
-  left: var(--s-2);
+  right: var(--s-2);
+  left: auto;
 }
 .card-version {
   position: absolute;
   top: var(--s-2);
-  right: var(--s-2);
+  left: var(--s-2);
   z-index: 2;
 }
 .card-version .select-trigger,
@@ -5172,32 +5081,6 @@ a.page-nav-label:hover {
   opacity: 0.45;
   cursor: not-allowed;
   filter: none;
-}
-
-/* Trash */
-.trash-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
-  align-items: center;
-  gap: var(--s-3);
-  min-height: 60px;
-  padding: 0 var(--s-4);
-}
-.trash-name {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-.trash-name b {
-  overflow: hidden;
-  font: 500 var(--t-ui) var(--font-ui);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.trash-name small,
-.trash-left {
-  color: var(--graphite);
-  font-size: var(--t-caption-size);
 }
 
 /* Deliverable card "⋯" menu (bottom-right, shown on hover / focus / open) */
@@ -6062,21 +5945,6 @@ label.sidebar-icon-button:focus-within {
   align-items: center;
   gap: 6px;
 }
-.proposal-split {
-  display: flex;
-  gap: 2px;
-  height: 8px;
-  margin-top: var(--s-3);
-  overflow: hidden;
-  border-radius: 4px;
-  background: var(--mist);
-}
-.proposal-split span {
-  height: 100%;
-}
-.proposal-split span:first-child {
-  border-radius: 4px 0 0 4px;
-}
 .is-accepted {
   background: var(--status-resolved-text);
 }
@@ -6085,13 +5953,6 @@ label.sidebar-icon-button:focus-within {
 }
 .is-refused {
   background: var(--border-input);
-}
-.legend-swatch {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 4px;
-  border-radius: 2px;
 }
 .decision-sent {
   background: var(--status-low-bg);
@@ -6206,23 +6067,6 @@ button.rail-logo .lucide {
   width: 20px;
   height: 20px;
 }
-/* Request log on the home page: text columns read from the left */
-.register-table th[scope="row"] {
-  white-space: normal;
-}
-.register-table td:nth-child(2),
-.register-table td:nth-child(3),
-.register-table td:nth-child(5),
-.register-table thead th:nth-child(2),
-.register-table thead th:nth-child(3),
-.register-table thead th:nth-child(5) {
-  text-align: left;
-}
-.register-table .action-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
 
 /* Home: one filter per section, harmonized figures and charts */
 .section-header {
@@ -6232,23 +6076,6 @@ button.rail-logo .lucide {
   justify-content: space-between;
   gap: var(--s-2);
   min-height: 32px;
-}
-.overview .stat-row {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-@media (max-width: 900px) {
-  .overview .stat-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-.hero-stat.is-positive {
-  border-color: var(--status-resolved-bg);
-  background: var(--status-resolved-bg);
-}
-.hero-stat.is-positive .stat-label,
-.hero-stat.is-positive .stat-note,
-.hero-stat.is-positive .hero-value {
-  color: var(--status-resolved-text);
 }
 
 .livrable-filter {
@@ -6283,9 +6110,9 @@ button.rail-logo .lucide {
   border-color: var(--border-input);
 }
 .livrable-filter-trigger.is-filtered {
-  border-color: var(--action-ui);
-  background: var(--status-low-bg);
-  color: var(--status-low-text);
+  border-color: var(--border-input);
+  background: var(--mist);
+  color: var(--ink);
 }
 .livrable-filter-trigger:focus-visible {
   outline: 2px solid var(--action-ui);
@@ -6331,108 +6158,6 @@ button.rail-logo .lucide {
   accent-color: var(--action-ui);
 }
 
-.chart-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s-4);
-}
-@media (max-width: 900px) {
-  .chart-grid {
-    grid-template-columns: 1fr;
-  }
-}
-.chart-card {
-  display: grid;
-  align-content: start;
-  gap: var(--s-3);
-  border: 1px solid var(--border);
-  border-radius: var(--r-panel);
-  padding: var(--s-4);
-  background: var(--paper);
-}
-.chart-card-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--s-2);
-}
-.chart-card-header h3 {
-  margin: 0;
-  color: var(--ink);
-  font: 600 var(--t-ui) var(--font-ui);
-}
-.chart-card-header span {
-  color: var(--graphite);
-  font-size: var(--t-caption-size);
-}
-.chart-card .proposal-split {
-  margin-top: 0;
-}
-.proposal-split span.is-included,
-.legend-swatch.is-included {
-  background: var(--status-resolved-text);
-}
-.proposal-split span.is-outside,
-.legend-swatch.is-outside {
-  background: var(--status-scope-text);
-}
-.proposal-split span.is-pending,
-.legend-swatch.is-pending {
-  background: var(--status-medium-text);
-}
-.chart-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-4);
-  margin: 0;
-  padding: 0;
-  color: var(--graphite);
-  font-size: var(--t-caption-size);
-  list-style: none;
-}
-.chart-legend b {
-  color: var(--ink);
-}
-.chart-facts {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--s-3);
-  margin: 0;
-  border-top: 1px solid var(--border);
-  padding-top: var(--s-3);
-}
-.chart-facts dt {
-  color: var(--graphite);
-  font-size: var(--t-caption-size);
-}
-.chart-facts dd {
-  margin: 2px 0 0;
-  color: var(--ink);
-  font: 600 var(--t-h3) var(--font-ui);
-}
-.chart-rows {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.chart-rows li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-2);
-  border-bottom: 1px solid var(--border);
-  padding: var(--s-2) 0;
-  color: var(--ink);
-  font-size: var(--t-ui-size);
-}
-.chart-rows li.is-total {
-  border-bottom: 0;
-  font-weight: 600;
-}
-.chart-rows li.is-total b {
-  color: var(--status-resolved-text);
-}
 .proposal-meta.is-inline {
   display: inline;
   margin: 0;
@@ -7114,6 +6839,30 @@ body.is-resizing {
   width: 14px;
   height: 14px;
 }
+/* A proposal prepared (a quote or an offer) or an offer sent (src/lib/requestOffer.ts): what it holds on a
+   line of its own, its actions under it. */
+.request-proposal:has(.request-offer, .request-prepared) {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.request-offer,
+.request-prepared {
+  display: flex;
+  flex: 1 0 100%;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.request-offer {
+  color: var(--status-resolved-text);
+}
+.request-prepared {
+  color: var(--graphite);
+}
+.request-prepared b {
+  color: var(--ink);
+}
 .secondary-button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
@@ -7184,13 +6933,6 @@ body.is-resizing {
 
 .has-tooltip:hover::after,
 
-/* Proposals page: one total, its split and legend */
-.overview.is-single {
-  grid-template-columns: minmax(0, 560px);
-}
-.overview.is-single .chart-legend {
-  margin-top: var(--s-2);
-}
 
 /* Bubble: a bit wider, lighter discussion, calmer hierarchy */
 .thread {
@@ -7316,18 +7058,6 @@ body.is-resizing {
   color: var(--paper);
 }
 
-/* Request register: rows page by page (10 / 20 / 40 / 80) */
-.register {
-  display: grid;
-  gap: var(--s-3);
-}
-.register-pagination {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--s-4);
-}
 
 /* Notifications: client messages (avatar, author, time, excerpt, deliverable) */
 .notification-section {
@@ -9300,10 +9030,14 @@ body.is-resizing {
 
 /* ——— Deliverable editor, feedback rounds of October 2026 ——— */
 
-/* The tool in use: a white icon on Kora's blue (the CTA blue). */
+/* The tool in use: a white icon on Kora's blue (the CTA blue). Hovered, it stays blue, a shade darker:
+   the grey of the other tools' hover would leave its white icon unreadable. */
 .canvas-toolbar .tool-button.selected {
   background: var(--action-ui);
   color: var(--paper);
+}
+.canvas-toolbar .tool-button.selected:hover:not(:disabled) {
+  background: var(--cta-fill-hover);
 }
 
 /* Pins readable on any deliverable, all-white or all-black: a solid color, a white ring and a fine dark
@@ -9697,6 +9431,10 @@ body.is-resizing {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.account-menu-agency b {
+  color: var(--ink);
+  font-weight: 600;
+}
 .account-menu-agency {
   margin: 0 var(--s-2) var(--s-2);
   padding: 6px var(--s-2);
@@ -10043,14 +9781,6 @@ body.is-resizing {
 }
 .home-aside .getting-started {
   padding: var(--s-4);
-}
-@container (max-width: 760px) {
-  .home-main .overview {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .home-main .overview .stat-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 @media (max-width: 1100px) {
   .home-layout {
@@ -10648,4 +10378,123 @@ body.is-resizing {
 .request-cited b {
   color: var(--ink);
   font-weight: 600;
+}
+/* ——— Out-of-scope proposal: « Facturer » or « Offrir » (ProposalFields.tsx), feedback of 24 October 2026 ——— */
+
+/* The proposal prepared while qualifying: a block of its own, its two ways as the qualification's segments. */
+.proposal-fields {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--canvas);
+}
+.proposal-fields-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.scope-choice.proposal-mode {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  background: var(--paper);
+}
+.scope-choice.proposal-mode .scope-option::before {
+  display: none;
+}
+.proposal-mode .lucide {
+  width: 14px;
+  height: 14px;
+}
+/* In the bubble's form, its fields keep shadcn's look (the form's older label rule is for its own fields). */
+.qualify-form .proposal-fields label {
+  color: var(--ink);
+  font: 500 var(--t-caption) var(--font-ui);
+}
+.qualify-form .proposal-fields input {
+  padding-block: 0;
+}
+
+/* A card's quiet actions, as in the bubble: « Modifier », « Remettre à clarifier ». */
+.row-actions .row-links {
+  flex-basis: 100%;
+}
+.inspector-list li .row-actions:has(.row-links) {
+  flex-wrap: wrap;
+}
+
+/* Tabs: the keyboard's focus is a blue underline, never a frame (shadcn's ring, cut by the bar's height). */
+.thread-tabs [data-slot="tabs-trigger"]:focus-visible {
+  border-color: transparent;
+  outline: none;
+  box-shadow: inset 0 -2px 0 var(--action-ui);
+}
+
+/* The bubble keeps clear of the canvas's tools at the bottom (useFittingSide, CanvasComments.tsx): its form
+   scrolls inside it, its buttons stay. A little tighter, to need it less. */
+.qualify-form {
+  gap: var(--s-2);
+}
+
+/* Pages' sections, everywhere alike: each title reads as a heading, not as body text; more room between the
+   sections than inside them (feedback of 25 October 2026: « assurer la consistance générale »). */
+.home-main {
+  gap: calc(var(--s-8) + var(--s-2));
+}
+.browser .browser-section {
+  gap: var(--s-4);
+}
+.browser .browser-section > .section-header h2,
+.browser .browser-section > h2 {
+  font: 600 var(--t-h3) var(--font-heading);
+  letter-spacing: -0.01em;
+}
+
+/* A space in the sidebar, its projects under it (Sidebars.tsx SpaceNavItem): its chevron at the end of its row,
+   seen on hover or when open; the projects indented under the space's avatar. */
+.nav-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.nav-row > .nav-item {
+  flex: 1;
+  min-width: 0;
+}
+.nav-toggle {
+  position: absolute;
+  right: var(--s-1);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--r-field);
+  background: transparent;
+  color: var(--graphite);
+  opacity: 0;
+  cursor: pointer;
+}
+.nav-row:hover .nav-toggle,
+.nav-toggle:focus-visible,
+.nav-toggle[aria-expanded="true"] {
+  opacity: 1;
+}
+.nav-toggle:hover {
+  background: var(--mist);
+  color: var(--ink);
+}
+.nav-toggle .lucide {
+  width: 14px;
+  height: 14px;
+  transition: transform 120ms ease;
+}
+.home-sidebar .nav-tree .nav-item.nav-sub {
+  padding-left: calc(var(--s-3) + var(--s-6));
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-toggle .lucide {
+    transition: none;
+  }
 }

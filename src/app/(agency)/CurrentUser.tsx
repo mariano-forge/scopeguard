@@ -6,7 +6,7 @@ import { Building2, Check, Frame, LogOut, Settings, Users } from "lucide-react";
 import type { CurrentUser } from "@/lib/session";
 import { authClient } from "@/lib/auth-client";
 import { initialsOf } from "@/lib/authors";
-import { TeamDialog } from "./TeamDialog";
+import { href } from "./routes";
 import { AgencyDialog } from "./AgencyDialog";
 import { FigmaAccountDialog } from "./FigmaAccountDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -25,20 +25,20 @@ export function useCurrentUser() {
 }
 
 
+/** Opens another agency of the person's: the app starts again on its data (account menu, « Partagés avec moi »). */
+export async function switchAgency(organizationId: string) {
+  await authClient.organization.setActive({ organizationId });
+  // Full load: the app starts again on the other agency's data.
+  window.location.assign("/");
+}
+
 /** Avatar (and name, outside the rail) opening the account menu: team, agency switch, sign-out. */
 export function AccountMenu({ compact = false }: { compact?: boolean }) {
   const user = useCurrentUser();
   const router = useRouter();
-  const [teamOpen, setTeamOpen] = useState(false);
   const [agencyOpen, setAgencyOpen] = useState(false);
   const [figmaOpen, setFigmaOpen] = useState(false);
   const canManage = user.role === "owner" || user.role === "admin";
-
-  async function switchAgency(organizationId: string) {
-    await authClient.organization.setActive({ organizationId });
-    // Full load: the app starts again on the other agency's data.
-    window.location.assign("/");
-  }
 
   async function signOut() {
     await authClient.signOut();
@@ -72,9 +72,13 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
             <small>{user.email}</small>
           </span>
         </DropdownMenuLabel>
-        {user.organizationName && <p className="account-menu-agency">{user.organizationName}</p>}
+        {user.organizationName && (
+          <p className="account-menu-agency">
+            Connecté à <b>{user.organizationName}</b>
+          </p>
+        )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => setTeamOpen(true)}>
+        <DropdownMenuItem onSelect={() => router.push(href.team())}>
           <Users />
           Équipe
         </DropdownMenuItem>
@@ -85,13 +89,13 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
         {canManage && (
           <DropdownMenuItem onSelect={() => setAgencyOpen(true)}>
             <Settings />
-            Paramètres de l’agence
+            Paramètres de l’organisation
           </DropdownMenuItem>
         )}
         {user.organizations.length > 1 && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs font-normal opacity-70">Changer d’agence</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs font-normal opacity-70">Changer d’organisation</DropdownMenuLabel>
             {user.organizations.map((agency) => (
               <DropdownMenuItem key={agency.id} disabled={agency.id === user.organizationId} onSelect={() => void switchAgency(agency.id)}>
                 {agency.id === user.organizationId ? <Check /> : <Building2 />}
@@ -107,7 +111,6 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-    <TeamDialog open={teamOpen} onClose={() => setTeamOpen(false)} />
     {agencyOpen && <AgencyDialog open onClose={() => setAgencyOpen(false)} />}
     {figmaOpen && <FigmaAccountDialog onClose={() => setFigmaOpen(false)} />}
     </>

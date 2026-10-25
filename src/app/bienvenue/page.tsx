@@ -24,7 +24,7 @@ export default async function WelcomePage() {
         <div className="grid gap-1">
           <h1 className="font-heading text-lg font-bold">Bienvenue, {user.name}</h1>
           <p className="text-sm text-[var(--graphite)]">
-            Créez l’espace de votre agence : vous en serez propriétaire et pourrez y inviter vos collègues.
+            Créez l’espace de votre organisation : vous en serez propriétaire et pourrez y inviter vos collègues.
           </p>
         </div>
 
@@ -44,7 +44,7 @@ export default async function WelcomePage() {
             ))}
             <div className="flex items-center gap-3 pt-1 text-xs text-[var(--graphite)]">
               <span className="h-px flex-1 bg-[var(--border)]" />
-              ou créez votre agence
+              ou créez votre organisation
               <span className="h-px flex-1 bg-[var(--border)]" />
             </div>
           </div>

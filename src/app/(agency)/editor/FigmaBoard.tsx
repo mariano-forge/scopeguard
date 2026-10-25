@@ -17,7 +17,7 @@ export function FigmaBoard({ url, round, comments, agency, panel }: { url?: stri
   const requests = comments.filter((comment) => !isAgencyDraft(comment));
   const reviewed = round ? round.pages.filter((page) => round.reviewed.includes(page.id)).map((page) => page.name) : [];
   const hero = !agency
-    ? { title: "Commentez la maquette dans Figma", text: "Ouvrez le fichier, choisissez l’outil Commentaire (touche C) et cliquez sur l’écran à revoir : l’agence reçoit votre demande ici." }
+    ? { title: "Commentez la maquette dans Figma", text: "Ouvrez le fichier, choisissez l’outil Commentaire (touche C) et cliquez sur l’écran à revoir : l’organisation reçoit votre demande ici." }
     : requests.length
       ? { title: `${plural(requests.length, "demande")} ${requests.length > 1 ? "reçues" : "reçue"} de Figma`, text: "Elles sont dans le panneau « Demandes » : ouvrez-en une pour la qualifier." }
       : { title: "Les retours de vos clients se font dans Figma", text: "Les commentaires laissés sur les pages en revue arrivent ici, pour que vous les qualifiiez. Les devis et la validation se font dans Kora." };

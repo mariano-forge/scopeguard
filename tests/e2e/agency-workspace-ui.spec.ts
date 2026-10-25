@@ -26,7 +26,7 @@ async function workspace(browser: Browser) {
     if (sent.method() !== "GET" && sent.url().includes("/api/") && !sent.url().includes("/api/auth/")) writes.push(`${sent.method()} ${new URL(sent.url()).pathname}`);
   });
   await signInPage(page, alice.email);
-  return { org: alice.organizationId!, page, errors, writes };
+  return { alice, org: alice.organizationId!, page, errors, writes };
 }
 
 const rows = <T,>(query: string, org: string, params: unknown[] = []) => sql<T>(query, [org, ...params]);
@@ -94,6 +94,14 @@ test("a deleted deliverable goes to the trash with its requests and comes back; 
   expect((await rows<{ kind: string }>("select kind from trash_items where organization_id = $1", org)).map((row) => row.kind)).toEqual(["livrable"]);
 
   await page.goto("/corbeille");
+  // A table: what it was, where it was, what it held, when it goes; emptying it is the page's call to action.
+  const trash = page.getByRole("table", { name: "Éléments supprimés" });
+  await expect(trash.getByRole("columnheader")).toHaveText(["Élément", "Type", "Emplacement", "Contenu", "Effacement", "Actions"]);
+  const deleted = trash.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "maquette.png" }) });
+  await expect(deleted.getByRole("cell").first()).toHaveText("Livrable");
+  await expect(deleted).toContainText("1 demande");
+  await expect(deleted).toContainText("Dans 30 jours");
+  await expect(page.getByRole("button", { name: "Vider la corbeille" })).toBeEnabled();
   await page.getByRole("button", { name: "Restaurer" }).click();
   await expect.poll(async () => (await rows("select 1 from deliverables where organization_id = $1 and id = 1", org)).length).toBe(1);
   expect(await rows("select 1 from comments where organization_id = $1 and id = 30", org)).toHaveLength(1);
@@ -140,5 +148,71 @@ test("the home page fits narrow screens: its wide tables scroll in their frame, 
     await page.setViewportSize({ width, height: 800 });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), { message: `${width} px` }).toBeLessThanOrEqual(0);
   }
+  expect(errors).toEqual([]);
+});
+
+test("« Récents » narrows by type, sorts, keeps the proposals awaiting the client, and shows a grid or a list", async ({ browser }) => {
+  const { alice, org, page, errors } = await workspace(browser);
+  await seedState(alice, {
+    lists: {
+      deliverables: {
+        upsert: [
+          { id: 2, projectId: 1, name: "cahier.pdf", type: "PDF", version: 1, status: "En attente client", locked: false, importedAt: "15/10/2026 10:00" },
+          { id: 3, projectId: 1, name: "bannière.png", type: "Image", version: 2, status: "En attente client", locked: false, importedAt: "16/10/2026 10:00" },
+        ],
+        remove: [],
+      },
+      comments: {
+        upsert: [{ id: 31, deliverableId: 3, author: "Claire Dubois", initials: "CD", from: "client", kind: "request", message: "Ajouter un bandeau", title: "Bandeau", decision: "Hors périmètre", location: "", time: "t" }],
+        remove: [],
+      },
+    },
+    maps: {
+      proposalStates: { upsert: { "31": "sent" }, remove: [] },
+      proposalVersions: { upsert: { "31": [{ id: 310, commentId: 31, version: 1, amount: 300, deadline: 2, status: "sent", createdAt: "x", description: "Devis" }] }, remove: [] },
+    },
+  });
+  // Opened last first: the banner, then the specification, then the mock-up.
+  await page.goto("/recents");
+  await page.evaluate((key) => window.localStorage.setItem(key, JSON.stringify([3, 2, 1])), `kora-recent-deliverables:${org}`);
+  await page.reload();
+  const names = page.locator(".file-grid .file-card-title b");
+  await expect(names).toHaveText(["bannière.png", "cahier.pdf", "maquette.png"]);
+  // On each card, its version on the left, its star on the right.
+  const card = page.locator(".card-wrap").filter({ hasText: "bannière.png" });
+  const version = await card.locator(".card-version").boundingBox();
+  const star = await card.getByRole("button", { name: /favoris/ }).boundingBox();
+  expect(version && star && version.x < star.x).toBe(true);
+
+  const filters = page.getByRole("group", { name: "Filtrer les livrables récents" });
+  await filters.getByRole("combobox", { name: "Trier" }).click();
+  await page.getByRole("option", { name: "Plus anciens" }).click();
+  await expect(names).toHaveText(["maquette.png", "cahier.pdf", "bannière.png"]);
+  await filters.getByRole("combobox", { name: "Trier" }).click();
+  await page.getByRole("option", { name: "Ordre alphabétique" }).click();
+  await expect(names).toHaveText(["bannière.png", "cahier.pdf", "maquette.png"]);
+
+  // Every kind one can create is offered, Figma too, even with none of it opened lately.
+  const awaiting = filters.getByRole("button", { name: /Propositions en attente/ });
+  await filters.getByRole("combobox", { name: "Type de fichier" }).click();
+  await expect(page.getByRole("option")).toHaveText(["Tous les types", "Image", "PDF", "Vidéo", "Lien", "Figma"]);
+  await page.getByRole("option", { name: "PDF" }).click();
+  await expect(names).toHaveText(["cahier.pdf"]);
+  // The count is that of the type chosen: no PDF waits for the client.
+  await expect(awaiting).toHaveText(/0$/);
+  await filters.getByRole("combobox", { name: "Type de fichier" }).click();
+  await page.getByRole("option", { name: "Tous les types" }).click();
+
+  // The one whose proposal waits for the client.
+  await expect(awaiting).toHaveText(/1$/);
+  await awaiting.click();
+  await expect(awaiting).toHaveAttribute("aria-pressed", "true");
+  await expect(names).toHaveText(["bannière.png"]);
+
+  // As a list, the same filters.
+  await filters.getByRole("button", { name: "Liste" }).click();
+  await expect(page.locator(".browser-list .row-title b")).toHaveText(["bannière.png"]);
+  await awaiting.click();
+  await expect(page.locator(".browser-list .row-title b")).toHaveCount(3);
   expect(errors).toEqual([]);
 });

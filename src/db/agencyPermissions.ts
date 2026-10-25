@@ -1,14 +1,15 @@
 // What a member of an agency may not do: commercial decisions and what cannot be undone. Owners and
 // administrators may do everything; members produce (comment, import, qualify, draft a quote, share
-// a review) but an administrator sends the quote.
+// a review) but an administrator sends the quote, offers the request, or marks it paid.
 //
 // The pages send their changes as record-level differences (src/lib/sharedState.ts): each reserved
 // action is recognised by comparing them with what the database holds.
 
 import { and, eq, inArray } from "drizzle-orm";
-import type { StateChanges } from "@/lib/sharedState";
+import { sameValue, type StateChanges } from "@/lib/sharedState";
+import { sentOfferOf } from "@/lib/requestOffer";
 import type { Db } from "./client";
-import { clients, commentProposals, projects, proposalVersions, reviewLinks, trashItems } from "./schema";
+import { clients, commentProposals, comments, projects, proposalVersions, reviewLinks, trashItems } from "./schema";
 
 type Data = Record<string, unknown>;
 
@@ -55,6 +56,25 @@ export async function reservedActions(db: Db, org: string, changes: StateChanges
       ([key, value]) => (value as Data)?.decision && (value as Data).decision !== (proposals.get(key)?.adaptation as Data | null)?.decision,
     );
     if (decided || (adaptations?.remove ?? []).some(pendingAdaptation)) found.add("répondre à une contre-proposition");
+  }
+
+  // Sending an offer to the client (src/lib/requestOffer.ts), or changing or taking back one sent: a commercial
+  // decision, like a quote. Preparing one is not, as drafting a quote is not. A request that comes back from the
+  // trash keeps its own.
+  const upserted = changes.lists?.comments?.upsert ?? [];
+  if (upserted.length) {
+    const stored = new Map(
+      (await db.select({ id: comments.id, data: comments.data }).from(comments).where(and(eq(comments.organizationId, org), inArray(comments.id, upserted.map((comment) => comment.id))))).map(
+        (row) => [row.id, row.data as Data],
+      ),
+    );
+    const restoring = (changes.lists?.trash?.remove ?? []).length > 0;
+    const sent = (request: object | undefined) => (request ? sentOfferOf(request) : null);
+    const changed = (comment: (typeof upserted)[number]) => (stored.has(comment.id) || !restoring) && !sameValue(sent(comment), sent(stored.get(comment.id)));
+    if (upserted.some(changed)) found.add("offrir une demande hors scope");
+    // Marking an accepted proposal paid, or taking it back: the agency's books.
+    const paid = (request: object | undefined) => (request as Data | undefined)?.paidAt ?? null;
+    if (upserted.some((comment) => (stored.has(comment.id) || !restoring) && paid(comment) !== paid(stored.get(comment.id)))) found.add("marquer une proposition payée");
   }
 
   // Revoking a client link.

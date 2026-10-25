@@ -61,7 +61,7 @@ export function FigmaAccountDialog({ onClose }: { onClose: () => void }) {
       ) : connection ? (
         <div className="flex flex-col items-start gap-3">
           <p className="text-sm">
-            Connecté au compte Figma <b>{connection.handle}</b> depuis le {day(connection.connectedAt)}. Vos commentaires dans Figma sont ceux de l’agence : ils restent dans Figma.
+            Connecté au compte Figma <b>{connection.handle}</b> depuis le {day(connection.connectedAt)}. Vos commentaires dans Figma sont ceux de l’organisation : ils restent dans Figma.
           </p>
           <Button type="button" variant="outline" disabled={pending} onClick={() => void disconnect()}>
             Déconnecter mon compte Figma

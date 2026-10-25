@@ -261,7 +261,7 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
         <div className="flex flex-wrap items-center justify-end gap-2 px-4 pt-3 text-sm">
           {agencyError && <span role="alert" className="text-[var(--status-high-text)]">{agencyError}</span>}
           <Button type="button" variant="link" size="sm" onClick={openAgencyWindow}>
-            Je suis de l’agence
+            Je suis de l’organisation
           </Button>
         </div>
         <AccessGate

@@ -36,8 +36,8 @@ export function CreateAgencyForm() {
       setPending(false);
       setError(
         failed?.code === "YOU_HAVE_REACHED_THE_MAXIMUM_NUMBER_OF_ORGANIZATIONS"
-          ? "Vous faites déjà partie d’une agence."
-          : "L’agence n’a pas pu être créée. Réessayez.",
+          ? "Vous faites déjà partie d’une organisation."
+          : "L’organisation n’a pas pu être créée. Réessayez.",
       );
       return;
     }
@@ -50,7 +50,7 @@ export function CreateAgencyForm() {
   return (
     <form className="grid gap-4" onSubmit={submit}>
       <div className="grid gap-1.5">
-        <Label htmlFor="agency-name">Nom de votre agence</Label>
+        <Label htmlFor="agency-name">Nom de votre organisation</Label>
         <Input id="agency-name" required maxLength={80} autoFocus placeholder="Studio Nord" value={name} onChange={(event) => setName(event.target.value)} />
       </div>
       {error && (
@@ -59,7 +59,7 @@ export function CreateAgencyForm() {
         </p>
       )}
       <Button type="submit" size="lg" disabled={pending || !name.trim()}>
-        Créer mon agence
+        Créer mon organisation
       </Button>
     </form>
   );

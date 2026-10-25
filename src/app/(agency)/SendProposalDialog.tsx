@@ -18,8 +18,8 @@ export function SendProposalDialog({
   onSend,
   onShare,
 }: {
-  /** The request and its drafted quote; none closes the dialog. */
-  proposal: { title: string; amount: number | string; deadline: number | string } | null;
+  /** The request and its drafted quote, or its prepared offer (`offer`, src/lib/requestOffer.ts); none closes the dialog. */
+  proposal: { title: string; amount: number | string; deadline: number | string; offer?: boolean } | null;
   /** E-mail addresses of the version's deciders. */
   deciders: string[];
   canManage: boolean;
@@ -28,26 +28,29 @@ export function SendProposalDialog({
   onShare: () => void;
 }) {
   const many = deciders.length > 1;
+  const offer = Boolean(proposal?.offer);
   return (
     <Modal
       open={Boolean(proposal)}
       onClose={onClose}
       role="alertdialog"
-      title="Envoyer la proposition au client ?"
+      title={offer ? "Envoyer l’offre au client ?" : "Envoyer la proposition au client ?"}
       description={
-        deciders.length
-          ? `${many ? "Les décideurs la recevront" : "Le décideur la recevra"} par e-mail et sur ${many ? "leur" : "sa"} page de revue, et ${many ? "pourront" : "pourra"} l’accepter, la refuser ou demander une adaptation.`
-          : "La proposition est prête, mais personne ne peut encore la recevoir."
+        !deciders.length
+          ? "La proposition est prête, mais personne ne peut encore la recevoir."
+          : offer
+            ? `${many ? "Les décideurs en seront prévenus" : "Le décideur en sera prévenu"} par e-mail et ${many ? "verront" : "verra"} la demande « Offerte » avec sa valeur, sans rien à décider.`
+            : `${many ? "Les décideurs la recevront" : "Le décideur la recevra"} par e-mail et sur ${many ? "leur" : "sa"} page de revue, et ${many ? "pourront" : "pourra"} l’accepter, la refuser ou demander une adaptation.`
       }
       className="confirm-send-modal"
       footer={
         <>
-          {!canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Envoi réservé aux administrateurs de l’agence</span>}
+          {!canManage && <span className="mr-auto self-center text-xs text-muted-foreground">Envoi réservé aux administrateurs de l’organisation</span>}
           <Button variant="outline" onClick={onClose}>
             Annuler
           </Button>
           <Button disabled={!canManage || !deciders.length} onClick={onSend}>
-            Envoyer la proposition
+            {offer ? "Envoyer l’offre" : "Envoyer la proposition"}
           </Button>
         </>
       }
@@ -76,7 +79,7 @@ export function SendProposalDialog({
             <b>{proposal.title}</b>
           </div>
           <div>
-            <span>Montant HT</span>
+            <span>{offer ? "Valeur offerte HT" : "Montant HT"}</span>
             <b>{formatProposalAmount(proposal.amount)}</b>
           </div>
           <div>

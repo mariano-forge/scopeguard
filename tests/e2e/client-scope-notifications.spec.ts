@@ -104,7 +104,7 @@ test("the client's bell: the agency's reply, the quote to decide, their request 
   await expect(list.getByRole("listitem")).toContainText([
     "La V02 vous a été partagéeOuvrir la nouvelle version",
     "Demande qualifiée : Inclusil y a 30 minLogo plus grand",
-    "Réponse de l’agenceil y a 1 h« C’est noté, on l’agrandit. » · Logo plus grand",
+    "Réponse de l’organisationil y a 1 h« C’est noté, on l’agrandit. » · Logo plus grand",
     "Devis à valideril y a 2 hPage Équipe · 900 € HT",
   ]);
   // Opening one: the quote, to decide; everything shown is then seen.
@@ -134,9 +134,9 @@ test("from the review page, the client opens the project's scope once active: in
   await expect(panel.getByRole("button", { name: "Périmètre du projet" })).toBeVisible();
   await panel.getByRole("button", { name: "Périmètre du projet" }).click();
   const dialog = page.getByRole("dialog", { name: "Périmètre du projet" });
-  await expect(dialog.getByRole("region", { name: "Inclus", exact: true })).toContainText("Pages intérieures");
-  await expect(dialog.getByRole("region", { name: "Inclus", exact: true })).toContainText("5 pages");
-  await expect(dialog.getByRole("region", { name: "Non inclus", exact: true })).toContainText("Rédaction des textes");
+  await expect(dialog.getByRole("region", { name: "Prévu au devis", exact: true })).toContainText("Pages intérieures");
+  await expect(dialog.getByRole("region", { name: "Prévu au devis", exact: true })).toContainText("5 pages");
+  await expect(dialog.getByRole("region", { name: "Exclu du devis", exact: true })).toContainText("Rédaction des textes");
   // The amendments: the quotes this client accepted on the version, with what they add.
   await expect(dialog.getByRole("region", { name: "Avenants" })).toContainText("Page Carrières");
   await expect(dialog.getByRole("region", { name: "Avenants" })).toContainText("+600 € · +2 j");

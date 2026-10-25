@@ -386,7 +386,7 @@ test("an agency member is recognised in the panel by a Kora window, never by a c
   await page.reload();
   await page.getByRole("button", { name: "Ouvrir Kora" }).click();
   const popup = page.waitForEvent("popup");
-  await panel.getByRole("button", { name: "Je suis de l’agence" }).click();
+  await panel.getByRole("button", { name: "Je suis de l’organisation" }).click();
   const window = await popup;
   const closed = window.waitForEvent("close");
   await window.getByRole("button", { name: "Continuer en tant que Alice Martin" }).click();

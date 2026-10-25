@@ -12,12 +12,14 @@ import { and, asc, eq } from "drizzle-orm";
 import { initialsOf, sideOf } from "@/lib/authors";
 import { clientRoleLabels, readClientRole, roleOfInvite, type ClientRole } from "@/lib/clientRoles";
 import { formatProposalAmount, formatProposalDeadline } from "@/lib/proposalFormat";
+import { offerOf, offerValue, sentOfferOf } from "@/lib/requestOffer";
 import { readRequestSource, sourceLine, type RequestSource } from "@/lib/requestSource";
 import { citedLine, type CitedLine } from "@/lib/scopeCitation";
 import type { ListChange, StateChanges } from "@/lib/sharedState";
 import {
   trail,
   decisionLocked,
+  proposalAccepted,
   proposalAwaiting,
   displayedNow,
   freeCommentId,
@@ -46,19 +48,23 @@ import { readWorkspaceAction, workspaceChanges, type WorkspaceAction, type Works
 
 type Qualification = "Inclus" | "Hors périmètre" | "À qualifier";
 type Quote = { amount: number; days: number; counter: boolean };
+/** An offer prepared with the qualification (src/lib/requestOffer.ts): its value, required. */
+type Offer = { amount: number; days: number };
 
 export type AgencyAction =
   | WorkspaceAction
   // `pinnedOn`: the request of the staging site whose capture the pin was dropped on, in Kora (src/app/(agency)/editor/SiteBoard.tsx).
   | { type: "comment.create"; deliverableId: number; id?: number; message: string; location?: string; page?: number; position?: { x: number; y: number }; area?: Area; timecode?: number; site?: SiteAnchor; pinnedOn?: number }
   // `scopeLineId`: the line of the project's active scope an « Inclus » cites (src/lib/scopeCitation.ts).
-  | { type: "request.create"; deliverableId: number; decision: Qualification; title: string; description?: string; quote?: Quote; source?: RequestSource; scopeLineId?: number }
+  | { type: "request.create"; deliverableId: number; decision: Qualification; title: string; description?: string; quote?: Quote; offer?: Offer; source?: RequestSource; scopeLineId?: number }
   | { type: "comment.restore"; comment: Data }
   | { type: "comment.edit"; commentId: number; message: string }
   | { type: "comment.move"; commentId: number; page: number; x: number; y: number }
   | { type: "comment.delete"; commentId: number }
-  | { type: "comment.qualify"; commentId: number; decision: Qualification; title?: string; description?: string; quote?: Quote; scopeLineId?: number }
+  | { type: "comment.qualify"; commentId: number; decision: Qualification; title?: string; description?: string; quote?: Quote; offer?: Offer; scopeLineId?: number }
   | { type: "comment.close"; commentId: number; closed: boolean }
+  // An accepted proposal marked paid, or not any more: the agency's own follow-up, never the client's (decided 25 October 2026).
+  | { type: "proposal.paid"; commentId: number; paid: boolean }
   | { type: "reply.create"; commentId: number; id?: number; message: string }
   | { type: "reply.edit"; commentId: number; replyId: number; message: string }
   | { type: "reply.delete"; commentId: number; replyId: number }
@@ -66,6 +72,8 @@ export type AgencyAction =
   | { type: "proposal.send-draft"; commentId: number }
   | { type: "proposal.version"; commentId: number; send: boolean; description: string; amount: number; deadline: number; allowCounter: boolean }
   | { type: "adaptation.decide"; commentId: number; decision: "accepted" | "refused" }
+  // An offer taken back, sent or not (src/lib/requestOffer.ts); it is prepared with the qualification, sent as a quote is.
+  | { type: "proposal.unoffer"; commentId: number }
   | { type: "version.reopen"; deliverableId: number; message: string }
   | { type: "link.share"; deliverableId: number }
   | { type: "link.revoke"; deliverableId: number }
@@ -99,6 +107,16 @@ function readQuote(value: unknown): Quote | undefined {
   return amount === undefined ? undefined : { amount, days, counter: quote.counter === true };
 }
 
+/** An offer's value: required, positive (decided 24 October 2026: what is given is measured). Null when malformed. */
+function readOffer(value: unknown): Offer | null | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "object") return null;
+  const offer = value as Data;
+  const amount = number(offer.amount, 0.01, 1e9);
+  const days = offer.days === undefined ? 0 : number(offer.days, 0, 1e5);
+  return amount === undefined || days === undefined ? null : { amount, days: Math.round(days) };
+}
+
 /** The action described by a request body, or null when it is malformed. */
 export function readAgencyAction(type: AgencyAction["type"], body: Data, params: ActionParams = {}): AgencyAction | null {
   if (workspaceTypes.has(type)) return readWorkspaceAction(type as WorkspaceAction["type"], body, params);
@@ -120,8 +138,10 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
       const title = text(request.title, 300);
       const decision = request.decision === "Inclus" || request.decision === "Hors périmètre" || request.decision === "À qualifier" ? request.decision : null;
       const source = readRequestSource(request.source);
-      if (!deliverableId || !title || !decision || source === null) return null;
-      return { type, deliverableId, decision, title, description: text(request.description), quote: readQuote(request.quote), source, scopeLineId: id(request.scopeLineId) };
+      // A quote or an offer, never both.
+      const [quote, offer] = [readQuote(request.quote), readOffer(request.offer)];
+      if (!deliverableId || !title || !decision || source === null || offer === null || (quote && offer)) return null;
+      return { type, deliverableId, decision, title, description: text(request.description), quote, offer, source, scopeLineId: id(request.scopeLineId) };
     }
     case "comment.restore": {
       const comment = body.restore && typeof body.restore === "object" && !Array.isArray(body.restore) ? (body.restore as Data) : null;
@@ -139,11 +159,14 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
     case "comment.qualify": {
       const decision = body.decision === "Inclus" || body.decision === "Hors périmètre" || body.decision === "À qualifier" ? body.decision : null;
       const title = text(body.title, 300);
-      if (!commentId || !decision || (decision !== "À qualifier" && !title)) return null;
-      return { type, commentId, decision, title, description: text(body.description), quote: readQuote(body.quote), scopeLineId: id(body.scopeLineId) };
+      const [quote, offer] = [readQuote(body.quote), readOffer(body.offer)];
+      if (!commentId || !decision || (decision !== "À qualifier" && !title) || offer === null || (quote && offer)) return null;
+      return { type, commentId, decision, title, description: text(body.description), quote, offer, scopeLineId: id(body.scopeLineId) };
     }
     case "comment.close":
       return commentId && typeof body.closed === "boolean" ? { type, commentId, closed: body.closed } : null;
+    case "proposal.paid":
+      return commentId && typeof body.paid === "boolean" ? { type, commentId, paid: body.paid } : null;
     case "reply.create":
       return commentId && message ? { type, commentId, id: id(body.id), message } : null;
     case "reply.edit":
@@ -164,6 +187,8 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
       return commentId ? { type, commentId } : null;
     case "adaptation.decide":
       return commentId && (body.decision === "accepted" || body.decision === "refused") ? { type, commentId, decision: body.decision } : null;
+    case "proposal.unoffer":
+      return commentId ? { type, commentId } : null;
     case "version.reopen":
       return deliverableId && message ? { type, deliverableId, message } : null;
     case "link.share":
@@ -229,6 +254,19 @@ async function draftQuote(db: Db, org: string, changes: StateChanges, commentId:
   return true;
 }
 
+/**
+ * An offer prepared for an out-of-scope request, instead of a quote: the draft quote goes. Only before any
+ * proposal was sent: after a refusal, the next proposal is prepared from « Nouvelle proposition ».
+ */
+async function draftOffer(db: Db, org: string, changes: StateChanges, commentId: number, comment: Data, offer: Offer) {
+  const proposal = await storedProposal(db, org, commentId);
+  if (proposal.history.some((entry) => entry.status !== "draft")) return false;
+  if (proposal.state === "draft") quoteChanges(changes, commentId, { state: "none", history: [] });
+  const offered: Data = { ...comment, offer };
+  changes.lists.comments = { upsert: [offered as ListChange["upsert"][number]], remove: [] };
+  return true;
+}
+
 /** The request's proposal (state, client decision, counter-proposal) and its quotes, oldest first. */
 async function storedProposal(db: Db, org: string, commentId: number) {
   const [proposal] = await db.select().from(commentProposals).where(and(eq(commentProposals.organizationId, org), eq(commentProposals.commentId, commentId))).limit(1);
@@ -287,7 +325,7 @@ async function versionChanges(db: Db, member: AgencyMember, action: Extract<Agen
   switch (action.type) {
     case "version.reopen":
       changes.lists.deliverables = { upsert: [{ ...(record.data as Data), id: record.id, reviewStatus: "changes-requested" }], remove: [] };
-      log.add("review.reopened", `Validation rouverte par l’agence : « ${action.message} »`);
+      log.add("review.reopened", `Validation rouverte par l’organisation : « ${action.message} »`);
       break;
     case "link.share": {
       // The active link is kept; a revoked one is replaced by a new one (new token, no invitation).
@@ -349,7 +387,7 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
       if ((await freeCommentId(db, org, restoredId)) !== restoredId) return refused("Ce commentaire existe déjà.");
       if (sideOf(action.comment) !== "agency") return refused();
       upsertComment(action.comment);
-      log.add("comment.restored", "Commentaire agence restauré", restoredId);
+      log.add("comment.restored", "Commentaire de l’organisation restauré", restoredId);
       log.into(changes);
       return { changes, id: restoredId };
     }
@@ -381,14 +419,16 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
         ...(action.site ? { site: action.site, location: action.location ?? action.site.url } : {}),
         ...(action.pinnedOn ? { pinnedOn: action.pinnedOn } : {}),
       });
-      log.add("comment.created", "Commentaire agence ajouté", commentId);
+      log.add("comment.created", "Commentaire de l’organisation ajouté", commentId);
     } else {
       // A capture must be an image the agency imported itself (src/lib/upload.ts).
       if (action.source?.capture && !(await ownImage(db, org, action.source.capture))) return refused("Capture introuvable.", 404);
       const cited = await citation(db, org, deliverableId, action.decision, action.scopeLineId);
       if (cited === null) return refused(uncitable);
+      const offered = action.offer && action.decision === "Hors périmètre" ? { offer: action.offer } : {};
       upsertComment({
         ...base,
+        ...offered,
         message: action.description || action.title,
         location: "Livrable (général)",
         decision: action.decision,
@@ -404,6 +444,7 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
       log.add("scope.classified", `Demande créée « ${scopeLabel(action.decision)} » : ${action.title}${origin}${citedNote(cited)}`, commentId);
       if (action.quote && action.decision === "Hors périmètre" && (await draftQuote(db, org, changes, commentId, action.title, action.quote)))
         log.add("proposal.drafted", `Chiffrage préparé : ${action.quote.amount} € · ${action.quote.days} j`, commentId);
+      if ("offer" in offered) log.add("proposal.drafted", `Offre préparée : ${offerValue(offered.offer!)}`, commentId);
     }
     log.into(changes);
     return { changes, id: commentId };
@@ -412,7 +453,8 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
   // The others change a stored comment, on a version still open.
   const stored = await storedComment(db, org, action.commentId);
   if (!stored) return refused("Commentaire introuvable.", 404);
-  if (await versionClosed(db, org, stored.deliverableId)) return refused();
+  // Paid comes when it comes, after the version is validated too.
+  if (action.type !== "proposal.paid" && (await versionClosed(db, org, stored.deliverableId))) return refused();
   const comment = stored.data;
   const replies = Array.isArray(comment.replies) ? (comment.replies as Data[]) : [];
   const log = trail(member.name, stored.deliverableId);
@@ -436,7 +478,7 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
       if (comment.decision !== "À qualifier" || (typeof comment.title === "string" && comment.title.trim() !== ""))
         return refused("Une demande qualifiée ne se supprime pas : clôturez-la.");
       changes.lists.comments = { upsert: [], remove: [action.commentId] };
-      log.add("comment.deleted", "Commentaire agence supprimé", action.commentId);
+      log.add("comment.deleted", "Commentaire de l’organisation supprimé", action.commentId);
       break;
     case "comment.qualify": {
       if (await settled()) return refused();
@@ -456,16 +498,28 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
         log.add("scope.classified", "Demande remise à clarifier", action.commentId);
         break;
       }
+      // An offer sent stays as the client read it: taken back first (« Annuler l’offre »).
+      const offered = offerOf(comment);
+      if (offered?.sentAt) return refused("Cette demande est offerte au client : annulez l’offre pour la modifier.");
       const cited = await citation(db, org, stored.deliverableId, action.decision, action.scopeLineId);
       if (cited === null) return refused(uncitable);
       // The description and the cited line are the ones given now (none removes the earlier one), as the page did.
       const rest = { ...comment };
       delete rest.description;
       delete rest.scopeLine;
-      upsertComment({ ...rest, decision: action.decision, kind: "request", title: action.title, ...(action.description ? { description: action.description } : {}), ...(cited ? { scopeLine: cited } : {}) });
+      // A prepared offer goes when the request is no longer out of scope, or when a quote takes its place.
+      if (offered && (action.decision !== "Hors périmètre" || action.quote)) delete rest.offer;
+      const qualified = { ...rest, decision: action.decision, kind: "request", title: action.title, ...(action.description ? { description: action.description } : {}), ...(cited ? { scopeLine: cited } : {}) };
+      upsertComment(qualified);
       log.add("scope.classified", `Demande qualifiée « ${scopeLabel(action.decision)} » : ${action.title}${citedNote(cited)}`, action.commentId);
-      if (action.quote && action.decision === "Hors périmètre" && (await draftQuote(db, org, changes, action.commentId, action.title!, action.quote)))
+      if (action.decision !== "Hors périmètre") break;
+      if (action.quote && (await draftQuote(db, org, changes, action.commentId, action.title!, action.quote)))
         log.add("proposal.drafted", `Chiffrage préparé : ${action.quote.amount} € · ${action.quote.days} j`, action.commentId);
+      if (action.offer) {
+        if (!(await draftOffer(db, org, changes, action.commentId, qualified, action.offer)))
+          return refused("Une proposition a déjà été envoyée pour cette demande : préparez la suivante depuis « Nouvelle proposition ».");
+        log.add("proposal.drafted", `Offre préparée : ${offerValue(action.offer)}`, action.commentId);
+      }
       break;
     }
     case "comment.close": {
@@ -478,6 +532,16 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
       log.add(action.closed ? "comment.closed" : "comment.reopened", action.closed ? "Discussion clôturée" : "Discussion rouverte", action.commentId);
       break;
     }
+    case "proposal.paid": {
+      if (!(await proposalAccepted(db, org, action.commentId))) return refused("Seule une proposition acceptée se marque comme payée.");
+      if ((typeof comment.paidAt === "number") === action.paid) return { changes };
+      const rest = { ...comment };
+      delete rest.paidAt;
+      delete rest.paidBy;
+      upsertComment(action.paid ? { ...rest, paidAt: Date.now(), paidBy: member.name } : rest);
+      log.add(action.paid ? "proposal.paid" : "proposal.unpaid", action.paid ? "Proposition marquée payée" : "Paiement retiré", action.commentId);
+      break;
+    }
     case "reply.create": {
       if (await settled()) return refused();
       if (comment.closed === true) return refused("Cette discussion est close : rouvrez-la pour répondre.");
@@ -487,7 +551,7 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
       // request is qualified, the client reads it with the rest of the thread (decided 19 October 2026).
       const internal = !visibleToClient(comment);
       upsertComment({ ...comment, replies: [...replies, { id: replyId, ...signer, message: action.message, time: "À l'instant", createdAt: Date.now(), internal }] });
-      log.add("reply.created", internal ? "Note interne de l’agence ajoutée" : "Réponse agence ajoutée", action.commentId);
+      log.add("reply.created", internal ? "Note interne de l’organisation ajoutée" : "Réponse de l’organisation ajoutée", action.commentId);
       log.into(changes);
       return { changes, id: replyId };
     }
@@ -496,10 +560,19 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
     case "proposal.version":
     case "adaptation.decide": {
       if (comment.decision !== "Hors périmètre") return refused("Seule une demande hors scope se chiffre.");
+      // An offer, prepared or sent, is not quoted: taken back first.
+      if (offerOf(comment) && action.type !== "proposal.send-draft") return refused("Cette demande est offerte : annulez l’offre pour la chiffrer.");
       // A proposal goes to the version's deciders: none invited, nobody would receive it.
       const sending = action.type === "proposal.send" || action.type === "proposal.send-draft" || (action.type === "proposal.version" && action.send);
       if (sending && (stored.deliverableId === null || !(await versionDeciders(db, org, stored.deliverableId)).length))
         return refused("Aucun décideur pour recevoir cette proposition : partagez la revue de cette version avec au moins un décideur du client, puis envoyez-la.");
+      const offer = offerOf(comment);
+      if (offer && action.type === "proposal.send-draft") {
+        if (offer.sentAt) return refused("Cette offre est déjà envoyée au client.");
+        upsertComment({ ...comment, offer: { ...offer, sentAt: Date.now(), sentBy: member.name } });
+        log.add("proposal.offered", `Offre envoyée au client : ${offerValue(offer)}`, action.commentId);
+        break;
+      }
       const proposal = await storedProposal(db, org, action.commentId);
       const pendingAdaptation = Boolean(proposal.adaptation) && !proposal.adaptation?.decision;
       const now = displayedNow();
@@ -545,6 +618,15 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
       }
       break;
     }
+    case "proposal.unoffer": {
+      const offer = offerOf(comment);
+      if (!offer) return refused("Cette demande n’est pas offerte.");
+      const rest = { ...comment };
+      delete rest.offer;
+      upsertComment(rest);
+      log.add("proposal.offer-cancelled", offer.sentAt ? "Offre retirée : la demande est de nouveau à chiffrer" : "Offre préparée retirée", action.commentId);
+      break;
+    }
     case "reply.edit":
     case "reply.delete": {
       const reply = replies.find((candidate) => candidate.id === action.replyId);
@@ -570,12 +652,14 @@ export async function runAgencyAction(db: Db, member: AgencyMember, writer: Omit
   if ("ok" in built) return built;
   if (!canManageAgency(member.role)) {
     const reserved = await reservedActions(db, member.organizationId, built.changes);
-    if (reserved.length) return { ok: false, status: 403, error: `Réservé aux administrateurs de l’agence : ${reserved.join(", ")}.`, code: "ADMIN_ONLY" };
+    if (reserved.length) return { ok: false, status: 403, error: `Réservé aux administrateurs de l’organisation : ${reserved.join(", ")}.`, code: "ADMIN_ONLY" };
   }
   const { revision } = await applyChanges(db, member.organizationId, built.changes, { recordedBy: member.id, ...writer });
   // The client's deciders hear of a quote, or of the answer to their counter-proposal, by e-mail.
-  const quoteEvent: AgencyQuoteEvent | null =
-    action.type === "proposal.send" || action.type === "proposal.send-draft" || (action.type === "proposal.version" && action.send)
+  const sentOffer = action.type === "proposal.send-draft" ? sentOfferOf(built.changes.lists.comments?.upsert[0] ?? {}) : null;
+  const quoteEvent: AgencyQuoteEvent | null = sentOffer
+    ? { type: "offered", amount: sentOffer.amount, days: sentOffer.days }
+    : action.type === "proposal.send" || action.type === "proposal.send-draft" || (action.type === "proposal.version" && action.send)
       ? { type: "sent" }
       : action.type === "adaptation.decide"
         ? { type: "adaptation", decision: action.decision }

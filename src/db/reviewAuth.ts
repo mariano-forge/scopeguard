@@ -292,7 +292,7 @@ export async function inviteToReview(
         paragraphs: [
           role === "decider"
             ? `${user.name}${user.organizationName ? `, de ${user.organizationName},` : ""} vous invite à consulter ce livrable, à y laisser vos retours et à le valider.`
-            : `${user.name}${user.organizationName ? `, de ${user.organizationName},` : ""} vous invite à consulter ce livrable et à y laisser vos retours. La validation et les décisions sur les devis restent à la personne désignée par l’agence.`,
+            : `${user.name}${user.organizationName ? `, de ${user.organizationName},` : ""} vous invite à consulter ce livrable et à y laisser vos retours. La validation et les décisions sur les devis restent à la personne désignée par l’organisation.`,
           "Pour protéger la revue, un code de vérification vous sera envoyé à cette adresse à l’ouverture.",
           ...(open.line ? [open.line] : []),
         ],
@@ -453,7 +453,7 @@ export async function remindReview(db: Db, org: string, linkKey: string, user: C
           upsert: [{ id: sentAt, type: "review.reminded", actor: user.name, description: `Relance envoyée à ${recipients}`, timestamp: now(), deliverableId: row.deliverableId }],
           remove: [],
         },
-        notifications: { upsert: [{ id: sentAt, message: `Relance envoyée à ${recipients}`, time: "À l'instant", deliverableId: row.deliverableId }], remove: [] },
+        // In the journal only: the agency sent it, its bell has nothing to tell it (feedback of 25 October 2026).
       },
       maps: { reviewLinks: { upsert: { [linkKey]: updated }, remove: [] } },
       settings: { upsert: {}, remove: [] },

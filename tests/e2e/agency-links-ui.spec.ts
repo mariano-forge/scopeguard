@@ -130,7 +130,7 @@ test("the client preview opens the client page of a link created for it; a membe
   await expect.poll(async () => (await link(org))?.active).toBe(true);
   await page.goto(`/review/${(await link(org)).token}`);
   await expect(page.getByRole("heading", { name: "maquette.png" })).toBeVisible();
-  await expect(page.getByText("Aperçu agence")).toHaveCount(0);
+  await expect(page.getByText("Aperçu de l’organisation")).toHaveCount(0);
   await expect(page.getByText(/Northwind|Refonte/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Valider cette version" })).toHaveCount(0);
   expect(errors).toEqual([]);
@@ -147,7 +147,7 @@ test("a version's validation is reopened, with the reason in the trail", async (
   );
   await expect
     .poll(async () => (await sql<{ description: string }>("select data->>'description' as description from audit_events where organization_id = $1 and type = 'review.reopened'", [org])).map((row) => row.description))
-    .toEqual(["Validation rouverte par l’agence : « La hiérarchie du bloc principal doit être revue »"]);
+    .toEqual(["Validation rouverte par l’organisation : « La hiérarchie du bloc principal doit être revue »"]);
   expect(writes.filter((write) => write === "PATCH /api/state")).toEqual([]);
   expect(errors).toEqual([]);
 });

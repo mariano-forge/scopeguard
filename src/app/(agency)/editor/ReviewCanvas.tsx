@@ -422,7 +422,8 @@ export function ReviewCanvas({
   }
 
   function pointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    if (moving || fullScreenVideo()) return;
+    // The video's bar, under it on the artboard: its own controls, never a pin, a zone or a pan.
+    if (moving || fullScreenVideo() || (event.target as Element).closest(".video-bar")) return;
     pointerStart.current = { x: event.clientX, y: event.clientY };
     moved.current = false;
     setDragging(false);
@@ -519,7 +520,7 @@ export function ReviewCanvas({
       setMoving(null);
       return;
     }
-    if ((event.target as Element).closest(".thread, .canvas-pin")) return;
+    if ((event.target as Element).closest(".thread, .canvas-pin, .video-bar")) return;
     if (moved.current) {
       moved.current = false;
       return;
@@ -636,7 +637,7 @@ export function ReviewCanvas({
           wheel={{ step: 0.08, wheelDisabled: true, excluded: ["thread"] }}
           trackPadPanning={{ disabled: false, velocityDisabled: true, excluded: ["thread"] }}
           // The hand pans with the left button; the wheel button pans whatever the tool, as in Figma.
-          panning={{ allowLeftClickPan: tool === "move", allowMiddleClickPan: true, allowRightClickPan: false, excluded: ["thread", "canvas-pin"], velocityDisabled: true }}
+          panning={{ allowLeftClickPan: tool === "move", allowMiddleClickPan: true, allowRightClickPan: false, excluded: ["thread", "canvas-pin", "video-bar"], velocityDisabled: true }}
           onInit={() => requestAnimationFrame(fitWidth)}
           onTransform={(_, state) => setZoom(Math.round(state.scale * 100))}
         >
@@ -664,6 +665,21 @@ export function ReviewCanvas({
               ) : (
                 <CanvasZoom.Provider value={settledZoom / 100}>
                   <DeliverableContent deliverable={deliverable} renderPage={renderPage} video={video ? videoEvents : undefined} />
+                  {/* Right under the video, as wide as it: zoomed and moved with it, outside its page (a pin's place is a share of the page). */}
+                  {video && (
+                    <VideoBar
+                      controls={videoControls}
+                      {...playback}
+                      marks={comments
+                        .filter((comment) => comment.timecode !== undefined && !comment.closed)
+                        .map((comment) => ({ id: comment.id, timecode: comment.timecode!, kind: requestKind(comment), agency: sideOf(comment) === "agency", label: itemLabel(comment) }))}
+                      selectedId={threadOpen ? selectedId : null}
+                      onOpen={(id) => {
+                        const comment = comments.find((item) => item.id === id);
+                        if (comment) onPinClick(comment);
+                      }}
+                    />
+                  )}
                 </CanvasZoom.Provider>
               )}
             </div>
@@ -676,20 +692,6 @@ export function ReviewCanvas({
         <div ref={dockedRef} className="canvas-docked-thread">
           {renderThread(selected)}
         </div>
-      )}
-      {video && (
-        <VideoBar
-          controls={videoControls}
-          {...playback}
-          marks={comments
-            .filter((comment) => comment.timecode !== undefined && !comment.closed)
-            .map((comment) => ({ id: comment.id, timecode: comment.timecode!, kind: requestKind(comment), agency: sideOf(comment) === "agency", label: itemLabel(comment) }))}
-          selectedId={threadOpen ? selectedId : null}
-          onOpen={(id) => {
-            const comment = comments.find((item) => item.id === id);
-            if (comment) onPinClick(comment);
-          }}
-        />
       )}
       {moving && (
         <p className="canvas-hint" role="status">

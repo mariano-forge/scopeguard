@@ -22,7 +22,7 @@ import { href } from "@/app/(agency)/routes";
 export type OnboardingStep = "agency" | "space" | "project" | "team";
 
 const steps: OnboardingStep[] = ["agency", "space", "project", "team"];
-const stepLabels = { agency: "Agence", space: "Espace", project: "Projet", team: "Équipe" } as const;
+const stepLabels = { agency: "Organisation", space: "Espace", project: "Projet", team: "Équipe" } as const;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** Address fields shown at first on the team step; more are added one by one. */
 const firstRows = 2;
@@ -100,10 +100,10 @@ export function Onboarding({
     setError("");
     if (step === "agency") {
       const name = agencyName.trim();
-      if (!name) return setError("Donnez un nom à votre agence.");
+      if (!name) return setError("Donnez un nom à votre organisation.");
       if (name !== savedAgencyName) {
         const { error: failed } = await saving(() => authClient.organization.update({ organizationId: agency.id, data: { name } }));
-        if (failed) return setError("Le nom de l’agence n’a pas pu être changé. Réessayez.");
+        if (failed) return setError("Le nom de l’organisation n’a pas pu être changé. Réessayez.");
         setSavedAgencyName(name);
       }
       return forward("agency");
@@ -170,10 +170,10 @@ export function Onboarding({
 
           {step === "agency" && (
             <>
-              <h1>Le nom de votre agence</h1>
+              <h1>Le nom de votre organisation</h1>
               <p className="ob-lead">C’est ce que verront vos collègues et vos clients.</p>
               <Label htmlFor="ob-agency" className="ob-label">
-                Nom de votre agence
+                Nom de votre organisation
               </Label>
               <Input id="ob-agency" className="ob-input" autoFocus maxLength={80} value={agencyName} onChange={(event) => (setAgencyName(event.target.value), setError(""))} />
             </>
@@ -206,7 +206,7 @@ export function Onboarding({
           {step === "team" && (
             <>
               <h1>Invitez vos collègues</h1>
-              <p className="ob-lead">Ils rejoignent votre agence et travaillent avec vous sur tous ses projets. Chacun reçoit son invitation par e-mail.</p>
+              <p className="ob-lead">Ils rejoignent votre organisation et travaillent avec vous sur tous ses projets. Chacun reçoit son invitation par e-mail.</p>
               <fieldset className="ob-emails">
                 <legend className="ob-label">E-mails de vos collègues</legend>
                 {colleagues.map((email, at) => (
@@ -216,7 +216,7 @@ export function Onboarding({
                       aria-label={`E-mail du collègue ${at + 1}`}
                       autoFocus={at === 0}
                       maxLength={320}
-                      placeholder="prenom@agence.fr"
+                      placeholder="prenom@exemple.fr"
                       className="ob-input"
                       value={email}
                       onChange={(event) => {

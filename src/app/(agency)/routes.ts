@@ -5,9 +5,12 @@
 //   /recents                                       recently opened projects and deliverables
 //   /partages                                      shared with me
 //   /corbeille                                     deleted items (restorable for 30 days)
+//   /equipe                                        the agency's team: members, invitations, roles
+//   /aide                                          help: short guides, the guided tour, the keyboard shortcuts
 //   /espaces                                       all client spaces
 //   /espaces/:clientId                             projects of a client space
 //   /projets/:projectId                            deliverables of a project
+//   /projets/:projectId/demandes                   its requests as a board, from draft to paid (ProjectRequests.tsx)
 //   /projets/:projectId/perimetre                  its reference scope (src/lib/projectScope.ts)
 //   /projets/:projectId/suivi                      its tracking: figures and charts from its scope and requests
 //   /projets/:projectId/livrables/:livrableId      latest version of a deliverable
@@ -22,9 +25,12 @@ export type AgencyView =
   | { kind: "recents" }
   | { kind: "shared" }
   | { kind: "trash" }
+  | { kind: "team" }
+  | { kind: "help" }
   | { kind: "spaces" }
   | { kind: "client"; clientId: number }
   | { kind: "project"; projectId: number }
+  | { kind: "requests"; projectId: number }
   | { kind: "scope"; projectId: number }
   | { kind: "tracking"; projectId: number }
   | { kind: "dashboard"; projectId: number; livrableId: number }
@@ -40,6 +46,8 @@ export function parseAgencyPath(pathname: string): AgencyView {
   if (first === "recents" && !second) return { kind: "recents" };
   if (first === "partages" && !second) return { kind: "shared" };
   if (first === "corbeille" && !second) return { kind: "trash" };
+  if (first === "equipe" && !second) return { kind: "team" };
+  if (first === "aide" && !second) return { kind: "help" };
 
   if (first === "espaces") {
     if (!second) return { kind: "spaces" };
@@ -51,6 +59,7 @@ export function parseAgencyPath(pathname: string): AgencyView {
     const projectId = id(second);
     if (projectId === null) return { kind: "not-found" };
     if (!third) return { kind: "project", projectId };
+    if (third === "demandes" && !fourth) return { kind: "requests", projectId };
     if (third === "perimetre" && !fourth) return { kind: "scope", projectId };
     if (third === "suivi" && !fourth) return { kind: "tracking", projectId };
     const livrableId = id(fourth);
@@ -74,10 +83,13 @@ export const href = {
   recents: () => "/recents",
   shared: () => "/partages",
   trash: () => "/corbeille",
+  team: () => "/equipe",
+  help: () => "/aide",
   spaces: () => "/espaces",
   /** A client space ("espace"). */
   client: (clientId: number) => `/espaces/${clientId}`,
   project: (projectId: number) => `/projets/${projectId}`,
+  requests: (projectId: number) => `/projets/${projectId}/demandes`,
   scope: (projectId: number) => `/projets/${projectId}/perimetre`,
   tracking: (projectId: number) => `/projets/${projectId}/suivi`,
   dashboard: (projectId: number, livrableId: number) => `/projets/${projectId}/livrables/${livrableId}/tableau-de-bord`,

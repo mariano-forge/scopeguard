@@ -86,7 +86,7 @@ export function ShareDialog({
               variant="destructive"
               className="sm:mr-auto"
               disabled={!canManage}
-              title={canManage ? undefined : "Réservé aux administrateurs de l’agence"}
+              title={canManage ? undefined : "Réservé aux administrateurs de l’organisation"}
               onClick={onRevoke}
             >
               Révoquer ce lien

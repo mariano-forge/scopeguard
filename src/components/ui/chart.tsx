@@ -84,7 +84,8 @@ function ChartTooltipContent({
           const value = typeof item.value === "number" ? item.value : Number(item.value ?? 0)
           return (
             <div key={key} className="flex w-full items-center gap-2">
-              <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: item.color ?? `var(--color-${key})` }} aria-hidden="true" />
+              {/* A bar coloured per point (a Cell) carries its colour in its data, as `fill`. */}
+              <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: (item.payload?.fill as string | undefined) ?? item.color ?? `var(--color-${key})` }} aria-hidden="true" />
               <span className="flex-1 text-muted-foreground">{config[key]?.label ?? item.name}</span>
               <span className="font-medium text-foreground tabular-nums">{valueFormatter ? valueFormatter(value, key) : value.toLocaleString("fr-FR")}</span>
             </div>

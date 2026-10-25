@@ -27,15 +27,15 @@ export default async function SiteAgencyPage({ params }: PageProps<"/review/[tok
       ) : !user ? (
         <div className="gate-form">
           <GateHeading title="Connectez-vous à Kora">
-            Pour annoter le site de recette au nom de l’agence, connectez-vous d’abord à votre compte Kora.
+            Pour annoter le site de recette au nom de l’organisation, connectez-vous d’abord à votre compte Kora.
           </GateHeading>
           <Button asChild size="lg" className="w-full">
             <a href={back}>Se connecter</a>
           </Button>
         </div>
       ) : !member ? (
-        <GateHeading title="Revue d’une autre agence">
-          Votre compte n’est pas membre de l’agence de cette revue.
+        <GateHeading title="Revue d’une autre organisation">
+          Votre compte n’est pas membre de l’organisation de cette revue.
         </GateHeading>
       ) : (
         <AgencyHandoff token={token} name={user.name} deliverable={await reviewedDeliverableName(db, access)} />

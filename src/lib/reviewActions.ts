@@ -10,7 +10,7 @@ export function reviewAction(token: string, path: string, method: Method, body?:
     // Session ended on this device: the page asks for a new code.
     if (status === 401) window.location.reload();
     else if (status === 403 && code === "DECIDER_ONLY") toast.error(error ?? "Seul un décideur peut prendre cette décision.");
-    else if (status === 403) toast("Aperçu agence : les actions ne sont pas enregistrées.");
+    else if (status === 403) toast("Aperçu de l’organisation : les actions ne sont pas enregistrées.");
     else return false;
     return true;
   });

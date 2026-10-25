@@ -2,7 +2,6 @@
 .project-tabs {
   display: flex;
   gap: var(--s-1);
-  margin-bottom: var(--s-6);
   border-bottom: 1px solid var(--border);
 }
 .project-tab {
@@ -38,7 +37,7 @@
 /* The « Périmètre » tab (ProjectScope.tsx): a status line, then its sections one after another. */
 .scope {
   display: grid;
-  gap: var(--s-4);
+  gap: var(--s-6);
   max-width: 960px;
   /* Its layout follows its own width, not the window's: the sidebar takes part of it. */
   container-type: inline-size;
@@ -60,8 +59,8 @@
   width: 44px;
   height: 44px;
   border-radius: 999px;
-  background: var(--status-low-bg);
-  color: var(--status-low-text);
+  background: var(--mist);
+  color: var(--ink);
 }
 .scope-empty-icon svg {
   width: 20px;
@@ -155,13 +154,11 @@
 }
 
 /* A section: a card, its title and count on top. */
+/* A section of the scope: its title, what to do, its table; no frame of its own around the table's (feedback
+   of 25 October 2026: « un tableau dans un encadré »). */
 .scope-card {
   display: grid;
-  gap: var(--s-3);
-  padding: var(--s-4);
-  border: 1px solid var(--border);
-  border-radius: var(--r-button);
-  background: var(--paper);
+  gap: var(--s-2);
 }
 .scope-card-head {
   display: flex;
@@ -193,120 +190,122 @@
 /* The PDF to read: dropped in a dashed zone, or chosen. */
 .scope-dropzone {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--s-3);
-  padding: var(--s-3);
+  padding: var(--s-3) var(--s-4);
   border: 1px dashed var(--border-input);
   border-radius: var(--r-button);
-  background: var(--canvas);
+  background: var(--paper);
   transition: border-color 150ms ease, background-color 150ms ease;
 }
-/* A PDF there: named, in a plain frame, « Modifier » to read another (still a place to drop one). */
+/* Empty: one line in the middle, what to do and how. */
+.scope-dropzone-empty {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  padding: var(--s-4) 0;
+  color: var(--graphite);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.scope-dropzone-empty b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.scope-dropzone-empty svg {
+  width: 16px;
+  height: 16px;
+}
+/* A PDF there: in a plain frame, named, « Remplacer » and « Retirer » (still a place to drop another). */
 .scope-dropzone.has-file {
   border-style: solid;
   border-color: var(--border);
-  background: var(--paper);
 }
-.scope-dropzone.has-file .scope-dropzone-text b {
+.scope-dropzone-file {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--graphite);
+}
+.scope-dropzone-name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .scope-dropzone.is-over {
-  border-color: var(--action-ui);
-  background: var(--status-low-bg);
-}
-.scope-dropzone-icon {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-button);
-  background: var(--paper);
-  color: var(--graphite);
-}
-.scope-dropzone-icon svg {
-  width: 16px;
-  height: 16px;
-}
-.scope-dropzone-text {
-  display: grid;
-  flex: 1 1 180px;
-  min-width: 0;
-}
-.scope-dropzone-text b {
-  color: var(--ink);
-  font: 600 var(--t-ui) var(--font-ui);
-}
-.scope-dropzone-text small {
-  color: var(--graphite);
-  font: 400 var(--t-caption) var(--font-ui);
-}
-.scope-dropzone-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-2);
+  border-color: var(--ink);
+  background: var(--mist);
 }
 @media (prefers-reduced-motion: reduce) {
   .scope-dropzone {
     transition: none;
   }
 }
-/* Before any scope: two ways in, side by side — the AI reads a document, or the agency types it. */
-.scope-start {
+/* « Extraire le périmètre avec l'IA », first on the form: a section of its own on the announcement blue
+   (DESIGN.md), its two modes as one segmented control, the PDF's zone and the text on white. */
+.scope-hero {
   display: grid;
-  justify-items: center;
-  gap: var(--s-2);
-  max-width: 720px;
-  margin: var(--s-6) auto;
-  text-align: center;
+  gap: var(--s-4);
+  padding: var(--s-6);
+  border-radius: var(--r-panel);
+  background: var(--surface-announce);
 }
-.scope-start > p {
+.scope-hero-head {
+  display: grid;
+  gap: var(--s-1);
+}
+.scope-hero-head h2 {
+  margin: 0;
+  color: var(--ink);
+  font: 600 var(--t-h3) var(--font-heading);
+}
+.scope-hero-head p {
+  max-width: 72ch;
   margin: 0;
   color: var(--graphite);
   font: 400 var(--t-ui) var(--font-ui);
 }
-.scope-start-title {
-  color: var(--ink);
-  font: 600 var(--t-h3) var(--font-heading);
-}
-.scope-start-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s-3);
+.scope-intake-modes[data-slot="tabs-list"] {
   width: 100%;
-  margin-top: var(--s-4);
-  text-align: left;
-}
-.scope-start-option {
-  display: grid;
-  align-content: start;
-  gap: var(--s-2);
-  padding: var(--s-4);
+  height: 40px;
   border: 1px solid var(--border);
-  border-radius: var(--r-button);
   background: var(--paper);
 }
-.scope-start-option > svg {
-  width: 20px;
-  height: 20px;
-  color: var(--action-ui);
-}
-.scope-start-option b {
+.scope-intake-modes [data-slot="tabs-trigger"][data-state="active"] {
+  background: var(--mist);
   color: var(--ink);
-  font: 600 var(--t-ui) var(--font-ui);
+  box-shadow: none;
 }
-.scope-start-option p {
+/* The keyboard's focus: a blue underline, never a frame (as the editor's tabs, globals.css .thread-tabs). */
+.scope-intake-modes [data-slot="tabs-trigger"]:focus-visible {
+  border-color: transparent;
+  outline: none;
+  box-shadow: inset 0 -2px 0 var(--action-ui);
+}
+.scope-hero .scope-dropzone,
+.scope-hero textarea {
+  background: var(--paper);
+}
+/* Between the AI's reading and typing by hand: a rule with its words in the middle. */
+.scope-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
   margin: 0;
   color: var(--graphite);
-  font: 400 var(--t-caption) var(--font-ui);
+  font: 500 var(--t-caption) var(--font-ui);
 }
-.scope-start-option .scope-empty-actions {
-  justify-content: flex-start;
-  margin-top: var(--s-1);
+.scope-divider::before,
+.scope-divider::after {
+  flex: 1;
+  border-top: 1px solid var(--border);
+  content: "";
 }
 
 /* « Extraire avec l'IA »: a PDF or a text, then the items proposed, ticked, to add. */
@@ -401,83 +400,112 @@
 .scope [data-slot="input"] {
   font-variant-numeric: tabular-nums;
 }
-/* Read: one line per row, its quantity, its source. */
+/* Read: the same table as when editing (feedback of 25 October 2026: « pas clean »): a frame, a thin rule
+   between lines, the words in regular weight (their quantity in them); an amendment's figures on the right. */
 .scope-list {
   display: grid;
   margin: 0;
   padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
   list-style: none;
 }
 .scope-list li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--s-3);
-  padding: 10px 0;
-  border-bottom: 1px solid var(--mist);
+  align-items: start;
+  gap: var(--s-4);
+  padding: 10px var(--s-3);
+  border-top: 1px solid var(--border);
   font: 400 var(--t-ui) var(--font-ui);
 }
 .scope-list li:first-child {
-  padding-top: 0;
-}
-.scope-list li:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
+  border-top: 0;
 }
 .scope-list-title {
   color: var(--ink);
-  font-weight: 500;
   text-decoration: none;
   overflow-wrap: anywhere;
 }
 a.scope-list-title:hover {
   text-decoration: underline;
 }
-.scope-list li > span:not(.scope-list-title) {
-  color: var(--ink);
+.scope-list li > span:not(.scope-list-title):not(.scope-list-main) {
+  color: var(--graphite);
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 .scope-list small {
   overflow: hidden;
   color: var(--graphite);
   font: 400 var(--t-caption) var(--font-ui);
-  text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Edit: one clean line per item, the same columns for the head and every row: what (a text that grows
-   with what it says), how many, the unit, its buttons. */
+/* Edit: one table, a thin rule between its lines (feedback of 25 October 2026: « pas clean »). Its fields
+   read as text, framed only on hover or while typed in; a line's buttons show on its hover or focus. One
+   column of words (its quantity written in them, « 5 pages intérieures »), then the line's buttons. */
 .scope-table {
   display: grid;
-  gap: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--paper);
 }
-.scope-row,
-.scope-table-head {
+.scope-row {
   display: grid;
   align-items: start;
-  gap: var(--s-2);
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-2);
 }
-.scope-table.is-lines .scope-row,
-.scope-table.is-lines .scope-table-head {
-  grid-template-columns: minmax(0, 1fr) 88px 140px 68px;
+.scope-row {
+  border-top: 1px solid var(--border);
+  transition: background-color var(--d-fast) var(--ease-out);
 }
-.scope-table.is-exclusions .scope-row {
-  grid-template-columns: minmax(0, 1fr) 68px;
+.scope-table > .scope-row:first-child {
+  border-top: 0;
 }
-.scope-table-head {
-  color: var(--graphite);
-  font: 500 var(--t-caption) var(--font-ui);
+.scope-row:hover,
+.scope-row:focus-within {
+  background: var(--canvas);
+}
+.scope-table .scope-row {
+  grid-template-columns: minmax(0, 1fr) 64px;
+}
+.scope-row [data-slot="textarea"] {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.scope-row:hover [data-slot="textarea"] {
+  border-color: var(--border);
+  background: var(--paper);
+}
+.scope-row [data-slot="textarea"]:focus-visible {
+  border-color: var(--border-input);
+  background: var(--paper);
 }
 .scope-row-title[data-slot="textarea"] {
   min-height: 36px;
   padding-block: 7px;
+  color: var(--ink);
   resize: none;
 }
 .scope-row-actions {
   display: flex;
   justify-content: flex-end;
   padding-top: 2px;
+  opacity: 0;
+  transition: opacity var(--d-fast) var(--ease-out);
+}
+.scope-row:hover .scope-row-actions,
+.scope-row:focus-within .scope-row-actions {
+  opacity: 1;
+}
+@media (hover: none) {
+  .scope-row-actions {
+    opacity: 1;
+  }
 }
 .scope-list-main {
   display: grid;
@@ -509,24 +537,14 @@ a.scope-list-title:hover {
   .scope-card.is-feature {
     padding: var(--s-4);
   }
-  .scope-start-options {
-    grid-template-columns: minmax(0, 1fr);
+  .scope-hero {
+    padding: var(--s-4);
   }
   .scope-intake-items li {
     grid-template-columns: auto minmax(0, 1fr);
   }
   .scope-intake-items li > :last-child {
     grid-column: 2;
-  }
-  /* Narrow: what on its own line, then how many and the unit. */
-  .scope-table.is-lines .scope-row {
-    grid-template-columns: 88px minmax(0, 1fr) 68px;
-  }
-  .scope-table.is-lines .scope-row > :first-child {
-    grid-column: 1 / -1;
-  }
-  .scope-table.is-lines .scope-table-head {
-    display: none;
   }
 }
 

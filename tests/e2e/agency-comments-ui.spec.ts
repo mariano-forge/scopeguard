@@ -86,7 +86,7 @@ test("a member comments, replies, edits and deletes in the editor; each write is
   await expect(page.getByText(/^Commentaire n°/)).toHaveCount(0);
 
   // A request: its discussion is the bubble's second tab.
-  await page.getByRole("tab", { name: /^Discussion/ }).click();
+  await page.getByRole("tab", { name: "Discussion", exact: true }).click();
   await page.getByRole("textbox", { name: "Répondre" }).fill("Version mobile aussi");
   await page.getByRole("button", { name: "Envoyer la réponse" }).click();
   await expect.poll(async () => ((await agencyComments(org))[0].data.replies as { message: string }[] | undefined)?.map((reply) => reply.message)).toEqual(["Version mobile aussi"]);
@@ -137,8 +137,8 @@ test("a member qualifies a client remark as out of scope, with a draft quote", a
   await page.getByRole("radio", { name: /Hors scope/ }).click();
   await page.getByLabel("Titre de la demande").fill("Section témoignages");
   await page.getByRole("switch").check();
-  await page.getByLabel("Montant HT (€)").fill("850");
-  await page.getByLabel("Délai (jours)").fill("3");
+  await page.getByLabel("Montant HT").fill("850");
+  await page.getByLabel("Délai", { exact: true }).fill("3");
   await page.getByLabel("Le client peut faire une contre-proposition").check();
   await page.getByRole("button", { name: "Créer la demande" }).click();
 

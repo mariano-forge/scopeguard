@@ -16,10 +16,11 @@ test("the owner renames the agency from the account menu; a member is refused", 
   await page.getByRole("button", { name: "Compte de Alice Martin" }).first().click();
   const menu = page.getByRole("menu");
   await expect(menu).toContainText(owner.email);
-  await expect(menu).toContainText("Studio Avant");
-  await menu.getByRole("menuitem", { name: "Paramètres de l’agence" }).click();
-  const dialog = page.getByRole("dialog", { name: "Paramètres de l’agence" });
-  await dialog.getByLabel("Nom de l’agence").fill("Studio Après");
+  // The organization one works in, said as such.
+  await expect(menu).toContainText("Connecté à Studio Avant");
+  await menu.getByRole("menuitem", { name: "Paramètres de l’organisation" }).click();
+  const dialog = page.getByRole("dialog", { name: "Paramètres de l’organisation" });
+  await dialog.getByLabel("Nom de l’organisation").fill("Studio Après");
   await dialog.getByRole("button", { name: "Enregistrer" }).click();
   await expect.poll(() => agencyName(org)).toBe("Studio Après");
   await expect(dialog).toHaveCount(0);
@@ -32,7 +33,7 @@ test("the owner renames the agency from the account menu; a member is refused", 
   await signInPage(other.page, member.email);
   await other.page.getByRole("button", { name: "Compte de Bruno Petit" }).first().click();
   await expect(other.page.getByRole("menu").getByRole("menuitem", { name: "Équipe" })).toBeVisible();
-  await expect(other.page.getByRole("menuitem", { name: "Paramètres de l’agence" })).toHaveCount(0);
+  await expect(other.page.getByRole("menuitem", { name: "Paramètres de l’organisation" })).toHaveCount(0);
   expect(errors).toEqual([]);
   expect(other.errors).toEqual([]);
 });

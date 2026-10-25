@@ -12,6 +12,8 @@
   --graphite: #4c4c48;
   --border: #ddd9d1;
   --border-input: #8a8a85;
+  /* Background of an announcement (a banner, DESIGN.md): the lightest blue, ink 17.5:1, graphite 8:1 on it */
+  --surface-announce: #f0f7ff;
 
   /* Accents: "fill" keeps the brand hue (Ink text on top), "text"/"ui" are darkened for contrast */
   --action-fill: #30a8ff;

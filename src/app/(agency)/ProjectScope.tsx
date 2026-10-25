@@ -8,24 +8,21 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Copy, Ellipsis, ListChecks, Loader2, Pencil, PenLine, Plus, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
+import { CheckCircle2, Copy, Ellipsis, ListChecks, Loader2, Pencil, Plus, Sparkles, Trash2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Hint } from "@/components/hint";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { agencyAction } from "@/lib/agencyActions";
 import { uploadFile } from "@/lib/upload";
 import {
   emptyScope,
   euros,
-  quantityLabel,
   readScope,
   scopeStatus,
-  scopeUnits,
+  writtenLine,
   type ClientScope,
   type ProjectScope,
   type ScopeAmendment,
@@ -44,16 +41,12 @@ const newId = () => (lastId = Math.max(Date.now(), lastId + 1));
 
 /** What would be saved: rows without a title left out, numbers read. Compared to tell unsaved changes. */
 const saved = (scope: ProjectScope | null | undefined) => JSON.stringify(scope ? readScope(scope) : null);
+/** The scope as the form edits it: each line with its quantity in its words (src/lib/projectScope.ts writtenLine). */
+const draftOf = (scope: ProjectScope): ProjectScope => ({ ...scope, lines: scope.lines.map(writtenLine) });
 
-const numberOf = (value: string) => {
-  const parsed = Number(value.replace(/\s/g, "").replace(",", "."));
-  return value.trim() === "" || !Number.isFinite(parsed) ? undefined : parsed;
-};
 const activationLabel = (scope: ProjectScope) =>
   `Activé par ${scope.activatedBy} le ${new Date(scope.activatedAt ?? 0).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}`;
 const filled = <T extends { title: string }>(rows: T[]) => rows.filter((row) => row.title.trim());
-/** A unit chosen in the list; « Aucune » keeps a bare quantity (« 1 formulaire » reads as « 1 »). */
-const noUnit = "none";
 
 /** The lists typed row by row: what is included, what is not. */
 type RowList = "lines" | "exclusions";
@@ -80,11 +73,12 @@ function Section({ title, count, note, icon: Icon, children }: { title: string; 
 }
 
 /** What to put in each section, said while it is empty. */
+// What to do, in a short sentence: a guide, not an explanation (DESIGN.md « Rédaction »).
 const notes = {
-  intake: "L’IA lit le devis ou le cahier des charges et propose les éléments inclus et non inclus. Vous relisez chacun avant de l’ajouter, et pouvez toujours saisir à la main.",
-  lines: "Ce qui a été vendu, un élément par ligne : pages, fonctionnalités, livrables, avec leur quantité.",
-  exclusions: "Ce que le devis exclut : rédaction des textes, photos, maintenance… En cas de désaccord, ce sont ces lignes qui font foi.",
-  amendments: "Les devis hors scope que le client accepte s’ajoutent ici d’eux-mêmes, avec leur montant.",
+  intake: "Importez le devis signé ou collez son texte, puis lancez l’extraction.",
+  lines: "Ajoutez chaque élément prévu au devis, avec sa quantité.",
+  exclusions: "Ajoutez ce que le devis exclut.",
+  amendments: "Rien à saisir : les devis hors scope acceptés s’ajoutent ici.",
 };
 
 /** « +600 € · +3 j »: what an amendment adds. */
@@ -118,19 +112,18 @@ function AmendmentList({ amendments }: { amendments: ScopeAmendment[] }) {
 export function ScopeSummary({ scope, amendments }: { scope: Pick<ProjectScope, "lines" | "exclusions">; amendments: ScopeAmendment[] }) {
   return (
     <>
-      <Section title="Inclus" count={scope.lines.length} note={scope.lines.length ? undefined : notes.lines}>
+      <Section title="Prévu au devis" count={scope.lines.length} note={scope.lines.length ? undefined : notes.lines}>
         {scope.lines.length > 0 && (
           <ul className="scope-list">
             {scope.lines.map((line) => (
               <li key={line.id}>
-                <span className="scope-list-title">{line.title}</span>
-                <span>{quantityLabel(line)}</span>
+                <span className="scope-list-title">{writtenLine(line).title}</span>
               </li>
             ))}
           </ul>
         )}
       </Section>
-      <Section title="Non inclus" count={scope.exclusions.length} note={scope.exclusions.length ? undefined : notes.exclusions}>
+      <Section title="Exclu du devis" count={scope.exclusions.length} note={scope.exclusions.length ? undefined : notes.exclusions}>
         {scope.exclusions.length > 0 && (
           <ul className="scope-list">
             {scope.exclusions.map((exclusion) => (
@@ -151,9 +144,11 @@ export function ScopeSummary({ scope, amendments }: { scope: Pick<ProjectScope, 
 /** The tab. Re-keyed by BrowserView on the saved scope: the draft starts again from what the server holds. */
 export function ProjectScopeEditor({ projectId, scope, amendments }: { projectId: number; scope?: ProjectScope; amendments: ScopeAmendment[] }) {
   const status = scopeStatus(scope);
-  const [draft, setDraft] = useState<ProjectScope | null>(scope ?? null);
-  // Active: read first, « Modifier » to change it. A draft is being written.
-  const [editing, setEditing] = useState(status === "draft");
+  // No scope yet: the form at once, its first line ready (feedback of 25 October 2026); nothing is written
+  // until « Enregistrer ».
+  const [draft, setDraft] = useState<ProjectScope>(() => (scope ? draftOf(scope) : { ...emptyScope(), lines: [{ id: newId(), title: "" }] }));
+  // Active: read first, « Modifier » to change it. A draft, or none yet, is being written.
+  const [editing, setEditing] = useState(status !== "active");
   /** A row just added: its first field takes the focus. */
   const [focusId, setFocusId] = useState<number | null>(null);
   const [busy, setBusy] = useState<"saving" | "activating" | "uploading" | null>(null);
@@ -173,15 +168,6 @@ export function ProjectScopeEditor({ projectId, scope, amendments }: { projectId
     setDraft((current) => current && { ...current, sources: [{ id: newId(), kind, name: file.name, file: result.href }] });
   }
 
-  /** A draft to write, its first line ready: focused to type by hand, else the extraction read first. */
-  const start = (manual: boolean, mode: IntakeMode = "pdf") => {
-    const first = newId();
-    setDraft({ ...emptyScope(), lines: [{ id: first, title: "" }] });
-    setEditing(true);
-    setIntakeMode(mode);
-    if (manual) setFocusId(first);
-  };
-
   const fileField = (
     <input
       ref={fileInput}
@@ -194,53 +180,14 @@ export function ProjectScopeEditor({ projectId, scope, amendments }: { projectId
         const file = event.target.files?.[0];
         event.target.value = "";
         if (!file) return;
-        if (!draft) start(false);
         void addDocument(file);
       }}
     />
   );
 
-  if (!draft)
-    return (
-      // Inside the tab's frame, so that its layout follows the page's width.
-      <div className="scope">
-        <div className="scope-start">
-          <span className="scope-empty-icon" aria-hidden="true">
-            <ListChecks />
-          </span>
-          <b className="scope-start-title">Cadrez le projet</b>
-          <p>Ce qui a été vendu et ce qui ne l’est pas : la référence de chaque demande du client.</p>
-          <div className="scope-start-options">
-            <section className="scope-start-option" aria-label="Extraire avec l’IA">
-              <Sparkles aria-hidden="true" />
-              <b>Extraire avec l’IA</b>
-              <p>Le plus rapide : depuis le devis signé, le cahier des charges ou un texte collé. Vous relisez avant d’ajouter.</p>
-              <span className="scope-empty-actions">
-                <Button size="sm" onClick={() => fileInput.current?.click()}>
-                  <Upload aria-hidden="true" /> Importer un PDF
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => start(false, "text")}>
-                  Coller un texte
-                </Button>
-              </span>
-            </section>
-            <section className="scope-start-option" aria-label="Saisir à la main">
-              <PenLine aria-hidden="true" />
-              <b>Saisir à la main</b>
-              <p>Les éléments inclus et non inclus, un par ligne, avec leur quantité.</p>
-              <span className="scope-empty-actions">
-                <Button size="sm" variant="outline" onClick={() => start(true)}>
-                  Commencer la saisie
-                </Button>
-              </span>
-            </section>
-          </div>
-          {fileField}
-        </div>
-      </div>
-    );
-
-  const dirty = saved(draft) !== saved(scope);
+  // The empty form shown before any scope is not a change to save.
+  const untouched = !scope && !filled(draft.lines).length && !filled(draft.exclusions).length && !draft.sources.length;
+  const dirty = !untouched && saved(draft) !== saved(scope && draftOf(scope));
   // Each change starts from the latest draft, not from the one of the last render: gestures in quick
   // succession on a busy machine (typing, then « Dupliquer ») otherwise undid each other.
   const updateWith = (change: (current: ProjectScope) => Partial<ProjectScope>) => setDraft((current) => current && { ...current, ...change(current) });
@@ -303,7 +250,7 @@ export function ProjectScopeEditor({ projectId, scope, amendments }: { projectId
 
   /** The items kept from an extraction, after those already typed (empty rows dropped): in the draft, to review and save. */
   const addExtracted = (items: ExtractedItem[]) => {
-    const lines = items.filter((item) => item.kind === "included").map((item) => ({ id: newId(), title: item.title, quantity: item.quantity, unit: item.unit }));
+    const lines = items.filter((item) => item.kind === "included").map((item) => writtenLine({ id: newId(), title: item.title, quantity: item.quantity, unit: item.unit }));
     const exclusions = items.filter((item) => item.kind === "excluded").map((item) => ({ id: newId(), title: item.title }));
     updateWith((current) => ({ lines: [...filled(current.lines), ...lines], exclusions: [...filled(current.exclusions), ...exclusions] }));
     toast.success(`${items.length} élément${items.length > 1 ? "s" : ""} ajouté${items.length > 1 ? "s" : ""} : relisez, puis enregistrez.`);
@@ -338,12 +285,9 @@ export function ProjectScopeEditor({ projectId, scope, amendments }: { projectId
             <>
               <CheckCircle2 aria-hidden="true" /> Actif · {editing ? "modification en cours" : activationLabel(scope!).replace("Activé", "activé")}
             </>
-          ) : filled(draft.lines).length ? (
-            "Brouillon · Activez-le pour qu’il serve de référence à chaque demande du client."
-          ) : (
-            // Activation needs an included line (POST …/scope/activation answers 409 without): say so first.
-            "Brouillon · Remplissez ce qui est inclus, puis activez-le pour qu’il serve de référence à chaque demande du client."
-          )}
+          ) : scope ? (
+            "Brouillon"
+          ) : null}
         </span>
       </span>
       <span className="scope-status-actions">
@@ -371,7 +315,7 @@ export function ProjectScopeEditor({ projectId, scope, amendments }: { projectId
             variant="ghost"
             size="sm"
             onClick={() => {
-              setDraft(scope ?? null);
+              setDraft(draftOf(scope!));
               setEditing(false);
             }}
           >
@@ -384,9 +328,14 @@ export function ProjectScopeEditor({ projectId, scope, amendments }: { projectId
           </Button>
         )}
         {status !== "active" && (
-          <Button size="sm" onClick={() => void activate()} disabled={busy !== null || !filled(draft.lines).length}>
-            {busy === "activating" && <Loader2 className="animate-spin" aria-hidden="true" />} Activer le périmètre
-          </Button>
+          // Activation needs an included line (POST …/scope/activation answers 409 without): said on the button.
+          <Hint label={filled(draft.lines).length ? "Il sert alors de référence à chaque demande du client" : "Ajoutez au moins un élément inclus pour l’activer"}>
+            <span>
+              <Button size="sm" onClick={() => void activate()} disabled={busy !== null || !filled(draft.lines).length}>
+                {busy === "activating" && <Loader2 className="animate-spin" aria-hidden="true" />} Activer le périmètre
+              </Button>
+            </span>
+          </Hint>
         )}
       </span>
     </div>
@@ -404,7 +353,12 @@ export function ProjectScopeEditor({ projectId, scope, amendments }: { projectId
     <div className="scope">
       {statusBar}
 
-      <Section title="Extraire avec l’IA" icon={Sparkles} note={notes.intake}>
+      {/* The fastest way first, as a section of its own: a PDF or a pasted text, read by the AI. */}
+      <section className="scope-hero" aria-label="Extraire le périmètre avec l’IA">
+        <header className="scope-hero-head">
+          <h2>Extraire le périmètre avec l’IA</h2>
+          <p>{notes.intake}</p>
+        </header>
         <ScopeIntake
           projectId={projectId}
           pdf={draft.sources.findLast((source) => source.file)}
@@ -417,39 +371,16 @@ export function ProjectScopeEditor({ projectId, scope, amendments }: { projectId
           onAdd={addExtracted}
         />
         {fileField}
-      </Section>
+      </section>
+      <p className="scope-divider" role="separator">
+        ou saisissez le périmètre à la main
+      </p>
 
-      <Section title="Inclus" count={filled(draft.lines).length} note={filled(draft.lines).length ? undefined : notes.lines}>
-        <div className="scope-table is-lines" role="group" aria-label="Lignes incluses">
-          <span className="scope-table-head" aria-hidden="true">
-            <span>Désignation</span>
-            <span>Quantité</span>
-            <span>Unité</span>
-            <span />
-          </span>
+      <Section title="Prévu au devis" count={filled(draft.lines).length} note={filled(draft.lines).length ? undefined : notes.lines}>
+        <div className="scope-table is-lines" role="group" aria-label="Lignes prévues au devis">
           {draft.lines.map((line, index) => (
             <div className="scope-row" key={line.id} onKeyDown={(event) => onRowKey(event, "lines", index)}>
-              {titleField("lines", line, `Désignation de la ligne ${index + 1}`, index === 0 ? "Pages intérieures : maquette et intégration" : undefined)}
-              <Input
-                inputMode="decimal"
-                value={line.quantity === undefined ? "" : String(line.quantity)}
-                placeholder={index === 0 ? "5" : undefined}
-                aria-label={`Quantité de la ligne ${index + 1}`}
-                onChange={(event) => setRow("lines", line.id, { quantity: numberOf(event.target.value) })}
-              />
-              <Select value={line.unit ?? noUnit} onValueChange={(unit) => setRow("lines", line.id, { unit: unit === noUnit ? undefined : unit })}>
-                <SelectTrigger aria-label={`Unité de la ligne ${index + 1}`} className="w-full data-[size=default]:h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={noUnit}>Aucune</SelectItem>
-                  {[...new Set([...scopeUnits, ...(line.unit ? [line.unit] : [])])].map((unit) => (
-                    <SelectItem key={unit} value={unit}>
-                      {unit}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {titleField("lines", line, `Désignation de la ligne ${index + 1}`, index === 0 ? "5 pages intérieures : maquette et intégration" : undefined)}
               {rowActions("lines", line, `la ligne ${index + 1}`)}
             </div>
           ))}
@@ -459,7 +390,7 @@ export function ProjectScopeEditor({ projectId, scope, amendments }: { projectId
         </Button>
       </Section>
 
-      <Section title="Non inclus" count={filled(draft.exclusions).length} note={filled(draft.exclusions).length ? undefined : notes.exclusions}>
+      <Section title="Exclu du devis" count={filled(draft.exclusions).length} note={filled(draft.exclusions).length ? undefined : notes.exclusions}>
         {draft.exclusions.length > 0 && (
           <div className="scope-table is-exclusions" role="group" aria-label="Exclusions">
             {draft.exclusions.map((exclusion, index) => (

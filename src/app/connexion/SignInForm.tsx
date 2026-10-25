@@ -290,7 +290,7 @@ export function SignInForm({
     <div className="grid gap-4">
       <header>
         <h1>{signUp ? "Créer votre compte" : "Se connecter à Kora"}</h1>
-        {signUp && <p>{onboarding ? "Votre compte d’abord, votre agence juste après." : "Votre compte d’abord, votre agence ensuite."}</p>}
+        {signUp && <p>{onboarding ? "Votre compte d’abord, votre organisation juste après." : "Votre compte d’abord, votre organisation ensuite."}</p>}
       </header>
       {invitation && (
         <p className="rounded-lg bg-[var(--status-low-bg)] px-3 py-2 text-sm text-[var(--status-low-text)]">

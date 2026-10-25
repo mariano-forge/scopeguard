@@ -60,10 +60,14 @@ export function proofHtml(proof: Proof) {
           const site = request.site
             ? `<p class="note">Posée sur le site de recette : ${escapeHtml(request.site.url)} · écran de ${request.site.viewport} px${request.site.captureSha256 ? `<small>Capture de la page · SHA-256 ${escapeHtml(request.site.captureSha256)}</small>` : ""}</p>`
             : "";
-          const adaptation = request.adaptation?.message
-            ? `<p class="note">Adaptation demandée par le client : « ${escapeHtml(request.adaptation.message)} »${request.adaptation.decision ? ` · ${request.adaptation.decision === "accepted" ? "acceptée" : "refusée"} par l’agence` : ""}</p>`
+          // Offered to the client: a gesture, valued, with nothing for them to decide (src/lib/requestOffer.ts).
+          const offer = request.offer
+            ? `<p class="decision ok">Offerte au client · valeur ${amount(request.offer.amount)} · ${delay(request.offer.days)}<small>${signature(request.offer.event)}</small></p>`
             : "";
-          return `<li><div class="row"><b>Demande ${index + 1}${request.title ? ` · ${escapeHtml(request.title)}` : ""}</b><span class="tag">${escapeHtml(qualificationLabels[request.qualification] ?? request.qualification)}</span></div><p>« ${escapeHtml(request.message)} »</p><small>${escapeHtml(request.author)}${request.location ? ` · ${escapeHtml(request.location)}` : ""} · réf. ${request.id}</small>${cited}${source}${site}${quotes}${adaptation}${decision}</li>`;
+          const adaptation = request.adaptation?.message
+            ? `<p class="note">Adaptation demandée par le client : « ${escapeHtml(request.adaptation.message)} »${request.adaptation.decision ? ` · ${request.adaptation.decision === "accepted" ? "acceptée" : "refusée"} par l’organisation` : ""}</p>`
+            : "";
+          return `<li><div class="row"><b>Demande ${index + 1}${request.title ? ` · ${escapeHtml(request.title)}` : ""}</b><span class="tag">${escapeHtml(qualificationLabels[request.qualification] ?? request.qualification)}</span></div><p>« ${escapeHtml(request.message)} »</p><small>${escapeHtml(request.author)}${request.location ? ` · ${escapeHtml(request.location)}` : ""} · réf. ${request.id}</small>${cited}${source}${site}${quotes}${adaptation}${decision}${offer}</li>`;
         })
         .join("")
     : "<li>Aucune demande sur cette version.</li>";
@@ -114,7 +118,7 @@ export function proofHtml(proof: Proof) {
   <main><h2>Demandes et décisions</h2><ul>${requests}</ul><h2>Journal de la version</h2>${events}</main>
   <footer>
     <p>Récapitulatif généré le ${escapeHtml(when(proof.generatedAt))} (heure de Paris) par ${escapeHtml(proof.generatedBy)}.</p>
-    <p>Les heures sont celles du serveur Kora, en heure de Paris. Le journal est en ajout seul : un événement enregistré ne peut être ni modifié ni supprimé, y compris par l’agence. L’identité d’un client est son adresse e-mail, prouvée par un code à usage unique envoyé à cette adresse ; l’origine est l’adresse IP reçue par le serveur.</p>
+    <p>Les heures sont celles du serveur Kora, en heure de Paris. Le journal est en ajout seul : un événement enregistré ne peut être ni modifié ni supprimé, y compris par l’organisation. L’identité d’un client est son adresse e-mail, prouvée par un code à usage unique envoyé à cette adresse ; l’origine est l’adresse IP reçue par le serveur.</p>
     <p>Empreinte du récapitulatif (SHA-256) : <span class="hash">${escapeHtml(proof.fingerprint)}</span></p>
   </footer>
   <button onclick="window.print()">Imprimer ou enregistrer en PDF</button></body></html>`;

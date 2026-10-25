@@ -34,11 +34,15 @@ test("a colleague joins from the invitation mail; the wrong account cannot; remo
   const { page: owner } = await newPerson(browser);
   await signInPage(owner, alice.email);
   await owner.getByRole("button", { name: "Compte de Alice Martin" }).first().click();
+  // « Équipe » in the account menu: the team's page.
   await owner.getByRole("menuitem", { name: "Équipe" }).click();
+  await owner.waitForURL((url) => url.pathname === "/equipe");
   const carolEmail = `${unique("carol")}@agence.test`;
-  await owner.getByLabel("Inviter un collègue").fill(carolEmail);
-  await owner.getByRole("button", { name: "Inviter", exact: true }).click();
-  await expect(owner.getByText("Invitation en attente")).toBeVisible();
+  await owner.getByRole("button", { name: "Inviter un collègue" }).click();
+  const inviteDialog = owner.getByRole("dialog", { name: "Inviter un collègue" });
+  await inviteDialog.getByLabel("Adresse e-mail").fill(carolEmail);
+  await inviteDialog.getByRole("button", { name: "Envoyer l’invitation" }).click();
+  await expect(owner.getByRole("table", { name: "Membres de l’organisation" }).getByRole("row").filter({ hasText: carolEmail })).toContainText("Invitation en attente");
 
   const invitation = linkIn(lastMailTo(carolEmail));
   expect(invitation).toContain("/invitation/");
@@ -75,7 +79,7 @@ test("a colleague joins from the invitation mail; the wrong account cannot; remo
   await expect(carol.getByRole("status")).toContainText("lien de confirmation");
   await carol.goto(linkIn(await waitForMail(carolEmail, "Confirmez votre adresse"))!);
   await carol.waitForLoadState("networkidle");
-  await carol.getByRole("button", { name: "Rejoindre l’agence" }).click();
+  await carol.getByRole("button", { name: "Rejoindre l’organisation" }).click();
   await carol.waitForURL((url) => url.pathname === "/");
   await carol.goto("/espaces");
   await expect(carol.getByText("Espace Gamma").first()).toBeVisible();
@@ -83,6 +87,7 @@ test("a colleague joins from the invitation mail; the wrong account cannot; remo
   await owner.reload();
   await owner.getByRole("button", { name: "Compte de Alice Martin" }).first().click();
   await owner.getByRole("menuitem", { name: "Équipe" }).click();
+  await owner.waitForURL((url) => url.pathname === "/equipe");
   await owner.getByRole("button", { name: "Retirer Carol Petit" }).click();
   await owner.getByRole("button", { name: "Confirmer" }).click();
   await expect(owner.getByText("Carol Petit")).toHaveCount(0);

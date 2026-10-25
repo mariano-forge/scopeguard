@@ -4,13 +4,12 @@ import { useState } from "react";
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { AddonInput, Field, Modal, selectClassName } from "@/components/modal";
+import { Field, Modal, selectClassName } from "@/components/modal";
 import { excerptMaxLength, requestChannels, type RequestChannel } from "@/lib/requestSource";
 import { ScopeChoice, type Qualification, type Qualified } from "./CanvasComments";
 import { CitedLineField, SuggestionNote, useSuggestion, type ScopeAssist } from "./QualifyAssist";
+import { ProposalFields, preparedProposal, proposalDraft, proposalReady } from "./ProposalFields";
 
 /** What the dialog gives back: the request, where it came from, and a capture to import first. */
 export type NewRequest = Qualified & { source?: { channel: RequestChannel; receivedAt?: string; excerpt?: string }; capture?: File };
@@ -18,7 +17,7 @@ export type NewRequest = Qualified & { source?: { channel: RequestChannel; recei
 /**
  * A request entered by the agency: one received elsewhere (an e-mail, a call, a meeting…), or one about
  * the whole deliverable, where no point can be pinned. Qualified now or left to clarify, with its source,
- * the client's words and a capture (src/lib/requestSource.ts), and the optional quote.
+ * the client's words and a capture (src/lib/requestSource.ts), and the proposal prepared with it (a quote or an offer).
  */
 export function NewRequestDialog({
   initial,
@@ -50,10 +49,7 @@ function RequestForm({ initial, onClose, onCreate, assist }: { initial: Qualific
   const [decision, setDecision] = useState<Qualification>(initial);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [quoteOn, setQuoteOn] = useState(false);
-  const [amount, setAmount] = useState("");
-  const [days, setDays] = useState("");
-  const [counter, setCounter] = useState(false);
+  const [proposal, setProposal] = useState(() => proposalDraft());
   const [lineId, setLineId] = useState<number>();
   // Asked by the agency once the request is described: its answer pre-fills the qualification.
   const suggestion = useSuggestion(assist?.suggestionPath, (suggested) => {
@@ -63,7 +59,7 @@ function RequestForm({ initial, onClose, onCreate, assist }: { initial: Qualific
   });
   const described = Boolean(title.trim() || description.trim() || excerpt.trim());
   const outside = decision === "Hors périmètre";
-  const ready = title.trim() && (!outside || !quoteOn || Number(amount) > 0);
+  const ready = title.trim() && (!outside || proposalReady(proposal));
 
   return (
     <Modal
@@ -78,7 +74,7 @@ function RequestForm({ initial, onClose, onCreate, assist }: { initial: Qualific
           title: title.trim(),
           description: description.trim(),
           decision,
-          quote: outside && quoteOn ? { amount: Number(amount), days: Number(days) || 0, counter } : undefined,
+          ...(outside ? preparedProposal(proposal) : {}),
           source: channel ? { channel, ...(receivedAt ? { receivedAt } : {}), ...(excerpt.trim() ? { excerpt: excerpt.trim() } : {}) } : undefined,
           capture: channel ? capture?.file : undefined,
           scopeLineId: decision === "Inclus" ? lineId : undefined,
@@ -123,7 +119,7 @@ function RequestForm({ initial, onClose, onCreate, assist }: { initial: Qualific
       )}
       <Field id="request-source" label="Source" optional hint="D’où vient la demande, si le client l’a faite en dehors de Kora.">
         <select id="request-source" className={selectClassName} value={channel} onChange={(event) => setChannel(event.target.value as RequestChannel | "")}>
-          <option value="">Aucune (demande de l’agence)</option>
+          <option value="">Aucune (demande de l’organisation)</option>
           {(Object.entries(requestChannels) as [RequestChannel, string][]).map(([value, label]) => (
             <option key={value} value={value}>
               {label}
@@ -172,35 +168,7 @@ function RequestForm({ initial, onClose, onCreate, assist }: { initial: Qualific
           </Field>
         </>
       )}
-      {outside && (
-        <div className="grid gap-3">
-          <div className="flex items-center justify-between gap-4">
-            <Label htmlFor="request-quote" className="grid gap-0.5 text-sm font-normal">
-              Chiffrer maintenant
-              <span className="text-xs text-muted-foreground">Pré-remplit la proposition, rien n’est envoyé au client.</span>
-            </Label>
-            <Switch id="request-quote" checked={quoteOn} onCheckedChange={setQuoteOn} />
-          </div>
-          {quoteOn && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <Field id="request-amount" label="Montant HT">
-                  <AddonInput id="request-amount" addon="€" type="number" min="0" step="0.01" placeholder="850" value={amount} onChange={(event) => setAmount(event.target.value)} />
-                </Field>
-                <Field id="request-days" label="Délai">
-                  <AddonInput id="request-days" addon="jours" type="number" min="0" step="1" placeholder="3" value={days} onChange={(event) => setDays(event.target.value)} />
-                </Field>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <Label htmlFor="request-counter" className="text-sm font-normal">
-                  Le client peut faire une contre-proposition
-                </Label>
-                <Switch id="request-counter" checked={counter} onCheckedChange={setCounter} />
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      {outside && <ProposalFields id="request-proposal" draft={proposal} onChange={setProposal} />}
     </Modal>
   );
 }

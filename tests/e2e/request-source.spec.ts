@@ -132,7 +132,8 @@ test("each request's card shows where it came from, at a glance: a brand's logo,
   await expect(card(byMail)).toBeVisible();
   // The source is read after the card's name, and told on hover; the name itself is unchanged.
   await expect(card(byMail)).toHaveAccessibleDescription("Demande reçue par e-mail le 20/10/2026");
-  await expect(card(byMail).locator(".thread-row-source")).toHaveAttribute("title", "Demande reçue par e-mail le 20/10/2026");
+  await card(byMail).locator(".thread-row-source").hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Demande reçue par e-mail le 20/10/2026");
   await expect(card(byMail).locator(".source-icon-email")).toBeVisible();
   await expect(card(byTeams)).toHaveAccessibleDescription("Demande reçue sur Teams le 20/10/2026");
   await expect(card(byTeams).locator(".thread-row-source svg linearGradient")).toHaveCount(1);

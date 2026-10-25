@@ -48,9 +48,9 @@ test("sign-up leads to creating one's agency, then to its empty home", async ({ 
   expect((await page.context().cookies()).some((cookie) => cookie.name.includes("session_token"))).toBe(false);
   await page.goto(linkIn(await waitForMail(email, "Confirmez votre adresse"))!);
 
-  await expect(page.getByLabel("Nom de votre agence")).toBeVisible();
-  await page.getByLabel("Nom de votre agence").fill("Studio Nina");
-  await page.getByRole("button", { name: "Créer mon agence" }).click();
+  await expect(page.getByLabel("Nom de votre organisation")).toBeVisible();
+  await page.getByLabel("Nom de votre organisation").fill("Studio Nina");
+  await page.getByRole("button", { name: "Créer mon organisation" }).click();
   // Then its first steps (tests/e2e/onboarding.spec.ts), each one skippable.
   await page.waitForURL((url) => url.pathname === "/demarrer");
   await page.getByRole("button", { name: "Passer" }).click();

@@ -41,9 +41,6 @@ export type ProjectScope = {
 
 export const emptyScope = (): ProjectScope => ({ sources: [], lines: [], exclusions: [] });
 
-/** Units offered while typing a line's quantity; any other may be typed. */
-export const scopeUnits = ["pages", "écrans", "maquettes", "langues", "formats", "visuels", "jours", "heures"];
-
 export const scopeLimits = { lines: 200, exclusions: 100, sources: 20, title: 200, unit: 40, source: 120 };
 
 const fileHref = /^\/api\/files\/[0-9a-f-]{36}$/;
@@ -154,6 +151,19 @@ export const scopeStatus = (scope: ProjectScope | undefined) => (!scope ? "empty
 /** « 5 pages », « 2 », or nothing: a line's quantity as read. */
 export const quantityLabel = (line: Pick<ScopeLine, "quantity" | "unit">) =>
   line.quantity === undefined ? (line.unit ?? "") : `${line.quantity.toLocaleString("fr-FR")}${line.unit ? ` ${line.unit}` : ""}`;
+
+/**
+ * A line with its quantity in its words, as lines are written since 25 October 2026 (« 5 pages intérieures »:
+ * no column of its own, decided with the product owner): one written before, or read apart by the AI, reads
+ * « Pages intérieures · 5 pages ». The server still reads `quantity` and `unit` from older data.
+ */
+export function writtenLine<T extends ScopeLine>(line: T): T {
+  if (line.quantity === undefined && !line.unit) return line;
+  const rest = { ...line };
+  delete rest.quantity;
+  delete rest.unit;
+  return { ...rest, title: [line.title, quantityLabel(line)].filter(Boolean).join(" · ").slice(0, scopeLimits.title) };
+}
 
 /** An out-of-scope request whose quote the client accepted: it extends the scope, dated, on top of it. */
 export type ScopeAmendment = { commentId: number; title: string; deliverable: string; amount: number; days: number; href?: string };

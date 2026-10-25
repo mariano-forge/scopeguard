@@ -120,14 +120,15 @@ export async function mailClientDecision(db: Db, access: ReviewAccess, email: st
         heading: mail.heading,
         paragraphs: mail.paragraphs,
         action: { label: mail.label, href: mail.href },
-        footer: `Vous recevez cet e-mail parce que vous êtes propriétaire ou administrateur de l’agence sur Kora. Répondre à cet e-mail écrit à ${email}.`,
+        footer: `Vous recevez cet e-mail parce que vous êtes propriétaire ou administrateur de l’organisation sur Kora. Répondre à cet e-mail écrit à ${email}.`,
       }),
     });
 }
 
 // ——— Agency → client ———
 
-export type AgencyQuoteEvent = { type: "sent" } | { type: "adaptation"; decision: "accepted" | "refused" };
+/** `offered`: an offer sent (src/lib/requestOffer.ts), with its value: the client is told, with nothing to decide. */
+export type AgencyQuoteEvent = { type: "sent" } | { type: "offered"; amount: number; days: number } | { type: "adaptation"; decision: "accepted" | "refused" };
 
 /** The deciders invited on the shared version of a deliverable: those a proposal goes to (none when its link is off). */
 export async function versionDeciders(db: Db, org: string, deliverableId: number) {
@@ -167,6 +168,16 @@ export async function mailQuoteToClient(db: Db, org: string, actor: { id: string
               : "Vous pouvez l’accepter ou la refuser depuis la revue.",
           ],
         }
+      : event.type === "offered"
+        ? {
+            subject: `Offert : « ${title} »`,
+            heading: "L’organisation vous offre cette demande",
+            paragraphs: [
+              `${actor.name} vous offre « ${title} », sur « ${record.name} » (version ${record.version}) : elle est faite sans vous être facturée.`,
+              `Valeur : ${formatProposalAmount(event.amount)} HT${event.days ? ` · délai ${formatProposalDeadline(event.days)}` : ""}.`,
+              "Vous n’avez rien à décider : la demande apparaît « Offerte » dans votre revue.",
+            ],
+          }
       : event.decision === "accepted"
         ? {
             subject: `Contre-proposition acceptée : « ${title} »`,
@@ -176,7 +187,7 @@ export async function mailQuoteToClient(db: Db, org: string, actor: { id: string
         : {
             subject: `Contre-proposition non retenue : « ${title} »`,
             heading: "Votre contre-proposition n’est pas retenue",
-            paragraphs: [`${actor.name} ne retient pas votre contre-proposition sur « ${title} ». L’agence pourra vous faire une nouvelle proposition.`],
+            paragraphs: [`${actor.name} ne retient pas votre contre-proposition sur « ${title} ». L’organisation pourra vous faire une nouvelle proposition.`],
           };
 
   for (const invite of deciders)

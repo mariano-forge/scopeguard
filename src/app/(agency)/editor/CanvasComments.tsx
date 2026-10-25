@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ArrowUp, BadgeEuro, ClipboardCheck, EyeOff, Film, Pencil, Tag, Trash2, Undo2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowUp, BadgeEuro, ClipboardCheck, EyeOff, Film, Gift, Pencil, ReceiptText, Tag, Trash2, Undo2, X } from "lucide-react";
+import { offerValue } from "@/lib/requestOffer";
 import { Hint } from "@/components/hint";
 import { SiteCapture } from "@/components/SiteCapture";
 import type { SiteAnchor } from "@/lib/siteReview";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ProposalFields, preparedProposal, proposalDraft, proposalReady, type PreparedProposal } from "./ProposalFields";
 import { sideOf, type Side } from "@/lib/authors";
 import { sourceLine, type RequestSource } from "@/lib/requestSource";
 import { formatTimecode } from "@/lib/timecode";
@@ -164,6 +165,32 @@ const side = (x: number) => (x > 58 ? "is-left" : "is-right");
  * Opens the bubble where it fits in the visible canvas: on its preferred side, else the other side,
  * else centered on its pin (each step tried once, so it never loops).
  */
+/** The height kept free at the bottom of the canvas for its tools (.canvas-toolbar), with a margin. */
+function toolsClearance(frame: Element) {
+  const tools = frame.closest(".canvas")?.querySelector(".canvas-toolbar")?.getBoundingClientRect();
+  return tools ? Math.max(0, frame.getBoundingClientRect().bottom - tools.top) + 8 : 8;
+}
+
+/**
+ * A bubble on the canvas, moved up (then made to scroll inside) until clear of the canvas's tools. While it is
+ * open it only goes up, never back down: shorter (« Détail » after « Discussion »), it stays where it is, under
+ * the pointer that switched it.
+ */
+function fitAboveTools(bubble: HTMLElement | null) {
+  const frame = bubble?.closest(".artboard-transform-wrapper");
+  if (!bubble || !frame) return;
+  bubble.style.removeProperty("--ty");
+  bubble.style.removeProperty("max-height");
+  const box = bubble.getBoundingClientRect();
+  const bounds = frame.getBoundingClientRect();
+  const overflow = box.bottom - (bounds.bottom - toolsClearance(frame));
+  const room = Math.max(0, box.top - bounds.top - 8);
+  const lift = Math.min(room, Math.max(overflow, Number(bubble.dataset.lift) || 0, 0));
+  bubble.dataset.lift = String(lift);
+  if (lift > 0) bubble.style.setProperty("--ty", `calc(${getComputedStyle(bubble).getPropertyValue("--ty") || "0px"} - ${lift}px)`);
+  if (overflow > lift) bubble.style.maxHeight = `${Math.max(200, box.height - (overflow - lift))}px`;
+}
+
 function useFittingSide(x: number, initial?: "is-center") {
   const ref = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<"is-left" | "is-right" | "is-center">(initial ?? side(x));
@@ -179,6 +206,20 @@ function useFittingSide(x: number, initial?: "is-center") {
     const next = (["is-right", "is-left", "is-center"] as const).find((option) => !tried.current.has(option));
     if (next) setPlacement(next);
   }, [placement]);
+  // Vertically, at every render (its form grows and shrinks), and whenever the canvas moves under it (opened
+  // from the panel, the canvas pans to its pin): clear of the canvas's tools at the bottom, the bubble moves up
+  // within the canvas, then scrolls inside, its buttons kept in view (styles only, no state).
+  useLayoutEffect(() => fitAboveTools(ref.current));
+  useEffect(() => {
+    const bubble = ref.current;
+    const frame = bubble?.closest(".artboard-transform-wrapper");
+    if (!bubble || !frame) return;
+    // Told at every twentieth of the bubble hidden or shown: a pan that only hides more of it is seen too.
+    const threshold = Array.from({ length: 21 }, (_, step) => step / 20);
+    const observer = new IntersectionObserver(() => fitAboveTools(bubble), { root: frame, rootMargin: `0px 0px -${toolsClearance(frame)}px 0px`, threshold });
+    observer.observe(bubble);
+    return () => observer.disconnect();
+  }, []);
   return [ref, placement] as const;
 }
 
@@ -329,7 +370,7 @@ export function ScopeChoice({ value, onChange, clarify }: { value: Qualification
   const options: { value: Qualification; label: string; hint: string }[] = [
     ...(clarify ? [{ value: "À qualifier" as const, label: "À clarifier", hint: "À préciser avec le client" }] : []),
     { value: "Inclus", label: "Inclus", hint: "Prévu au devis" },
-    { value: "Hors périmètre", label: "Hors scope", hint: "Ajout à chiffrer" },
+    { value: "Hors périmètre", label: "Hors scope", hint: "Ajout à facturer ou à offrir" },
   ];
   const chosen = options.find((option) => option.value === value);
   return (
@@ -363,10 +404,11 @@ export function ScopeChoice({ value, onChange, clarify }: { value: Qualification
 export type Quote = { amount: number; days: number; counter: boolean };
 /** Where an out-of-scope request stands: not quoted, quoted (not sent), or sent (label says what follows). */
 /** `retry`: the client refused (or the adaptation was refused): the agency can quote a new version. */
-export type ProposalStage = { stage: "none" } | { stage: "draft" } | { stage: "sent"; label: string; retry?: boolean };
+/** `draft`: prepared, not sent (`offer` when it is an offer); `offered`: an offer sent (src/lib/requestOffer.ts), `value` reads « 450 € · + 2 jours ». */
+export type ProposalStage = { stage: "none" } | { stage: "draft"; offer?: boolean } | { stage: "sent"; label: string; retry?: boolean } | { stage: "offered"; value: string };
 
-/** `scopeLineId`: the line of the active scope an « Inclus » cites (src/lib/scopeCitation.ts). */
-export type Qualified = { title: string; description: string; decision: Qualification; quote?: Quote; scopeLineId?: number };
+/** `scopeLineId`: the line of the active scope an « Inclus » cites (src/lib/scopeCitation.ts); the proposal prepared with it, out of scope. */
+export type Qualified = { title: string; description: string; decision: Qualification; scopeLineId?: number } & PreparedProposal;
 
 /**
  * Bubble next to its pin (Figma-like). A comment shows its conversation and "Qualifier" (agency);
@@ -377,12 +419,13 @@ export function ThreadPopover({
   readOnly,
   locked,
   proposal,
-  quote,
+  prepared,
   startQuoting,
   onReply,
   onQualify,
   onSendProposal,
   onOpenProposal,
+  onUnoffer,
   onDelete,
   onArchive,
   onClose,
@@ -397,9 +440,9 @@ export function ThreadPopover({
   locked: boolean;
   /** Out-of-scope requests: where the proposal stands (agency only). */
   proposal?: ProposalStage;
-  /** Quote already typed for this request (not sent yet). */
-  quote?: Quote;
-  /** Opens directly on the qualification form with the quote switched on ("Chiffrer"). */
+  /** Proposal already prepared for this request, not sent yet: a draft quote or a draft offer. */
+  prepared?: PreparedProposal;
+  /** Opens directly on the qualification form with the proposal switched on (« Préparer la proposition »). */
   startQuoting?: boolean;
   onReply: (message: string) => void;
   /** Agency only: qualify a comment, change a qualification, or send it back to clarify. */
@@ -408,6 +451,8 @@ export function ThreadPopover({
   onSendProposal?: () => void;
   /** Follows a sent proposal (adaptation, new version). */
   onOpenProposal?: () => void;
+  /** An offer sent to the client: takes it back. */
+  onUnoffer?: () => void;
   onDelete?: () => void;
   /** Agency: closes (archives) the discussion, or reopens it. */
   onArchive?: (closed: boolean) => void;
@@ -435,10 +480,9 @@ export function ThreadPopover({
   const showDetail = asRequest && view === "detail";
   const showDiscussion = !asRequest || view === "discussion";
   const [decision, setDecision] = useState<Qualification>(kind === "outside" ? "Hors périmètre" : asRequest && kind === "comment" ? "À qualifier" : "Inclus");
-  const [quoteOn, setQuoteOn] = useState(Boolean(quote) || Boolean(startQuoting));
-  const [amount, setAmount] = useState(quote ? String(quote.amount) : "");
-  const [days, setDays] = useState(quote ? String(quote.days) : "");
-  const [counter, setCounter] = useState(quote?.counter ?? false);
+  // The proposal prepared with it (out of scope): a quote or an offer, as it was prepared before.
+  const [proposalFields, setProposalFields] = useState(() => proposalDraft(prepared, startQuoting));
+  const quoteReady = decision !== "Hors périmètre" || proposalReady(proposalFields);
   const [lineId, setLineId] = useState(comment.scopeLine?.id);
   // Once the agency changed the form, a suggestion arriving late no longer overwrites it.
   const touched = useRef(false);
@@ -448,7 +492,6 @@ export function ThreadPopover({
     setLineId(suggested.line?.id);
     if (suggested.title) setTitle((typed) => typed.trim() || suggested.title!);
   });
-  const quoteReady = !quoteOn || decision !== "Hors périmètre" || Number(amount) > 0;
   // Sent incomplete once: each missing required field says so, in red, under it.
   const [tried, setTried] = useState(false);
   const titleMissing = tried && !title.trim();
@@ -539,13 +582,7 @@ export function ThreadPopover({
           onSubmit={(event) => {
             event.preventDefault();
             if (!title.trim() || !quoteReady) return setTried(true);
-            onQualify?.({
-              title: title.trim(),
-              description: description.trim(),
-              decision,
-              quote: decision === "Hors périmètre" && quoteOn ? { amount: Number(amount), days: Number(days) || 0, counter } : undefined,
-              scopeLineId: decision === "Inclus" ? lineId : undefined,
-            });
+            onQualify?.({ title: title.trim(), description: description.trim(), decision, scopeLineId: decision === "Inclus" ? lineId : undefined, ...(decision === "Hors périmètre" ? preparedProposal(proposalFields) : {}) });
             setQualifying(false);
           }}
         >
@@ -598,52 +635,9 @@ export function ThreadPopover({
           </label>
           <label>
             Description
-            <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} placeholder="Précisions utiles : où, comment, contraintes… (facultatif)" />
+            <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={2} placeholder="Précisions utiles : où, comment, contraintes… (facultatif)" />
           </label>
-          {decision === "Hors périmètre" && (
-            <div className="quote-block">
-              <div className="quote-toggle">
-                <span id={`quote-toggle-${comment.id}`}>
-                  <b>Chiffrer maintenant</b>
-                  <small>Pré-remplit la proposition, rien n’est envoyé au client.</small>
-                </span>
-                <Switch checked={quoteOn} onCheckedChange={setQuoteOn} aria-labelledby={`quote-toggle-${comment.id}`} />
-              </div>
-              {quoteOn && (
-                <div className="quote-fields">
-                  <label>
-                    <span>
-                      Montant HT (€) <span className="text-destructive" aria-hidden="true">*</span>
-                    </span>
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      step="0.01"
-                      value={amount}
-                      onChange={(event) => setAmount(event.target.value)}
-                      placeholder="850"
-                      aria-invalid={amountMissing || undefined}
-                      aria-describedby={amountMissing ? `amount-error-${comment.id}` : undefined}
-                    />
-                    {amountMissing && (
-                      <span className="field-error" id={`amount-error-${comment.id}`}>
-                        Ce champ est obligatoire.
-                      </span>
-                    )}
-                  </label>
-                  <label>
-                    Délai (jours)
-                    <input type="number" min="0" step="1" value={days} onChange={(event) => setDays(event.target.value)} placeholder="3" />
-                  </label>
-                  <label className="quote-check">
-                    <input type="checkbox" checked={counter} onChange={(event) => setCounter(event.target.checked)} />
-                    <span>Le client peut faire une contre-proposition</span>
-                  </label>
-                </div>
-              )}
-            </div>
-          )}
+          {decision === "Hors périmètre" && <ProposalFields id={`proposal-${comment.id}`} draft={proposalFields} onChange={setProposalFields} missing={amountMissing} />}
           <div className="qualify-form-actions">
             <button type="button" className="ghost-button" onClick={() => setQualifying(false)}>
               Annuler
@@ -684,37 +678,55 @@ export function ThreadPopover({
             <div className="request-footer">
               {kind === "outside" && proposal && (
                 <div className="request-proposal">
-                  {proposal.stage === "sent" ? (
+                  {proposal.stage === "offered" ? (
+                    <>
+                      <p className="request-offer">
+                        <Gift aria-hidden="true" /> {me === "client" ? "Offerte par l’organisation" : "Offerte au client"} · <b>{proposal.value}</b>
+                      </p>
+                      {!readOnly && onUnoffer && (
+                        <Button variant="ghost" size="sm" onClick={onUnoffer}>
+                          Annuler l’offre
+                        </Button>
+                      )}
+                    </>
+                  ) : proposal.stage === "sent" ? (
                     <Button variant="outline" size="sm" onClick={onOpenProposal}>
                       {proposal.label}
                     </Button>
-                  ) : (
+                  ) : proposal.stage === "draft" ? (
                     <>
-                      {canWrite && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setQuoteOn(true);
-                            setQualifying(true);
-                          }}
-                        >
-                          {proposal.stage === "draft" ? "Modifier" : "Chiffrer"}
-                        </Button>
+                      {(prepared?.offer ?? prepared?.quote) && (
+                        <p className="request-prepared">
+                          {prepared?.offer ? <Gift aria-hidden="true" /> : <ReceiptText aria-hidden="true" />} {prepared?.offer ? "Offre prête" : "Devis prêt"} ·{" "}
+                          <b>{offerValue((prepared.offer ?? prepared.quote)!)}</b>
+                        </p>
                       )}
-                      {proposal.stage === "draft" && !readOnly && (
+                      {!readOnly && (
                         <Button size="sm" className="cta-ink" onClick={onSendProposal}>
                           Envoyer la proposition
                         </Button>
                       )}
                     </>
+                  ) : (
+                    canWrite && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setProposalFields((current) => ({ ...current, on: true }));
+                          setQualifying(true);
+                        }}
+                      >
+                        Préparer la proposition
+                      </Button>
+                    )
                   )}
                 </div>
               )}
               {onQualify && canWrite && (
                 <div className="request-actions">
-                  {/* Out-of-scope requests are edited from their "Chiffrer / Modifier" button. */}
-                  {kind !== "outside" && (
+                  {/* Like any request: changed from its form, its proposal with it while it is not sent. */}
+                  {(kind !== "outside" || proposal?.stage === "none" || proposal?.stage === "draft") && (
                     <button
                       type="button"
                       className="thread-link"

@@ -12,6 +12,7 @@
 // Nothing can be written once the version is approved or replaced.
 
 import { clientScope } from "@/lib/projectScope";
+import { sentOfferOf } from "@/lib/requestOffer";
 import { and, eq, inArray } from "drizzle-orm";
 import { sameValue, type ListChange, type MapChange, type SharedState, type StateChanges } from "@/lib/sharedState";
 import { initialsOf, sideOf } from "@/lib/authors";
@@ -157,6 +158,14 @@ export async function readReviewState(db: Db, access: ReviewAccess) {
   const versionComments = shown.map((comment) => {
     const rest: typeof comment = { ...comment };
     if (comment.pinnedOn !== undefined && !ids.has(String(comment.pinnedOn))) delete rest.pinnedOn;
+    // An offer sent: « Offerte » and its value (src/lib/requestOffer.ts), not the member who sent it. One only
+    // prepared is the agency's draft, like a draft quote: neither its value nor its existence leave the server.
+    const offer = sentOfferOf(comment);
+    if (offer) rest.offer = { amount: offer.amount, days: offer.days, sentAt: offer.sentAt };
+    else delete rest.offer;
+    // Paid is the agency's own follow-up of an accepted proposal: never the client's.
+    delete rest.paidAt;
+    delete rest.paidBy;
     const at = qualifiedAt.get(String(comment.id));
     if (at !== undefined && byClient(comment)) rest.qualifiedAt = at;
     return rest;

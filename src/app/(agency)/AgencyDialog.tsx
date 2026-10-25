@@ -22,13 +22,13 @@ export function AgencyDialog({ open, onClose }: { open: boolean; onClose: () => 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const next = name.trim();
-    if (!next) return setError("Donnez un nom à votre agence.");
+    if (!next) return setError("Donnez un nom à votre organisation.");
     if (!user.organizationId || next === user.organizationName) return onClose();
     setPending(true);
     const { error: failed } = await authClient.organization.update({ organizationId: user.organizationId, data: { name: next } });
     setPending(false);
     if (failed) return setError("Le nom n’a pas pu être changé. Seuls le propriétaire et les administrateurs le peuvent.");
-    toast("Nom de l’agence enregistré");
+    toast("Nom de l’organisation enregistré");
     onClose();
     router.refresh();
   }
@@ -37,7 +37,7 @@ export function AgencyDialog({ open, onClose }: { open: boolean; onClose: () => 
     <Modal
       open={open}
       onClose={onClose}
-      title="Paramètres de l’agence"
+      title="Paramètres de l’organisation"
       description="Le nom que voient vos collègues et vos clients (e-mails, page de revue)."
       onSubmit={save}
       footer={
@@ -51,7 +51,7 @@ export function AgencyDialog({ open, onClose }: { open: boolean; onClose: () => 
         </>
       }
     >
-      <Field id="agency-name" label="Nom de l’agence">
+      <Field id="agency-name" label="Nom de l’organisation">
         <Input id="agency-name" maxLength={80} value={name} onChange={(event) => (setName(event.target.value), setError(""))} />
       </Field>
       {error && <FormError>{error}</FormError>}

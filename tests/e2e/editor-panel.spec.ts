@@ -132,9 +132,9 @@ test("drafts and closed discussions sit in « Commentaires »; out-of-scope requ
   await expect(list).not.toContainText("Vérifier les marges");
   await expect(panel.getByRole("tab", { name: /^Mes brouillons/ })).toHaveCount(0);
   // « Commentaires »: its drafts, and the closed discussions.
-  await views.getByRole("tab", { name: /^Commentaires/ }).click();
+  await views.getByRole("tab", { name: /^Discussions/ }).click();
   await expect(panel.getByRole("tab", { name: /^Mes brouillons\s*1/ })).toBeVisible();
-  await expect(panel.getByRole("tab", { name: /^Discussions clôturées\s*0/ })).toBeVisible();
+  await expect(panel.getByRole("tab", { name: /^Clôturées\s*0/ })).toBeVisible();
   await expect(list).toContainText("Vérifier les marges");
 
   // Qualified « À clarifier » with a title, the draft becomes a request to clarify.
@@ -222,7 +222,7 @@ test("a closed discussion is read-only for both sides until the agency reopens i
   await expect(bubble).toContainText("Discussion close. Rouvrez-la pour répondre.");
   await expect(bubble.getByRole("textbox", { name: "Répondre" })).toHaveCount(0);
   const panel = page.getByRole("complementary", { name: "Demandes" });
-  await expect(panel.getByRole("tab", { name: /^Discussions clôturées\s*1/ })).toHaveAttribute("aria-selected", "true");
+  await expect(panel.getByRole("tab", { name: /^Clôturées\s*1/ })).toHaveAttribute("aria-selected", "true");
   await expect(panel.getByRole("tabpanel")).toContainText("Le logo plus grand");
 
   // Nobody replies to it; the client still reads it, marked closed.
@@ -287,7 +287,7 @@ test("qualifying: a required field left empty says so in red, under it", async (
   await page.getByRole("button", { name: /^Commentaire #30 :/ }).click();
   await page.getByRole("button", { name: "Qualifier", exact: true }).click();
   await page.getByRole("radio", { name: /^Hors scope/ }).click();
-  await page.getByRole("switch", { name: /Chiffrer maintenant/ }).click();
+  await page.getByRole("switch", { name: /Préparer la proposition/ }).click();
   await page.getByRole("button", { name: "Créer la demande" }).click();
   const title = page.getByLabel(/Titre de la demande/);
   await expect(title).toHaveAttribute("aria-invalid", "true");

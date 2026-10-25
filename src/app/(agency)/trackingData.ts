@@ -32,8 +32,8 @@ export type TrackingPeriod = keyof typeof trackingPeriods;
 export type ProjectTracking = {
   budget?: number;
   requests: RequestCounts & { total: number };
-  /** The out-of-scope requests, from found to decided: what Kora turned into paid work. */
-  outside: { found: number; unquoted: number; quoted: Amounted; sent: Amounted; awaiting: Amounted; accepted: Amounted; refused: Amounted };
+  /** The out-of-scope requests, from found to decided: what Kora turned into paid work, and what the agency offered. */
+  outside: { found: number; unquoted: number; quoted: Amounted; sent: Amounted; awaiting: Amounted; accepted: Amounted; refused: Amounted; offered: Amounted };
   /** Every deliverable of the project, the most revised first (what the filter offers). */
   allLivrables: LivrableTracking[];
   /** The deliverables counted: all, or the one chosen. */
@@ -82,7 +82,7 @@ export function projectTracking(input: {
   scope?: ProjectScope;
   versions: Version[];
   requests: Request[];
-  /** Where an out-of-scope request's quote stands, and its amount (src/lib/outsideStatus.ts). */
+  /** Where an out-of-scope request's quote stands, and its amount, an offer's value when offered (src/lib/outsideStatus.ts). */
   quoteOf: (commentId: number) => { status: OutsideStatus; amount: number };
   /** The deliverable looked at (its first version's id), or all. */
   livrableId?: number;
@@ -159,6 +159,8 @@ export function projectTracking(input: {
       awaiting: amounted(["sent", "counter"]),
       accepted: amounted(["accepted"]),
       refused: amounted(["refused"]),
+      // Done for free, valued (src/lib/requestOffer.ts): what the gesture costs.
+      offered: amounted(["offered"]),
     },
     allLivrables,
     livrables,
