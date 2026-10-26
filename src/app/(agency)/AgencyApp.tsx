@@ -67,13 +67,11 @@ import {
 import { ProjectRequests } from "./ProjectRequests";
 import { EditorInspector, inspectorTabOf, threadsToMarkdown, type InspectorTab } from "./editor/EditorInspector";
 import { outsideStatusOf, outsideStatusView } from "@/lib/outsideStatus";
-import { StatusPill } from "./editor/requestCard";
 import { NewRequestDialog, type NewRequest } from "./editor/NewRequestDialog";
 import { citableLines } from "@/lib/scopeCitation";
 import { ReviewCanvas, type CanvasComposer, type CanvasTool } from "./editor/ReviewCanvas";
 import { toast } from "sonner";
 import { videoDuration, videoWarning, videoWarningText } from "@/lib/videoCheck";
-import { AdaptationNote } from "@/components/AdaptationNote";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1325,12 +1323,9 @@ export function AgencyApp() {
   /** A request card's amount (the editor's panel, the project's board): what is offered, or what was quoted. */
   function cardAmountOf(comment: { id: number }) {
     const offer = offerOf(comments.find((candidate) => candidate.id === comment.id) ?? {});
-    // Its delay beside it (feedback of 26 October 2026), when it moves the schedule.
-    const delayOf = (days: number | string | undefined) => (parseNumericDays(days) > 0 ? formatProposalDeadline(days) : undefined);
-    if (offer) return { label: `${formatProposalAmount(offer.amount)} HT`, offer: true, delay: delayOf(offer.days) };
+    if (offer) return { label: `${formatProposalAmount(offer.amount)} HT`, offer: true };
     if (proposalStateFor(comment.id) === "none") return null;
-    const proposal = activeProposalFor(comment.id);
-    return { label: `${formatProposalAmount(proposal?.amount)} HT`, offer: false, delay: delayOf(proposal?.deadline) };
+    return { label: `${formatProposalAmount(activeProposalFor(comment.id)?.amount)} HT`, offer: false };
   }
 
   function activeProposalFor(commentId: number) {
@@ -2343,6 +2338,7 @@ export function AgencyApp() {
             const sent = proposalStateFor(id) === "sent";
             const proposal = activeProposalFor(id);
             const status = proposalStatusOf(id);
+            const source = comments.find((comment) => comment.id === id);
             const history = (proposalVersions[id] ?? []).filter((version) => version.id !== proposal?.id).sort((left, right) => right.version - left.version);
             const adaptationPending = Boolean(selectedAdaptationRequest && !selectedAdaptationRequest.decision);
             const openNewVersion = () => {
@@ -2358,10 +2354,9 @@ export function AgencyApp() {
                 open={proposalOpen}
                 onClose={() => setProposalOpen(false)}
                 // Three answers to a counter-proposal: wide enough to hold them on one line.
-                size={adaptationPending && !isReadOnlyVersion ? "lg" : "md"}
-                // Opened from its request: its title and number would only repeat it (feedback of 26 October 2026).
-                title={sent ? "Proposition" : "Créer une proposition"}
-                description={sent ? undefined : "Transformez ce retour en accord clair avant de commencer le travail."}
+                size={adaptationPending && !isReadOnlyVersion ? "xl" : "md"}
+                title={sent ? `Proposition · demande n°${id}` : "Créer une proposition"}
+                description={sent ? (source?.title ?? source?.message) : "Transformez ce retour en accord clair avant de commencer le travail."}
                 footer={
                   !sent ? (
                     <>
@@ -2387,15 +2382,12 @@ export function AgencyApp() {
                       <Button variant="outline" disabled={!canManage} onClick={() => decideAdaptation(id, "refused")}>
                         Refuser l’adaptation
                       </Button>
-                      {/* Accepting the client's budget comes first; without one, a new version is the answer. */}
-                      <Button variant={selectedAdaptationRequest?.budget !== undefined ? "outline" : "default"} disabled={!canManage} onClick={openNewVersion}>
-                        Nouvelle version
-                      </Button>
                       {selectedAdaptationRequest?.budget !== undefined && (
-                        <Button disabled={!canManage} onClick={() => decideAdaptation(id, "accepted")}>
+                        <Button variant="outline" disabled={!canManage} onClick={() => decideAdaptation(id, "accepted")}>
                           Accepter l’adaptation
                         </Button>
                       )}
+                      <Button disabled={!canManage} onClick={openNewVersion}>Répondre par une nouvelle version</Button>
                     </>
                   ) : status.label === "En attente du client" ? (
                     <>
@@ -2415,16 +2407,16 @@ export function AgencyApp() {
               >
                 {sent ? (
                   <>
+                    <div className="proposal-status-line">
+                      <span className="text-muted-foreground">Statut</span>
+                      <span className={`decision-badge ${status.tone}`}>{status.label}</span>
+                      {proposal && (
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          V{proposal.version} · envoyée le {proposal.createdAt}
+                        </span>
+                      )}
+                    </div>
                     <div className="proposal-summary">
-                      {/* Its status as on the request's card, heading what it is about. */}
-                      <div className="proposal-summary-head">
-                        <StatusPill label={outsideStatusView(outsideStatusFor(id), "agency").label ?? status.label} tone={outsideStatusView(outsideStatusFor(id), "agency").tone} />
-                        {proposal && (
-                          <span>
-                            V{proposal.version} · envoyée le {proposal.createdAt}
-                          </span>
-                        )}
-                      </div>
                       <div>
                         <span>Prestation</span>
                         <b>{proposal?.description ?? "—"}</b>
@@ -2443,18 +2435,20 @@ export function AgencyApp() {
                       </div>
                     </div>
                     {selectedAdaptationRequest && (
-                      <AdaptationNote
-                        title="Demande d’adaptation du client"
-                        message={selectedAdaptationRequest.message}
-                        byline={[
-                          selectedAdaptationRequest.requestedAt,
-                          selectedAdaptationRequest.budget !== undefined ? `Budget indicatif : ${formatProposalAmount(selectedAdaptationRequest.budget)}` : null,
-                          selectedAdaptationRequest.deadline !== undefined ? `Délai souhaité : ${formatProposalDeadline(selectedAdaptationRequest.deadline)}` : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                        waiting={adaptationPending}
-                      />
+                      <div className="proposal-note">
+                        <span>Demande d’adaptation du client · {selectedAdaptationRequest.requestedAt}</span>
+                        <p>{selectedAdaptationRequest.message}</p>
+                        {(selectedAdaptationRequest.budget !== undefined || selectedAdaptationRequest.deadline !== undefined) && (
+                          <small>
+                            {[
+                              selectedAdaptationRequest.budget !== undefined ? `Budget indicatif : ${formatProposalAmount(selectedAdaptationRequest.budget)}` : null,
+                              selectedAdaptationRequest.deadline !== undefined ? `Délai souhaité : ${formatProposalDeadline(selectedAdaptationRequest.deadline)}` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </small>
+                        )}
+                      </div>
                     )}
                     {history.length > 0 && (
                       <div className="proposal-history">
@@ -2466,7 +2460,9 @@ export function AgencyApp() {
                               <span>
                                 {formatProposalAmount(version.amount)} HT · {formatProposalDeadline(version.deadline)}
                               </span>
-                              <StatusPill label={versionStatusLabel(version)} tone={version.status === "accepted" ? "accepted" : version.status === "refused" ? "refused" : version.status === "draft" ? "ready" : "waiting"} />
+                              <span className={`decision-badge ${version.status === "accepted" ? "decision-included" : version.status === "refused" ? "decision-refused" : "decision-sent"}`}>
+                                {versionStatusLabel(version)}
+                              </span>
                             </li>
                           ))}
                         </ul>
@@ -2524,12 +2520,10 @@ export function AgencyApp() {
                   </div>
                 </div>
                 {previewAdaptationRequest && (
-                  <AdaptationNote
-                    title="Demande d’adaptation du client"
-                    message={previewAdaptationRequest.message}
-                    byline={previewAdaptationRequest.requestedAt}
-                    waiting={!previewAdaptationRequest.decision && !proposalDecisionFor(previewProposal.commentId)}
-                  />
+                  <div className="adaptation-request-summary">
+                    <span>Demande d’adaptation · {previewAdaptationRequest.requestedAt}</span>
+                    <p>{previewAdaptationRequest.message}</p>
+                  </div>
                 )}
               </>
             )}
@@ -2874,7 +2868,10 @@ export function AgencyApp() {
             }
           >
             {selectedAdaptationRequest && (
-              <AdaptationNote title="Demande d’adaptation du client" message={selectedAdaptationRequest.message} byline={selectedAdaptationRequest.requestedAt} waiting={!selectedAdaptationRequest.decision} />
+              <div className="proposal-note">
+                <span>Demande d’adaptation du client · {selectedAdaptationRequest.requestedAt}</span>
+                <p>{selectedAdaptationRequest.message}</p>
+              </div>
             )}
             <Field id="version-description" label="Description de la prestation">
               <Textarea id="version-description" autoFocus value={newProposalDescription} onChange={(event) => setNewProposalDescription(event.target.value)} />
