@@ -19,6 +19,7 @@ import {
   Plus,
   Search,
   Share2,
+  SquareKanban,
   Trash2,
   Users,
 } from "lucide-react";
@@ -31,6 +32,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { timeLabel, useNow } from "./editor/CanvasComments";
 import { AccountMenu, useCurrentUser } from "./CurrentUser";
+import { avatarLetter } from "@/lib/authors";
 
 /** `href`: the page it is about (src/app/(agency)/routes.ts notificationHref); none for older ones. */
 type Notification = { id: number; message: string; href?: string };
@@ -131,7 +133,7 @@ export function Notifications({
   const message = (item: ClientFeedback, fresh: boolean) => (
     <Link className={`notification-message ${fresh ? "is-new" : ""}`} href={item.href} onClick={() => setOpen(false)}>
       <span className="thread-avatar" aria-hidden="true">
-        {item.initials}
+        {avatarLetter(item.initials)}
       </span>
       <span className="grid min-w-0 gap-0.5">
         <span className="flex items-baseline gap-2 text-sm">
@@ -410,6 +412,7 @@ export function ProjectSidebar({
   panel,
   onPanel,
   canvasHref,
+  requestsHref,
   onNavigate,
   panelWidth,
   onPanelResize,
@@ -429,8 +432,10 @@ export function ProjectSidebar({
   /** Panel content, or null when collapsed. */
   panel: PanelMode | null;
   onPanel: (mode: PanelMode | null) => void;
-  /** Canvas of the deliverable (from the proposals page). */
+  /** Canvas of the deliverable (from its requests' board). */
   canvasHref: string;
+  /** The board of the deliverable's requests, inside it (its rail stays). */
+  requestsHref: string;
   /** Switches view inside the deliverable's tab. */
   onNavigate: (target: string) => void;
   panelWidth: number;
@@ -457,7 +462,7 @@ export function ProjectSidebar({
             {panel ? <PanelLeftClose /> : <PanelLeftOpen />}
           </button>
         </Hint>
-        {view.kind === "deliverable" ? (
+        {view.kind === "deliverable" && !view.pane ? (
           <Hint label="Versions" side="right">
             <button
               className={`rail-button ${panel ? "is-active" : ""}`}
@@ -480,6 +485,17 @@ export function ProjectSidebar({
             <Layers />
           </button>
         )}
+        {/* The board of this deliverable's requests, in the deliverable (feedback of 26 October 2026). */}
+        <Hint label="Pipeline des demandes" side="right">
+          <button
+            className={`rail-button ${view.kind === "deliverable" && view.pane === "requests" ? "is-active" : ""}`}
+            onClick={() => onNavigate(view.kind === "deliverable" && view.pane === "requests" ? canvasHref : requestsHref)}
+            aria-label="Pipeline des demandes"
+            aria-pressed={view.kind === "deliverable" && view.pane === "requests"}
+          >
+            <SquareKanban />
+          </button>
+        </Hint>
         <MenuButton
           className="rail-logo"
           label="Menu principal"

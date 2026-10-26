@@ -5,14 +5,15 @@ import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field, Modal, selectClassName } from "@/components/modal";
-import { excerptMaxLength, requestChannels, type RequestChannel } from "@/lib/requestSource";
+import { Field, Modal } from "@/components/modal";
+import type { RequestChannel } from "@/lib/requestSource";
 import { ScopeChoice, type Qualification, type Qualified } from "./CanvasComments";
-import { CitedLineField, SuggestionNote, useSuggestion, type ScopeAssist } from "./QualifyAssist";
+import { SuggestionNote, useSuggestion, type ScopeAssist } from "./QualifyAssist";
 import { ProposalFields, preparedProposal, proposalDraft, proposalReady } from "./ProposalFields";
+import { emptySource, RequestSourceFields, sourceOf } from "./RequestSourceFields";
 
 /** What the dialog gives back: the request, where it came from, and a capture to import first. */
-export type NewRequest = Qualified & { source?: { channel: RequestChannel; receivedAt?: string; excerpt?: string }; capture?: File };
+export type NewRequest = Qualified & { source?: { channel: RequestChannel; channelName?: string; receivedAt?: string; excerpt?: string }; capture?: File };
 
 /**
  * A request entered by the agency: one received elsewhere (an e-mail, a call, a meeting…), or one about
@@ -36,28 +37,17 @@ export function NewRequestDialog({
 }
 
 function RequestForm({ initial, onClose, onCreate, assist }: { initial: Qualification; onClose: () => void; onCreate: (request: NewRequest) => void; assist?: ScopeAssist }) {
-  const [channel, setChannel] = useState<RequestChannel | "">("");
-  const [receivedAt, setReceivedAt] = useState("");
-  const [excerpt, setExcerpt] = useState("");
-  const [capture, setCapture] = useState<{ file: File; preview: string } | null>(null);
-  /** An image pasted (Ctrl+V) or picked becomes the capture. */
-  function takeCapture(file: File | null | undefined) {
-    if (!file || !file.type.startsWith("image/")) return;
-    if (capture) URL.revokeObjectURL(capture.preview);
-    setCapture({ file, preview: URL.createObjectURL(file) });
-  }
+  const [source, setSource] = useState(emptySource);
   const [decision, setDecision] = useState<Qualification>(initial);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [proposal, setProposal] = useState(() => proposalDraft());
-  const [lineId, setLineId] = useState<number>();
   // Asked by the agency once the request is described: its answer pre-fills the qualification.
   const suggestion = useSuggestion(assist?.suggestionPath, (suggested) => {
     setDecision(suggested.decision);
-    setLineId(suggested.line?.id);
     if (suggested.title) setTitle((typed) => typed.trim() || suggested.title!);
   });
-  const described = Boolean(title.trim() || description.trim() || excerpt.trim());
+  const described = Boolean(title.trim() || description.trim() || source.excerpt.trim());
   const outside = decision === "Hors périmètre";
   const ready = title.trim() && (!outside || proposalReady(proposal));
 
@@ -75,9 +65,8 @@ function RequestForm({ initial, onClose, onCreate, assist }: { initial: Qualific
           description: description.trim(),
           decision,
           ...(outside ? preparedProposal(proposal) : {}),
-          source: channel ? { channel, ...(receivedAt ? { receivedAt } : {}), ...(excerpt.trim() ? { excerpt: excerpt.trim() } : {}) } : undefined,
-          capture: channel ? capture?.file : undefined,
-          scopeLineId: decision === "Inclus" ? lineId : undefined,
+          source: sourceOf(source),
+          capture: sourceOf(source) ? source.capture?.file : undefined,
         });
       }}
       footer={
@@ -95,80 +84,29 @@ function RequestForm({ initial, onClose, onCreate, assist }: { initial: Qualific
         <span className="scope-field-label">Qualifier la demande</span>
         <ScopeChoice value={decision} onChange={setDecision} clarify />
       </div>
-      {decision === "Inclus" && <CitedLineField id="request-line" lines={assist?.lines ?? []} value={lineId} onChange={setLineId} />}
       <Field id="request-title" label="Titre de la demande">
         <Input id="request-title" autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex. : Ajouter une section témoignages" />
       </Field>
       <Field id="request-description" label="Description" optional>
         <Textarea id="request-description" value={description} onChange={(event) => setDescription(event.target.value)} rows={3} placeholder="Précisions utiles : où, comment, contraintes…" />
       </Field>
-      {suggestion.offered && (
+      {suggestion.offered && (described || suggestion.state.status !== "idle") && (
         <div className="grid gap-2">
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="justify-self-start"
+            className="justify-self-end"
             disabled={!described || suggestion.state.status === "asking"}
-            onClick={() => suggestion.ask({ title: title.trim(), description: description.trim(), excerpt: excerpt.trim() })}
+            onClick={() => suggestion.ask({ title: title.trim(), description: description.trim(), excerpt: source.excerpt.trim() })}
           >
             <Sparkles aria-hidden="true" /> Suggérer avec l’IA
           </Button>
           <SuggestionNote state={suggestion.state} />
         </div>
       )}
-      <Field id="request-source" label="Source" optional hint="D’où vient la demande, si le client l’a faite en dehors de Kora.">
-        <select id="request-source" className={selectClassName} value={channel} onChange={(event) => setChannel(event.target.value as RequestChannel | "")}>
-          <option value="">Aucune (demande de l’organisation)</option>
-          {(Object.entries(requestChannels) as [RequestChannel, string][]).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </Field>
-      {channel && (
-        <>
-          <Field id="request-received" label="Date de la demande" optional>
-            <Input id="request-received" type="date" value={receivedAt} onChange={(event) => setReceivedAt(event.target.value)} />
-          </Field>
-          <Field id="request-excerpt" label="Extrait" optional hint="Visible par le client. Collez-y le texte de son message ; une image collée devient la capture.">
-            <Textarea
-              id="request-excerpt"
-              rows={4}
-              maxLength={excerptMaxLength}
-              value={excerpt}
-              onChange={(event) => setExcerpt(event.target.value)}
-              onPaste={(event) => {
-                const image = [...event.clipboardData.files].find((file) => file.type.startsWith("image/"));
-                if (!image) return;
-                event.preventDefault();
-                takeCapture(image);
-              }}
-              placeholder="Ex. : « Pouvez-vous ajouter une page Équipe avec nos 6 portraits ? »"
-            />
-          </Field>
-          <Field id="request-capture" label="Capture" optional hint="Visible par le client. Une image : capture d’e-mail, de message, de maquette…">
-            <div className="grid gap-2">
-              <Input id="request-capture" type="file" accept="image/*" onChange={(event) => takeCapture(event.target.files?.[0])} />
-              {capture && (
-                <div className="flex items-start gap-2">
-                  <span
-                    role="img"
-                    aria-label="Aperçu de la capture"
-                    className="block h-32 w-48 rounded-[var(--r-field)] border border-[var(--border)] bg-contain bg-left-top bg-no-repeat"
-                    style={{ backgroundImage: `url(${capture.preview})` }}
-                  />
-                  <Button type="button" variant="ghost" size="sm" onClick={() => (URL.revokeObjectURL(capture.preview), setCapture(null))}>
-                    Retirer
-                  </Button>
-                </div>
-              )}
-            </div>
-          </Field>
-        </>
-      )}
       {outside && <ProposalFields id="request-proposal" draft={proposal} onChange={setProposal} />}
+      <RequestSourceFields id="request-source" value={source} onChange={setSource} />
     </Modal>
   );
 }

@@ -1,19 +1,22 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Archive, ArchiveRestore, ArrowUp, BadgeEuro, ClipboardCheck, EyeOff, Film, Gift, Pencil, ReceiptText, Tag, Trash2, Undo2, X } from "lucide-react";
-import { offerValue } from "@/lib/requestOffer";
+import { Archive, ArchiveRestore, ArrowUp, BadgeEuro, ClipboardCheck, Ellipsis, EyeOff, Film, Gift, MessageSquare, Pencil, Plus, Trash2, Undo2, X } from "lucide-react";
+import { formatProposalAmount, formatProposalDeadline, parseNumericDays } from "@/lib/proposalFormat";
 import { Hint } from "@/components/hint";
 import { SiteCapture } from "@/components/SiteCapture";
 import type { SiteAnchor } from "@/lib/siteReview";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import Image from "next/image";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProposalFields, preparedProposal, proposalDraft, proposalReady, type PreparedProposal } from "./ProposalFields";
-import { sideOf, type Side } from "@/lib/authors";
+import { RequestSourceFields, sourceDraftOf, sourceOf } from "./RequestSourceFields";
+import { avatarLetter, sideOf, type Side } from "@/lib/authors";
 import { sourceLine, type RequestSource } from "@/lib/requestSource";
 import { formatTimecode } from "@/lib/timecode";
 import type { CitedLine } from "@/lib/scopeCitation";
-import { CitedLineField, SuggestionNote, useSuggestion, type ScopeAssist } from "./QualifyAssist";
+import { SuggestionNote, useSuggestion, type ScopeAssist } from "./QualifyAssist";
 
 /**
  * One request, three states:
@@ -93,7 +96,7 @@ export type ThreadComment = {
   closed?: boolean;
 };
 
-/** A request's origin: the channel and day, the client's words and their capture (both shown to the client). */
+/** A request's origin: the channel and day, then the client's words and the capture, each under its title (both shown to the client). */
 export function RequestSourceNote({ source, enteredBy, figmaUrl }: { source: RequestSource; enteredBy?: string; figmaUrl?: string }) {
   return (
     <aside className="request-source" aria-label="Source de la demande">
@@ -103,13 +106,53 @@ export function RequestSourceNote({ source, enteredBy, figmaUrl }: { source: Req
           Voir le commentaire dans Figma
         </a>
       )}
-      {source.excerpt && <blockquote className="request-source-excerpt">{source.excerpt}</blockquote>}
+      {source.excerpt && (
+        <section className="request-source-part" aria-label="Message">
+          <h3>Message</h3>
+          <blockquote className="request-source-excerpt">{source.excerpt}</blockquote>
+        </section>
+      )}
       {source.capture && (
-        <a className="request-source-capture" href={source.capture} target="_blank" rel="noopener" aria-label="Ouvrir la capture">
-          <span role="img" aria-label="Capture jointe à la demande" style={{ backgroundImage: `url(${source.capture})` }} />
-        </a>
+        <section className="request-source-part" aria-label="Capture">
+          <h3>Capture</h3>
+          {/* The image itself, the bubble's width, at its own proportions. */}
+          <a className="request-source-capture" href={source.capture} target="_blank" rel="noopener" aria-label="Ouvrir la capture">
+            <Image src={source.capture} alt="Capture jointe à la demande" width={360} height={240} unoptimized />
+          </a>
+        </section>
       )}
     </aside>
+  );
+}
+
+/**
+ * A proposal's figures as the foot of a quote (feedback of 25 and 26 October 2026): its extra delay, then its
+ * amount; the version when there were several. In the bubble and on the request's card, agency and client.
+ */
+export function ProposalFigures({ amount, days, offer, version }: { amount?: number | string; days?: number | string; offer?: boolean; version?: number }) {
+  const extra = parseNumericDays(days);
+  return (
+    <dl className="request-figures" aria-label={offer ? "Offre" : "Devis"}>
+      {version !== undefined && (
+        <div>
+          <dt>Version</dt>
+          <dd>V{version}</dd>
+        </div>
+      )}
+      <div>
+        <dt>Délai supplémentaire</dt>
+        {/* Under its label, no extra delay reads « Aucun » (elsewhere « Aucun impact »). */}
+        <dd>{extra ? formatProposalDeadline(extra) : "Aucun"}</dd>
+      </div>
+      <div className={`is-total ${offer ? "is-offer" : ""}`}>
+        <dt>Montant HT</dt>
+        {/* An offer's amount marked as a gift, in green, as on its card. */}
+        <dd>
+          {offer && <Gift aria-hidden="true" />}
+          {formatProposalAmount(amount)}
+        </dd>
+      </div>
+    </dl>
   );
 }
 
@@ -179,6 +222,8 @@ function toolsClearance(frame: Element) {
 function fitAboveTools(bubble: HTMLElement | null) {
   const frame = bubble?.closest(".artboard-transform-wrapper");
   if (!bubble || !frame) return;
+  // Held in place while the canvas zooms (ReviewCanvas.tsx holdBubbles): fitted again once let go, by its pin.
+  if (bubble.style.getPropertyValue("--fx")) return;
   bubble.style.removeProperty("--ty");
   bubble.style.removeProperty("max-height");
   const box = bubble.getBoundingClientRect();
@@ -245,6 +290,9 @@ export function CommentPin({
   onMove?: () => void;
 }) {
   const kind = requestKind(comment);
+  const now = useNow();
+  const replies = comment.replies?.length ?? 0;
+  const time = timeLabel(comment, now);
   return (
     <button
       type="button"
@@ -261,11 +309,31 @@ export function CommentPin({
       }}
       onPointerEnter={() => onHover?.(true)}
       onPointerLeave={() => onHover?.(false)}
-      title={onMove ? "Glisser pour déplacer" : undefined}
       aria-label={`${itemLabel(comment)} #${comment.id} : ${requestText(comment)}${unread ? " (non lu)" : ""}`}
       aria-expanded={active}
     >
-      {kind === "correction" ? <ClipboardCheck aria-hidden="true" /> : kind === "outside" ? <BadgeEuro aria-hidden="true" /> : <span>{comment.initials}</span>}
+      {kind === "correction" ? <ClipboardCheck aria-hidden="true" /> : kind === "outside" ? <BadgeEuro aria-hidden="true" /> : <span>{avatarLetter(comment.initials)}</span>}
+      {/* On hover, its first message as the thread shows it, and how many replies (feedback of 25 October 2026);
+          on the right half of the page, on the pin's left: it never runs off the page's edge. */}
+      <span className={`pin-preview ${(comment.position?.x ?? 50) > 50 ? "is-left" : ""}`} aria-hidden="true">
+        <span className="pin-preview-message">
+          <span className={`thread-avatar ${sideOf(comment) === "agency" ? "is-agency" : "is-client"}`}>{avatarLetter(comment.initials)}</span>
+          <span className="pin-preview-body">
+            <span className="thread-meta">
+              <b>{comment.author}</b>
+              {time && <small>{time}</small>}
+            </span>
+            <span className="pin-preview-text">{comment.message}</span>
+            {/* Under its words, quieter (feedback of 26 October 2026). */}
+            {replies > 0 && (
+              <span className="pin-preview-replies">
+                <MessageSquare aria-hidden="true" />
+                {replies} réponse{replies > 1 ? "s" : ""}
+              </span>
+            )}
+          </span>
+        </span>
+      </span>
     </button>
   );
 }
@@ -294,7 +362,7 @@ function ThreadMessage({
   return (
     <div className={`thread-message ${sideOf(message) === "agency" ? "is-agency" : "is-client"}`}>
       <span className="thread-avatar" aria-hidden="true">
-        {message.initials}
+        {avatarLetter(message.initials)}
       </span>
       <div className="min-w-0 flex-1">
         <p className="thread-meta">
@@ -337,28 +405,30 @@ function ThreadMessage({
       </div>
       {editable && !editing && (onEdit || onDelete) && (
         <span className="thread-message-actions">
-          {onEdit && (
-            <Hint label="Modifier">
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Modifier le message"
-                onClick={() => {
-                  setDraft(message.message);
-                  setEditing(true);
-                }}
-              >
-                <Pencil />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-xs" aria-label="Actions sur le message">
+                <Ellipsis />
               </Button>
-            </Hint>
-          )}
-          {onDelete && (
-            <Hint label="Supprimer">
-              <Button variant="ghost" size="icon-xs" aria-label="Supprimer le message" onClick={onDelete}>
-                <Trash2 />
-              </Button>
-            </Hint>
-          )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
+              {onEdit && (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setDraft(message.message);
+                    setEditing(true);
+                  }}
+                >
+                  <Pencil /> Modifier le message
+                </DropdownMenuItem>
+              )}
+              {onDelete && (
+                <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+                  <Trash2 /> Supprimer le message
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </span>
       )}
     </div>
@@ -372,7 +442,6 @@ export function ScopeChoice({ value, onChange, clarify }: { value: Qualification
     { value: "Inclus", label: "Inclus", hint: "Prévu au devis" },
     { value: "Hors périmètre", label: "Hors scope", hint: "Ajout à facturer ou à offrir" },
   ];
-  const chosen = options.find((option) => option.value === value);
   return (
     <div className="scope-choice-field">
       <div className="scope-choice" role="radiogroup" aria-label="Qualification">
@@ -390,11 +459,6 @@ export function ScopeChoice({ value, onChange, clarify }: { value: Qualification
           </button>
         ))}
       </div>
-      {chosen && (
-        <p className="scope-choice-hint" aria-hidden="true">
-          {chosen.hint}
-        </p>
-      )}
     </div>
   );
 }
@@ -408,7 +472,22 @@ export type Quote = { amount: number; days: number; counter: boolean };
 export type ProposalStage = { stage: "none" } | { stage: "draft"; offer?: boolean } | { stage: "sent"; label: string; retry?: boolean } | { stage: "offered"; value: string };
 
 /** `scopeLineId`: the line of the active scope an « Inclus » cites (src/lib/scopeCitation.ts); the proposal prepared with it, out of scope. */
-export type Qualified = { title: string; description: string; decision: Qualification; scopeLineId?: number } & PreparedProposal;
+/** `source` and `capture`: where the agency's own pin came from, and a capture to import first (RequestSourceFields.tsx). */
+export type Qualified = {
+  title: string;
+  description: string;
+  decision: Qualification;
+  scopeLineId?: number;
+  source?: { channel: RequestSource["channel"]; channelName?: string; receivedAt?: string; excerpt?: string; capture?: string };
+  capture?: File;
+  /** « Modifier »: the source the agency had given taken away. */
+  removeSource?: boolean;
+  /** « Modifier », the proposal switched off: the quote or offer prepared (not sent) taken away. */
+  dropProposal?: boolean;
+} & PreparedProposal;
+
+/** A request's bubble opens on one of its tabs: what it says, its messages, or where it came from. */
+export type ThreadView = "detail" | "discussion" | "source";
 
 /**
  * Bubble next to its pin (Figma-like). A comment shows its conversation and "Qualifier" (agency);
@@ -421,6 +500,8 @@ export function ThreadPopover({
   proposal,
   prepared,
   startQuoting,
+  openOn,
+  agencyName,
   onReply,
   onQualify,
   onSendProposal,
@@ -444,6 +525,10 @@ export function ThreadPopover({
   prepared?: PreparedProposal;
   /** Opens directly on the qualification form with the proposal switched on (« Préparer la proposition »). */
   startQuoting?: boolean;
+  /** The tab it opens on (a card's messages: « Discussion »; its source: « Source »). */
+  openOn?: ThreadView;
+  /** The agency's name, on the client's page: what an offer says to them. */
+  agencyName?: string;
   onReply: (message: string) => void;
   /** Agency only: qualify a comment, change a qualification, or send it back to clarify. */
   onQualify?: (qualified: Qualified) => void;
@@ -476,20 +561,25 @@ export function ThreadPopover({
   const [description, setDescription] = useState(comment.description ?? "");
   const now = useNow();
   // A request: its « Détail » or its « Discussion », each on the bubble's whole height. A comment: its discussion.
-  const [view, setView] = useState<"detail" | "discussion">("detail");
+  const [view, setView] = useState<ThreadView>(openOn === "source" && !comment.source ? "detail" : (openOn ?? "detail"));
   const showDetail = asRequest && view === "detail";
   const showDiscussion = !asRequest || view === "discussion";
+  // Where it came from: a tab of its own on a request (feedback of 25 October 2026), under a comment's words.
+  const showSource = Boolean(comment.source) && (!asRequest || view === "source");
   const [decision, setDecision] = useState<Qualification>(kind === "outside" ? "Hors périmètre" : asRequest && kind === "comment" ? "À qualifier" : "Inclus");
   // The proposal prepared with it (out of scope): a quote or an offer, as it was prepared before.
   const [proposalFields, setProposalFields] = useState(() => proposalDraft(prepared, startQuoting));
   const quoteReady = decision !== "Hors périmètre" || proposalReady(proposalFields);
-  const [lineId, setLineId] = useState(comment.scopeLine?.id);
+  // Where the agency's own pin came from (an e-mail, a call…), told while qualifying it, as in « + Demande ».
+  // Where it came from: told by the agency on a request it entered, shown again to be changed (« Modifier »);
+  // never on a client's words, nor a thread from Figma.
+  const [source, setSource] = useState(() => sourceDraftOf(comment.source));
+  const sourceOffered = sideOf(comment) === "agency" && !comment.figma;
   // Once the agency changed the form, a suggestion arriving late no longer overwrites it.
   const touched = useRef(false);
   const suggestion = useSuggestion(assist?.suggestionPath, (suggested) => {
     if (touched.current) return;
     setDecision(suggested.decision);
-    setLineId(suggested.line?.id);
     if (suggested.title) setTitle((typed) => typed.trim() || suggested.title!);
   });
   // Sent incomplete once: each missing required field says so, in red, under it.
@@ -511,6 +601,41 @@ export function ThreadPopover({
     { id: 0, author: comment.author, initials: comment.initials, from: comment.from, message: comment.message, time: comment.time, createdAt: comment.createdAt, edited: comment.edited },
     ...(comment.replies ?? []),
   ];
+  // A proposal prepared or sent: its delay and total under the request's words.
+  const figuresShown = kind === "outside" && Boolean(prepared?.offer ?? prepared?.quote);
+  // The proposal's next gesture, always in the request's body under its words (and its price), the bubble's
+  // width (feedback of 26 October 2026): to send or offer it in ink; to prepare, see or take it back outlined. The
+  // grey foot keeps the request's other actions.
+  const proposalAction =
+    kind !== "outside" || !proposal ? null : proposal.stage === "offered" ? (
+      !readOnly && onUnoffer ? (
+        <Button variant="outline" className="request-send" onClick={onUnoffer}>
+          Annuler l’offre
+        </Button>
+      ) : null
+    ) : proposal.stage === "sent" ? (
+      <Button variant="outline" className="request-send" onClick={onOpenProposal}>
+        {proposal.label}
+      </Button>
+    ) : proposal.stage === "draft" ? (
+      !readOnly ? (
+        <Button className="request-send cta-ink" onClick={onSendProposal}>
+          {/* An offer is a gift, not a proposal to answer: it is offered (feedback of 26 October 2026). */}
+          {proposal.offer ? "Offrir au client" : "Envoyer la proposition"}
+        </Button>
+      ) : null
+    ) : canWrite ? (
+      <Button
+        variant="outline"
+        className="request-send"
+        onClick={() => {
+          setProposalFields((current) => ({ ...current, on: true }));
+          setQualifying(true);
+        }}
+      >
+        Préparer la proposition
+      </Button>
+    ) : null;
   return (
     <div
       ref={bubbleRef}
@@ -537,18 +662,23 @@ export function ThreadPopover({
           )}
         </span>
         <span className="thread-header-actions">
+          {/* What it is, in its head beside the button that closes it (feedback of 26 October 2026), on every tab. */}
+          {asRequest && (
+            <span className={`request-kind is-${kind}`}>
+              <span className="kind-pill">{kind === "outside" ? "Hors scope" : kind === "correction" ? "Inclus" : "À clarifier"}</span>
+            </span>
+          )}
           {!asRequest && onQualify && canWrite && !qualifying && (
             <Hint label="Qualifier en demande : à clarifier, incluse ou hors scope">
               <Button
                 size="sm"
-                className="thread-create"
                 onClick={() => {
                   touched.current = false;
                   setQualifying(true);
                   suggestion.ask();
                 }}
               >
-                <Tag /> Qualifier
+                <Plus aria-hidden="true" /> Qualifier
               </Button>
             </Hint>
           )}
@@ -581,8 +711,23 @@ export function ThreadPopover({
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            if (!title.trim() || !quoteReady) return setTried(true);
-            onQualify?.({ title: title.trim(), description: description.trim(), decision, scopeLineId: decision === "Inclus" ? lineId : undefined, ...(decision === "Hors périmètre" ? preparedProposal(proposalFields) : {}) });
+            if (!title.trim() || !quoteReady) {
+              setTried(true);
+              const form = event.currentTarget;
+              // Once the errors are drawn: the first field missing, in view, the cursor in it.
+              requestAnimationFrame(() => {
+                const missing = form.querySelector<HTMLElement>('[aria-invalid="true"]');
+                missing?.scrollIntoView({ block: "center", behavior: "smooth" });
+                missing?.focus({ preventScroll: true });
+              });
+              return;
+            }
+            onQualify?.({ title: title.trim(), description: description.trim(), decision,
+              ...(decision === "Hors périmètre" ? preparedProposal(proposalFields) : {}),
+              ...(sourceOffered && sourceOf(source) ? { source: sourceOf(source), capture: source.capture?.file } : {}),
+              ...(sourceOffered && comment.source && !sourceOf(source) ? { removeSource: true } : {}),
+              ...(decision === "Hors périmètre" && (prepared?.quote || prepared?.offer) && !prepared.sent && !proposalFields.on ? { dropProposal: true } : {}),
+            });
             setQualifying(false);
           }}
         >
@@ -600,17 +745,6 @@ export function ThreadPopover({
               clarify
             />
           </div>
-          {decision === "Inclus" && (
-            <CitedLineField
-              id={`line-${comment.id}`}
-              lines={assist?.lines ?? []}
-              value={lineId}
-              onChange={(value) => {
-                touched.current = true;
-                setLineId(value);
-              }}
-            />
-          )}
           <label>
             <span>
               Titre de la demande <span className="text-destructive" aria-hidden="true">*</span>
@@ -638,6 +772,7 @@ export function ThreadPopover({
             <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={2} placeholder="Précisions utiles : où, comment, contraintes… (facultatif)" />
           </label>
           {decision === "Hors périmètre" && <ProposalFields id={`proposal-${comment.id}`} draft={proposalFields} onChange={setProposalFields} missing={amountMissing} />}
+          {sourceOffered && <RequestSourceFields id={`source-${comment.id}`} value={source} onChange={setSource} />}
           <div className="qualify-form-actions">
             <button type="button" className="ghost-button" onClick={() => setQualifying(false)}>
               Annuler
@@ -650,18 +785,16 @@ export function ThreadPopover({
       ) : (
         <>
           {asRequest && (
-            <Tabs value={view} onValueChange={(next) => setView(next as "detail" | "discussion")} className="thread-tabs">
+            <Tabs value={view} onValueChange={(next) => setView(next as typeof view)} className="thread-tabs">
               <TabsList variant="line" aria-label="Demande">
                 <TabsTrigger value="detail">Détail</TabsTrigger>
                 <TabsTrigger value="discussion">Discussion</TabsTrigger>
+                {comment.source && <TabsTrigger value="source">Source</TabsTrigger>}
               </TabsList>
             </Tabs>
           )}
           {showDetail && (
             <div className="request-body">
-              <p className={`request-kind is-${kind}`}>
-                <span className="kind-pill">{kind === "outside" ? "Hors scope" : kind === "correction" ? "Inclus" : "À clarifier"}</span>
-              </p>
               <p className="request-title">{requestText(comment)}</p>
               {kind === "correction" && comment.scopeLine && (
                 <p className="request-cited">
@@ -669,60 +802,29 @@ export function ThreadPopover({
                 </p>
               )}
               {comment.description && <p className="request-description">{comment.description}</p>}
+              {/* What the proposal holds, under the request's words: its amount and its extra delay. */}
+              {figuresShown ? (
+                <ProposalFigures amount={(prepared!.offer ?? prepared!.quote)!.amount} days={(prepared!.offer ?? prepared!.quote)!.days} offer={Boolean(prepared!.offer)} />
+              ) : (
+                kind === "outside" &&
+                proposal?.stage === "offered" && (
+                  <p className="request-offer">
+                    <Gift aria-hidden="true" /> {me === "client" ? `Offerte par ${agencyName ?? "l’organisation"}` : "Offerte au client"} · <b>{proposal.value}</b>
+                  </p>
+                )
+              )}
+              {/* An offer sent: what it means, the same words on both sides (feedback of 26 October 2026). */}
+              {kind === "outside" && prepared?.offer && prepared.sent && (
+                <p className="request-offer-note">Cette demande sera gratuitement prise en charge dans une prochaine version.</p>
+              )}
+              {proposalAction && <div className="request-proposal">{proposalAction}</div>}
             </div>
           )}
-          {(showDetail || !asRequest) && comment.source && <RequestSourceNote source={comment.source} enteredBy={comment.figma ? undefined : comment.author} figmaUrl={comment.figma?.url} />}
+          {showSource && <RequestSourceNote source={comment.source!} enteredBy={comment.figma ? undefined : comment.author} figmaUrl={comment.figma?.url} />}
           {(showDetail || !asRequest) && comment.site && <SiteCapture site={comment.site} />}
           {/* What can be done, apart from what the request says (as on its card): last, kept in view while the bubble scrolls. */}
-          {showDetail && ((kind === "outside" && proposal) || (onQualify && canWrite)) && (
+          {showDetail && onQualify && canWrite && (
             <div className="request-footer">
-              {kind === "outside" && proposal && (
-                <div className="request-proposal">
-                  {proposal.stage === "offered" ? (
-                    <>
-                      <p className="request-offer">
-                        <Gift aria-hidden="true" /> {me === "client" ? "Offerte par l’organisation" : "Offerte au client"} · <b>{proposal.value}</b>
-                      </p>
-                      {!readOnly && onUnoffer && (
-                        <Button variant="ghost" size="sm" onClick={onUnoffer}>
-                          Annuler l’offre
-                        </Button>
-                      )}
-                    </>
-                  ) : proposal.stage === "sent" ? (
-                    <Button variant="outline" size="sm" onClick={onOpenProposal}>
-                      {proposal.label}
-                    </Button>
-                  ) : proposal.stage === "draft" ? (
-                    <>
-                      {(prepared?.offer ?? prepared?.quote) && (
-                        <p className="request-prepared">
-                          {prepared?.offer ? <Gift aria-hidden="true" /> : <ReceiptText aria-hidden="true" />} {prepared?.offer ? "Offre prête" : "Devis prêt"} ·{" "}
-                          <b>{offerValue((prepared.offer ?? prepared.quote)!)}</b>
-                        </p>
-                      )}
-                      {!readOnly && (
-                        <Button size="sm" className="cta-ink" onClick={onSendProposal}>
-                          Envoyer la proposition
-                        </Button>
-                      )}
-                    </>
-                  ) : (
-                    canWrite && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setProposalFields((current) => ({ ...current, on: true }));
-                          setQualifying(true);
-                        }}
-                      >
-                        Préparer la proposition
-                      </Button>
-                    )
-                  )}
-                </div>
-              )}
               {onQualify && canWrite && (
                 <div className="request-actions">
                   {/* Like any request: changed from its form, its proposal with it while it is not sent. */}
@@ -740,7 +842,7 @@ export function ThreadPopover({
                         }
                       }}
                     >
-                      <Tag aria-hidden="true" /> Modifier
+                      <Pencil aria-hidden="true" /> Modifier
                     </button>
                   )}
                   {kind !== "comment" && (

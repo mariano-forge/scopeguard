@@ -32,7 +32,7 @@
   font-weight: 600;
 }
 .site-platform:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 

@@ -166,7 +166,8 @@ export function writtenLine<T extends ScopeLine>(line: T): T {
 }
 
 /** An out-of-scope request whose quote the client accepted: it extends the scope, dated, on top of it. */
-export type ScopeAmendment = { commentId: number; title: string; deliverable: string; amount: number; days: number; href?: string };
+/** An amendment: a quote the client accepted, or an offer sent to them (`offered`: done for free, its value shown). */
+export type ScopeAmendment = { commentId: number; title: string; deliverable: string; amount: number; days: number; href?: string; offered?: boolean };
 
 /** « 12 000 € » */
 export const euros = (amount: number) => `${amount.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} €`;

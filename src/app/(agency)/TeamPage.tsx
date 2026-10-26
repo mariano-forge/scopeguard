@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { Copy, Mail, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
-import { initialsOf } from "@/lib/authors";
+import { avatarLetter, initialsOf } from "@/lib/authors";
 import { Hint } from "@/components/hint";
 import { Field, FormError, Modal } from "@/components/modal";
 import { Button } from "@/components/ui/button";
@@ -111,7 +111,7 @@ export function TeamPage() {
   }
 
   const avatar = (text: string, quiet = false) => (
-    <span className={`grid size-8 shrink-0 place-items-center rounded-full text-xs font-semibold ${quiet ? "bg-muted text-muted-foreground" : "bg-[var(--status-low-bg)] text-[var(--status-low-text)]"}`} aria-hidden="true">
+    <span className={`grid size-8 shrink-0 place-items-center rounded-full text-sm font-semibold ${quiet ? "bg-muted text-muted-foreground" : "bg-[var(--status-low-bg)] text-[var(--status-low-text)]"}`} aria-hidden="true">
       {text}
     </span>
   );
@@ -150,7 +150,7 @@ export function TeamPage() {
               <TableRow key={member.id}>
                 <TableHead scope="row" className="h-auto py-2.5 text-sm font-medium text-foreground">
                   <span className="flex items-center gap-3">
-                    {avatar(initialsOf(member.user.name))}
+                    {avatar(avatarLetter(initialsOf(member.user.name)))}
                     <span className="truncate">
                       {member.user.name}
                       {self && <span className="font-normal text-muted-foreground"> (vous)</span>}

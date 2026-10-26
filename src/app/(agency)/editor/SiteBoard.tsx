@@ -91,6 +91,7 @@ export function SiteBoard({
   // Kora on this computer: the browser may ask before showing the toolbar, said in the step that opens it.
   const localAccess = useLocalAccessNote();
   const { groups } = sitePages(comments);
+  const steps = <SiteGuideSteps steps={localAccess ? clientSteps.map((step, index) => (index === 1 ? { ...step, text: <>{step.text} {localAccess}</> } : step)) : clientSteps} />;
   // The requests, not the agency's draft comments (pins without a status): what the board counts.
   const requests = comments.filter((comment) => !isAgencyDraft(comment));
   const empty = !requests.length;
@@ -156,27 +157,43 @@ export function SiteBoard({
         </header>
 
         <div className="site-sheet-body">
-          {/* The title across the sheet; under it, what happens, beside the toolbar at work. */}
-          <section className="site-hero" aria-label="Site de recette">
-            <h3>{hero.title}</h3>
-            <p>{hero.text}</p>
-            <SiteBarDemo />
-          </section>
-
-          {/* The agency's setup: open until the first requests arrive, then folded away. The client has
-              nothing to set up: their steps stay in view. */}
-          {setup ? (
-            <details className="site-guide" open={empty}>
+          {/* Before the first requests, the whole tutorial: the title across the sheet, the toolbar at work,
+              then the agency's setup or the client's steps. Once requests come, all of it folds under one line
+              (feedback of 26 October 2026); the site's link stays in the window's bar above. */}
+          {empty ? (
+            <>
+              <section className="site-hero" aria-label="Site de recette">
+                <h3>{hero.title}</h3>
+                <p>{hero.text}</p>
+                <SiteBarDemo />
+              </section>
+              {setup ? (
+                <details className="site-guide" open>
+                  <summary>
+                    <span>
+                      Paramétrer la barre Kora
+                      <small>3 étapes · une ligne par site</small>
+                    </span>
+                  </summary>
+                  <div className="site-guide-body">{setup}</div>
+                </details>
+              ) : (
+                steps
+              )}
+            </>
+          ) : (
+            <details className="site-guide">
               <summary>
                 <span>
-                  Paramétrer la barre Kora
-                  <small>3 étapes · une ligne par site</small>
+                  {agency ? "Paramétrer la barre Kora" : "Commenter le site avec la barre Kora"}
+                  <small>{hero.title}</small>
                 </span>
               </summary>
-              <div className="site-guide-body">{setup}</div>
+              <div className="site-guide-body">
+                <SiteBarDemo />
+                {setup ?? steps}
+              </div>
             </details>
-          ) : (
-            <SiteGuideSteps steps={localAccess ? clientSteps.map((step, index) => (index === 1 ? { ...step, text: <>{step.text} {localAccess}</> } : step)) : clientSteps} />
           )}
         </div>
       </article>

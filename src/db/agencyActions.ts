@@ -13,6 +13,7 @@ import { initialsOf, sideOf } from "@/lib/authors";
 import { clientRoleLabels, readClientRole, roleOfInvite, type ClientRole } from "@/lib/clientRoles";
 import { formatProposalAmount, formatProposalDeadline } from "@/lib/proposalFormat";
 import { offerOf, offerValue, sentOfferOf } from "@/lib/requestOffer";
+import { linkExpiryFromNow, renewedLink } from "@/lib/linkDeciders";
 import { readRequestSource, sourceLine, type RequestSource } from "@/lib/requestSource";
 import { citedLine, type CitedLine } from "@/lib/scopeCitation";
 import type { ListChange, StateChanges } from "@/lib/sharedState";
@@ -61,7 +62,10 @@ export type AgencyAction =
   | { type: "comment.edit"; commentId: number; message: string }
   | { type: "comment.move"; commentId: number; page: number; x: number; y: number }
   | { type: "comment.delete"; commentId: number }
-  | { type: "comment.qualify"; commentId: number; decision: Qualification; title?: string; description?: string; quote?: Quote; offer?: Offer; scopeLineId?: number }
+  // `source`: where the agency's own pin came from, told while qualifying it (as « + Demande »: src/lib/requestSource.ts).
+  // `removeSource`: « Modifier » took the source the agency had given away; `dropProposal`: the quote or offer
+  // prepared, not sent, taken away (the proposal switched off).
+  | { type: "comment.qualify"; commentId: number; decision: Qualification; title?: string; description?: string; quote?: Quote; offer?: Offer; scopeLineId?: number; source?: RequestSource; removeSource?: boolean; dropProposal?: boolean }
   | { type: "comment.close"; commentId: number; closed: boolean }
   // An accepted proposal marked paid, or not any more: the agency's own follow-up, never the client's (decided 25 October 2026).
   | { type: "proposal.paid"; commentId: number; paid: boolean }
@@ -69,7 +73,8 @@ export type AgencyAction =
   | { type: "reply.edit"; commentId: number; replyId: number; message: string }
   | { type: "reply.delete"; commentId: number; replyId: number }
   | { type: "proposal.send"; commentId: number; description: string; amount: number; deadline: number }
-  | { type: "proposal.send-draft"; commentId: number }
+  // `notify`: the deciders the agency chose to tell by e-mail (all when absent); only ever narrows them.
+  | { type: "proposal.send-draft"; commentId: number; notify?: string[] }
   | { type: "proposal.version"; commentId: number; send: boolean; description: string; amount: number; deadline: number; allowCounter: boolean }
   | { type: "adaptation.decide"; commentId: number; decision: "accepted" | "refused" }
   // An offer taken back, sent or not (src/lib/requestOffer.ts); it is prepared with the qualification, sent as a quote is.
@@ -160,8 +165,9 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
       const decision = body.decision === "Inclus" || body.decision === "Hors périmètre" || body.decision === "À qualifier" ? body.decision : null;
       const title = text(body.title, 300);
       const [quote, offer] = [readQuote(body.quote), readOffer(body.offer)];
-      if (!commentId || !decision || (decision !== "À qualifier" && !title) || offer === null || (quote && offer)) return null;
-      return { type, commentId, decision, title, description: text(body.description), quote, offer, scopeLineId: id(body.scopeLineId) };
+      const source = readRequestSource(body.source);
+      if (!commentId || !decision || (decision !== "À qualifier" && !title) || offer === null || (quote && offer) || source === null) return null;
+      return { type, commentId, decision, title, description: text(body.description), quote, offer, scopeLineId: id(body.scopeLineId), source, removeSource: body.removeSource === true, dropProposal: body.dropProposal === true };
     }
     case "comment.close":
       return commentId && typeof body.closed === "boolean" ? { type, commentId, closed: body.closed } : null;
@@ -183,8 +189,10 @@ export function readAgencyAction(type: AgencyAction["type"], body: Data, params:
         ? { type, commentId, description, amount, deadline }
         : { type, commentId, send: body.send === true, description, amount, deadline, allowCounter: body.allowCounter === true };
     }
-    case "proposal.send-draft":
-      return commentId ? { type, commentId } : null;
+    case "proposal.send-draft": {
+      const notify = Array.isArray(body.notify) ? body.notify.filter((email): email is string => typeof email === "string" && email.length <= 320).slice(0, 50) : undefined;
+      return commentId ? { type, commentId, ...(notify ? { notify } : {}) } : null;
+    }
     case "adaptation.decide":
       return commentId && (body.decision === "accepted" || body.decision === "refused") ? { type, commentId, decision: body.decision } : null;
     case "proposal.unoffer":
@@ -304,8 +312,7 @@ async function ownImage(db: Db, org: string, href: string) {
 
 /** A new client link for a version: a random token, valid 7 days unless the agency says otherwise. */
 function newReviewLink(deliverableId: number, version: number) {
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" });
-  return { token: randomUUID(), active: true, expiresAt, autoExpire: true, deliverableId, version };
+  return { token: randomUUID(), active: true, expiresAt: linkExpiryFromNow(), autoExpire: true, deliverableId, version };
 }
 
 /** Actions on a version: its validation and its client link (one per version, keyed "id:version"). */
@@ -324,12 +331,22 @@ async function versionChanges(db: Db, member: AgencyMember, action: Extract<Agen
 
   switch (action.type) {
     case "version.reopen":
+      // Only a version the client validated (locked, not replaced by a newer one).
+      if (!record.locked || (record.data as Data).status === "Remplacée") return refused("Seule une version validée par le client peut être rouverte.");
       changes.lists.deliverables = { upsert: [{ ...(record.data as Data), id: record.id, reviewStatus: "changes-requested" }], remove: [] };
       log.add("review.reopened", `Validation rouverte par l’organisation : « ${action.message} »`);
       break;
     case "link.share": {
-      // The active link is kept; a revoked one is replaced by a new one (new token, no invitation).
-      if (stored?.active) return { changes, data: { link } };
+      // The active link is kept, renewed when past its date (same token and invitations: those already mailed
+      // open again); a revoked one is replaced by a new one (new token, no invitation).
+      if (stored?.active && link) {
+        const renewed = renewedLink(link);
+        if (renewed === link) return { changes, data: { link } };
+        putLink(renewed);
+        log.add("review-link.renewed", `Lien de revue prolongé jusqu’au ${renewed.expiresAt}`);
+        log.into(changes);
+        return { changes, data: { link: renewed } };
+      }
       const created = newReviewLink(record.id, record.version);
       putLink(created);
       log.into(changes);
@@ -509,9 +526,39 @@ async function changesFor(db: Db, member: AgencyMember, action: AgencyAction): P
       delete rest.scopeLine;
       // A prepared offer goes when the request is no longer out of scope, or when a quote takes its place.
       if (offered && (action.decision !== "Hors périmètre" || action.quote)) delete rest.offer;
-      const qualified = { ...rest, decision: action.decision, kind: "request", title: action.title, ...(action.description ? { description: action.description } : {}), ...(cited ? { scopeLine: cited } : {}) };
+      // A source only on a request the agency entered, given, changed (« Modifier ») or taken away: the client's
+      // words are never the agency's to source, nor a thread from Figma; its capture, an image the agency
+      // imported itself (src/lib/upload.ts).
+      if (action.source || action.removeSource) {
+        if (!ownComment || comment.figma) return refused("Seule une demande saisie par l’organisation a une source.");
+        if (action.source?.capture && !(await ownImage(db, org, action.source.capture))) return refused("Capture introuvable.", 404);
+      }
+      if (action.removeSource) delete rest.source;
+      // The proposal switched off: what was prepared goes; never what the client already received.
+      if (action.dropProposal && !action.quote && !action.offer) {
+        const prepared = await storedProposal(db, org, action.commentId);
+        if (prepared.state === "sent" || prepared.history.some((entry) => entry.status !== "draft")) return refused("Une proposition a été envoyée pour cette demande : elle ne se retire pas d’ici.");
+        if (prepared.state === "draft") {
+          quoteChanges(changes, action.commentId, { state: "none", history: [] });
+          log.add("proposal.discarded", "Chiffrage préparé retiré", action.commentId);
+        }
+        if (offered) {
+          delete rest.offer;
+          log.add("proposal.offer-cancelled", "Offre préparée retirée", action.commentId);
+        }
+      }
+      const qualified = {
+        ...rest,
+        decision: action.decision,
+        kind: "request",
+        title: action.title,
+        ...(action.description ? { description: action.description } : {}),
+        ...(cited ? { scopeLine: cited } : {}),
+        ...(action.source ? { source: action.source } : {}),
+      };
       upsertComment(qualified);
-      log.add("scope.classified", `Demande qualifiée « ${scopeLabel(action.decision)} » : ${action.title}${citedNote(cited)}`, action.commentId);
+      const origin = action.source ? ` (${sourceLine(action.source).replace("Demande reçue ", "reçue ")})` : "";
+      log.add("scope.classified", `Demande qualifiée « ${scopeLabel(action.decision)} » : ${action.title}${origin}${citedNote(cited)}`, action.commentId);
       if (action.decision !== "Hors périmètre") break;
       if (action.quote && (await draftQuote(db, org, changes, action.commentId, action.title!, action.quote)))
         log.add("proposal.drafted", `Chiffrage préparé : ${action.quote.amount} € · ${action.quote.days} j`, action.commentId);
@@ -665,6 +712,8 @@ export async function runAgencyAction(db: Db, member: AgencyMember, writer: Omit
         ? { type: "adaptation", decision: action.decision }
         : null;
   if (quoteEvent && "commentId" in action)
-    await mailQuoteToClient(db, member.organizationId, member, action.commentId, quoteEvent).catch((error) => console.error("[review mail]", error));
+    await mailQuoteToClient(db, member.organizationId, member, action.commentId, quoteEvent, action.type === "proposal.send-draft" ? action.notify : undefined).catch((error) =>
+      console.error("[review mail]", error),
+    );
   return { ok: true, revision, ...(built.id ? { id: built.id } : {}), ...(built.data ? { data: built.data } : {}) };
 }

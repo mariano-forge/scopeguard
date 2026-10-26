@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { maxScreens, screenFormatList, screenFormats, type FigmaScreen, type ScreenFormat } from "@/lib/figmaScreens";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { FigmaConnectNote, figmaNotConnected } from "./FigmaConnect";
 
 /** A menu of Figma's four formats, each with what it is good for. */
 function FormatSelect({ value, label, onChange, id }: { value: ScreenFormat; label: string; onChange: (format: ScreenFormat) => void; id?: string }) {
@@ -27,7 +28,7 @@ function FormatSelect({ value, label, onChange, id }: { value: ScreenFormat; lab
 }
 
 export type FigmaScreensRead = { name: string; screens: FigmaScreen[]; receipt: string };
-type Read = { key: string; file: FigmaScreensRead | null; error: string | null };
+type Read = { key: string; file: FigmaScreensRead | null; error: string | null; code?: string };
 
 /** The file's screens; null while there is none to read, or it is being read. */
 export function useFigmaScreens(key: string | null) {
@@ -37,9 +38,9 @@ export function useFigmaScreens(key: string | null) {
     let cancelled = false;
     const timer = setTimeout(async () => {
       const response = await fetch(`/api/integrations/figma/files/${key}/screens`, { cache: "no-store" }).catch(() => null);
-      const body = (await response?.json().catch(() => null)) as (FigmaScreensRead & { error?: string }) | null;
+      const body = (await response?.json().catch(() => null)) as (FigmaScreensRead & { error?: string; code?: string }) | null;
       if (cancelled) return;
-      setRead(response?.ok && body ? { key, file: body, error: null } : { key, file: null, error: body?.error ?? "Le fichier Figma n’a pas pu être lu. Réessayez." });
+      setRead(response?.ok && body ? { key, file: body, error: null } : { key, file: null, error: body?.error ?? "Le fichier Figma n’a pas pu être lu. Réessayez.", code: body?.code });
     }, 500);
     return () => {
       cancelled = true;
@@ -47,12 +48,13 @@ export function useFigmaScreens(key: string | null) {
     };
   }, [key]);
   const current = key && read?.key === key ? read : null;
-  return { file: current?.file ?? null, error: current?.error ?? null, loading: Boolean(key) && !current };
+  return { file: current?.file ?? null, error: current?.error ?? null, notConnected: current?.code === figmaNotConnected, loading: Boolean(key) && !current };
 }
 
 export function FigmaScreensFields({
   file,
   error,
+  notConnected,
   loading,
   picked,
   formats,
@@ -75,6 +77,7 @@ export function FigmaScreensFields({
         Lecture des écrans du fichier Figma…
       </p>
     );
+  if (notConnected) return <FigmaConnectNote />;
   if (error || !file)
     return (
       <p role="alert" className="rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-sm text-[var(--status-medium-text)]">

@@ -62,41 +62,84 @@ async function editor(browser: Browser, email: string) {
 const commentData = async (org: string, id: number) =>
   (await sql<{ data: Record<string, unknown> }>("select data from comments where organization_id = $1 and id = $2", [org, id]))[0]?.data;
 
-test("qualifying a request: the AI's suggestion pre-fills the form, the cited line is kept, the client and the proof read it, never the suggestion", async ({ browser }) => {
+test("qualifying a request: the AI's suggestion pre-fills the form, the agency decides; the client and the proof never read the suggestion", async ({ browser }) => {
   const { alice, org, token, linkKey } = await agency();
   const { page, errors } = await editor(browser, alice.email);
 
   await page.locator('[data-pin="30"]').click();
   await page.getByRole("button", { name: "Qualifier", exact: true }).click();
   const note = page.getByRole("region", { name: "Suggestion de l’IA" });
-  await expect(note).toContainText("Suggestion : Inclus");
-  await expect(note).toContainText("ligne « Page Contact avec formulaire »");
-  await expect(note).toContainText("la décision reste la vôtre");
-  // Pre-filled, not saved: the choice, the cited line and a title.
+  await expect(note).toContainText("Suggestion de l’IA : Inclus");
+  await expect(note).toContainText("Vérifiez chaque ligne du formulaire pré-rempli avant d’enregistrer.");
+  // Its reason folds away on demand.
+  await note.getByText("Suggestion de l’IA").click();
+  await expect(note.locator(".qualify-suggestion-reason")).toBeHidden();
+  await note.getByText("Suggestion de l’IA").click();
+  await expect(note.locator(".qualify-suggestion-reason")).toBeVisible();
+  // Pre-filled, not saved: the choice and a title; no line of the scope to cite.
   await expect(page.getByRole("radio", { name: /^Inclus/ })).toBeChecked();
-  await expect(page.getByLabel("Ligne du périmètre")).toHaveValue("1");
+  await expect(page.getByLabel("Ligne du périmètre")).toHaveCount(0);
   await expect(page.getByLabel("Titre de la demande")).toHaveValue("Le formulaire de contact n’envoie rien");
   // The bubble keeps its width: nothing to scroll sideways.
   expect(await page.locator(".thread").evaluate((bubble) => bubble.scrollWidth <= bubble.clientWidth)).toBe(true);
   expect((await commentData(org, 30)).decision).toBe("À qualifier");
   await page.getByRole("button", { name: "Créer la demande" }).click();
 
-  await expect.poll(() => commentData(org, 30)).toMatchObject({ decision: "Inclus", title: "Le formulaire de contact n’envoie rien", scopeLine: { id: 1, title: "Page Contact avec formulaire" } });
+  await expect.poll(() => commentData(org, 30)).toMatchObject({ decision: "Inclus", title: "Le formulaire de contact n’envoie rien" });
+  expect((await commentData(org, 30)).scopeLine).toBeUndefined();
   const [event] = await sql<{ description: string }>("select data->>'description' as description from audit_events where organization_id = $1 and type = 'scope.classified'", [org]);
-  expect(event.description).toBe("Demande qualifiée « Inclus » : Le formulaire de contact n’envoie rien (ligne du périmètre : Page Contact avec formulaire)");
-  // The request says which line provides for it.
-  await expect(page.getByRole("dialog", { name: /^Demande incluse #30$/ })).toContainText("Prévu par la ligne du périmètre : Page Contact avec formulaire");
+  expect(event.description).toBe("Demande qualifiée « Inclus » : Le formulaire de contact n’envoie rien");
 
-  // The client reads the cited line; nothing of the suggestion (its reason) reaches them.
+  // Nothing of the suggestion (its reason) reaches the client.
   const email = `${unique("claire")}@client.test`;
   await call("/api/review-access/invite", { person: alice, body: { linkKey, emails: [email] } });
   const client = await verifiedClient(token, email);
   const state = (await call(`/api/review/${token}`, { person: client })).json.state as { comments: { id: number; scopeLine?: unknown }[] };
-  expect(state.comments.find((comment) => comment.id === 30)?.scopeLine).toEqual({ id: 1, title: "Page Contact avec formulaire" });
+  expect(state.comments.find((comment) => comment.id === 30)?.scopeLine).toBeUndefined();
   expect(JSON.stringify(state)).not.toContain("Prévu par la ligne « ");
-  // The proof keeps it.
-  const proof = (await call("/api/proof/1", { person: alice })).json as { requests: { id: number; scopeLine: string | null }[] };
-  expect(proof.requests.find((request) => request.id === 30)?.scopeLine).toBe("Page Contact avec formulaire");
+  expect(errors).toEqual([]);
+});
+
+test("while the canvas zooms, an open bubble stays where it is on screen, at its size; then it is back by its pin", async ({ browser }) => {
+  const { alice } = await agency();
+  const { page, errors } = await editor(browser, alice.email);
+  await page.locator('[data-pin="30"]').click();
+  const bubble = page.locator(".canvas-page .thread");
+  await expect(bubble).toBeVisible();
+  // Once the canvas has settled from opening the bubble (it may glide to its pin): a pan moves the bubble with it.
+  const transform = () => page.locator(".artboard-transform-content").evaluate((node) => getComputedStyle(node).transform);
+  let last = "";
+  await expect.poll(async () => last === (last = await transform())).toBe(true);
+  const gap = async () => (await bubble.boundingBox())!.x - (await page.locator('[data-pin="30"]').boundingBox())!.x;
+  const before = { gap: await gap(), width: (await bubble.boundingBox())!.width };
+  // Every frame of the zoom: the bubble where it was, its width the same.
+  const samples = await page.evaluate(
+    () =>
+      new Promise<{ x: number; y: number; width: number }[]>((resolve) => {
+        const thread = document.querySelector<HTMLElement>(".canvas-page .thread")!;
+        const read = () => {
+          const box = thread.getBoundingClientRect();
+          return { x: box.x, y: box.y, width: box.width };
+        };
+        const seen = [read()];
+        document.querySelector<HTMLButtonElement>('[aria-label="Augmenter le zoom"]')!.click();
+        const started = performance.now();
+        const frame = () => {
+          seen.push(read());
+          if (performance.now() - started < 250) requestAnimationFrame(frame);
+          else resolve(seen);
+        };
+        requestAnimationFrame(frame);
+      }),
+  );
+  for (const sample of samples) {
+    expect(Math.abs(sample.x - samples[0].x)).toBeLessThan(1.5);
+    expect(Math.abs(sample.y - samples[0].y)).toBeLessThan(1.5);
+    expect(Math.abs(sample.width - samples[0].width)).toBeLessThan(1.5);
+  }
+  // The zoom over: back by its pin, as far from it as before, its size unchanged.
+  await expect.poll(async () => Math.abs((await gap()) - before.gap)).toBeLessThan(2);
+  expect(Math.abs((await bubble.boundingBox())!.width - before.width)).toBeLessThan(1.5);
   expect(errors).toEqual([]);
 });
 
@@ -110,7 +153,7 @@ test("on a low screen, the qualifying bubble of a request placed low stays whole
   await expect(page.locator("[data-page]").first()).toBeVisible();
   await page.locator('[data-pin="30"]').click();
   await page.getByRole("button", { name: "Qualifier", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Suggestion de l’IA" })).toContainText("Suggestion : Inclus");
+  await expect(page.getByRole("region", { name: "Suggestion de l’IA" })).toContainText("Suggestion de l’IA : Inclus");
   // Once the canvas has moved (and the bubble shrunk to the room, if need be): whole, its buttons in view.
   const gaps = () =>
     page.evaluate(() => {
@@ -138,12 +181,12 @@ test("a request without pin: changing its qualification back and forth never mov
   let last = "";
   await expect.poll(async () => last === (last = await transform())).toBe(true);
   const before = last;
-  // The cited line's field comes and goes with « Inclus »: the bubble grows and shrinks, the canvas stays.
+  // The proposal comes and goes with « Hors scope »: the bubble grows and shrinks, the canvas stays.
   for (const choice of [/^Inclus/, /Hors scope/, /^Inclus/, /^À clarifier/, /^Inclus/]) {
     await page.getByRole("radio", { name: choice }).click();
     await expect(page.getByRole("radio", { name: choice })).toBeChecked();
   }
-  await expect(page.getByLabel("Ligne du périmètre")).toBeVisible();
+  await expect(page.getByRole("radio", { name: /^Inclus/ })).toBeChecked();
   // A pan would show within its animation and the checks after it (src/app/(agency)/editor/ReviewCanvas.tsx).
   await expect.poll(async () => last === (last = await transform())).toBe(true);
   expect(last).toBe(before);
@@ -181,9 +224,8 @@ test("a request back to clarify is suggested again when modified, its title kept
 
   await page.getByRole("button", { name: `Demande à clarifier #${clarify}` }).click();
   await page.getByRole("dialog", { name: `Demande à clarifier #${clarify}` }).getByRole("button", { name: "Modifier", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Suggestion de l’IA" })).toContainText("Suggestion : Inclus");
+  await expect(page.getByRole("region", { name: "Suggestion de l’IA" })).toContainText("Suggestion de l’IA : Inclus");
   await expect(page.getByRole("radio", { name: /^Inclus/ })).toBeChecked();
-  await expect(page.getByLabel("Ligne du périmètre")).toHaveValue("1");
   // The title the agency gave stays.
   await expect(page.getByLabel("Titre de la demande")).toHaveValue("Formulaire de contact cassé");
   await page.getByRole("button", { name: "Annuler" }).click();
@@ -202,33 +244,33 @@ test("without an active scope, the form says what would bring suggestions, and o
   const { page, errors } = await editor(browser, alice.email);
   await page.locator('[data-pin="30"]').click();
   await page.getByRole("button", { name: "Qualifier", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Suggestion de l’IA" })).toContainText("Activez le périmètre du projet pour que l’IA suggère une qualification.");
+  await expect(page.getByRole("region", { name: "Suggestion de l’IA" })).toContainText("Activez le périmètre du projet pour recevoir une suggestion de l’IA.");
   await page.getByRole("radio", { name: /^Inclus/ }).click();
   await expect(page.getByLabel("Ligne du périmètre")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
-test("« + Demande »: the AI reads what is typed when asked; the agency changes the cited line before creating", async ({ browser }) => {
+test("« + Demande »: the AI reads what is typed when asked; the agency changes what it pre-filled before creating", async ({ browser }) => {
   const { alice, org } = await agency();
   const { page, errors } = await editor(browser, alice.email);
   await page.getByRole("button", { name: "Ajouter une demande" }).click();
   await expect(page.getByRole("heading", { name: "Nouvelle demande" })).toBeVisible();
   const ask = page.getByRole("button", { name: "Suggérer avec l’IA" });
-  // Nothing to read yet.
-  await expect(ask).toBeDisabled();
+  // Nothing to read yet: not offered; then, once something is typed.
+  await expect(ask).toHaveCount(0);
   await page.getByLabel("Description").fill("Le client veut que le formulaire de contact envoie une copie au visiteur.");
+  await expect(ask).toBeEnabled();
   await ask.click();
-  await expect(page.getByRole("region", { name: "Suggestion de l’IA" })).toContainText("Suggestion : Inclus");
+  await expect(page.getByRole("region", { name: "Suggestion de l’IA" })).toContainText("Suggestion de l’IA : Inclus");
   await expect(page.getByRole("radio", { name: /^Inclus/ })).toBeChecked();
-  await expect(page.getByLabel("Ligne du périmètre")).toHaveValue("1");
+  await expect(page.getByLabel("Ligne du périmètre")).toHaveCount(0);
   await expect(page.getByLabel("Titre de la demande")).toHaveValue("Le client veut que le formulaire de contact envoie une copie au visiteur");
-  // The agency decides: another line.
-  await page.getByLabel("Ligne du périmètre").selectOption({ label: "Pages vitrine · 5 pages" });
+  // The agency decides: its own title.
   await page.getByLabel("Titre de la demande").fill("Copie du formulaire au visiteur");
   await page.getByRole("button", { name: "Créer la demande" }).click();
   await expect
     .poll(async () => (await sql<{ data: Record<string, unknown> }>("select data from comments where organization_id = $1 and data->>'title' = 'Copie du formulaire au visiteur'", [org]))[0]?.data)
-    .toMatchObject({ decision: "Inclus", scopeLine: { id: 2, title: "Pages vitrine · 5 pages" } });
+    .toMatchObject({ decision: "Inclus" });
   expect(errors).toEqual([]);
 });
 

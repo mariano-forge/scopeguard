@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Building2, Check, Frame, LogOut, Settings, Users } from "lucide-react";
 import type { CurrentUser } from "@/lib/session";
 import { authClient } from "@/lib/auth-client";
-import { initialsOf } from "@/lib/authors";
+import { avatarLetter, initialsOf } from "@/lib/authors";
 import { href } from "./routes";
 import { AgencyDialog } from "./AgencyDialog";
 import { FigmaAccountDialog } from "./FigmaAccountDialog";
@@ -52,11 +52,11 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
       <DropdownMenuTrigger asChild>
         {compact ? (
           <button type="button" className="avatar dark-avatar rail-avatar" aria-label={`Compte de ${user.name}`}>
-            {initialsOf(user.name)}
+            {avatarLetter(initialsOf(user.name))}
           </button>
         ) : (
           <button type="button" className="account" aria-label={`Compte de ${user.name}`}>
-            <span className="avatar dark-avatar">{initialsOf(user.name)}</span>
+            <span className="avatar dark-avatar">{avatarLetter(initialsOf(user.name))}</span>
             <b>{user.name}</b>
           </button>
         )}
@@ -65,7 +65,7 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
       <DropdownMenuContent align="start" side={compact ? "right" : "bottom"} className="account-menu w-72">
         <DropdownMenuLabel className="account-menu-head">
           <span className="avatar dark-avatar" aria-hidden="true">
-            {initialsOf(user.name)}
+            {avatarLetter(initialsOf(user.name))}
           </span>
           <span className="min-w-0">
             <b>{user.name}</b>

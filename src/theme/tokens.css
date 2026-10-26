@@ -23,6 +23,8 @@
   --cta-fill-hover: #006bb8;
   --cta-text: var(--paper);
   --action-ui: #0079d1;
+  /* Keyboard focus and fields being typed in: the graphite, 8:1 on paper; never the action blue (decided 25 October 2026) */
+  --focus: var(--graphite);
   --action-text: #005593;
   --attention-fill: #ff795c;
   --attention-text: #a21d00;

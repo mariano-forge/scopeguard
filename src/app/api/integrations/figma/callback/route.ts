@@ -10,8 +10,9 @@ import { figmaAttemptCookie, figmaAttemptPath, finishFigmaAttempt } from "@/lib/
 import { figmaReturn, type FigmaOutcome } from "@/lib/figmaReturn";
 import { requireAgencyUser } from "@/lib/session";
 
-function back(outcome: FigmaOutcome) {
-  const response = NextResponse.redirect(figmaReturn(outcome));
+/** Back in Kora: on the page the attempt was started from, when the attempt is this member's. */
+function back(outcome: FigmaOutcome, page?: string | null) {
+  const response = NextResponse.redirect(figmaReturn(outcome, page));
   // One attempt, one use.
   response.cookies.set(figmaAttemptCookie, "", { path: figmaAttemptPath, maxAge: 0 });
   return response;
@@ -25,15 +26,15 @@ export async function GET(request: NextRequest) {
   const attempt = finishFigmaAttempt(params.get("state"), request.cookies.get(figmaAttemptCookie)?.value);
   if (!attempt || attempt.userId !== auth.user.id || attempt.organizationId !== auth.user.organizationId) return back("invalid");
   const code = params.get("code");
-  if (!code || code.length > 500) return back("refused");
+  if (!code || code.length > 500) return back("refused", attempt.back);
 
   const tokens = await exchangeFigmaCode(code, attempt.verifier);
   const user = tokens && (await figmaMe(tokens.accessToken));
-  if (!tokens || !user) return back("refused");
+  if (!tokens || !user) return back("refused", attempt.back);
   try {
     await saveFigmaConnection(getDb(), auth.user.organizationId, auth.user.id, tokens, user);
   } catch (error) {
     return databaseFailure("api figma callback", error);
   }
-  return back("connected");
+  return back("connected", attempt.back);
 }

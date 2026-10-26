@@ -62,9 +62,10 @@ test("an offer is prepared with the qualification, the client sees it once sent,
   const card = panel.getByRole("tabpanel").getByRole("listitem").filter({ hasText: "Page FAQ" });
   await expect(card).toContainText("À chiffrer");
 
-  // « Préparer la proposition »: its two ways, « Facturer » or « Offrir »; an offer's value is required.
-  await card.getByRole("button", { name: "Préparer la proposition" }).click();
+  // « Préparer la proposition », in its bubble: its two ways, « Facturer » or « Offrir »; an offer's value is required.
+  await card.getByRole("button").click();
   const bubble = page.getByRole("dialog", { name: /#40$/ });
+  await bubble.getByRole("button", { name: "Préparer la proposition" }).click();
   const ways = bubble.getByRole("radiogroup", { name: "Proposition" });
   await expect(ways.getByRole("radio")).toHaveText([/Facturer/, /Offrir/]);
   await ways.getByRole("radio", { name: /^Offrir/ }).click();
@@ -76,7 +77,19 @@ test("an offer is prepared with the qualification, the client sees it once sent,
   await expect.poll(() => offerOf(org, 40)).toEqual({ amount: 450, days: 2 });
   expect(await eventsOf(org, "proposal.drafted")).toEqual(["Offre préparée : 450 € · + 2 jours"]);
   await expect(card).toContainText("Prête pour l’envoi");
-  await expect(card.locator(".client-proposal-line")).toContainText("Valeur offerte450 € HT");
+  // One tag on the card, its amount beside it: until it is offered, it is only ready.
+  await expect(card.locator(".thread-row-status")).toHaveText(/^Prête pour l’envoi\s*450\s€ HT$/);
+  // Its mark says what the amount is: offered, in green.
+  await expect(card.locator(".thread-row-amount.is-offer .lucide-gift")).toBeVisible();
+  await expect(card.locator(".thread-row-amount")).toHaveCSS("color", "rgb(10, 89, 51)");
+  // In its bubble: « Hors scope » alone, no second tag; a gift is not a proposal to send: it is offered.
+  await expect(bubble.locator(".request-kind")).toHaveText("Hors scope");
+  await expect(bubble.getByRole("button", { name: "Offrir au client" })).toBeVisible();
+  // Its amount marked as a gift, in green, as on its card; prepared, nothing said yet of what the client reads.
+  await expect(bubble.locator(".request-offer-note")).toHaveCount(0);
+  await expect(bubble.locator(".request-figures .is-total dd .lucide-gift")).toBeVisible();
+  await expect(bubble.locator(".request-figures .is-total dd")).toHaveCSS("color", "rgb(10, 89, 51)");
+  await expect(bubble.getByRole("button", { name: "Envoyer la proposition" })).toHaveCount(0);
 
   // Prepared, it is the agency's draft: the client sees nothing of it.
   const before = (await call(`/api/review/${token}`, { person: client })).json as { state: { comments: { id: number; offer?: unknown }[] } };
@@ -84,10 +97,15 @@ test("an offer is prepared with the qualification, the client sees it once sent,
 
   // Sent as a proposal: the window says what the client will see; the deciders are told by e-mail.
   const mailsBefore = mailsTo(email).length;
-  await card.getByRole("button", { name: "Envoyer la proposition" }).click();
-  const confirm = page.getByRole("alertdialog", { name: "Envoyer l’offre au client ?" });
-  await expect(confirm).toContainText("« Offerte » avec sa valeur, sans rien à décider");
-  await confirm.getByRole("button", { name: "Envoyer l’offre" }).click();
+  await bubble.getByRole("button", { name: "Offrir au client" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Offrir ce travail au client ?" });
+  // Short sentences that say what to do, then what follows.
+  await expect(confirm).toContainText("Vérifiez le montant, puis offrez ce travail. Le décideur n’a rien à accepter.");
+  // « Montant HT », its amount marked as a gift; who is told by e-mail, folded at the foot.
+  await expect(confirm.getByRole("button", { name: /Prévenir par e-mail/ })).toHaveAttribute("aria-expanded", "false");
+  await expect(confirm.locator(".proposal-summary")).toContainText("Montant HT");
+  await expect(confirm.locator(".proposal-summary .lucide-gift")).toBeVisible();
+  await confirm.getByRole("button", { name: "Offrir", exact: true }).click();
   await expect.poll(() => offerOf(org, 40)).toMatchObject({ amount: 450, days: 2, sentAt: expect.any(Number), sentBy: "Alice Martin" });
   expect(await eventsOf(org, "proposal.offered")).toEqual(["Offre envoyée au client : 450 € · + 2 jours"]);
   await expect(card).toContainText("Offerte");
@@ -107,14 +125,18 @@ test("an offer is prepared with the qualification, the client sees it once sent,
   await clientPanel.getByRole("tab", { name: /^Hors scope/ }).click();
   const clientCard = clientPanel.getByRole("tabpanel").getByRole("listitem").filter({ hasText: "Page FAQ" });
   await expect(clientCard).toContainText("Offerte");
-  await expect(clientCard.locator(".client-proposal-line")).toContainText("Valeur offerte450 € HT");
+  await expect(clientCard.locator(".thread-row-amount")).toHaveText(/^450\s€ HT$/);
   await expect(clientCard.getByRole("button")).toHaveCount(1);
   await clientCard.getByRole("button").click();
-  await expect(clientPage.getByRole("dialog", { name: /#40$/ })).toContainText("Offerte par l’organisation · 450 € · + 2 jours");
+  // In their bubble, the same foot of a quote as the agency's, and what it means, named after the agency.
+  const clientBubble = clientPage.getByRole("dialog", { name: /#40$/ });
+  await expect(clientBubble.locator(".request-figures")).toContainText("Montant HT450 €");
+  await expect(clientBubble.locator(".request-figures")).toContainText("+ 2 jours");
+  await expect(clientBubble.locator(".request-offer-note")).toHaveText("Cette demande sera gratuitement prise en charge dans une prochaine version.");
   expect(clientErrors).toEqual([]);
 
   // Taken back: to answer again, said in the journal.
-  await card.getByRole("button", { name: "Annuler l’offre" }).click();
+  await bubble.getByRole("button", { name: "Annuler l’offre" }).click();
   await expect.poll(() => offerOf(org, 40)).toBeNull();
   await expect(card).toContainText("À chiffrer");
   expect(await eventsOf(org, "proposal.offer-cancelled")).toEqual(["Offre retirée : la demande est de nouveau à chiffrer"]);

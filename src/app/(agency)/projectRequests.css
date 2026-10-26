@@ -30,7 +30,7 @@
   scroll-snap-type: x proximity;
 }
 .request-board:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 4px;
   border-radius: var(--r-panel);
 }
@@ -110,44 +110,8 @@
   outline: none;
 }
 .board-card:has(.board-card-link:focus-visible) {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
-}
-.board-card-title {
-  display: -webkit-box;
-  overflow: hidden;
-  font: 500 var(--t-ui) var(--font-ui);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-.board-card-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  min-width: 0;
-  color: var(--graphite);
-  font: 400 var(--t-caption) var(--font-ui);
-}
-.board-card-meta b {
-  color: var(--ink);
-  font-weight: 600;
-}
-.board-card-author {
-  display: grid;
-  flex-shrink: 0;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  font: 600 10px var(--font-ui);
-}
-.board-card-author.is-client {
-  background: var(--status-clarify-bg);
-  color: var(--status-clarify-text);
-}
-.board-card-author.is-agency {
-  background: var(--status-low-bg);
-  color: var(--status-low-text);
 }
 
 /* The board's scrollbars: thin, and nearly invisible until the pointer is over the board, so they never
@@ -162,4 +126,70 @@
 .request-board:focus-within,
 .board-cards:hover {
   scrollbar-color: var(--border) transparent;
+}
+
+/* A card as the editor's panel draws it (EditorInspector.tsx RequestCardLines, feedback of 26 October 2026):
+   its lines at the panel's sizes; the whole card a link (its ::after covers it). */
+.board-card {
+  gap: 6px;
+  padding: var(--s-3) var(--s-3) 14px;
+}
+.board-card .thread-row-status {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-width: 0;
+}
+.board-card-context {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.board-card .thread-row-status + .thread-row-text {
+  margin-top: 2px;
+}
+.board-card .thread-row-text {
+  color: var(--ink);
+  font: 500 var(--t-ui) var(--font-ui);
+}
+.board-card .thread-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.board-card .thread-row-meta .thread-avatar {
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+}
+.board-card .thread-row-meta .thread-row-source {
+  display: inline-flex;
+  margin-left: auto;
+  line-height: 0;
+}
+.board-card .thread-row-replies {
+  color: var(--graphite);
+}
+/* The link covers the card without taking a line of it; the name's line packed at its start. */
+.board-card .board-card-link {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+.board-card .thread-row-meta {
+  justify-content: flex-start;
+}
+
+/* A deliverable's board: its title, at the head of the page (AgencyApp.tsx « pane »). */
+.board-title {
+  margin: 0;
+  color: var(--ink);
+  font: 600 var(--t-h3) var(--font-heading);
 }

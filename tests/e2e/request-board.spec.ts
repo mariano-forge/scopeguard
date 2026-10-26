@@ -88,7 +88,7 @@ test("« Demandes » shows each request in the column of where it stands, filter
   await expect(board(page).getByRole("heading", { level: 2 })).toHaveText([
     "Brouillon", "À clarifier", "Inclus", "Hors scope à chiffrer", "Chiffrée", "Envoyée", "Contre-proposition", "Acceptée", "Offerte", "Clôturée",
   ]);
-  const titles = (name: string) => column(page, name).getByRole("listitem").locator(".board-card-title");
+  const titles = (name: string) => column(page, name).getByRole("listitem").locator(".thread-row-text");
   await expect(titles("Brouillon")).toHaveText(["Vérifier les marges"]);
   await expect(titles("À clarifier")).toHaveText(["Quelle police ?"]);
   await expect(titles("Inclus")).toHaveText(["Agrandir le titre"]);
@@ -100,9 +100,14 @@ test("« Demandes » shows each request in the column of where it stands, filter
   await expect(titles("Offerte")).toHaveText(["Animation du logo"]);
   // A refused proposal and a closed discussion are done.
   await expect(titles("Clôturée")).toHaveText(["Couleur du logo", "Espace membre"]);
-  // A card says its deliverable and version, and its amount.
-  await expect(column(page, "Acceptée").getByRole("listitem")).toContainText("maquette.pdf · V01");
-  await expect(column(page, "Acceptée").getByRole("listitem")).toContainText(/900\s€/);
+  // A card as in the editor's panel (feedback of 26 October 2026): what it is about and its amount, its title,
+  // who and when; a quote's amount marked as such, an offer's as a gift.
+  const accepted = column(page, "Acceptée").getByRole("listitem");
+  await expect(accepted.locator(".thread-row-status")).toHaveText(/^maquette\.pdf · V01\s*900\s€ HT$/);
+  await expect(accepted.locator(".thread-row-amount .lucide-receipt-text")).toBeVisible();
+  await expect(column(page, "Offerte").getByRole("listitem").locator(".thread-row-amount.is-offer .lucide-gift")).toBeVisible();
+  await expect(accepted.locator(".thread-row-meta")).toContainText("Claire Dubois");
+  await expect(accepted.locator(".thread-row-meta .thread-avatar")).toHaveText("C");
 
   // As tall as the window, the page itself not scrolling: each column scrolls on its own.
   const pageHeight = await page.evaluate(() => [document.documentElement.scrollHeight, window.innerHeight]);
@@ -117,11 +122,35 @@ test("« Demandes » shows each request in the column of where it stands, filter
   const filters = page.getByRole("group", { name: "Filtrer les demandes" });
   await filters.getByRole("combobox", { name: "Livrable" }).click();
   await page.getByRole("option", { name: "logo.png" }).click();
-  await expect(board(page).locator(".board-card-title")).toHaveText(["Couleur du logo"]);
+  await expect(board(page).locator(".thread-row-text")).toHaveText(["Couleur du logo"]);
   await expect(filters).toContainText("1 demande");
 
   // A card opens its request on its version.
   await expect(column(page, "Clôturée").getByRole("link", { name: "Ouvrir la demande « Couleur du logo »" })).toHaveAttribute("href", "/projets/1/livrables/2?demande=60");
+  expect(errors).toEqual([]);
+});
+
+test("inside a deliverable, the rail opens the board of its own requests; the rail stays, and leads back to the canvas", async ({ browser }) => {
+  const { alice } = await projectWithRequests();
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1/livrables/1");
+  const rail = page.getByRole("navigation", { name: "Outils" });
+  await rail.getByRole("button", { name: "Pipeline des demandes" }).click();
+  await expect(page).toHaveURL(/\/projets\/1\/livrables\/1\/demandes$/);
+  // This deliverable's requests only, without the project's filter; the rail still there.
+  await expect(board(page).locator(".thread-row-text")).toHaveCount(10);
+  await expect(board(page)).not.toContainText("Couleur du logo");
+  await expect(page.getByRole("group", { name: "Filtrer les demandes" }).getByRole("combobox")).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1, name: "Pipeline des demandes" })).toBeVisible();
+  await expect(rail.getByRole("button", { name: "Pipeline des demandes" })).toHaveAttribute("aria-pressed", "true");
+  // Its name everywhere around: a card says its version only.
+  await expect(column(page, "Inclus").locator(".board-card-context")).toHaveText("V01");
+  // A card opens its request on the canvas; the rail's button leads back to it too.
+  await expect(column(page, "Inclus").getByRole("link", { name: "Ouvrir la demande « Agrandir le titre »" })).toHaveAttribute("href", "/projets/1/livrables/1?demande=52");
+  await rail.getByRole("button", { name: "Pipeline des demandes" }).click();
+  await expect(page).toHaveURL(/\/projets\/1\/livrables\/1$/);
+  await expect(page.locator("[data-page]").first()).toBeVisible();
   expect(errors).toEqual([]);
 });
 

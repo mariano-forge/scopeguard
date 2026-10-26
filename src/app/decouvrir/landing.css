@@ -135,9 +135,9 @@ html:has(.lp) {
     box-shadow 150ms ease;
 }
 .lp-start:focus-within {
-  border-color: var(--action-ui);
+  border-color: var(--focus);
   box-shadow:
-    0 0 0 4px color-mix(in srgb, var(--action-fill) 25%, transparent),
+    0 0 0 4px color-mix(in srgb, var(--focus) 25%, transparent),
     0 10px 30px rgba(17, 17, 17, 0.06);
 }
 /* The field has no frame or focus outline of its own: the whole bar shows the focus (focus-within). */
@@ -579,7 +579,7 @@ html:has(.lp) {
   text-align: left;
 }
 .lp-faq-item button:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
   border-radius: 8px;
 }

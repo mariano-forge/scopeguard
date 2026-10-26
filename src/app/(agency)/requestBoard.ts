@@ -5,6 +5,7 @@
 // for now (feedback of 25 October 2026).
 
 import type { OutsideStatus } from "@/lib/outsideStatus";
+import type { CardAmount } from "./editor/requestCard";
 import type { TrackingInput } from "./ProjectTracking";
 import { isAgencyDraft } from "./editor/CanvasComments";
 
@@ -31,7 +32,8 @@ export type BoardRequest = TrackingInput["requests"][number] & {
   decision: string;
   closed?: boolean;
 };
-export type BoardInput = Omit<TrackingInput, "requests"> & { requests: BoardRequest[] };
+/** `amountOf`: a card's amount, offered or quoted, as the editor's panel says it (EditorInspector.tsx). */
+export type BoardInput = Omit<TrackingInput, "requests"> & { requests: BoardRequest[]; amountOf?: (request: BoardRequest) => CardAmount | null };
 
 /**
  * Its column. A proposal sent, answered, accepted or offered keeps its column even once the discussion is

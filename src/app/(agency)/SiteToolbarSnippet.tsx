@@ -7,7 +7,7 @@
 // The first step also asks what the site is built with, and says when the toolbar is seen there (SiteInstall.tsx).
 
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, MousePointerClick } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,21 +41,15 @@ function CopyField({ id, label, value, copyLabel, code }: { id: string; label: s
 }
 
 /**
- * The toolbar met for the first time, in « Nouveau livrable » for a « Lien »: an invitation to set it up and
- * what it does. Its line is the deliverable's: given on its board, once it is created.
+ * The toolbar met for the first time, in « Nouveau livrable » for a « Lien »: one line that points to the guide
+ * its board opens on, once it is created (feedback of 26 October 2026: shorter, a pointer to the tutorial).
  */
 export function SiteScriptIntro() {
   return (
-    <section className="script-intro" aria-labelledby="script-intro-title">
-      <div>
-        <h3 id="script-intro-title">Recevoir les retours directement depuis le site ?</h3>
-        <p>
-          Juste après la création, Kora vous donne une ligne à coller dans le code du site, avant <code>&lt;/body&gt;</code>. Le décideur pourra cliquer sur un élément et écrire sa
-          demande : elle arrivera dans Kora, sur ce livrable, avec une capture.
-        </p>
-      </div>
-      <p className="script-intro-note">Une ligne par site, valable pour toutes ses versions.</p>
-    </section>
+    <p className="script-intro" role="note" aria-label="Retours sur le site">
+      <MousePointerClick aria-hidden="true" />
+      Pour recevoir les retours directement sur le site, suivez le guide qui s’ouvre sur le livrable une fois créé.
+    </p>
   );
 }
 
@@ -79,18 +73,20 @@ export function SiteToolbarSnippet({ siteUrl, deliverableId }: { siteUrl: string
       <SiteGuideSteps
         steps={[
           {
-            title: "Installez la barre Kora",
+            title: "Ajoutez la barre Kora à votre site",
             lead: <PlatformPicker value={platform.id} onChange={setPlatformId} />,
+            // Short sentences that say what to do (feedback of 26 October 2026).
             text: (
               <>
+                Copiez la ligne ci-dessous.{" "}
                 {platform.id === "html" ? (
                   <>
-                    Collez cette ligne une fois dans le code de ce site, avant <code>&lt;/body&gt;</code> : elle sert pour toutes ses versions.
+                    Collez-la dans le code de votre site, juste avant <code>&lt;/body&gt;</code>.
                   </>
                 ) : (
-                  <>{platform.where} Elle sert pour toutes ses versions.</>
+                  <>Où la coller : {platform.where}</>
                 )}{" "}
-                Déjà en place ? Rien à refaire.
+                Une seule fois suffit : elle sert pour toutes les versions. Si elle est déjà en place, passez à l’étape 2.
                 {localAccess && ` ${localAccess}`}
               </>
             ),
@@ -102,16 +98,17 @@ export function SiteToolbarSnippet({ siteUrl, deliverableId }: { siteUrl: string
             ),
           },
           {
-            title: "Invitez le décideur",
-            text: "Envoyez-lui ce lien, ou passez par « Partager la revue ».",
+            title: "Envoyez le lien au décideur",
+            text: "Copiez ce lien et envoyez-le au décideur. En l’ouvrant, il voit la barre Kora sur le site et peut commenter. Vous pouvez aussi l’inviter avec « Partager la revue ».",
             children: <CopyField id="site-client-url" label="Lien du site pour le décideur" value={clientUrl} copyLabel="Copier le lien pour le décideur" />,
           },
           {
-            title: "Qualifiez ses demandes",
+            title: "Qualifiez chaque demande",
             text: (
               <>
-                Chacune arrive ci-dessous. Classez-la <span className="decision-badge decision-included">Inclus</span> si elle est prévue au devis,{" "}
-                <span className="decision-badge decision-outside">Hors scope</span> si elle est à chiffrer,{" "}
+                Chaque commentaire du décideur arrive ici, avec une capture de ce qu’il visait. Ouvrez-le et classez-le :{" "}
+                <span className="decision-badge decision-included">Inclus</span> si c’est prévu au devis,{" "}
+                <span className="decision-badge decision-outside">Hors scope</span> si c’est à chiffrer,{" "}
                 <span className="decision-badge decision-pending">À clarifier</span> s’il faut en parler.
               </>
             ),

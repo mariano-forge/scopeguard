@@ -14,8 +14,14 @@ export const figmaOutcomeParam = "figma";
 
 export const readFigmaOutcome = (value: string | null): FigmaOutcome | null => (value && Object.hasOwn(figmaOutcomes, value) ? (value as FigmaOutcome) : null);
 
-/** The page the member lands on, absolute (a redirect). */
-export function figmaReturn(outcome: FigmaOutcome) {
+/** The page « Connecter mon compte Figma » was clicked on, to come back to. */
+export const figmaBackParam = "back";
+
+/** A page of Kora to come back to: a plain path of this site, never another site's address (`//…`, `https:…`). */
+export const readFigmaBack = (value: unknown) => (typeof value === "string" && value.length <= 200 && /^\/[A-Za-z0-9_-][A-Za-z0-9/_-]*$|^\/$/.test(value) ? value : null);
+
+/** The page the member lands on, absolute (a redirect): the one they left, else the home page. */
+export function figmaReturn(outcome: FigmaOutcome, back?: string | null) {
   const base = (process.env.BETTER_AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
-  return `${base}/?${figmaOutcomeParam}=${outcome}`;
+  return `${base}${readFigmaBack(back) ?? "/"}?${figmaOutcomeParam}=${outcome}`;
 }

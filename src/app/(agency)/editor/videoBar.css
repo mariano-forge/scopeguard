@@ -35,7 +35,7 @@
   background: var(--mist);
 }
 .video-bar-button:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 .video-bar-button .lucide {
@@ -105,10 +105,10 @@
   outline: none;
 }
 .video-bar-track input[type="range"]:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--action-ui);
+  box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--focus);
 }
 .video-bar-track input[type="range"]:focus-visible::-moz-range-thumb {
-  box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--action-ui);
+  box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--focus);
 }
 
 .video-bar-marks {
@@ -153,7 +153,7 @@
   box-shadow: 0 0 0 2px var(--ink);
 }
 .video-mark:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 

@@ -118,7 +118,7 @@
   border-color: var(--action-ui);
 }
 .compare-node > button:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 4px;
   border-radius: var(--r-field);
 }
@@ -189,7 +189,7 @@
   color: var(--paper);
 }
 .compare-picking button:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
@@ -278,7 +278,7 @@
 }
 .compare-modes button:focus-visible,
 .compare-close:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 

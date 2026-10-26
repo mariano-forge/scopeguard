@@ -20,7 +20,7 @@ async function agency() {
 }
 
 const link = async (org: string) =>
-  (await sql<{ token: string; active: boolean; data: { invites?: { email: string }[] } }>("select token, active, data from review_links where organization_id = $1 and key = '1:2'", [org]))[0];
+  (await sql<{ token: string; active: boolean; data: { invites?: { email: string }[]; expiresAt?: string } }>("select token, active, data from review_links where organization_id = $1 and key = '1:2'", [org]))[0];
 
 test("sharing makes one link per version with a server token; members share, only administrators revoke", async () => {
   const { alice, bob, org, act } = await agency();
@@ -47,6 +47,41 @@ test("sharing makes one link per version with a server token; members share, onl
   expect(types).toEqual(["review-link.revoked"]);
 });
 
+test("a link past its date is renewed when the agency shares, invites or reminds: the same token, the invitations kept, open again", async () => {
+  const { alice, org, act } = await agency();
+  const token = unique("tok-perime");
+  const decider = `${unique("claire")}@client.test`;
+  const expiredLink = (extra: Record<string, unknown> = {}) => ({ token, active: true, expiresAt: "01/01/2020", autoExpire: true, deliverableId: 1, version: 2, invites: [{ email: decider, at: "x", id: "inv1", role: "decider" }], ...extra });
+  const seedExpired = (extra?: Record<string, unknown>) => seedState(alice, { maps: { reviewLinks: { upsert: { "1:2": expiredLink(extra) }, remove: [] } } });
+  const future = async () => {
+    const [day, month, year] = String((await link(org)).data.expiresAt ?? "").split("/").map(Number);
+    return new Date(year, month - 1, day, 23, 59, 59).getTime() > Date.now();
+  };
+
+  // Past its date, it no longer opens.
+  await seedExpired();
+  expect((await call(`/api/review/${token}/access`)).status).toBe(404);
+  // Shared again: renewed, not replaced (the invitations already sent keep working).
+  const shared = await act(alice, "1/review-link", "POST");
+  expect((shared.json.link as { token: string }).token).toBe(token);
+  expect(await future()).toBe(true);
+  expect((await link(org)).data.invites?.map((invite) => invite.email)).toEqual([decider]);
+  expect((await call(`/api/review/${token}/access`)).status).toBe(200);
+
+  // An invitation on a link past its date: renewed before it is mailed.
+  await seedExpired();
+  const invited = await call("/api/review-access/invite", { method: "POST", person: alice, body: { linkKey: "1:2", emails: [`${unique("lea")}@client.test`] } });
+  expect(invited.status).toBe(200);
+  expect(await future()).toBe(true);
+
+  // A reminder too.
+  await seedExpired({ lastReminderAt: 0 });
+  expect((await call("/api/review-access/remind", { method: "POST", person: alice, body: { linkKey: "1:2" } })).status).toBe(200);
+  expect(await future()).toBe(true);
+  const types = (await sql<{ type: string }>("select type from audit_events where organization_id = $1 and type = 'review-link.renewed'", [org])).map((row) => row.type);
+  expect(types.length).toBeGreaterThanOrEqual(3);
+});
+
 test("removing an invitation cuts that address only; reopening keeps the reason", async () => {
   const { alice, org, act } = await agency();
   await act(alice, "1/review-link", "POST");
@@ -58,6 +93,11 @@ test("removing an invitation cuts that address only; reopening keeps the reason"
   expect((await act(alice, `1/review-link/invites/${encodeURIComponent(removed)}`, "DELETE")).status).toBe(404);
 
   expect((await act(alice, "1/reopen", "POST", { message: "" })).status).toBe(400);
+  // Not validated by the client yet: nothing to reopen.
+  expect((await act(alice, "1/reopen", "POST", { message: "Revoir le titre" })).status).toBe(409);
+  await seedState(alice, {
+    lists: { deliverables: { upsert: [{ id: 1, projectId: 1, name: "maquette.png", type: "Image", version: 2, status: "Approuvée", locked: true }], remove: [] } },
+  });
   expect((await act(alice, "1/reopen", "POST", { message: "Revoir le titre" })).status).toBe(200);
   expect((await sql<{ review_status: string }>("select review_status from deliverables where organization_id = $1 and id = 1", [org]))[0].review_status).toBe("changes-requested");
 });

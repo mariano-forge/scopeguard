@@ -40,7 +40,7 @@
   }
 }
 .auth-logo:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 4px;
   border-radius: 6px;
 }
@@ -686,7 +686,7 @@
   cursor: default;
 }
 .gate-link:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
   border-radius: 4px;
 }

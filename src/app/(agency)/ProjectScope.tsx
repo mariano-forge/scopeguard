@@ -78,7 +78,7 @@ const notes = {
   intake: "Importez le devis signé ou collez son texte, puis lancez l’extraction.",
   lines: "Ajoutez chaque élément prévu au devis, avec sa quantité.",
   exclusions: "Ajoutez ce que le devis exclut.",
-  amendments: "Rien à saisir : les devis hors scope acceptés s’ajoutent ici.",
+  amendments: "Rien à saisir : les devis acceptés et les offres envoyées s’ajoutent ici.",
 };
 
 /** « +600 € · +3 j »: what an amendment adds. */
@@ -101,7 +101,8 @@ function AmendmentList({ amendments }: { amendments: ScopeAmendment[] }) {
             )}
             <small>{amendment.deliverable}</small>
           </span>
-          <span>{addedLabel(amendment.amount, amendment.days)}</span>
+          {/* An offer: done for free, its value said; a quote: what it adds. */}
+          <span>{amendment.offered ? ["Offert", euros(amendment.amount), amendment.days ? `+${amendment.days} j` : null].filter(Boolean).join(" · ") : addedLabel(amendment.amount, amendment.days)}</span>
         </li>
       ))}
     </ul>

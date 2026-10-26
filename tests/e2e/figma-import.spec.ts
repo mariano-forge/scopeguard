@@ -217,7 +217,8 @@ test("the client's page shows a qualified request from Figma with its words and 
   await panel.getByRole("tab", { name: /Hors scope/ }).click();
   await panel.getByText("Logo animé").first().click();
   const thread = page.getByRole("dialog", { name: /Demande hors scope/ });
-  // Where it came from: Figma, that day, nobody « entering » it; and the way back to it in Figma.
+  // Where it came from, in its own tab: Figma, that day, nobody « entering » it; and the way back to it in Figma.
+  await thread.getByRole("tab", { name: "Source" }).click();
   const source = thread.getByRole("complementary", { name: "Source de la demande" });
   await expect(source).toHaveText(/^Demande reçue sur Figma le 22\/10\/2026Voir le commentaire dans Figma$/);
   await expect(source.getByRole("link", { name: "Voir le commentaire dans Figma" })).toHaveAttribute("href", `https://www.figma.com/design/${key}?node-id=1-1#c1`);

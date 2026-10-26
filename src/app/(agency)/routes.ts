@@ -14,6 +14,7 @@
 //   /projets/:projectId/perimetre                  its reference scope (src/lib/projectScope.ts)
 //   /projets/:projectId/suivi                      its tracking: figures and charts from its scope and requests
 //   /projets/:projectId/livrables/:livrableId      latest version of a deliverable
+//   /projets/:projectId/livrables/:livrableId/demandes      its requests as a board, inside the deliverable
 //   /projets/:projectId/livrables/:livrableId/versions/:version
 //   /projets/:projectId/livrables/:livrableId/tableau-de-bord   (old) redirects to the home analytics filtered on it
 //   /projets/:projectId/livrables/:livrableId/propositions      (old) opens the deliverable
@@ -34,7 +35,8 @@ export type AgencyView =
   | { kind: "scope"; projectId: number }
   | { kind: "tracking"; projectId: number }
   | { kind: "dashboard"; projectId: number; livrableId: number }
-  | { kind: "deliverable"; projectId: number; livrableId: number; version?: number }
+  // `pane`: the board of its requests, in the deliverable (its rail stays), instead of its canvas.
+  | { kind: "deliverable"; projectId: number; livrableId: number; version?: number; pane?: "requests" }
   | { kind: "not-found" };
 
 const id = (value: string | undefined) => (value && /^\d+$/.test(value) ? Number(value) : null);
@@ -66,6 +68,7 @@ export function parseAgencyPath(pathname: string): AgencyView {
     if (third === "livrables" && livrableId !== null) {
       if (!fifth) return { kind: "deliverable", projectId, livrableId };
       if (fifth === "tableau-de-bord" && !sixth) return { kind: "dashboard", projectId, livrableId };
+      if (fifth === "demandes" && !sixth) return { kind: "deliverable", projectId, livrableId, pane: "requests" };
       // Removed pages: old links open the deliverable.
       if (fifth === "propositions" && !sixth) return { kind: "dashboard", projectId, livrableId };
       const version = id(sixth);
@@ -95,6 +98,8 @@ export const href = {
   dashboard: (projectId: number, livrableId: number) => `/projets/${projectId}/livrables/${livrableId}/tableau-de-bord`,
   deliverable: (projectId: number, livrableId: number, version?: number) =>
     `/projets/${projectId}/livrables/${livrableId}${version ? `/versions/${version}` : ""}`,
+  /** The board of a deliverable's requests, inside it. */
+  deliverableRequests: (projectId: number, livrableId: number) => `/projets/${projectId}/livrables/${livrableId}/demandes`,
 };
 
 // A deliverable ("livrable") is the group of version records sharing a project and a name.

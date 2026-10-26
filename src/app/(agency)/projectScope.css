@@ -286,7 +286,7 @@
 .scope-intake-modes [data-slot="tabs-trigger"]:focus-visible {
   border-color: transparent;
   outline: none;
-  box-shadow: inset 0 -2px 0 var(--action-ui);
+  box-shadow: inset 0 -2px 0 var(--focus);
 }
 .scope-hero .scope-dropzone,
 .scope-hero textarea {
@@ -525,8 +525,16 @@ a.scope-list-title:hover {
 }
 
 /* From an open deliverable: the same sections, in a large window that scrolls. */
+/* Its head and its close button stay; only its content scrolls (feedback of 26 October 2026). */
 .scope-dialog {
+  display: flex;
+  flex-direction: column;
   max-height: 88vh;
+  overflow: hidden;
+}
+.scope-dialog .scope-in-dialog {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
 }
 .scope-in-dialog {

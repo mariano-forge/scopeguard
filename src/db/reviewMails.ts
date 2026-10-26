@@ -138,8 +138,11 @@ export async function versionDeciders(db: Db, org: string, deliverableId: number
   return row?.active ? linkDeciders(row.data as Data) : [];
 }
 
-/** Tells the client's deciders on the request's version that a quote was sent, or their counter-proposal answered. */
-export async function mailQuoteToClient(db: Db, org: string, actor: { id: string; name: string }, commentId: number, event: AgencyQuoteEvent) {
+/**
+ * Tells the client's deciders on the request's version that a quote was sent, or their counter-proposal answered.
+ * `notify`: those the agency chose to tell (all when absent); an address that is not a decider's is ignored.
+ */
+export async function mailQuoteToClient(db: Db, org: string, actor: { id: string; name: string }, commentId: number, event: AgencyQuoteEvent, notify?: string[]) {
   const { deliverableId, title, quote } = await requestAndQuote(db, org, commentId);
   if (deliverableId === null) return;
   const [record] = await db.select({ version: deliverables.version, name: deliverables.name }).from(deliverables).where(and(eq(deliverables.organizationId, org), eq(deliverables.id, deliverableId))).limit(1);
@@ -148,7 +151,8 @@ export async function mailQuoteToClient(db: Db, org: string, actor: { id: string
   const link = row?.data as Data | undefined;
   if (!row?.active || !link || link.active !== true || expired(link)) return;
   // Contributors do not decide quotes: only deciders are asked.
-  const deciders = invitesOf(link).filter((invite) => roleOfInvite(invite) === "decider");
+  const chosen = notify ? new Set(notify.map((email) => email.trim().toLowerCase())) : null;
+  const deciders = invitesOf(link).filter((invite) => roleOfInvite(invite) === "decider" && (!chosen || chosen.has(invite.email.toLowerCase())));
   if (!deciders.length) return;
   const replyTo = await memberEmail(db, actor.id);
   const [proposal] = await db.select({ adaptation: commentProposals.adaptation }).from(commentProposals).where(and(eq(commentProposals.organizationId, org), eq(commentProposals.commentId, commentId))).limit(1);

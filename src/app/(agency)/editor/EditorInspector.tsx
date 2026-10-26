@@ -1,20 +1,15 @@
 "use client";
 
-import { SourceIcon } from "@/components/SourceIcon";
-import { sourceLine } from "@/lib/requestSource";
 import { useState } from "react";
-import { ChevronUp, Eye, History, MessageSquare, Plus, Share2, Tag, Undo2 } from "lucide-react";
-import type { ProposalStage, Qualification } from "./CanvasComments";
+import { ChevronUp, Eye, MessageSquare, Plus, Share2 } from "lucide-react";
+import type { Qualification, ThreadView } from "./CanvasComments";
 import { ResizeHandle } from "./ResizeHandle";
-import { isAgencyDraft, itemLabel, requestKind, requestText, timeLabel, TimecodeChip, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
+import { isAgencyDraft, itemLabel, requestKind, requestText, useNow, type RequestKind, type ThreadComment } from "./CanvasComments";
 import { Hint } from "@/components/hint";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { outsideFilters, outsideStatusView, type OutsideStatus, type StatusTone } from "@/lib/outsideStatus";
-import { sideOf } from "@/lib/authors";
-import { formatProposalAmount, formatProposalDeadline } from "@/lib/proposalFormat";
-import type { RequestOffer } from "@/lib/requestOffer";
+import { outsideFilters, outsideStatusView, type OutsideStatus } from "@/lib/outsideStatus";
 
 /** What a card made in Kora says of its source (pinned on the deliverable, or entered without one). */
 
@@ -57,32 +52,9 @@ export function threadsToMarkdown(title: string, comments: ThreadComment[]) {
 }
 
 /** A status, small: a colored dot and its words. */
-/** An offer's figures on a card, as a quote's (src/lib/requestOffer.ts): its value and its delay. */
-export function OfferFigures({ offer }: { offer: RequestOffer }) {
-  return (
-    <span className="client-proposal-line">
-      <span className="proposal-figure">
-        <small>Valeur offerte</small>
-        <b>{formatProposalAmount(offer.amount)} HT</b>
-      </span>
-      <span className="proposal-figure">
-        <small>Délai supplémentaire</small>
-        <b>{offer.days ? formatProposalDeadline(offer.days) : "aucun"}</b>
-      </span>
-    </span>
-  );
-}
-
-export function StatusPill({ label, tone }: { label: string; tone: StatusTone }) {
-  return (
-    <span className={`status-pill is-${tone}`}>
-      <i aria-hidden="true" />
-      {label}
-    </span>
-  );
-}
-
-const plural = (count: number, word: string) => `${count} ${word}${count > 1 ? "s" : ""}`;
+// The card's pieces live in requestCard.tsx (also the board's and the staging site panel's, kept light there).
+import { RequestCardLines, StatusPill, type CardAmount } from "./requestCard";
+export { RequestCardLines, StatusPill, type CardAmount };
 
 /**
  * Requests of a version as cards, by status (À clarifier · Inclus · Hors scope). The agency's panel adds
@@ -95,14 +67,7 @@ export function RequestPanel({
   tab,
   onTab,
   onFocus,
-  proposalStage,
-  onQuote,
-  onSendProposal,
-  onOpenProposal,
-  onRequote,
-  onUnoffer,
-  onRequalify,
-  proposalSummary,
+  proposalAmount,
   unread,
   adding,
   onAddingChange,
@@ -117,20 +82,10 @@ export function RequestPanel({
   tab: InspectorTab;
   onTab: (tab: InspectorTab) => void;
   /** Shows that request on the canvas. */
-  onFocus: (commentId: number) => void;
-  /** Out-of-scope requests: where the proposal stands, and its actions. */
-  proposalStage?: (comment: ThreadComment) => ProposalStage | null;
-  onQuote?: (commentId: number) => void;
-  onSendProposal?: (commentId: number) => void;
-  onOpenProposal?: (commentId: number) => void;
-  /** Refused proposal: quote a new version (the refused one stays in the history). */
-  onRequote?: (commentId: number) => void;
-  /** Out-of-scope requests: an offer sent to the client, taken back (src/lib/requestOffer.ts). */
-  onUnoffer?: (commentId: number) => void;
-  /** A request not sent yet: back to « À clarifier ». */
-  onRequalify?: (commentId: number) => void;
-  /** Out-of-scope requests: amount and delay of the proposal, above the actions. */
-  proposalSummary?: (comment: ThreadComment) => React.ReactNode;
+  /** Opens a request's bubble, on the tab clicked on its card (its messages, its source). */
+  onFocus: (commentId: number, view?: ThreadView) => void;
+  /** Out-of-scope requests: the amount of their proposal (« 1 000 € HT ») and whether it is offered; none before one is prepared. */
+  proposalAmount?: (comment: ThreadComment) => CardAmount | null;
   /** Messages of the other side the reader hasn't opened yet (0 or false: none). */
   unread?: (comment: ThreadComment) => number | boolean;
   /** The manual comment form is open (opened from the panel header's "+"). */
@@ -261,9 +216,11 @@ export function RequestPanel({
             {list.map((comment) => {
               const kind = requestKind(comment);
               const status = kind === "outside" ? statusOf(comment) : null;
-              const stage = kind === "outside" ? proposalStage?.(comment) : null;
-              const replies = comment.replies?.length ?? 0;
+              // Out of scope: its amount, the one figure to sort by (feedback of 26 October 2026).
+              const amount = kind === "outside" && !comment.closed ? proposalAmount?.(comment) : null;
               const fresh = unreadCount(comment);
+              // One card for every tab, no button (feedback of 26 October 2026): its status (and amount), its title,
+              // who and when (the moment of a video), then its messages and its source. Every gesture is in its bubble.
               return (
                 <li key={comment.id} className={`inspector-row ${comment.id === selectedId ? "is-selected" : ""} ${comment.closed ? "is-closed" : ""}`}>
                   <button
@@ -272,95 +229,20 @@ export function RequestPanel({
                     aria-label={`${itemLabel(comment)} #${comment.id}`}
                     // Where it came from, read after its name (the name stays the card's own).
                     aria-describedby={comment.source ? `source-${comment.id}` : undefined}
-                    onClick={() => onFocus(comment.id)}
+                    // Its messages open on « Discussion », its source on « Source »; anywhere else, on its detail.
+                    onClick={(event) => {
+                      const target = event.target as Element;
+                      onFocus(comment.id, target.closest(".thread-row-replies") ? "discussion" : target.closest(".thread-row-source") ? "source" : undefined);
+                    }}
                   >
-                    {(comment.closed || status) && (
-                      <span className="thread-row-status">
-                        {comment.closed ? <StatusPill label="Clôturée" tone="waiting" /> : status?.label && <StatusPill label={status.label} tone={status.tone} />}
-                      </span>
-                    )}
-                    <span className={`thread-row-text ${kind !== "comment" || comment.title ? "is-title" : ""}`}>{requestText(comment)}</span>
-                    <span className="thread-row-meta">
-                      <span className={`thread-avatar ${sideOf(comment) === "agency" ? "is-agency" : "is-client"}`} aria-hidden="true">
-                        {comment.initials}
-                      </span>
-                      <span>{comment.author}</span>
-                      {timeLabel(comment, now) && <small>· {timeLabel(comment, now)}</small>}
-                      {comment.timecode !== undefined && <TimecodeChip seconds={comment.timecode} />}
-                    </span>
-                    {(replies > 0 || fresh > 0) && (
-                      <span className={`thread-row-replies ${fresh > 0 ? "is-unread" : ""}`}>
-                        <MessageSquare aria-hidden="true" />
-                        {fresh > 0 ? `${plural(fresh, "message")} non lu${fresh > 1 ? "s" : ""}` : plural(replies, "réponse")}
-                      </span>
-                    )}
-                    {/* Where it came from, at a glance, when received elsewhere (an e-mail, a call, Slack, Teams, Figma…), told on hover. Made in Kora: nothing to say. */}
-                    {comment.source && (
-                      <Hint label={sourceLine(comment.source)} side="left">
-                        <span className="thread-row-source">
-                          <SourceIcon channel={comment.source.channel} />
-                          <span id={`source-${comment.id}`} className="sr-only">
-                            {sourceLine(comment.source)}
-                          </span>
-                        </span>
-                      </Hint>
-                    )}
+                    <RequestCardLines
+                      comment={comment}
+                      now={now}
+                      head={comment.closed ? <StatusPill label="Clôturée" tone="waiting" /> : status?.label ? <StatusPill label={status.label} tone={status.tone} /> : null}
+                      amount={amount}
+                      fresh={fresh}
+                    />
                   </button>
-                  {stage && !comment.closed && (
-                    // A click beside the buttons selects the card, as a click on the card does.
-                    <div className="row-actions" onClick={(event) => !(event.target as Element).closest("button") && onFocus(comment.id)}>
-                      {proposalSummary?.(comment)}
-                      <span className="row-buttons">
-                        {stage.stage === "offered" && onUnoffer && (
-                          <Button variant="ghost" size="sm" onClick={() => onUnoffer(comment.id)}>
-                            Annuler l’offre
-                          </Button>
-                        )}
-                        {stage.stage === "none" && onQuote && (
-                          <Button variant="outline" size="sm" onClick={() => onQuote(comment.id)}>
-                            Préparer la proposition
-                          </Button>
-                        )}
-                        {stage.stage === "draft" && onSendProposal && (
-                          <Button size="sm" className="cta-ink" onClick={() => onSendProposal(comment.id)}>
-                            Envoyer la proposition
-                          </Button>
-                        )}
-                        {stage.stage === "sent" && stage.retry && onRequote && (
-                          <Button variant="outline" size="sm" onClick={() => onRequote(comment.id)}>
-                            Nouvelle proposition
-                          </Button>
-                        )}
-                        {stage.stage === "sent" && !stage.retry && (
-                          <Button variant="outline" size="sm" onClick={() => onOpenProposal?.(comment.id)}>
-                            {stage.label}
-                          </Button>
-                        )}
-                        {stage.stage === "sent" && stage.retry && (
-                          <Hint label="Historique de la proposition">
-                            <Button variant="outline" size="icon-sm" className="ml-auto shrink-0" aria-label="Historique de la proposition" onClick={() => onOpenProposal?.(comment.id)}>
-                              <History />
-                            </Button>
-                          </Hint>
-                        )}
-                      </span>
-                      {/* As in the bubble: changed from its form while nothing is sent, or back to clarify. */}
-                      {(stage.stage === "none" || stage.stage === "draft") && (onQuote || onRequalify) && (
-                        <span className="request-actions row-links">
-                          {stage.stage === "draft" && onQuote && (
-                            <button type="button" className="thread-link" onClick={() => onQuote(comment.id)}>
-                              <Tag aria-hidden="true" /> Modifier
-                            </button>
-                          )}
-                          {onRequalify && (
-                            <button type="button" className="thread-link" onClick={() => onRequalify(comment.id)}>
-                              <Undo2 aria-hidden="true" /> Remettre à clarifier
-                            </button>
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  )}
                 </li>
               );
             })}
@@ -381,14 +263,7 @@ export function EditorInspector({
   tab,
   onTab,
   onFocus,
-  proposalStage,
-  onQuote,
-  onSendProposal,
-  onOpenProposal,
-  onRequote,
-  onUnoffer,
-  onRequalify,
-  proposalSummary,
+  proposalAmount,
   onAddRequest,
   onShare,
   onPreview,
@@ -403,15 +278,9 @@ export function EditorInspector({
   selectedId: number | null;
   tab: InspectorTab;
   onTab: (tab: InspectorTab) => void;
-  onFocus: (commentId: number) => void;
-  proposalStage: (comment: ThreadComment) => ProposalStage | null;
-  onQuote: (commentId: number) => void;
-  onSendProposal: (commentId: number) => void;
-  onOpenProposal: (commentId: number) => void;
-  onRequote: (commentId: number) => void;
-  onUnoffer?: (commentId: number) => void;
-  onRequalify?: (commentId: number) => void;
-  proposalSummary: (comment: ThreadComment) => React.ReactNode;
+  /** Opens a request's bubble, on the tab clicked on its card (its messages, its source). */
+  onFocus: (commentId: number, view?: ThreadView) => void;
+  proposalAmount: (comment: ThreadComment) => CardAmount | null;
   /** Opens the "new request" form, already qualified (no comment first). */
   onAddRequest?: (decision: Qualification) => void;
   onShare: () => void;
@@ -474,14 +343,7 @@ export function EditorInspector({
         tab={tab}
         onTab={onTab}
         onFocus={onFocus}
-        proposalStage={proposalStage}
-        onQuote={onQuote}
-        onSendProposal={onSendProposal}
-        onOpenProposal={onOpenProposal}
-        onRequote={onRequote}
-        onUnoffer={onUnoffer}
-        onRequalify={onRequalify}
-        proposalSummary={proposalSummary}
+        proposalAmount={proposalAmount}
         unread={unread}
         drafts
         outsideStatus={outsideStatus}

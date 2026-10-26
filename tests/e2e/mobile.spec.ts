@@ -62,7 +62,8 @@ test("on a phone, the deliverable fills the screen and its requests open from a 
 
   await handle.click();
   await expect(handle).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByText("Le logo plus grand")).toBeInViewport();
+  // The request's card, in the sheet (its pin's hover preview holds the same words).
+  await expect(page.locator(".editor-inspector").getByText("Le logo plus grand")).toBeInViewport();
   await expect(page.getByRole("button", { name: "Partager la revue" })).toBeInViewport();
   await handle.click();
   await expect(handle).toHaveAttribute("aria-expanded", "false");

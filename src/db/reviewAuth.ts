@@ -17,6 +17,7 @@ import "server-only";
 import { createHash, createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
 import type { Db } from "./client";
+import { organizations } from "./auth-schema";
 import { applyChanges, bumpRevision } from "./state";
 import { commentProposals, comments, deliverables, reviewAccessRequests, reviewCodes, reviewLinks, reviewProfiles, reviewSessions } from "./schema";
 import type { CurrentUser } from "@/lib/session";
@@ -24,6 +25,7 @@ import { expired, type ReviewAccess } from "./reviewAccess";
 import { sendMail } from "@/lib/mail";
 import { renderMail } from "@/lib/mailTemplates";
 import { maskEmail } from "@/lib/maskEmail";
+import { renewedLink } from "@/lib/linkDeciders";
 import { reviewUrl } from "./mailTargets";
 import { roleOfInvite, type ClientRole } from "@/lib/clientRoles";
 import { siteClientUrl } from "@/lib/siteReview";
@@ -151,6 +153,12 @@ export async function reviewSessionEmail(db: Db, token: string | undefined) {
 /** Name of the version a link opens, for mails and the verification screen. */
 export const reviewedDeliverableName = (db: Db, access: ReviewAccess) => deliverableName(db, access.organizationId, access.deliverableId);
 
+/** The agency's name, as the client's invitation already says it: their review names it (an offer, its note). */
+export async function reviewedAgencyName(db: Db, access: ReviewAccess) {
+  const [organization] = await db.select({ name: organizations.name }).from(organizations).where(eq(organizations.id, access.organizationId)).limit(1);
+  return organization?.name ?? null;
+}
+
 /** The name a verified client gave at their first verification, if any. */
 export async function reviewProfileName(db: Db, email: string) {
   const [profile] = await db.select({ name: reviewProfiles.name }).from(reviewProfiles).where(eq(reviewProfiles.email, email)).limit(1);
@@ -234,7 +242,10 @@ export async function inviteToReview(
 ) {
   const row = await linkRow(db, org, linkKey);
   if (!row || !row.active) return null;
-  const link = row.data as Data;
+  // Past its date, renewed (src/lib/linkDeciders.ts): the link mailed now must open.
+  const stored = row.data as Data;
+  const link = renewedLink(stored);
+  const renewal = link === stored ? [] : [{ id: Date.now() - 1, type: "review-link.renewed", actor: user.name, description: `Lien de revue prolongé jusqu’au ${link.expiresAt}`, timestamp: now(), deliverableId: row.deliverableId }];
   const typed = [...new Set(emails.map(normalizeEmail))].filter(validEmail);
   const fresh = typed.filter((email) => !isInvited(link, email));
   const added: Invite[] = fresh.map((email) => ({ email, at: now(), id: randomBytes(12).toString("base64url"), role }));
@@ -246,7 +257,9 @@ export async function inviteToReview(
       .set({ status: "accepted", decidedAt: new Date(), decidedBy: user.id })
       .where(and(requestOf(org, linkKey), inArray(reviewAccessRequests.email, typed), eq(reviewAccessRequests.status, "pending")));
   if (!added.length) {
-    if (typed.length) await bumpRevision(db, org);
+    if (renewal.length)
+      await applyChanges(db, org, { lists: { auditEvents: { upsert: renewal, remove: [] } }, maps: { reviewLinks: { upsert: { [linkKey]: updated }, remove: [] } }, settings: { upsert: {}, remove: [] } }, { recordedBy: user.id, ...origin });
+    else if (typed.length) await bumpRevision(db, org);
     return { link: updated, notSent: [] as string[] };
   }
 
@@ -257,7 +270,7 @@ export async function inviteToReview(
     {
       lists: {
         auditEvents: {
-          upsert: [{ id, type: "review.invited", actor: user.name, description: `Invitation envoyée à ${fresh.join(", ")} (${role === "decider" ? "décideur" : "contributeur"})`, timestamp: now(), deliverableId: row.deliverableId }],
+          upsert: [...renewal, { id, type: "review.invited", actor: user.name, description: `Invitation envoyée à ${fresh.join(", ")} (${role === "decider" ? "décideur" : "contributeur"})`, timestamp: now(), deliverableId: row.deliverableId }],
           remove: [],
         },
       },
@@ -393,7 +406,10 @@ export const reminderCooldownMs = 24 * 60 * 60 * 1000;
 export async function remindReview(db: Db, org: string, linkKey: string, user: CurrentUser, origin: Origin = {}) {
   const row = await linkRow(db, org, linkKey);
   if (!row || !row.active || row.deliverableId === null) return { error: "Lien de revue introuvable ou révoqué.", status: 404 } as const;
-  const link = row.data as Data;
+  // Past its date, renewed (src/lib/linkDeciders.ts): the link mailed again must open.
+  const stored = row.data as Data;
+  const link = renewedLink(stored);
+  const renewed = link !== stored;
   // The reminder asks for a validation and quote decisions: deciders only.
   const invites = invitesOf(link).filter((invite) => roleOfInvite(invite) === "decider");
   if (!invites.length) return { error: "Invitez d’abord un décideur sur cette revue.", status: 400 } as const;
@@ -450,7 +466,10 @@ export async function remindReview(db: Db, org: string, linkKey: string, user: C
     {
       lists: {
         auditEvents: {
-          upsert: [{ id: sentAt, type: "review.reminded", actor: user.name, description: `Relance envoyée à ${recipients}`, timestamp: now(), deliverableId: row.deliverableId }],
+          upsert: [
+            ...(renewed ? [{ id: sentAt - 1, type: "review-link.renewed", actor: user.name, description: `Lien de revue prolongé jusqu’au ${link.expiresAt}`, timestamp: now(), deliverableId: row.deliverableId }] : []),
+            { id: sentAt, type: "review.reminded", actor: user.name, description: `Relance envoyée à ${recipients}`, timestamp: now(), deliverableId: row.deliverableId },
+          ],
           remove: [],
         },
         // In the journal only: the agency sent it, its bell has nothing to tell it (feedback of 25 October 2026).

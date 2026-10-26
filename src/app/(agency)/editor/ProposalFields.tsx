@@ -6,34 +6,45 @@
 
 import { Gift, ReceiptText } from "lucide-react";
 import { AddonInput, Field } from "@/components/modal";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 
 export type ProposalMode = "price" | "offer";
+/** A delay typed in days or in weeks (feedback of 25 October 2026); stored in days. */
+export type DelayUnit = "days" | "weeks";
 /** The form's fields, as typed. */
-export type ProposalDraft = { on: boolean; mode: ProposalMode; amount: string; days: string; counter: boolean };
+export type ProposalDraft = { on: boolean; mode: ProposalMode; amount: string; days: string; unit: DelayUnit; counter: boolean };
+
+/** A number as typed, « 850 » or « 1 250,50 »: spaces and a decimal comma accepted. */
+const typedNumber = (value: string) => Number(value.replace(/[\s\u00a0]/g, "").replace(",", "."));
 /** What the form gives: a quote, an offer, or neither (not prepared now). */
-export type PreparedProposal = { quote?: { amount: number; days: number; counter: boolean }; offer?: { amount: number; days: number } };
+/** `sent`: already sent to the client (the bubble shows it; the form never prepares it again). */
+export type PreparedProposal = { quote?: { amount: number; days: number; counter: boolean }; offer?: { amount: number; days: number }; sent?: boolean };
 
 /** The fields of a proposal prepared before (a draft quote or a draft offer), or empty. */
 export function proposalDraft(from: PreparedProposal = {}, on = false): ProposalDraft {
   const value = from.offer ?? from.quote;
+  // A whole number of weeks reads as weeks again.
+  const weeks = value?.days && value.days % 7 === 0;
   return {
     on: on || Boolean(value),
     mode: from.offer ? "offer" : "price",
     amount: value ? String(value.amount) : "",
-    days: value?.days ? String(value.days) : "",
+    days: value?.days ? String(weeks ? value.days / 7 : value.days) : "",
+    unit: weeks ? "weeks" : "days",
     counter: from.quote?.counter ?? false,
   };
 }
 
 /** Ready when not prepared now, or with an amount (a quote's price, an offer's value: both required). */
-export const proposalReady = (draft: ProposalDraft) => !draft.on || Number(draft.amount) > 0;
+export const proposalReady = (draft: ProposalDraft) => !draft.on || typedNumber(draft.amount) > 0;
 
 export function preparedProposal(draft: ProposalDraft): PreparedProposal {
   if (!draft.on) return {};
-  const amount = Number(draft.amount);
-  const days = Math.max(0, Math.round(Number(draft.days) || 0));
+  const amount = typedNumber(draft.amount);
+  const days = Math.max(0, Math.round((typedNumber(draft.days) || 0) * (draft.unit === "weeks" ? 7 : 1)));
   return draft.mode === "offer" ? { offer: { amount, days } } : { quote: { amount, days, counter: draft.counter } };
 }
 
@@ -48,12 +59,12 @@ export function ProposalFields({ id, draft, onChange, missing }: { id: string; d
   return (
     <div className="proposal-fields">
       <div className="proposal-fields-head">
-        <Label htmlFor={`${id}-on`} className="grid gap-0.5 text-sm font-semibold">
+        <Label htmlFor={`${id}-on`} className="text-sm font-semibold">
           Préparer la proposition
-          <span className="text-xs font-normal text-muted-foreground">Facturer ou offrir : rien n’est envoyé au client avant « Envoyer la proposition ».</span>
         </Label>
         <Switch id={`${id}-on`} checked={draft.on} onCheckedChange={(on) => set({ on })} />
       </div>
+      <p className="m-0 text-xs text-muted-foreground">Le client ne la verra qu’une fois envoyée, après la création de la demande.</p>
       {draft.on && (
         <>
           <div className="scope-choice proposal-mode" role="radiogroup" aria-label="Proposition">
@@ -76,9 +87,8 @@ export function ProposalFields({ id, draft, onChange, missing }: { id: string; d
               <AddonInput
                 id={`${id}-amount`}
                 addon="€"
-                type="number"
-                min="0"
-                step="0.01"
+                inputMode="decimal"
+                autoComplete="off"
                 placeholder={offer ? "450" : "850"}
                 value={draft.amount}
                 onChange={(event) => set({ amount: event.target.value })}
@@ -92,12 +102,21 @@ export function ProposalFields({ id, draft, onChange, missing }: { id: string; d
               )}
             </Field>
             <Field id={`${id}-days`} label="Délai">
-              <AddonInput id={`${id}-days`} addon="jours" type="number" min="0" step="1" placeholder="0" value={draft.days} onChange={(event) => set({ days: event.target.value })} />
+              <span className="proposal-delay">
+                <Input id={`${id}-days`} inputMode="numeric" autoComplete="off" placeholder="0" value={draft.days} onChange={(event) => set({ days: event.target.value })} />
+                <Select value={draft.unit} onValueChange={(unit) => set({ unit: unit as DelayUnit })}>
+                  <SelectTrigger aria-label="Unité du délai" className="w-full data-[size=default]:h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="days">jours</SelectItem>
+                    <SelectItem value="weeks">semaines</SelectItem>
+                  </SelectContent>
+                </Select>
+              </span>
             </Field>
           </div>
-          {offer ? (
-            <p className="m-0 text-xs text-muted-foreground">Envoyée, la demande est « Offerte » pour le client, avec sa valeur : il n’a rien à décider.</p>
-          ) : (
+          {!offer && (
             <div className="flex items-center justify-between gap-4">
               <Label htmlFor={`${id}-counter`} className="text-sm font-normal">
                 Le client peut faire une contre-proposition

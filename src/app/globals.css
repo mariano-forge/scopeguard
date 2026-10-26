@@ -1217,7 +1217,7 @@ body {
   font-size: var(--t-caption-size);
 }
 .project-select:focus {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .deliverable-select {
@@ -1231,7 +1231,7 @@ body {
   font-size: var(--t-caption-size);
 }
 .deliverable-select:focus {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .deliverable-selectors {
@@ -1253,7 +1253,7 @@ body {
   font-size: var(--t-caption-size);
 }
 .version-select:focus {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .client-add-comment-tool {
@@ -1950,7 +1950,7 @@ body {
 }
 .zoom:focus-visible,
 .tool-button:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .tool-button:disabled {
@@ -2464,7 +2464,7 @@ body {
 }
 .nav-item:focus-visible,
 .nav-section-action:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -2659,7 +2659,7 @@ body {
 .tab-link:focus-visible,
 .tab-close:focus-visible,
 .tab-home:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 .sr-only {
@@ -2716,7 +2716,7 @@ body {
 }
 .todo-item:focus-visible,
 .browser-more:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 .todo-icon {
@@ -2953,7 +2953,7 @@ body {
   color: var(--ink);
 }
 .tab-new:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
 }
 
 /* Shared sidebar bits */
@@ -2986,7 +2986,7 @@ body {
 .rail-logo:focus-visible,
 .panel-title:focus-visible,
 .panel-item:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 .notifications {
@@ -3455,7 +3455,7 @@ button.rail-avatar {
 .inspector-action:focus-visible,
 .inspector-action:focus-within,
 .demande-row:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .inspector .agency-validation-status {
@@ -3640,7 +3640,7 @@ button.rail-avatar {
   font-weight: 600;
 }
 .home-sidebar .nav-item:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 .nav-item .nav-label {
@@ -3788,7 +3788,7 @@ button.rail-avatar {
   opacity: 1;
 }
 .title-button:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .title-input {
@@ -3873,7 +3873,7 @@ button.rail-avatar {
 .file-card:focus-visible,
 .space-card:focus-visible,
 .browser-row:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .page-toolbar {
@@ -3914,7 +3914,7 @@ button.rail-avatar {
   color: var(--ink);
 }
 .segmented button:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
@@ -4208,7 +4208,7 @@ button.rail-avatar {
   background: var(--mist);
 }
 .sidebar-search:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .sidebar-search kbd {
@@ -4301,7 +4301,7 @@ button.rail-avatar {
 }
 .select-trigger:focus-visible,
 .select-menu:focus-visible .select-option.is-active {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 @keyframes select-in {
@@ -4350,7 +4350,7 @@ button.rail-avatar {
   fill: currentColor;
 }
 .star-button:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -4387,7 +4387,7 @@ a.page-nav-label:hover {
 }
 .page-nav-button:focus-visible,
 .page-nav-label:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -4608,7 +4608,7 @@ a.page-nav-label:hover {
   height: 14px;
 }
 .filter-chips .filter:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .file-card-title {
@@ -4664,16 +4664,22 @@ a.page-nav-label:hover {
   color: var(--graphite);
 }
 
-/* Text fields: Kora focus (blue border + ring) instead of the browser default; quieter placeholders.
-   Placeholders are examples only (every field has a visible label), so they may sit below text contrast. */
+/* Scrollbars, everywhere: thin, a light grey, never drawing the eye from the content (feedback of
+   25 October 2026). The requests' board shows its own only on hover (projectRequests.css). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* Text fields: a dark border while typed in, no outline, never blue (feedback of 25 October 2026); quieter
+   placeholders. Placeholders are examples only (every field has a visible label), so they may sit below text contrast. */
 :where(
   input:not([type="checkbox"], [type="radio"], [type="file"]),
   textarea,
   select
 ):focus {
-  outline: 2px solid var(--action-ui);
-  outline-offset: 0;
-  border-color: var(--action-ui);
+  outline: none;
+  border-color: var(--focus);
 }
 ::placeholder {
   color: var(--border-input);
@@ -4832,7 +4838,7 @@ a.page-nav-label:hover {
   pointer-events: none;
 }
 .kind-option:has(input:focus-visible) {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .upload-field {
@@ -4870,7 +4876,7 @@ a.page-nav-label:hover {
   cursor: pointer;
 }
 .dropzone:has(input:focus-visible) {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .cover-field {
@@ -5026,7 +5032,7 @@ a.page-nav-label:hover {
   filter: brightness(0.96);
 }
 .danger-button:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -5114,7 +5120,7 @@ a.page-nav-label:hover {
   color: var(--ink);
 }
 .card-menu-button:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -5309,7 +5315,7 @@ a.page-nav-label:hover {
   outline-offset: 1px;
 }
 .canvas-pin:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .composer-pin {
@@ -5326,7 +5332,9 @@ a.page-nav-label:hover {
   display: flex;
   flex-direction: column;
   width: 300px;
-  max-height: 440px;
+  /* Up to 85 % of the canvas's height before its content scrolls (feedback of 25 October 2026); the canvas's
+     tools are kept clear by useFittingSide (CanvasComments.tsx). */
+  max-height: calc(0.85 * (100dvh - var(--tab-bar-height)));
   border: 1px solid var(--border);
   border-radius: var(--r-panel);
   background: var(--paper);
@@ -5334,7 +5342,8 @@ a.page-nav-label:hover {
   color: var(--ink);
   font: var(--t-ui) var(--font-ui);
   cursor: auto;
-  transform: scale(var(--inv-zoom)) translate(var(--tx), var(--ty));
+  /* --fx/--fy: held where it was on screen while the canvas zooms (ReviewCanvas.tsx holdBubbles). */
+  transform: translate(var(--fx, 0px), var(--fy, 0px)) scale(var(--inv-zoom)) translate(var(--tx), var(--ty));
   transform-origin: 0 0;
 }
 /* The pin is centered on its point: the bubble keeps clear of it on both sides (never covers its own pin) */
@@ -5485,7 +5494,7 @@ a.page-nav-label:hover {
 .thread-proposal:focus-visible,
 .thread-send:focus-visible,
 .thread-icon-button:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .thread-proposal {
@@ -5731,7 +5740,7 @@ a.page-nav-label:hover {
 }
 .inspector-tabs button:focus-visible,
 .thread-row:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 .inspector-list {
@@ -5916,7 +5925,7 @@ label.sidebar-icon-button {
   cursor: pointer;
 }
 label.sidebar-icon-button:focus-within {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 
@@ -6011,7 +6020,7 @@ label.sidebar-icon-button:focus-within {
   background: var(--mist);
 }
 .proposal-actions .icon-only:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .proposal-actions .lucide {
@@ -6115,7 +6124,7 @@ button.rail-logo .lucide {
   color: var(--ink);
 }
 .livrable-filter-trigger:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -6359,15 +6368,23 @@ button.rail-logo .lucide {
   font-size: var(--t-caption-size);
   color: var(--graphite);
 }
-/* Where a request entered by the agency came from: channel, the client's words, a capture. */
+/* Where a request entered by the agency came from: channel and day, then the client's words and a capture,
+   each under its title. */
 .request-source {
   display: grid;
-  gap: 6px;
-  margin: 8px 0;
-  padding: 8px 10px;
-  border-left: 3px solid var(--border);
+  gap: var(--s-4);
+  padding: var(--s-3) var(--s-4) var(--s-4);
   font-size: var(--t-caption-size);
   color: var(--graphite);
+}
+.request-source-part {
+  display: grid;
+  gap: var(--s-2);
+}
+.request-source-part h3 {
+  margin: 0;
+  color: var(--ink);
+  font: 600 var(--t-caption) var(--font-ui);
 }
 .request-source-line {
   margin: 0;
@@ -6377,21 +6394,41 @@ button.rail-logo .lucide {
   color: var(--action-text);
   text-decoration: underline;
 }
+/* The client's words as a message: framed, at the size of the bubble's text. */
 .request-source-excerpt {
   margin: 0;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--paper);
   color: var(--ink);
+  font: 400 var(--t-ui) var(--font-ui);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  max-height: 9rem;
+  max-height: 12rem;
   overflow: auto;
 }
-.request-source-capture span {
+/* The capture itself, the bubble's width, at its own proportions (a tall one scrolls with the bubble). */
+.request-source-capture {
+  display: block;
+}
+.request-source-capture img {
   display: block;
   width: 100%;
-  height: 7rem;
+  height: auto;
   border: 1px solid var(--border);
-  border-radius: var(--r-field);
-  background: var(--paper) no-repeat left top / contain;
+  border-radius: var(--r-button);
+}
+/* Underlined tabs: the keyboard's focus shows as their underline, never a box around the label. */
+[data-slot="tabs-list"][data-variant="line"] [data-slot="tabs-trigger"]:focus-visible {
+  border-color: transparent;
+  box-shadow: none;
+  outline: none;
+  color: var(--ink);
+}
+[data-slot="tabs-list"][data-variant="line"] [data-slot="tabs-trigger"]:focus-visible::after {
+  opacity: 1;
+  background: var(--focus);
 }
 .request-body .thread-proposal {
   margin: 0;
@@ -6421,6 +6458,12 @@ button.rail-logo .lucide {
   color: var(--ink);
   font: var(--t-ui) var(--font-ui);
   resize: vertical;
+}
+/* Typed in: a dark border (the field's own border rule wins over the global one). */
+.qualify-form input:focus,
+.qualify-form textarea:focus,
+.manual-comment textarea:focus {
+  border-color: var(--focus);
 }
 .qualify-form-actions,
 .manual-comment-actions {
@@ -6471,7 +6514,7 @@ button.rail-logo .lucide {
   color: var(--status-scope-text);
 }
 .scope-option:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .manual-comment {
@@ -6500,7 +6543,7 @@ button.rail-logo .lucide {
   background: var(--canvas);
 }
 .manual-comment-trigger:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .manual-comment-trigger .lucide {
@@ -6571,7 +6614,7 @@ button.rail-logo .lucide {
   background: var(--mist);
 }
 .icon-action:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .icon-action .lucide {
@@ -6626,7 +6669,7 @@ button.rail-logo .lucide {
 .resize-handle:hover::after,
 .resize-handle:focus-visible::after,
 body.is-resizing .resize-handle::after {
-  background: var(--action-ui);
+  background: var(--focus);
 }
 .resize-handle:focus-visible {
   outline: none;
@@ -6694,7 +6737,7 @@ body.is-resizing {
   transform: translateX(16px);
 }
 .quote-toggle input[role="switch"]:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .quote-fields {
@@ -6766,7 +6809,7 @@ body.is-resizing {
 }
 .request-cta:focus-visible,
 .row-cta:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .request-cta .lucide,
@@ -6839,29 +6882,15 @@ body.is-resizing {
   width: 14px;
   height: 14px;
 }
-/* A proposal prepared (a quote or an offer) or an offer sent (src/lib/requestOffer.ts): what it holds on a
-   line of its own, its actions under it. */
-.request-proposal:has(.request-offer, .request-prepared) {
-  flex-wrap: wrap;
-  align-items: center;
-}
-.request-offer,
-.request-prepared {
+/* An offer sent (src/lib/requestOffer.ts), under the request's words. */
+.request-offer {
   display: flex;
   flex: 1 0 100%;
   align-items: center;
   gap: 6px;
   margin: 0;
-  font: 400 var(--t-ui) var(--font-ui);
-}
-.request-offer {
   color: var(--status-resolved-text);
-}
-.request-prepared {
-  color: var(--graphite);
-}
-.request-prepared b {
-  color: var(--ink);
+  font: 400 var(--t-ui) var(--font-ui);
 }
 .secondary-button:disabled {
   cursor: not-allowed;
@@ -6936,7 +6965,9 @@ body.is-resizing {
 
 /* Bubble: a bit wider, lighter discussion, calmer hierarchy */
 .thread {
-  width: 340px;
+  /* Larger, to read and write at ease (feedback of 25 October 2026), still beside its pin on a canvas
+     between both panels (about 620px wide at 1304px). */
+  width: 360px;
   border-color: var(--border);
   box-shadow:
     0 1px 2px rgba(17, 17, 17, 0.06),
@@ -7014,7 +7045,7 @@ body.is-resizing {
   color: var(--ink);
 }
 .discussion-toggle:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 .discussion-toggle .lucide {
@@ -7079,7 +7110,7 @@ body.is-resizing {
   background: var(--canvas);
 }
 .notification-message:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 
@@ -7556,7 +7587,7 @@ body.is-resizing {
   font: inherit;
 }
 .thread-edit input:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 .thread-edit-actions {
@@ -7726,7 +7757,7 @@ body.is-resizing {
   transform: rotate(-90deg);
 }
 .panel-section-toggle:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
   border-radius: var(--r-field);
 }
@@ -7836,7 +7867,7 @@ body.is-resizing {
   background: var(--paper);
 }
 .tab-logo:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .tab-logo-mark {
@@ -8706,28 +8737,24 @@ body.is-resizing {
   font: 400 var(--t-mono) var(--font-mono);
 }
 /* The toolbar met for the first time (« Nouveau livrable », a « Lien »): an invitation, its line. */
+/* « Nouveau livrable », a « Lien »: one line pointing to the guide of its board (SiteToolbarSnippet.tsx). */
 .script-intro {
-  display: grid;
-  gap: var(--s-3);
-  padding: var(--s-4);
-  border: 1px solid var(--border);
-  border-radius: var(--r-panel);
-  background: var(--canvas);
-}
-.script-intro h3 {
-  margin: 0 0 4px;
-  font: 600 var(--t-ui) var(--font-ui);
-}
-.script-intro p {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
   margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-button);
+  background: var(--surface-announce);
+  color: var(--ink);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.script-intro svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
   color: var(--graphite);
-  font: 400 13px / 1.5 var(--font-ui);
-}
-.script-intro code {
-  font: 500 12px var(--font-mono);
-}
-.script-intro .script-intro-note {
-  font-size: var(--t-caption-size);
 }
 .site-setup-warning {
   margin: 0;
@@ -9063,6 +9090,73 @@ body.is-resizing {
   background: var(--status-scope-text);
   color: var(--paper);
 }
+/* On hover, its author and first words beside the pin (CanvasComments.tsx CommentPin); not once its bubble is open. */
+.canvas-pin .pin-preview {
+  position: absolute;
+  top: -4px;
+  left: calc(100% + 10px);
+  z-index: 3;
+  display: none;
+  gap: var(--s-2);
+  width: 260px;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  font: 400 var(--t-caption) var(--font-ui);
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+}
+.canvas-pin:hover .pin-preview {
+  display: grid;
+}
+.canvas-pin .pin-preview.is-left {
+  right: calc(100% + 10px);
+  left: auto;
+}
+.canvas-pin.is-active .pin-preview,
+.canvas-pin.is-moving .pin-preview {
+  display: none;
+}
+/* As a message of the thread: its avatar, its author and time, its words on two lines. */
+.pin-preview-message {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+.pin-preview .thread-avatar {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+/* Small, as a card of the list: its author at 12 px, its words at 13 px. */
+.pin-preview .thread-meta b {
+  font: 600 12px / 16px var(--font-ui);
+}
+.pin-preview .thread-meta small {
+  font-size: 11px;
+}
+.pin-preview-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.pin-preview-text {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ink);
+  font: 400 13px / 18px var(--font-ui);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+/* No line across it: its replies under its words, as on a card (.thread-row-replies), at the text's start. */
+.pin-preview-replies {
+  padding-left: 28px;
+}
 /* Not read yet: a red dot on the pin's corner. */
 .canvas-pin.is-unread::after {
   content: "";
@@ -9193,11 +9287,6 @@ body.is-resizing {
   color: var(--ink);
   font-weight: 600;
   box-shadow: 0 1px 3px rgba(17, 17, 17, 0.12);
-}
-.scope-choice-hint {
-  margin: 0;
-  color: var(--graphite);
-  font-size: var(--t-caption-size);
 }
 /* Its buttons on the beige band, as at the foot of every Kora dialog. */
 .qualify-form .qualify-form-actions {
@@ -9484,7 +9573,8 @@ body.is-resizing {
 .thread,
 .thread.is-qualifying {
   /* --bubble-room: the room left between the top of the canvas and its toolbar (ReviewCanvas.tsx). */
-  max-height: min(460px, calc(100dvh - 180px), var(--bubble-room, 100dvh));
+  /* Qualifying too: 85 % of the canvas's height (feedback of 25 October 2026), within the room it has. */
+  max-height: min(calc(0.85 * (100dvh - var(--tab-bar-height))), var(--bubble-room, 100dvh));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -9561,7 +9651,7 @@ body.is-resizing {
 /* A request's bubble: « Détail » | « Discussion », the discussion on the bubble's whole height. */
 .thread,
 .thread.is-qualifying {
-  width: 380px;
+  width: 400px;
 }
 .thread-tabs {
   padding: var(--s-2) var(--s-3) 0;
@@ -9583,8 +9673,9 @@ body.is-resizing {
   background: var(--paper);
   color: var(--ink);
 }
+/* As tall as its messages, no empty space under a short one (feedback of 25 October 2026). */
 .thread .thread-messages {
-  min-height: 160px;
+  min-height: 0;
   max-height: none;
 }
 
@@ -9704,16 +9795,64 @@ body.is-resizing {
   overflow: hidden;
 }
 
-/* The send dialog names who receives the proposal. */
-.proposal-recipients {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: var(--ink);
-  overflow-wrap: anywhere;
+/* The send dialog's foot: whom to tell by e-mail, folded (SendProposalDialog.tsx). */
+.proposal-notify {
+  display: grid;
+  gap: var(--s-2);
 }
-.proposal-recipients span {
+.proposal-notify-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: 500 var(--t-caption) var(--font-ui);
+  cursor: pointer;
+}
+.proposal-notify-toggle svg {
+  width: 14px;
+  height: 14px;
   color: var(--graphite);
-  margin-right: 4px;
+  transition: transform var(--d-fast) var(--ease-out);
+}
+.proposal-notify-toggle[aria-expanded="false"] svg {
+  transform: rotate(-90deg);
+}
+.proposal-notify-toggle span {
+  margin-left: auto;
+  color: var(--graphite);
+  font-weight: 400;
+}
+.proposal-notify ul {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0 0 0 20px;
+  list-style: none;
+}
+.proposal-notify label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--ink);
+  font: 400 var(--t-caption) var(--font-ui);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+/* An offer's amount: a gift, in green (the send dialog's summary and the bubble's figures). */
+.proposal-summary b.is-offer,
+.request-figures .is-offer dd {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--status-resolved-text);
+}
+.proposal-summary b.is-offer svg,
+.request-figures .is-offer dd svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* The bubble's « Détail | Discussion »: underlined tabs, as the panel's. Its actions (the request's
@@ -10030,8 +10169,8 @@ body.is-resizing {
   cursor: text;
 }
 .email-chips:focus-within {
-  border-color: var(--action-ui);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--action-ui) 18%, transparent);
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent);
 }
 .email-chips.is-disabled {
   opacity: 0.5;
@@ -10279,96 +10418,113 @@ body.is-resizing {
 .thread-row {
   position: relative;
 }
-.thread-row:has(.thread-row-source) {
-  padding-right: calc(var(--s-4) + 22px);
+/* A card's foot: its messages, then where it came from, its mark and its name (feedback of 26 October 2026). */
+.thread-row-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-3);
 }
 .thread-row-source {
-  position: absolute;
-  right: var(--s-4);
-  bottom: var(--s-3);
   display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--graphite);
+  font: 500 var(--t-caption) var(--font-ui);
 }
 .source-icon {
   display: inline-grid;
   place-items: center;
   border-radius: 999px;
 }
+/* Kora's own marks (e-mail, call, meeting, other) are neutral, all alike: a status colour says a status
+   only (DESIGN.md). Slack, Teams and Figma keep their logo's colours, the one exception. */
+.source-icon {
+  background: var(--mist);
+  color: var(--graphite);
+}
 .source-icon .lucide {
   width: 70%;
   height: 70%;
 }
-.source-icon-email {
-  background: var(--status-low-bg);
-  color: var(--status-low-text);
-}
-.source-icon-call {
-  background: var(--status-resolved-bg);
-  color: var(--status-resolved-text);
-}
-.source-icon-meeting {
-  background: var(--status-scope-bg);
-  color: var(--status-scope-text);
-}
-.source-icon-other {
-  background: var(--mist);
-  color: var(--graphite);
-}
 
-/* The AI's suggestion in a qualifying form (src/app/(agency)/editor/QualifyAssist.tsx): a note above the
-   choice, never a decision; and the line of the active scope an « Inclus » cites. */
+/* The AI's suggestion in a qualifying form (src/app/(agency)/editor/QualifyAssist.tsx): a neutral note above
+   the choice, never a decision; the qualification in its own colour, the reason folded on demand. */
 .qualify-suggestion {
   display: grid;
-  gap: 4px;
+  gap: var(--s-1);
   min-width: 0;
   overflow-wrap: anywhere;
-  border: 1px solid var(--border);
-  border-radius: var(--r-field);
-  background: var(--status-low-bg);
+  border: 0;
+  border-radius: var(--r-button);
+  background: var(--surface-announce);
   padding: var(--s-2) var(--s-3);
-  color: var(--status-low-text);
+  color: var(--ink);
   font: var(--t-caption) var(--font-ui);
-}
-.qualify-suggestion p {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0;
 }
 .qualify-suggestion svg {
   width: 14px;
   height: 14px;
   flex: none;
+  color: var(--graphite);
 }
-.qualify-suggestion .qualify-suggestion-reason,
-.qualify-suggestion .qualify-suggestion-line {
-  display: block;
+.qualify-suggestion-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--graphite);
 }
-.qualify-suggestion .qualify-suggestion-reason {
+.qualify-suggestion summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--ink);
+  font-weight: 500;
+  list-style: none;
+  cursor: pointer;
+}
+.qualify-suggestion summary::-webkit-details-marker {
+  display: none;
+}
+/* Its fold, a chevron at the end of the line. */
+.qualify-suggestion summary::after {
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-right: 1.5px solid var(--graphite);
+  border-bottom: 1.5px solid var(--graphite);
+  content: "";
+  transform: rotate(45deg);
+  transition: transform var(--d-fast) var(--ease-out);
+}
+.qualify-suggestion details:not([open]) summary::after {
+  transform: rotate(-45deg);
+}
+.qualify-suggestion summary b {
+  font-weight: 600;
+}
+.qualify-suggestion summary b.is-included {
+  color: var(--status-resolved-text);
+}
+.qualify-suggestion summary b.is-outside {
+  color: var(--status-scope-text);
+}
+.qualify-suggestion summary b.is-clarify {
+  color: var(--status-clarify-text);
+}
+.qualify-suggestion-reason {
+  margin: var(--s-1) 0 0;
+  color: var(--ink);
+  font: var(--t-caption) var(--font-ui);
 }
 .qualify-suggestion small {
   color: var(--graphite);
+  font-size: var(--t-caption-size);
 }
-/* A native list is as wide as its longest option: a long line of the quote widened the whole form. */
+/* A native list is as wide as its longest option: a long title widened the whole form. */
 .qualify-form {
   grid-template-columns: minmax(0, 1fr);
-}
-.qualify-line-field {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-.qualify-line {
-  width: 100%;
-  min-width: 0;
-  text-overflow: ellipsis;
-  border: 1px solid var(--border-input);
-  border-radius: var(--r-field);
-  background: var(--paper);
-  padding: var(--s-2) var(--s-3);
-  color: var(--ink);
-  font: var(--t-ui) var(--font-ui);
 }
 .request-cited {
   margin: 0;
@@ -10381,14 +10537,247 @@ body.is-resizing {
 }
 /* ——— Out-of-scope proposal: « Facturer » or « Offrir » (ProposalFields.tsx), feedback of 24 October 2026 ——— */
 
-/* The proposal prepared while qualifying: a block of its own, its two ways as the qualification's segments. */
+/* The proposal prepared while qualifying: a block of its own, its two ways as the qualification's segments
+   (the same control, for consistency: feedback of 25 October 2026). */
 .proposal-fields {
   display: grid;
-  gap: var(--s-3);
+  gap: var(--s-2);
   padding: var(--s-3);
   border: 1px solid var(--border);
   border-radius: var(--r-button);
+  background: var(--paper);
+}
+/* An out-of-scope request's proposal status beside its qualification, in the bubble. */
+.request-kind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1);
+}
+/* A request's proposal under its words, as the foot of a quote (CanvasComments.tsx ProposalFigures): framed,
+   its extra delay, then its total on a line of its own, set apart. */
+.thread .request-body {
+  gap: var(--s-3);
+}
+.request-figures {
+  display: grid;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+}
+.request-figures div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+}
+.request-figures dt {
+  color: var(--graphite);
+  font: 400 var(--t-ui) var(--font-ui);
+}
+.request-figures dd {
+  margin: 0;
+  color: var(--ink);
+  font: 500 var(--t-ui) var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.request-figures .is-total {
+  border-top: 1px solid var(--border);
+}
+.request-figures .is-total dt {
+  color: var(--ink);
+  font-weight: 600;
+}
+.request-figures .is-total dd {
+  font: 600 15px / 1.35 var(--font-ui);
+}
+/* The grey footer holds the actions only: the send button its whole width, the request's links under it. */
+.request-footer {
+  gap: var(--s-3);
+}
+.request-body .request-proposal {
+  flex-wrap: wrap;
+}
+.request-proposal .request-send[data-slot="button"] {
+  flex: 1 0 100%;
+  height: 36px;
+  font-size: var(--t-ui-size, 14px);
+}
+
+/* Where a request came from (RequestSourceFields.tsx): its channel as chips, then the client's words, the day
+   and a capture. Neutral: the chosen chip darker, never blue. */
+/* « Ajouter une source »: one quiet line at the foot of the form. */
+.source-add {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--action-text);
+  font: 500 var(--t-caption) var(--font-ui);
+  cursor: pointer;
+}
+.source-add:hover {
+  text-decoration: underline;
+}
+.source-add:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.source-add svg {
+  width: 14px;
+  height: 14px;
+}
+/* Told: a section of its own, folded or taken away. */
+.source-fields {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+}
+.source-fields-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.source-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
+  cursor: pointer;
+}
+.source-fold svg {
+  width: 14px;
+  height: 14px;
+  color: var(--graphite);
+  transition: transform var(--d-fast) var(--ease-out);
+}
+.source-fold[aria-expanded="false"] svg {
+  transform: rotate(-90deg);
+}
+.source-fold:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.source-fold-summary {
+  overflow: hidden;
+  color: var(--graphite);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-channels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+.source-chip {
+  height: 28px;
+  padding: 0 var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--graphite);
+  font: 500 var(--t-caption) var(--font-ui);
+  cursor: pointer;
+}
+.source-chip:hover {
+  border-color: var(--border-input);
+  color: var(--ink);
+}
+.source-chip[aria-checked="true"] {
+  border-color: var(--ink);
+  background: var(--mist);
+  color: var(--ink);
+}
+.source-chip:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.source-details {
+  display: grid;
+  gap: var(--s-3);
+}
+/* Each detail with its label above it, as the form's other fields. */
+.source-fields .source-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--graphite);
+  font: 500 var(--t-caption) var(--font-ui);
+}
+/* The day and the capture, side by side, as tall as each other. */
+.source-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: start;
+}
+.source-capture-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  border: 1px dashed var(--border-input);
+  border-radius: var(--r-field);
+  background: var(--paper);
+  color: var(--ink);
+  font: 500 var(--t-caption) var(--font-ui);
+  cursor: pointer;
+}
+.source-capture-add:hover {
   background: var(--canvas);
+}
+.source-capture-add:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.source-capture-add svg {
+  width: 14px;
+  height: 14px;
+}
+.source-capture {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  height: 36px;
+  min-width: 0;
+}
+.source-capture [role="img"] {
+  flex: none;
+  width: 44px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-field);
+  background: center / cover no-repeat;
+}
+.source-capture-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The delay: its number, then its unit (days or weeks). */
+.proposal-delay {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--s-1);
 }
 .proposal-fields-head {
   display: flex;
@@ -10398,7 +10787,6 @@ body.is-resizing {
 }
 .scope-choice.proposal-mode {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  background: var(--paper);
 }
 .scope-choice.proposal-mode .scope-option::before {
   display: none;
@@ -10428,7 +10816,7 @@ body.is-resizing {
 .thread-tabs [data-slot="tabs-trigger"]:focus-visible {
   border-color: transparent;
   outline: none;
-  box-shadow: inset 0 -2px 0 var(--action-ui);
+  box-shadow: inset 0 -2px 0 var(--focus);
 }
 
 /* The bubble keeps clear of the canvas's tools at the bottom (useFittingSide, CanvasComments.tsx): its form
@@ -10497,4 +10885,269 @@ body.is-resizing {
   .nav-toggle .lucide {
     transition: none;
   }
+}
+
+/* A request's card (EditorInspector.tsx): three lines, no button. Its status with its amount at the right;
+   its title; who, when, the moment of a video, its messages and its source's mark on one line. */
+.thread-row-status {
+  justify-content: space-between;
+}
+.thread-row-amount {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.thread-row-amount svg {
+  width: 14px;
+  height: 14px;
+  color: var(--graphite);
+}
+/* Offered: green, as « Offerte » in its bubble. */
+.thread-row-amount.is-offer,
+.thread-row-amount.is-offer svg {
+  color: var(--status-resolved-text);
+}
+/* Its spacing: 12px around, 6px between its lines; the title a little apart from the status above it. */
+.inspector-list li .thread-row,
+.inspector-list li .thread-row:hover,
+.inspector-list li .thread-row.is-selected {
+  gap: 6px;
+  padding: var(--s-3) var(--s-3) 14px;
+}
+.inspector-list .thread-row-status + .thread-row-text {
+  margin-top: 2px;
+}
+.inspector-list .thread-row-meta {
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px 6px;
+}
+.inspector-list .thread-row-foot {
+  gap: var(--s-3);
+}
+/* The source's mark closes the name's line, at the size of the avatar that opens it. */
+.inspector-list .thread-row-meta .thread-row-source {
+  display: inline-flex;
+  margin-left: auto;
+  line-height: 0;
+}
+.inspector-list .thread-row-replies,
+.inspector-list .thread-row-replies * {
+  color: var(--graphite);
+}
+.inspector-list .thread-row-replies.is-unread,
+.inspector-list .thread-row-replies.is-unread * {
+  color: var(--status-high-text);
+}
+.thread-row-status {
+  flex-wrap: wrap;
+  gap: var(--s-1);
+}
+
+/* One letter per avatar and pin (feedback of 26 October 2026), about half its size, read at once. */
+.canvas-pin.is-comment {
+  font-size: 14px;
+}
+.thread-avatar {
+  font-size: 12px;
+}
+.inspector-list .thread-row-meta .thread-avatar {
+  font-size: 10px;
+}
+.site-comment-avatar {
+  font-size: 13px;
+}
+.avatar {
+  font-size: 13px;
+}
+
+/* A pin's hover preview (CanvasComments.tsx CommentPin), read in order (feedback of 26 October 2026): the
+   author in bold, the time beside it quieter, the words, then the replies quieter still. As wide as its words. */
+.canvas-pin .pin-preview {
+  width: max-content;
+  min-width: 180px;
+  max-width: 280px;
+  padding: var(--s-3) var(--s-4) var(--s-3) var(--s-3);
+  border-radius: 14px;
+}
+.pin-preview .pin-preview-message {
+  gap: 10px;
+}
+.pin-preview .thread-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+}
+.pin-preview .pin-preview-body {
+  gap: 1px;
+}
+.pin-preview .thread-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.pin-preview .thread-meta b {
+  color: var(--ink);
+  font: 600 13px / 18px var(--font-ui);
+}
+.pin-preview .thread-meta small {
+  color: var(--graphite);
+  font: 400 12px / 18px var(--font-ui);
+}
+.pin-preview .pin-preview-text {
+  color: var(--ink);
+  font: 400 13px / 18px var(--font-ui);
+}
+/* The replies at a card's size and colour (.thread-row-replies), as the card says them. */
+.pin-preview .pin-preview-replies {
+  padding: 0;
+  margin-top: 2px;
+  color: var(--graphite);
+  font: 500 var(--t-caption) var(--font-ui);
+}
+
+/* The bubble's tabs (« Détail », « Discussion », « Source »): an underline only, never a frame, whatever their
+   state, clicked, focused or under the keyboard (feedback of 26 October 2026: lines kept appearing beside the
+   active tab). The underline is a 2px bar under the label, not an inset shadow, which bled on its sides at some
+   screen scales. The active tab's in ink; one the keyboard is on, in the focus's grey. */
+.thread-tabs [data-slot="tabs-trigger"],
+.thread-tabs [data-slot="tabs-trigger"]:hover,
+.thread-tabs [data-slot="tabs-trigger"]:focus,
+.thread-tabs [data-slot="tabs-trigger"]:focus-visible,
+.thread-tabs [data-slot="tabs-trigger"]:active,
+.thread-tabs [data-slot="tabs-trigger"][data-state="active"],
+.thread-tabs [data-slot="tabs-trigger"][data-state="active"]:focus-visible {
+  position: relative;
+  border: 0;
+  outline: none;
+  box-shadow: none;
+}
+.thread-tabs [data-slot="tabs-trigger"]::after,
+.thread-tabs [data-slot="tabs-trigger"]:focus-visible::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  display: block;
+  width: auto;
+  height: 2px;
+  background: var(--ink);
+  opacity: 0;
+}
+.thread-tabs [data-slot="tabs-trigger"][data-state="active"]::after,
+.thread-tabs [data-slot="tabs-trigger"][data-state="active"]:focus-visible::after {
+  opacity: 1;
+  background: var(--ink);
+}
+.thread-tabs [data-slot="tabs-trigger"]:not([data-state="active"]):focus-visible {
+  color: var(--ink);
+}
+.thread-tabs [data-slot="tabs-trigger"]:not([data-state="active"]):focus-visible::after {
+  opacity: 1;
+  background: var(--focus);
+}
+/* A tab's label is not text to select: no text cursor left in it after a click (Chrome's caret browsing, F7,
+   draws one there, read as a line between the tabs). */
+.thread-tabs [data-slot="tabs-list"],
+[data-slot="tabs-trigger"] {
+  user-select: none;
+  caret-color: transparent;
+}
+
+/* A deliverable's requests board, in the deliverable (AgencyApp.tsx, routes.ts « pane »): the board's own page
+   layout, inside the editor's full-bleed content, as tall as the window. */
+.deliverable-board {
+  display: flex;
+  height: calc(100vh - var(--tab-bar-height));
+  padding: var(--s-6);
+  overflow: hidden;
+}
+
+/* What an offer sent means, under its figures (CanvasComments.tsx): quiet, in the offer's green. */
+.request-offer-note {
+  margin: 0;
+  color: var(--status-resolved-text);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+
+/* The site panel's cards, as Kora's panel draws them (SitePanel.tsx, EditorInspector.tsx RequestCardLines):
+   its step's tags, its title, who and when, its messages. */
+.site-comments .site-comment {
+  display: grid;
+  gap: 6px;
+  padding: var(--s-3) var(--s-3) 14px;
+}
+.site-comments .thread-row-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1);
+}
+.site-comments .thread-row-text {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ink);
+  font: 500 var(--t-ui) var(--font-ui);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.site-comments .thread-row-text.is-title {
+  font-weight: 600;
+}
+.site-comments .thread-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.site-comments .thread-row-meta .thread-avatar {
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+}
+.site-comments .thread-row-meta .thread-row-source {
+  display: inline-flex;
+  margin-left: auto;
+  line-height: 0;
+}
+.site-comments .thread-row-replies {
+  color: var(--graphite);
+}
+
+/* The site panel's cards: who and when packed after the avatar, never spread across the card; an agency's
+   draft tagged in neutral grey (it is not « À clarifier »'s orange). */
+.site-comments .thread-row-meta {
+  justify-content: flex-start;
+}
+.request-kind.is-draft .kind-pill {
+  background: var(--mist);
+  color: var(--graphite);
+}
+/* A thread opened in the site panel: its head at the size of Kora's bubble, not larger. */
+.site-bubble .thread-title {
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.site-bubble .thread-title b {
+  font: inherit;
+}
+.site-bubble .thread-title small {
+  font: 400 var(--t-caption) var(--font-ui);
+}
+
+/* The replies' icon, as on the cards (feedback of 26 October 2026). */
+.pin-preview .pin-preview-replies {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.pin-preview .pin-preview-replies svg {
+  width: 13px;
+  height: 13px;
 }

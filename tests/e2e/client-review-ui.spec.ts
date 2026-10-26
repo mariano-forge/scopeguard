@@ -85,7 +85,8 @@ test("the client comments, replies, edits and deletes on the page; the server si
   expect(((await commentsOf(org))[0].data.replies as Record<string, unknown>[])[0]).toMatchObject({ author: "Claire Dubois", from: "client", authorEmail: email });
 
   // Its own comment, edited.
-  await page.getByRole("button", { name: "Modifier le message" }).first().click();
+  await page.getByRole("button", { name: "Actions sur le message" }).first().click();
+  await page.getByRole("menuitem", { name: "Modifier le message" }).click();
   await page.getByRole("textbox", { name: "Modifier le message" }).fill("Le logo est beaucoup trop petit");
   await page.getByRole("button", { name: "Enregistrer" }).click();
   await expect.poll(async () => (await commentsOf(org))[0].data).toMatchObject({ message: "Le logo est beaucoup trop petit", edited: true });
@@ -93,7 +94,8 @@ test("the client comments, replies, edits and deletes on the page; the server si
   // Its reply, deleted; then the comment.
   // The reply is shown before its own delete button is used.
   await expect(page.locator(".thread-text", { hasText: "Surtout sur mobile" })).toBeVisible();
-  await page.getByRole("button", { name: "Supprimer le message" }).last().click();
+  await page.getByRole("button", { name: "Actions sur le message" }).last().click();
+  await page.getByRole("menuitem", { name: "Supprimer le message" }).click();
   await expect.poll(async () => ((await commentsOf(org))[0].data.replies as unknown[] | undefined)?.length ?? 0).toBe(0);
   await page.getByRole("button", { name: "Supprimer", exact: true }).click();
   await expect.poll(async () => (await commentsOf(org)).length).toBe(0);
@@ -112,8 +114,10 @@ test("the client accepts one quote, asks to adapt another, decides it when valid
   const { org, email, page, errors, writes } = await clientPage(browser);
   await page.getByRole("tab", { name: /Hors scope/ }).click();
 
+  // The card opens its bubble (no button on a card); the proposal opens from there.
   const open = async (title: string) => {
-    await page.locator(".client-side-panel li.inspector-row").filter({ hasText: title }).getByRole("button", { name: "Voir la proposition" }).click();
+    await page.locator(".client-side-panel li.inspector-row").filter({ hasText: title }).getByRole("button").click();
+    await page.getByRole("dialog", { name: /Demande hors scope/ }).getByRole("button", { name: "Voir la proposition" }).click();
   };
   await open("Témoignages");
   await page.getByRole("button", { name: "Accepter" }).click();

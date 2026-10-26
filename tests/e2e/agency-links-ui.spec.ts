@@ -2,16 +2,24 @@
 // invitations are removed, the link is revoked, the client page is previewed, a validation reopened.
 
 import { expect, test, type Browser } from "@playwright/test";
-import { createAgency, newPerson, seedState, signInPage, signUp, sql, unique } from "./helpers";
+import { call, createAgency, newPerson, seedState, signInPage, signUp, sql, unique } from "./helpers";
 
-async function editor(browser: Browser) {
+/** `approved`: its version validated by the client, and locked; `other`: a second deliverable, validated too. */
+async function editor(browser: Browser, { approved = false, other = false } = {}) {
   const alice = await signUp("Alice Martin");
   await createAgency(alice, "Studio Liens");
+  const version = approved ? { status: "Approuvée", locked: true } : { status: "En attente client", locked: false };
   await seedState(alice, {
     lists: {
       clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
       projects: { upsert: [{ id: 1, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },
-      deliverables: { upsert: [{ id: 1, projectId: 1, name: "maquette.png", type: "Image", version: 1, status: "En attente client", locked: false }], remove: [] },
+      deliverables: {
+        upsert: [
+          { id: 1, projectId: 1, name: "maquette.png", type: "Image", version: 1, ...version },
+          ...(other ? [{ id: 2, projectId: 1, name: "logo.png", type: "Image", version: 1, status: "Approuvée", locked: true, importedAt: "14/10/2026" }] : []),
+        ],
+        remove: [],
+      },
     },
   });
   const { page, errors } = await newPerson(browser);
@@ -22,7 +30,7 @@ async function editor(browser: Browser) {
   await signInPage(page, alice.email);
   await page.goto("/projets/1/livrables/1");
   await expect(page.locator("[data-page]").first()).toBeVisible();
-  return { org: alice.organizationId!, page, errors, writes };
+  return { alice, org: alice.organizationId!, page, errors, writes };
 }
 
 const link = async (org: string) =>
@@ -74,6 +82,47 @@ test("sharing creates the link; an invitation is removed; the link is revoked", 
   await expect.poll(async () => (await link(org)).active).toBe(true);
   expect((await link(org)).token).not.toBe(created.token);
   expect(writes.filter((write) => write === "PATCH /api/state")).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test("the reminder goes to the deciders and says so; with none, it waits for one", async ({ browser }) => {
+  const { alice, page, errors } = await editor(browser);
+  const [decider, contributor] = [`${unique("claire")}@client.test`, `${unique("paul")}@client.test`];
+  await page.getByRole("button", { name: "Partager la revue" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Partager la revue" });
+  await expect(dialog.getByLabel("Inviter par e-mail")).toBeVisible();
+  // A contributor only: nothing to remind them of (deciding is the deciders').
+  expect((await call("/api/review-access/invite", { method: "POST", person: alice, body: { linkKey: "1:1", emails: [contributor], role: "contributor" } })).status).toBe(200);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Partager la revue" }).first().click();
+  await expect(dialog.getByRole("button", { name: "Relancer le client" })).toBeDisabled();
+  // A decider: reminded, and named.
+  expect((await call("/api/review-access/invite", { method: "POST", person: alice, body: { linkKey: "1:1", emails: [decider] } })).status).toBe(200);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Partager la revue" }).first().click();
+  await dialog.getByRole("button", { name: "Relancer le client" }).click();
+  // The decider only: the contributor is not reminded, and not counted.
+  await expect(page.getByText(`Relance envoyée à ${decider}`)).toBeVisible();
+  await expect(page.getByText(/Relance envoyée à 2 personnes/)).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: /Relance déjà envoyée/ })).toBeDisabled();
+  expect(errors).toEqual([]);
+});
+
+test("after a revocation, the link copied from the reopened dialog is the new one, never the revoked one", async ({ browser }) => {
+  const { org, page, errors } = await editor(browser);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "Partager la revue" }).first().click();
+  await expect.poll(async () => (await link(org))?.active).toBe(true);
+  const revoked = (await link(org)).token;
+  await page.getByRole("button", { name: "Révoquer ce lien" }).click();
+  await expect.poll(async () => (await link(org)).active).toBe(false);
+  await expect(page.getByRole("dialog", { name: "Partager la revue" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Partager la revue" }).first().click();
+  await page.getByRole("dialog", { name: "Partager la revue" }).getByRole("button", { name: "Copier le lien" }).click();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copied).not.toContain(revoked);
+  await expect.poll(async () => (await link(org)).active).toBe(true);
+  expect(copied).toContain((await link(org)).token);
   expect(errors).toEqual([]);
 });
 
@@ -136,8 +185,34 @@ test("the client preview opens the client page of a link created for it; a membe
   expect(errors).toEqual([]);
 });
 
+test("a version not validated yet has no validation to reopen: the menu says so, the server refuses it", async ({ browser }) => {
+  const { alice, page, errors } = await editor(browser);
+  await page.getByRole("button", { name: "Actions du livrable maquette.png" }).click();
+  await expect(page.getByRole("menuitem", { name: "Rouvrir la validation" })).toBeDisabled();
+  const refused = await call("/api/deliverables/1/reopen", { method: "POST", person: alice, body: { message: "Encore" } });
+  expect(refused.status).toBe(409);
+  expect(errors).toEqual([]);
+});
+
+test("« Historique & journal » tells this deliverable's versions and events, none of another's", async ({ browser }) => {
+  const { alice, page, errors } = await editor(browser, { approved: true, other: true });
+  // An event of each deliverable.
+  expect((await call("/api/deliverables/1/reopen", { method: "POST", person: alice, body: { message: "Marges" } })).status).toBe(200);
+  expect((await call("/api/deliverables/2/reopen", { method: "POST", person: alice, body: { message: "Couleurs du logo" } })).status).toBe(200);
+  await page.reload();
+  await page.getByRole("button", { name: "Actions du livrable maquette.png" }).click();
+  await page.getByRole("menuitem", { name: "Historique & journal" }).click();
+  const history = page.getByRole("dialog", { name: "Historique & journal" });
+  await expect(history.locator(".version-row")).toHaveCount(1);
+  await expect(history.locator(".version-row")).toContainText("maquette.png");
+  await expect(history).toContainText("« Marges »");
+  await expect(history).not.toContainText("Couleurs du logo");
+  await expect(history).not.toContainText("logo.png");
+  expect(errors).toEqual([]);
+});
+
 test("a version's validation is reopened, with the reason in the trail", async ({ browser }) => {
-  const { org, page, errors, writes } = await editor(browser);
+  const { org, page, errors, writes } = await editor(browser, { approved: true });
   await page.getByRole("button", { name: "Actions du livrable maquette.png" }).click();
   await page.getByRole("menuitem", { name: "Rouvrir la validation" }).click();
   await page.getByLabel("Message").fill("La hiérarchie du bloc principal doit être revue");

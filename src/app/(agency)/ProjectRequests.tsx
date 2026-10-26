@@ -7,8 +7,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { sideOf } from "@/lib/authors";
-import { euros } from "@/lib/projectScope";
+import { useNow, type ThreadComment } from "./editor/CanvasComments";
+import { RequestCardLines } from "./editor/requestCard";
 import { boardColumns, columnOf, type BoardInput, type BoardRequest } from "./requestBoard";
 import "./projectRequests.css";
 
@@ -20,8 +20,11 @@ function groupBy<T, K>(items: T[], keyOf: (item: T) => K) {
   return groups;
 }
 
-export function ProjectRequests({ input, hrefOf }: { input: BoardInput; hrefOf: (request: BoardRequest) => string }) {
-  const [livrable, setLivrable] = useState("all");
+/** `livrableId`: one deliverable's board (its first version's id), opened inside it: no choice of deliverable. */
+export function ProjectRequests({ input, hrefOf, livrableId }: { input: BoardInput; hrefOf: (request: BoardRequest) => string; livrableId?: number }) {
+  const [chosenLivrable, setLivrable] = useState("all");
+  const livrable = livrableId !== undefined ? String(livrableId) : chosenLivrable;
+  const now = useNow();
 
   const versions = input.versions.filter((record) => (record.projectId ?? 1) === input.projectId);
   // A deliverable: its versions under one name, chosen by its first version's id (as the routes name it).
@@ -33,22 +36,21 @@ export function ProjectRequests({ input, hrefOf }: { input: BoardInput; hrefOf: 
     .sort((left, right) => (right.createdAt ?? right.id) - (left.createdAt ?? left.id));
   const byColumn = groupBy(requests, (request) => columnOf(request, input.quoteOf(request.id).status));
 
+  // A card as the editor's panel draws it (feedback of 26 October 2026): its deliverable heads it (the column
+  // says its status), then its amount, its title, who and when, its messages.
   function card(request: BoardRequest) {
     const record = shownVersions.get(request.deliverableId ?? -1);
-    const quote = request.decision === "Hors périmètre" ? input.quoteOf(request.id) : null;
     const title = request.title?.trim() || request.message;
     return (
       <li key={request.id} className="board-card">
-        <Link className="board-card-link" href={hrefOf(request)} aria-label={`Ouvrir la demande « ${title} »`}>
-          <span className="board-card-title">{title}</span>
-        </Link>
-        <span className="board-card-meta">
-          <span className={`board-card-author is-${sideOf(request)}`} title={request.author}>
-            {request.initials}
-          </span>
-          <span className="truncate">{record ? `${record.name} · ${versionName(record.version)}` : ""}</span>
-          {quote && quote.amount > 0 && <b className="ml-auto tabular-nums">{euros(quote.amount)}</b>}
-        </span>
+        <Link className="board-card-link" href={hrefOf(request)} aria-label={`Ouvrir la demande « ${title} »`} />
+        <RequestCardLines
+          comment={request as unknown as ThreadComment}
+          now={now}
+          // Inside a deliverable, its name is everywhere around: its version only.
+          head={record ? <span className="board-card-context">{livrableId !== undefined ? versionName(record.version) : `${record.name} · ${versionName(record.version)}`}</span> : null}
+          amount={request.decision === "Hors périmètre" ? input.amountOf?.(request) : null}
+        />
       </li>
     );
   }
@@ -56,6 +58,9 @@ export function ProjectRequests({ input, hrefOf }: { input: BoardInput; hrefOf: 
   return (
     <div className="request-board-page">
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrer les demandes">
+        {/* Inside a deliverable, the page has no other title (feedback of 26 October 2026). */}
+        {livrableId !== undefined && <h1 className="board-title">Pipeline des demandes</h1>}
+        {livrableId === undefined && (
         <Select value={livrable} onValueChange={setLivrable}>
           <SelectTrigger aria-label="Livrable" className="w-56">
             <SelectValue />
@@ -69,6 +74,7 @@ export function ProjectRequests({ input, hrefOf }: { input: BoardInput; hrefOf: 
             ))}
           </SelectContent>
         </Select>
+        )}
         <span className="page-count ml-auto">
           {requests.length} demande{requests.length > 1 ? "s" : ""}
         </span>

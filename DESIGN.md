@@ -19,7 +19,8 @@ Inspiration : Linear et Figma. Des surfaces claires, des bordures fines, une hi�
 | Texte | `--ink` (principal), `--graphite` (secondaire) |
 | Surfaces | `--paper` (cartes, page), `--canvas` (fond de l'application), `--mist` (zones en retrait, état sélectionné, survol), `--surface-announce` (fond d'une bannière, `bg-announce`) |
 | Bordures | `--border` (cartes, séparateurs), `--border-input` (champs, survol d'une carte) |
-| Action | `--cta-fill` / `--cta-text` (bouton principal), `--action-ui` (liens, anneau de focus clavier), `--action-text` (texte de lien) |
+| Action | `--cta-fill` / `--cta-text` (bouton principal), `--action-ui` (liens), `--action-text` (texte de lien) |
+| Focus | `--focus` (le graphite) : champ en cours de saisie et focus clavier, jamais le bleu |
 | Statuts | paires `--status-*-bg` / `--status-*-text`, toujours avec un libellé ou une icône |
 | Qualifications | Inclus : `resolved` ; Hors scope : `scope` ; À clarifier : `medium` (badges `decision-*`). Repères du canevas : `--mark-*`, jamais en texte |
 | Favori | `--favorite-fill` (l'étoile seulement) |
@@ -28,7 +29,7 @@ Inspiration : Linear et Figma. Des surfaces claires, des bordures fines, une hi�
 À ne pas faire :
 
 - **Pas de bloc noir** (fond `--ink` sur un composant), pas de dégradé, pas de fond de couleur vive.
-- **Pas de contour bleu pour distinguer** une carte, une option ou un élément choisi. Un élément choisi prend `--mist` et une bordure `--ink` ou `--border-input`. Le bleu en contour est réservé au focus clavier (`focus-visible`) et au code couleur de la comparaison de versions (« après »).
+- **Pas de contour bleu**, nulle part : ni pour distinguer une carte, une option ou un élément choisi (il prend `--mist` et une bordure `--ink` ou `--border-input`), ni sur un champ en cours de saisie (bordure `--focus`, sans halo), ni pour le focus clavier (`--focus`). Seule exception : le code couleur de la comparaison de versions (« après »).
 - Pas de pastille « Recommandé », « Populaire »… : l'ordre et le bouton principal suffisent.
 - Une couleur de statut ne sert pas de décor : le violet dit « Hors scope », pas « IA ».
 
@@ -72,6 +73,10 @@ Inspiration : Linear et Figma. Des surfaces claires, des bordures fines, une hi�
 - À droite, s'il y a la place : une **illustration** qui raconte ce que fait la fonctionnalité telle qu'elle est, en blanc sur le fond de la bannière (bordée, le blanc étant proche du fond) : par exemple la demande d'un client, puis ce que fait l'IA, étape par étape (« Analyse de la demande », « Vérification du périmètre initial »), jusqu'à sa suggestion. Pas de zone grise séparée, pas de faux boutons, pas de schéma à plusieurs pièces.
 - Pas de liste d'avantages, pas d'image décorative, pas de fond noir ou coloré, pas de promesse que le produit ne tient pas. Elle disparaît quand elle n'a plus d'objet.
 
+**Barres de défilement** : fines et gris clair partout (`scrollbar-width: thin`, `--border`), pour ne jamais attirer l'œil.
+
+**Bulle d'un commentaire** : 360 px de large (400 px en qualification, le plus large qui tienne à côté de son repère sur un canevas entre les deux panneaux), jusqu'à 85 % de la hauteur du canevas avant que son contenu défile ; ses messages prennent la hauteur de leur contenu.
+
 **Graphes** : le composant Chart de shadcn, couleurs des repères de Kora, palette vérifiée par le validateur `dataviz`, une valeur en texte sur chaque barre.
 
 ## Mouvement
@@ -80,7 +85,7 @@ Durées `--d-fast` 150, `--d-base` 200, `--d-panel` 250 ; `--ease-out` pour ce q
 
 ## Accessibilité
 
-Un libellé pour chaque champ et chaque bouton icône, des rôles justes, tout au clavier, focus visible (anneau bleu). La couleur ne dit jamais rien seule.
+Un libellé pour chaque champ et chaque bouton icône, des rôles justes, tout au clavier, focus visible (contour `--focus`, graphite). La couleur ne dit jamais rien seule.
 
 ## Avant de livrer une interface
 
