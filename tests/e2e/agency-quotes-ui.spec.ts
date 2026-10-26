@@ -117,9 +117,28 @@ test("the agency chooses which deciders are told by e-mail, all by default; neve
 
 test("an administrator accepts the client's counter-proposal", async ({ browser }) => {
   const { org, page, errors, writes } = await editor(browser);
+  // A laptop's window: the dialog holds everything, its figures and its three answers (feedback of 26 October 2026).
+  await page.setViewportSize({ width: 1048, height: 660 });
   await page.locator('[data-pin="32"]').click();
   await thread(page).getByRole("button", { name: "Répondre à l’adaptation" }).click();
-  await page.getByRole("button", { name: "Accepter l’adaptation" }).click();
+  // A plain title: opened from its request, it does not repeat it (feedback of 26 October 2026).
+  const dialog = page.getByRole("dialog", { name: "Proposition", exact: true });
+  await expect(dialog).toBeVisible();
+  // Its status as on the request's card; the client's words in a callout, with their budget.
+  await expect(dialog.locator(".proposal-summary-head .status-pill")).toHaveText("Contre-proposition reçue");
+  await expect(dialog.getByRole("note")).toContainText("Moins cher ?");
+  await expect(dialog.getByRole("note")).toContainText(/Budget indicatif : 600\s€/);
+  const frame = (await dialog.boundingBox())!;
+  for (const shown of [dialog.getByText("900 € HT"), dialog.getByText(/envoyée le/), ...["Refuser l’adaptation", "Accepter l’adaptation", "Nouvelle version"].map((name) => dialog.getByRole("button", { name }))]) {
+    const box = (await shown.boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(frame.x + frame.width);
+  }
+  expect(await dialog.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
+  // Accepting the client's budget is the main answer, last; the others in white.
+  await expect(dialog.locator('[data-slot="dialog-footer"] button')).toHaveText(["Refuser l’adaptation", "Nouvelle version", "Accepter l’adaptation"]);
+  await expect(dialog.getByRole("button", { name: "Accepter l’adaptation" })).not.toHaveAttribute("data-variant", "outline");
+  await expect(dialog.getByRole("button", { name: "Nouvelle version" })).toHaveAttribute("data-variant", "outline");
+  await dialog.getByRole("button", { name: "Accepter l’adaptation" }).click();
   await expect.poll(async () => (await proposal(org, 32))?.adaptation).toMatchObject({ message: "Moins cher ?", budget: 600, decision: "accepted", decisionBy: "Alice Martin" });
   await expect.poll(() => events(org, 32)).toEqual(["proposal.adaptation-decision"]);
   expect(writes.filter((write) => write === "PATCH /api/state")).toEqual([]);
