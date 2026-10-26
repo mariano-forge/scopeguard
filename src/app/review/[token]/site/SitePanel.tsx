@@ -1,11 +1,11 @@
 "use client";
 
-// Kora's frame on the agency's staging site (see page.tsx), in two shapes the toolbar gives it
-// (public/kora-toolbar.js): a bubble next to a pin or a click, where a comment is written or its thread
-// read, as on Kora's canvas; or a list on the right, of the comments on the page the visitor is on. The
-// follow-up of the requests (statuses, quotes, validation) is done in Kora. The frame verifies who is
-// there, holds the comments' text and writes them through the action routes; the site only learns where
-// to draw the pins.
+// Kora's frames on the agency's staging site (see page.tsx), two that the toolbar uses apart
+// (public/kora-toolbar.js, feedback of 26 October 2026): the list on the right (`frame` "list"), of the
+// comments on the page the visitor is on, where they get in; and a bubble next to a pin or a click
+// (`frame` "bubble"), where a comment is written or its thread read, as on Kora's canvas. The follow-up of
+// the requests (statuses, quotes, validation) is done in Kora. The frames verify who is there, hold the
+// comments' text and write them through the action routes; the site only learns where to draw the pins.
 // - A client verifies their address by code (AccessGate) and writes through src/lib/reviewActions.ts.
 // - An agency member is recognised by a Kora window, where their Kora session is (« Je suis de l'agence »,
 //   src/lib/siteAgency.ts), never by a code: codes are for clients. They comment, reply and qualify through
@@ -14,11 +14,14 @@
 // review tab the panel opened.
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ExternalLink, Loader2, MapPin, MessageCirclePlus, X } from "lucide-react";
+import { ExternalLink, Loader2, MapPin, MessageCirclePlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { itemLabel, requestKind, requestText, ThreadPopover, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
+import { isAgencyDraft, itemLabel, requestKind, ThreadPopover, useNow, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
+import { RequestCardLines, StatusPill } from "@/app/(agency)/editor/requestCard";
 import { sideOf } from "@/lib/authors";
+import { offerOf } from "@/lib/requestOffer";
+import { outsideStatusOf, outsideStatusView, type OutsideStatus } from "@/lib/outsideStatus";
 import { siteAgencyAction } from "@/lib/agencyActions";
 import { reviewAction } from "@/lib/reviewActions";
 import { type HandoffMessage, type PanelMessage, type SiteAnchor, type SitePin, type TicketMessage, type ToolbarMessage } from "@/lib/siteReview";
@@ -48,6 +51,8 @@ type VersionView = {
   toValidate: boolean;
   /** Validated or replaced: read only. */
   closed: boolean;
+  /** Where each out-of-scope request's proposal stands, as Kora's cards say it. */
+  stages: Record<number, OutsideStatus>;
 };
 
 /** The comments placed on the site, and what waits for the client. */
@@ -74,18 +79,52 @@ function versionOf(serialized: string | null): VersionView {
       pendingQuotes,
       toValidate: Boolean(record) && !approved,
       closed: approved || Boolean(record?.locked) || record?.status === "Remplacée",
+      stages: Object.fromEntries(
+        (state?.comments ?? []).map((comment) => {
+          const key = String(comment.id);
+          const proposal = state?.proposalStates?.[key];
+          const decision = state?.proposalDecisions?.[key];
+          return [
+            comment.id,
+            outsideStatusOf({
+              state: proposal === "sent" ? "sent" : proposal === "draft" ? "draft" : "none",
+              decision: decision === "accepted" || decision === "refused" ? decision : "none",
+              adaptation: (state?.adaptationRequests?.[key] as { decision?: "accepted" | "refused" } | undefined) ?? null,
+              offered: Boolean(offerOf(comment)),
+            }),
+          ];
+        }),
+      ),
     };
   } catch {
-    return { comments: [], deliverableId: null, pendingQuotes: 0, toValidate: false, closed: false };
+    return { comments: [], deliverableId: null, pendingQuotes: 0, toValidate: false, closed: false, stages: {} };
   }
+}
+
+/**
+ * A comment's step, as tags: the agency's draft, then its qualification, then, out of scope, where its proposal
+ * stands for the reader (the client's labels start once a proposal is sent to them).
+ */
+function StepTags({ comment, stage, reader }: { comment: SiteComment; stage?: OutsideStatus; reader: "agency" | "client" }) {
+  const kind = requestKind(comment);
+  const view = kind === "outside" && stage ? outsideStatusView(stage, reader) : null;
+  if (comment.closed) return <StatusPill label="Clôturée" tone="waiting" />;
+  return (
+    <span className={`request-kind is-${isAgencyDraft(comment) ? "draft" : kind}`}>
+      <span className="kind-pill">{isAgencyDraft(comment) ? "Brouillon" : kind === "outside" ? "Hors scope" : kind === "correction" ? "Inclus" : "À clarifier"}</span>
+      {view?.label && <StatusPill label={view.label} tone={view.tone} />}
+    </span>
+  );
 }
 
 const plural = (count: number, word: string) => `${count} ${word}${count > 1 && !word.endsWith("s") ? "s" : ""}`;
 
-export function SitePanel({ token, parent }: { token: string; parent: string }) {
+export function SitePanel({ token, parent, frame }: { token: string; parent: string; frame: "list" | "bubble" }) {
+  const isBubble = frame === "bubble";
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [accessCheck, setAccessCheck] = useState(0);
-  const [{ comments, deliverableId, pendingQuotes, toValidate, closed }, setVersion] = useState(() => versionOf(null));
+  const [{ comments, deliverableId, pendingQuotes, toValidate, closed, stages }, setVersion] = useState(() => versionOf(null));
+  const now = useNow();
   /** The page the visitor is on, as the toolbar reports it. */
   const [pageUrl, setPageUrl] = useState<string | null>(null);
   /** The comment being written: where it was placed, and the capture of the window (undefined while it is made, null without). */
@@ -95,8 +134,6 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
   /** The comment whose thread is open, in the bubble at its pin. */
   const [openId, setOpenId] = useState<number | null>(null);
   const [missing, setMissing] = useState<number[]>([]);
-  /** The frame is the list on the right (the toolbar says so): a comment opens in it, under its header. */
-  const [docked, setDocked] = useState(false);
   /** The review tab opened from the panel, and the ticket it will be handed (src/lib/siteHandoff.ts). */
   const reviewTab = useRef<{ tab: Window; ticket: Promise<string | null> } | null>(null);
   const [agencyError, setAgencyError] = useState("");
@@ -109,11 +146,12 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
 
   const tellSite = (data: PanelMessage) => window.parent.postMessage(data, parent);
 
-  // Signed in, the bar opens on its own and the list only when asked; otherwise Kora opens on this door.
+  // Signed in, the bar opens on its own and the list only when asked; otherwise Kora opens on this door,
+  // the list's. The bubble's frame loads once the visitor is in.
   const signedIn = client || agency;
   useEffect(() => {
-    window.parent.postMessage({ type: "kora:signed", in: signedIn } satisfies PanelMessage, parent);
-  }, [signedIn, parent]);
+    if (!isBubble) window.parent.postMessage({ type: "kora:signed", in: signedIn } satisfies PanelMessage, parent);
+  }, [isBubble, signedIn, parent]);
 
   useEffect(() => {
     let cancelled = false;
@@ -155,8 +193,7 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
       } else if (data.type === "kora:dismiss") {
         setDraft(null);
         setOpenId(null);
-      } else if (data.type === "kora:docked") setDocked(data.on === true);
-      else if (data.type === "kora:missing" && Array.isArray(data.ids)) setMissing(data.ids.filter((id): id is number => typeof id === "number"));
+      } else if (data.type === "kora:missing" && Array.isArray(data.ids)) setMissing(data.ids.filter((id): id is number => typeof id === "number"));
     }
     window.addEventListener("message", receive);
     // Listening from now on: the toolbar answers with the page the visitor is on.
@@ -200,7 +237,7 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
 
   const onPage = comments.filter((comment) => comment.site?.url === pageUrl);
   const opened = comments.find((comment) => comment.id === openId);
-  const inBubble = Boolean((client || agency) && (draft || opened));
+  const inBubble = isBubble && Boolean((client || agency) && (draft || opened));
 
   // The site draws the pins of its page as Kora does: place, status, initials, label; never the text.
   // A closed discussion leaves the site, as in Kora.
@@ -215,15 +252,18 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
     label: itemLabel(comment),
   }));
   const pinsKey = JSON.stringify(pins);
+  // The bubble's frame tells them too, at once after it wrote a comment, but never before it read the
+  // version and the page: it would take the pins off the site meanwhile.
+  const pinsKnown = !isBubble || (deliverableId !== null && pageUrl !== null);
   useEffect(() => {
-    window.parent.postMessage({ type: "kora:pins", pins: JSON.parse(pinsKey) as SitePin[] } satisfies PanelMessage, parent);
-  }, [pinsKey, parent]);
+    if (pinsKnown) window.parent.postMessage({ type: "kora:pins", pins: JSON.parse(pinsKey) as SitePin[] } satisfies PanelMessage, parent);
+  }, [pinsKnown, pinsKey, parent]);
 
-  // The toolbar shapes the frame: a bubble while a comment is written or read, the list otherwise. Told
-  // again for each comment, so that the bubble goes to the pin or the click it now belongs to.
+  // The bubble shows while a comment is written or read. Told again for each comment, so that it goes to
+  // the pin or the click it now belongs to.
   useEffect(() => {
-    window.parent.postMessage({ type: "kora:bubble", open: inBubble } satisfies PanelMessage, parent);
-  }, [inBubble, openId, draft?.pick, parent]);
+    if (isBubble) window.parent.postMessage({ type: "kora:bubble", open: inBubble } satisfies PanelMessage, parent);
+  }, [isBubble, inBubble, openId, draft?.pick, parent]);
   // The bubble is as tall as what it holds (a thread grows with its replies, the qualifying form…),
   // measured on its content: the frame itself is as tall as the bubble was.
   useEffect(() => {
@@ -237,7 +277,7 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
     for (const child of Array.from(bubble.children)) watch.observe(child);
     tell();
     return () => watch.disconnect();
-  }, [inBubble, docked, openId, draft?.pick, draft?.capture, missing, parent]);
+  }, [inBubble, openId, draft?.pick, draft?.capture, missing, parent]);
 
   function openAgencyWindow() {
     setAgencyError("");
@@ -254,6 +294,8 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
     reviewTab.current = { tab, ticket };
   }
 
+  // The bubble's frame shows only a comment, once the visitor is in: the list's frame is where they get in.
+  if (isBubble && !inBubble) return <main className="site-bubble" aria-label="Commentaire" />;
   if (!viewer) return <main className="p-6 text-sm text-[var(--graphite)]">Chargement…</main>;
   if (viewer.mode === "none" || viewer.mode === "preview")
     return (
@@ -382,7 +424,9 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
     </>
   );
 
-  if (inBubble && !docked)
+  // A comment is read and written in a bubble beside its pin or the click, never in the list (feedback of
+  // 26 October 2026), as on any deliverable.
+  if (inBubble)
     return (
       <main ref={bubbleRef} className="site-bubble" aria-label={draft ? "Nouveau commentaire" : "Commentaire"}>
         {commentView}
@@ -406,44 +450,20 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
         </Button>
       </header>
 
-      {inBubble ? (
-        // Opened from the list (or a pin, the list open): read under the list's header, back to it after.
-        <section className="site-bubble is-docked" aria-label={draft ? "Nouveau commentaire" : "Commentaire"}>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="site-back"
-            onClick={() => {
-              setDraft(null);
-              setOpenId(null);
-            }}
-          >
-            <ArrowLeft /> Tous les commentaires
-          </Button>
-          {commentView}
-        </section>
-      ) : onPage.length ? (
+      {onPage.length ? (
         <ul className="site-comments" aria-label="Commentaires de la page">
           {onPage.map((comment) => (
             <li key={comment.id}>
+              {/* A card as in Kora's panel (feedback of 26 October 2026): its step as tags, its title, who and
+                  when, its messages. */}
               <button
                 type="button"
                 className="site-comment"
                 aria-label={`${itemLabel(comment)} #${comment.id}`}
-                onClick={() => {
-                  setOpenId(comment.id);
-                  tellSite({ type: "kora:focus", id: comment.id });
-                }}
+                // Opened in the bubble, beside its pin: the list stays as it is.
+                onClick={() => tellSite({ type: "kora:focus", id: comment.id })}
               >
-                <span className={`site-comment-avatar ${sideOf(comment) === "agency" ? "is-agency" : ""}`} aria-hidden="true">
-                  {comment.initials}
-                </span>
-                <span className="site-comment-body">
-                  <span className="site-comment-author">{comment.author}</span>
-                  <span className="site-comment-text">{requestText(comment)}</span>
-                  {comment.replies?.length ? <small>{plural(comment.replies.length, "réponse")}</small> : null}
-                </span>
+                <RequestCardLines comment={comment} now={now} head={<StepTags comment={comment} stage={stages[comment.id]} reader={me} />} />
               </button>
             </li>
           ))}
@@ -458,7 +478,8 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
         </div>
       )}
 
-      {/* The follow-up, quotes and validation are on Kora's pages, where no page of the site can frame them. */}
+      {/* The follow-up, quotes and validation are on Kora's pages, where no page of the site can frame them; the way
+          there in ink (feedback of 26 October 2026). */}
       <footer className="site-panel-footer">
         {waiting && (
           <p role="status" className="site-panel-waiting">
@@ -467,13 +488,13 @@ export function SitePanel({ token, parent }: { token: string; parent: string }) 
         )}
         <p className={due && !waiting ? "site-panel-waiting" : undefined}>Le suivi des demandes, les devis et la validation se font dans Kora.</p>
         {agency ? (
-          <Button asChild variant="outline" className="w-full">
+          <Button asChild className="cta-ink w-full">
             <a href={viewer.agency?.href ?? "/"} target="_blank" rel="noopener">
               Ouvrir la revue dans Kora <ExternalLink />
             </a>
           </Button>
         ) : (
-          <Button type="button" variant="outline" className="w-full" onClick={openReview}>
+          <Button type="button" className="cta-ink w-full" onClick={openReview}>
             Ouvrir la revue dans Kora <ExternalLink />
           </Button>
         )}

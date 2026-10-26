@@ -61,12 +61,19 @@ async function otherSitePerson(browser: Browser) {
   return person;
 }
 
-/** A visitor of the staging site, served at `origin` with the toolbar of `token`. */
+/**
+ * A visitor of the staging site, served at `origin` with the toolbar of `token`. Kora has two frames there, used
+ * apart (feedback of 26 October 2026): `panel`, the list on the right (where the visitor gets in), and `bubble`,
+ * beside a pin or a click, where a comment is written or read.
+ */
 async function siteVisitor(browser: Browser, script: string, origin = site) {
   const { page, errors } = await otherSitePerson(browser);
   await page.context().route(`${origin}/**`, (route) => route.fulfill({ contentType: "text/html; charset=utf-8", body: sitePage(script) }));
-  return { page, errors, panel: page.frameLocator('iframe[title="Kora"]') };
+  return { page, errors, panel: page.frameLocator('iframe[title="Kora"]'), bubble: page.frameLocator('iframe[title="Commentaire Kora"]') };
 }
+/** The frames themselves, on the site's page. */
+const listFrame = (page: Page) => page.getByRole("dialog", { name: "Kora", exact: true });
+const bubbleFrame = (page: Page) => page.getByRole("dialog", { name: "Commentaire Kora", exact: true });
 
 /** Opens the panel and verifies the address there, as the client does the first time. */
 async function verifyInPanel(page: Page, email: string) {
@@ -87,7 +94,7 @@ const siteMarkup = (page: Page) => page.evaluate(() => document.documentElement.
 
 test("the client verifies in Kora's panel on the staging site and places a request on an element", async ({ browser }) => {
   const { alice, org, email, script } = await siteReview();
-  const { page, errors, panel } = await siteVisitor(browser, script);
+  const { page, errors, panel, bubble } = await siteVisitor(browser, script);
 
   // Without ?kora the toolbar stays hidden: a visitor of the site sees nothing of Kora.
   await page.goto(`${site}/`);
@@ -114,14 +121,13 @@ test("the client verifies in Kora's panel on the staging site and places a reque
   await expect(comment).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("heading", { name: "Bienvenue chez Northwind" }).click({ position: { x: 20, y: 10 } });
   // Kora's bubble opens beside the click, as on Kora's canvas: what was clicked, then the comment.
-  const frame = page.getByRole("dialog", { name: "Kora", exact: true });
-  const [heading, bubbleBox] = [(await page.getByRole("heading", { name: "Bienvenue chez Northwind" }).boundingBox())!, await frame.boundingBox()];
+  await expect(bubble.getByText("h1 « Bienvenue chez Northwind »")).toBeVisible();
+  const [heading, bubbleBox] = [(await page.getByRole("heading", { name: "Bienvenue chez Northwind" }).boundingBox())!, await bubbleFrame(page).boundingBox()];
   expect(bubbleBox!.width).toBeLessThanOrEqual(340);
   expect(Math.abs(bubbleBox!.y - heading.y)).toBeLessThan(80);
-  await expect(panel.getByText("h1 « Bienvenue chez Northwind »")).toBeVisible();
   const message = "Le titre doit tenir sur une ligne";
-  await panel.getByLabel("Votre commentaire").fill(message);
-  await panel.getByRole("button", { name: "Envoyer" }).click();
+  await bubble.getByLabel("Votre commentaire").fill(message);
+  await bubble.getByRole("button", { name: "Envoyer" }).click();
 
   // Stored as a request of the client, signed by the server, with where it was placed. (The capture of the
   // page is sent first: it takes longer on a loaded machine, as for the agency's comment below.)
@@ -160,20 +166,21 @@ test("the client verifies in Kora's panel on the staging site and places a reque
   // …and read through the panel's session (on the site, the bubble does not repeat it: the element is there).
   const kora = page.frames().find((candidate) => candidate.url().startsWith(baseURL))!;
   expect(await kora.evaluate((href) => fetch(href).then((response) => response.ok), String((created.data.site as { capture: string }).capture))).toBe(true);
-  // On the site, Kora's pin: a comment shows its author's initials.
+  // On the site, Kora's pin: a comment shows its author's initial, one letter, as in Kora.
   const pin = page.getByRole("button", { name: `Commentaire #${created.id}` });
-  await expect(pin).toHaveText("CD");
+  await expect(pin).toHaveText("C");
   // The site's page holds the pin's place, status and initials, never the text.
   expect(await siteMarkup(page)).not.toContain(message);
 
   // Back on the site later: the pin is there, and the session holds on this site.
   await page.reload();
   await page.getByRole("button", { name: `Commentaire #${created.id}` }).click();
-  await expect(panel.getByRole("dialog", { name: `Commentaire #${created.id}` })).toContainText(message);
-  await expect(panel.getByRole("button", { name: "Recevoir un code" })).toHaveCount(0);
+  await expect(bubble.getByRole("dialog", { name: `Commentaire #${created.id}` })).toContainText(message);
+  await expect(bubble.getByRole("button", { name: "Recevoir un code" })).toHaveCount(0);
   // « Réduire Kora » folds everything back into the pill.
   await page.getByRole("button", { name: "Réduire Kora" }).click();
-  await expect(page.getByRole("dialog", { name: "Kora", exact: true })).toBeHidden();
+  await expect(listFrame(page)).toBeHidden();
+  await expect(bubbleFrame(page)).toBeHidden();
   await expect(page.getByRole("button", { name: "Commenter" })).toBeHidden();
   await expect(page.getByRole("button", { name: "Ouvrir Kora" })).toBeVisible();
   expect(errors).toEqual([]);
@@ -242,7 +249,7 @@ test("the site shows the pins the client may see, and says when an element is go
       },
     },
   });
-  const { page, panel } = await siteVisitor(browser, script);
+  const { page, panel, bubble } = await siteVisitor(browser, script);
   await page.goto(`${site}/?kora`);
   await verifyInPanel(page, email);
 
@@ -254,8 +261,8 @@ test("the site shows the pins the client may see, and says when an element is go
   await expect(list.getByRole("button")).toHaveCount(2);
   await expect(panel.getByRole("tab")).toHaveCount(0);
   await list.getByRole("button", { name: "Demande incluse #22" }).click();
-  await expect(panel.getByText("Élément introuvable sur la page")).toBeVisible();
-  await expect(panel.getByText("Penser à la marge interne")).toHaveCount(0);
+  await expect(bubble.getByText("Élément introuvable sur la page")).toBeVisible();
+  for (const frame of [panel, bubble]) await expect(frame.getByText("Penser à la marge interne")).toHaveCount(0);
   expect(await siteMarkup(page)).not.toContain("marge interne");
 
   // A malformed placement is not kept: the request is filed without it (another invited person, by the route).
@@ -288,11 +295,11 @@ test("a long list of the page's comments scrolls between its header and its foot
 });
 
 test("once in, Kora's logo opens the bar alone: the list of comments opens when asked, and closes without folding the bar", async ({ browser }) => {
-  const { alice, email, script } = await siteReview();
+  const { alice, org, email, script } = await siteReview();
   await seedState(alice, {
     lists: { comments: { upsert: [{ id: 20, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", message: "Agrandir le titre", title: "Titre plus grand", decision: "Inclus", kind: "request", location: "/", time: "t", site: { url: "/", selector: "#titre", x: 10, y: 50, viewport: 1400 } }], remove: [] } },
   });
-  const frame = (page: Page) => page.getByRole("dialog", { name: "Kora", exact: true });
+  const frame = listFrame;
 
   // Not in yet: « Commenter » (or C) opens Kora on the address to verify, and does not comment.
   const stranger = await siteVisitor(browser, script);
@@ -301,7 +308,7 @@ test("once in, Kora's logo opens the bar alone: the list of comments opens when 
   await expect(stranger.panel.getByLabel("Votre e-mail")).toBeVisible();
   await expect(stranger.page.getByRole("button", { name: "Commenter" })).toHaveAttribute("aria-pressed", "false");
 
-  const { page, panel, errors } = await siteVisitor(browser, script);
+  const { page, panel, bubble, errors } = await siteVisitor(browser, script);
   await page.goto(`${site}/?kora`);
   await verifyInPanel(page, email);
   // The list closed from its header: the bar stays, with its tools.
@@ -323,26 +330,68 @@ test("once in, Kora's logo opens the bar alone: the list of comments opens when 
   await list.click();
   await expect(frame(page)).toBeVisible();
   await expect(panel.getByRole("list", { name: "Commentaires de la page" }).getByRole("button")).toHaveCount(1);
+  // A card as in Kora's panel (feedback of 26 October 2026): its step as a tag, its title, who wrote it.
+  const card = panel.getByRole("list", { name: "Commentaires de la page" }).getByRole("button").first();
+  await expect(card.locator(".kind-pill")).toHaveText("Inclus");
+  await expect(card.locator(".thread-row-text")).toHaveText("Titre plus grand");
+  await expect(card.locator(".thread-row-meta .thread-avatar")).toHaveText(/^[A-Z]$/);
   await expect(list).toHaveAttribute("aria-pressed", "true");
-  // A comment opened, from the list or its pin, shows in the list: it stays open on the right, a way back to all.
+  // The list and a comment are used apart (feedback of 26 October 2026). Its pin clicked on the site: the
+  // comment opens beside the pin, the list stays open where it was, and stays once the comment is closed.
   const listBox = (await frame(page).boundingBox())!;
+  const thread = bubble.getByRole("dialog", { name: /#20$/ });
   await page.getByRole("button", { name: "Demande incluse #20" }).click();
-  await expect(panel.getByRole("dialog", { name: /#20$/ })).toContainText("Titre plus grand");
-  await expect(panel.getByRole("heading", { name: "Commentaires", exact: true })).toBeVisible();
+  await expect(thread).toContainText("Titre plus grand");
+  const bubbleBox = (await bubbleFrame(page).boundingBox())!;
+  expect(bubbleBox.width).toBeLessThanOrEqual(340);
+  // Beside the pin, never over the list.
+  expect(bubbleBox.x + bubbleBox.width).toBeLessThanOrEqual(listBox.x);
   expect((await frame(page).boundingBox())!).toEqual(listBox);
-  // One cross only, the list's; on the bar, the list's button shows a single icon: the cross that closes it.
-  await expect(panel.getByRole("dialog", { name: /#20$/ }).getByRole("button", { name: "Fermer" })).toBeHidden();
-  await expect(list.locator("svg:visible")).toHaveCount(1);
-  await panel.getByRole("button", { name: "Tous les commentaires" }).click();
   await expect(panel.getByRole("list", { name: "Commentaires de la page" })).toBeVisible();
+  await thread.getByRole("button", { name: "Fermer" }).click();
+  await expect(bubbleFrame(page)).toBeHidden();
+  await expect(panel.getByRole("list", { name: "Commentaires de la page" })).toBeVisible();
+  // Chosen in the list: never read in the list, it opens beside its pin, as on any deliverable; the list stays.
+  await panel.getByRole("list", { name: "Commentaires de la page" }).getByRole("button").first().click();
+  await expect(thread).toContainText("Titre plus grand");
+  await expect(panel.getByRole("list", { name: "Commentaires de la page" })).toBeVisible();
+  // The list put away, the comment stays open; shown again, the comment still stays.
   await list.click();
   await expect(frame(page)).toBeHidden();
-  await expect(list).toHaveAttribute("aria-pressed", "false");
-  // Commenting needs no list: the bubble opens beside the click.
+  await expect(thread).toBeVisible();
+  await list.click();
+  await expect(frame(page)).toBeVisible();
+  await expect(thread).toBeVisible();
+  await thread.getByRole("button", { name: "Fermer" }).click();
+  await expect(bubbleFrame(page)).toBeHidden();
+  // On the bar, the list's button shows a single icon: the cross that closes it.
+  await expect(list.locator("svg:visible")).toHaveCount(1);
+  // The page's comments hidden, and shown again (H too). Nothing on the bar takes them off the page: they are
+  // the review's (feedback of 26 October 2026).
+  await expect(page.getByRole("button", { name: /Effacer/ })).toHaveCount(0);
+  const pinOnSite = page.getByRole("button", { name: "Demande incluse #20" });
+  await page.getByRole("button", { name: "Masquer les commentaires" }).click();
+  await expect(pinOnSite).toBeHidden();
+  await page.getByRole("button", { name: "Afficher les commentaires" }).click();
+  await expect(pinOnSite).toBeVisible();
+  await page.keyboard.press("h");
+  await expect(pinOnSite).toBeHidden();
+  await page.keyboard.press("h");
+  await expect(pinOnSite).toBeVisible();
+  // Commenting needs no list: the bubble opens beside the click, alone.
+  await list.click();
+  await expect(frame(page)).toBeHidden();
   await page.getByRole("button", { name: "Commenter" }).click();
   await page.getByRole("heading", { name: "Bienvenue chez Northwind" }).click({ position: { x: 20, y: 10 } });
-  await expect(panel.getByLabel("Votre commentaire")).toBeVisible();
-  expect((await frame(page).boundingBox())!.width).toBeLessThanOrEqual(340);
+  await expect(bubble.getByLabel("Votre commentaire")).toBeVisible();
+  expect((await bubbleFrame(page).boundingBox())!.width).toBeLessThanOrEqual(340);
+  await expect(frame(page)).toBeHidden();
+  // The list opened while a comment is written: the comment stays, its words too.
+  await bubble.getByLabel("Votre commentaire").fill("Un mot");
+  await list.click();
+  await expect(frame(page)).toBeVisible();
+  await expect(bubble.getByLabel("Votre commentaire")).toHaveValue("Un mot");
+  expect((await sql<{ id: string }>("select id from comments where organization_id = $1", [org])).length).toBe(1);
   expect(errors).toEqual([]);
 });
 
@@ -373,7 +422,7 @@ test("an agency member is recognised in the panel by a Kora window, never by a c
       },
     },
   });
-  const { page, errors, panel } = await siteVisitor(browser, script);
+  const { page, errors, panel, bubble } = await siteVisitor(browser, script);
   await page.goto(`${site}/?kora`);
   await page.getByRole("button", { name: "Ouvrir Kora" }).click();
   // The clients' door is not the agency's: a member's address is answered as any uninvited one, no code sent.
@@ -399,31 +448,35 @@ test("an agency member is recognised in the panel by a Kora window, never by a c
   await expect(page.getByRole("button", { name: "Commentaire #30" })).not.toHaveClass(/is-agency/);
   await expect(page.getByRole("button", { name: "Commentaire #31" })).toHaveClass(/is-agency/);
   await page.getByRole("button", { name: "Commentaire #31" }).click();
-  await expect(panel.getByRole("dialog", { name: /#31$/ })).toBeVisible();
+  await expect(bubble.getByRole("dialog", { name: /#31$/ })).toBeVisible();
 
-  // A comment of its own on the site: an internal pin, as in Kora.
+  // A comment of its own on the site: an internal pin, as in Kora. Written on the site, in a bubble beside the
+  // click, the list still open (feedback of 26 October 2026): never in the list.
   await page.getByRole("button", { name: "Commenter" }).click();
   await page.getByRole("heading", { name: "Bienvenue chez Northwind" }).click({ position: { x: 40, y: 10 } });
-  await panel.getByLabel("Votre commentaire").fill("Vérifier le contraste du titre");
-  await panel.getByRole("button", { name: "Envoyer" }).click();
+  await expect(bubble.getByLabel("Votre commentaire")).toBeVisible();
+  expect((await bubbleFrame(page).boundingBox())!.width).toBeLessThanOrEqual(340);
+  await expect(panel.getByRole("list", { name: "Commentaires de la page" })).toBeVisible();
+  await bubble.getByLabel("Votre commentaire").fill("Vérifier le contraste du titre");
+  await bubble.getByRole("button", { name: "Envoyer" }).click();
   // (The capture of the page is sent first: it takes longer on a loaded machine.)
   await expect
     .poll(async () => (await sql<{ data: Record<string, unknown> }>("select data from comments where organization_id = $1 and data->>'message' = 'Vérifier le contraste du titre'", [org]))[0]?.data, { timeout: 30_000 })
     .toMatchObject({ from: "agency", author: "Alice Martin", internalNote: true, location: "/", decision: "À qualifier", site: { url: "/", selector: "#titre" } });
 
-  // The client's request, qualified from the site. The comment just posted shows its thread first, in the
-  // list still open: back to all, Kora shows the list again.
-  const posted = panel.getByRole("dialog", { name: /^Commentaire #/ });
+  // The client's request, qualified from the site. The comment just posted shows its thread first, in its
+  // bubble on the site; the list, still open, shows it too.
+  const posted = bubble.getByRole("dialog", { name: /^Commentaire #/ });
   await expect(posted).toBeVisible();
-  await panel.getByRole("button", { name: "Tous les commentaires" }).click();
-  await expect(panel.getByRole("heading", { name: "Commentaires", exact: true })).toBeVisible();
+  await expect(panel.getByRole("list", { name: "Commentaires de la page" }).getByRole("button")).toHaveCount(3);
+  await posted.getByRole("button", { name: "Fermer" }).click();
   await page.getByRole("button", { name: "Commentaire #30" }).click();
-  await panel.getByRole("button", { name: "Qualifier", exact: true }).click();
+  await bubble.getByRole("button", { name: "Qualifier", exact: true }).click();
   // The bubble grows with the qualifying form: its whole height, not a cut-off part of it.
-  await expect.poll(async () => (await page.getByRole("dialog", { name: "Kora", exact: true }).boundingBox())!.height).toBeGreaterThan(300);
-  await panel.getByRole("radio", { name: /^Inclus/ }).click();
-  await panel.getByLabel("Titre de la demande").fill("Raccourcir le titre");
-  await panel.getByRole("button", { name: "Créer la demande" }).click();
+  await expect.poll(async () => (await bubbleFrame(page).boundingBox())!.height).toBeGreaterThan(300);
+  await bubble.getByRole("radio", { name: /^Inclus/ }).click();
+  await bubble.getByLabel("Titre de la demande").fill("Raccourcir le titre");
+  await bubble.getByRole("button", { name: "Créer la demande" }).click();
   await expect
     .poll(async () => (await sql<{ decision: string; title: string }>("select decision, data->>'title' as title from comments where organization_id = $1 and id = 30", [org]))[0])
     .toEqual({ decision: "Inclus", title: "Raccourcir le titre" });
@@ -765,7 +818,7 @@ test("« Nouveau livrable » says what the toolbar of a « Lien » does; its lin
   const dialog = page.getByRole("dialog", { name: "Nouveau livrable" });
   await dialog.locator(".kind-option").filter({ hasText: /^Lien$/ }).click();
   // The dialog scrolls in a small window, its actions stay in view.
-  await page.setViewportSize({ width: 1127, height: 738 });
+  await page.setViewportSize({ width: 1127, height: 560 });
   const inView = async () => {
     const [frame, button] = [await dialog.boundingBox(), await dialog.getByRole("button", { name: "Créer le livrable" }).boundingBox()];
     return Boolean(frame && button && button.y + button.height <= frame.y + frame.height + 1);
@@ -773,11 +826,9 @@ test("« Nouveau livrable » says what the toolbar of a « Lien » does; its lin
   // The window just shrank: its layout follows, the dialog then scrolls.
   await expect.poll(() => dialog.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
   await expect.poll(inView).toBe(true);
-  // Said for a first time: an invitation to set it up, where to paste it, where requests then arrive.
-  const intro = dialog.getByRole("region", { name: "Recevoir les retours directement depuis le site ?" });
-  await expect(intro).toContainText("Juste après la création, Kora vous donne une ligne à coller dans le code du site, avant </body>");
-  await expect(intro).toContainText("elle arrivera dans Kora, sur ce livrable, avec une capture");
-  await expect(intro).toContainText("Une ligne par site, valable pour toutes ses versions");
+  // Said for a first time, short: it points to the guide the deliverable opens on (feedback of 26 October 2026).
+  const intro = dialog.getByRole("note", { name: "Retours sur le site" });
+  await expect(intro).toHaveText("Pour recevoir les retours directement sur le site, suivez le guide qui s’ouvre sur le livrable une fois créé.");
   // No line before the deliverable: it is the deliverable's own, given on its board.
   await expect(dialog.getByLabel("Script de recette")).toHaveCount(0);
   expect(errors).toEqual([]);
@@ -800,9 +851,10 @@ test("the canvas of a « Lien » says how to set the toolbar up: the line with t
   const board = page.getByRole("region", { name: "Tableau de recette" });
   await expect(board.getByText("Paramétrer la barre Kora")).toBeVisible();
   await expect(board.getByRole("img", { name: /Avec la barre Kora, on clique sur un élément du site/ })).toBeVisible();
-  for (const step of ["Installez la barre Kora", "Invitez le décideur", "Qualifiez ses demandes"]) await expect(board.getByRole("heading", { name: step, exact: true })).toBeVisible();
-  // The last step teaches what each qualification means.
-  await expect(board.getByRole("listitem").filter({ hasText: "Qualifiez ses demandes" })).toContainText("Hors scope si elle est à chiffrer");
+  for (const step of ["Ajoutez la barre Kora à votre site", "Envoyez le lien au décideur", "Qualifiez chaque demande"]) await expect(board.getByRole("heading", { name: step, exact: true })).toBeVisible();
+  // Short sentences that say what to do (feedback of 26 October 2026); the last step teaches what each qualification means.
+  await expect(board.getByRole("listitem").filter({ hasText: "Ajoutez la barre Kora à votre site" })).toContainText("Copiez la ligne ci-dessous.");
+  await expect(board.getByRole("listitem").filter({ hasText: "Qualifiez chaque demande" })).toContainText("Hors scope si c’est à chiffrer");
   // The long script line wraps in its field: the board never scrolls sideways, « Ouvrir le site » stays in view.
   await expect.poll(() => board.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
   await expect(board.getByRole("link", { name: "Ouvrir le site" })).toBeInViewport();
@@ -863,9 +915,15 @@ test("in Kora, a « Lien » shows each request as a page of the canvas, its capt
   expect(await agency.page.evaluate(() => navigator.clipboard.readText())).toBe(`${site}/?kora`);
   // Each page opens on the site, with the toolbar.
   await expect(board.getByRole("region", { name: "Page /contact" }).getByRole("link", { name: "Ouvrir la page" })).toHaveAttribute("href", `${site}/contact?kora`);
-  // Requests came: the setup is folded under its title.
-  await expect(board.getByText("Paramétrer la barre Kora")).toBeVisible();
+  // Requests came: the whole tutorial (what the toolbar does, the setup) is folded under one line; the site's
+  // link stays at hand, in the window's bar.
+  const tutorial = board.locator("details.site-guide");
+  await expect(tutorial).toHaveCount(1);
+  await expect(tutorial).not.toHaveAttribute("open", "");
+  await expect(tutorial.locator("summary")).toContainText("Paramétrer la barre Kora");
   await expect(board.getByLabel("Script de recette")).toBeHidden();
+  await expect(board.getByRole("img", { name: /Avec la barre Kora, on clique sur un élément du site/ })).toBeHidden();
+  await expect(board.getByRole("button", { name: "Copier le lien du site" })).toBeVisible();
   await board.getByRole("button", { name: "Commentaire #82" }).click();
   await expect(agency.page.getByRole("dialog", { name: "Commentaire #82" })).toContainText("Ajouter un plan d’accès");
   expect(agency.errors).toEqual([]);
@@ -886,8 +944,9 @@ test("in Kora, a « Lien » shows each request as a page of the canvas, its capt
   await expect(clientBoard.getByRole("button", { name: "Copier le lien du site" })).toBeVisible();
   // The decider's pins are placed on the site: their canvas has the hand only.
   await expect(clientBoard.getByRole("toolbar", { name: "Outils du canevas" }).getByRole("button", { name: "Commentaire", exact: true })).toHaveCount(0);
-  // Their own steps, nothing to set up: always in view.
-  await expect(clientBoard.getByRole("heading", { name: "Commentez le site avec la barre Kora" })).toBeVisible();
+  // Their own steps, nothing to set up; folded too once their requests are there, a click away.
+  await expect(clientBoard.getByRole("heading", { name: "Cliquez sur « Kora »" })).toBeHidden();
+  await clientBoard.locator("details.site-guide summary").click();
   await expect(clientBoard.getByRole("heading", { name: "Cliquez sur « Kora »" })).toBeVisible();
   // Kora runs on this computer here: the browser will ask before showing the toolbar, and they are told what to answer.
   await expect(clientBoard.getByRole("listitem").filter({ hasText: "Cliquez sur « Kora »" })).toContainText("votre navigateur peut demander l’autorisation d’accéder au réseau local");
