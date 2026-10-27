@@ -33,7 +33,7 @@
   transform: scale(0.95);
 }
 .lp-film-toggle:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 3px;
 }
 .lp-film-toggle .lucide {

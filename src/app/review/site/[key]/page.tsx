@@ -26,7 +26,7 @@ const versionLabel = (version: number) => `V${String(version).padStart(2, "0")}`
 
 export default async function SiteKeyPage({ params, searchParams }: PageProps<"/review/site/[key]">) {
   const { key } = await params;
-  const { parent } = await searchParams;
+  const { parent, frame } = await searchParams;
   const claim = readSiteKey(key);
   const origin = parentOrigin(typeof parent === "string" ? parent : null);
   const found = claim ? await latestSharedSite(getDb(), claim.organizationId, claim.livrableId) : null;
@@ -40,7 +40,9 @@ export default async function SiteKeyPage({ params, searchParams }: PageProps<"/
   // shared or not yet.
   if (origin && (origin === latest.site || origin === shared?.site) && (await headers()).get("sec-fetch-dest") === "iframe")
     await markSiteSeen(getDb(), claim!.organizationId, claim!.livrableId);
-  if (origin && shared?.site === origin) redirect(`/review/${encodeURIComponent(shared.token)}/site?parent=${encodeURIComponent(origin)}`);
+  // The bubble's frame stays one (public/kora-toolbar.js).
+  if (origin && shared?.site === origin)
+    redirect(`/review/${encodeURIComponent(shared.token)}/site?parent=${encodeURIComponent(origin)}${frame === "bubble" ? "&frame=bubble" : ""}`);
   if (!origin || latest.site !== origin)
     return (
       <AuthShell plain>

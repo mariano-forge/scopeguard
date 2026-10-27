@@ -9,6 +9,7 @@ import { actionRequest } from "@/lib/actionRequest";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/modal";
 import type { FigmaConnectionStatus } from "@/db/figmaConnection";
+import { FigmaConnectButton } from "./FigmaConnect";
 
 type Status = { available: boolean; connection: FigmaConnectionStatus };
 
@@ -61,7 +62,7 @@ export function FigmaAccountDialog({ onClose }: { onClose: () => void }) {
       ) : connection ? (
         <div className="flex flex-col items-start gap-3">
           <p className="text-sm">
-            Connecté au compte Figma <b>{connection.handle}</b> depuis le {day(connection.connectedAt)}. Vos commentaires dans Figma sont ceux de l’agence : ils restent dans Figma.
+            Connecté au compte Figma <b>{connection.handle}</b> depuis le {day(connection.connectedAt)}. Vos commentaires dans Figma sont ceux de l’organisation : ils restent dans Figma.
           </p>
           <Button type="button" variant="outline" disabled={pending} onClick={() => void disconnect()}>
             Déconnecter mon compte Figma
@@ -70,10 +71,7 @@ export function FigmaAccountDialog({ onClose }: { onClose: () => void }) {
       ) : (
         <div className="flex flex-col items-start gap-3">
           <p className="text-sm text-muted-foreground">Connectez votre compte Figma pour importer des fichiers Figma dans Kora et recevoir les commentaires de vos clients.</p>
-          {/* A navigation, not a request: Figma's consent page opens in this tab, then comes back. */}
-          <Button type="button" onClick={() => window.location.assign(new URL("/api/integrations/figma/connect", window.location.origin))}>
-            Connecter mon compte Figma
-          </Button>
+          <FigmaConnectButton />
         </div>
       )}
     </Modal>

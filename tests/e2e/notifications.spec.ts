@@ -66,10 +66,11 @@ test("bell activities open their request, the share dialog or the version; those
   await expect(page.getByRole("heading", { name: "Partager la revue" })).toHaveCount(0);
   await expect.poll(() => new URL(page.url()).search).toBe("");
 
-  // A reminder: the version. Older notifications, or ones whose version is gone, stay plain text.
+  // A reminder the agency sent: in its journal, not in its bell (it tells it nothing new). Older notifications,
+  // or ones whose version is gone, stay plain text.
   panel = await bell(page);
-  await expect(panel.getByRole("link", { name: /^Relance envoyée/ })).toHaveAttribute("href", "/projets/1/livrables/1");
   await expect(panel.getByText("Ancienne notification")).toBeVisible();
+  await expect(panel).not.toContainText("Relance envoyée");
   await expect(panel.getByRole("link", { name: "Ancienne notification" })).toHaveCount(0);
   await expect(panel.getByRole("link", { name: "Livrable disparu" })).toHaveCount(0);
   expect(errors).toEqual([]);
@@ -82,8 +83,10 @@ test("the bell tells what is new from what was already seen; seen once the bell 
     lists: {
       notifications: {
         upsert: [
+          // An older reminder notice: left out of the bell.
           { id: 1, message: "Relance envoyée hier", time: "x" },
           { id: 2, message: "Proposition acceptée par le client", time: "x" },
+          { id: 3, message: "Accès demandé à la revue", time: "x" },
         ],
         remove: [],
       },
@@ -95,6 +98,7 @@ test("the bell tells what is new from what was already seen; seen once the bell 
   await expect(page.getByRole("button", { name: "Notifications (2 non lues)" }).first()).toBeVisible();
   let panel = await bell(page);
   await expect(panel).toContainText("Nouveaux · 2");
+  await expect(panel).not.toContainText("Relance envoyée");
   await expect(panel.getByText("Proposition acceptée par le client (nouveau)")).toHaveCount(1);
   await expect(panel).not.toContainText("Déjà lus");
 
@@ -104,5 +108,48 @@ test("the bell tells what is new from what was already seen; seen once the bell 
   panel = await bell(page);
   await expect(panel).toContainText("Rien de nouveau.");
   await expect(panel.locator(".notification-list.is-read")).toContainText("Proposition acceptée par le client");
+  expect(errors).toEqual([]);
+});
+
+test("read, a client's message stays in the bell under « Déjà lus »; the newest always first", async ({ browser }) => {
+  const alice = await signUp("Alice Martin");
+  await createAgency(alice, "Studio Lus");
+  const token = unique("tok-lus");
+  await seedReview(alice, token);
+  const hour = 60 * 60 * 1000;
+  const now = Date.now();
+  await seedState(alice, {
+    lists: {
+      comments: {
+        upsert: [
+          { id: 20, deliverableId: 1, author: "Claire Dubois", initials: "CD", from: "client", message: "Le logo plus grand", decision: "À qualifier", kind: "remark", location: "", time: "t", createdAt: now - 3 * hour },
+          { id: 21, deliverableId: 1, author: "Claire Dubois", initials: "CD", from: "client", message: "Une autre couleur", decision: "À qualifier", kind: "remark", location: "", time: "t", createdAt: now - hour },
+        ],
+        remove: [],
+      },
+      notifications: { upsert: [{ id: now - 2 * hour, message: "Proposition acceptée par le client", time: "x" }], remove: [] },
+    },
+  });
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, alice.email);
+  await page.goto("/espaces");
+  let panel = await bell(page);
+  // New: the two messages and the activity, the newest first.
+  const fresh = panel.locator(".notification-list:not(.is-read) > li");
+  await expect(fresh).toHaveCount(3);
+  await expect(fresh.nth(0)).toContainText("Une autre couleur");
+  await expect(fresh.nth(1)).toContainText("Proposition acceptée par le client");
+  await expect(fresh.nth(2)).toContainText("Le logo plus grand");
+
+  // Marked read: nothing new, and nothing gone; each one under « Déjà lus », in the same order.
+  await panel.getByRole("button", { name: "Tout marquer comme lu" }).click();
+  await expect(panel).toContainText("Rien de nouveau.");
+  await page.keyboard.press("Escape");
+  panel = await bell(page);
+  const read = panel.locator(".notification-list.is-read > li");
+  await expect(read).toHaveCount(3);
+  await expect(read.nth(0)).toContainText("Une autre couleur");
+  await expect(read.nth(1)).toContainText("Proposition acceptée par le client");
+  await expect(read.nth(2)).toContainText("Le logo plus grand");
   expect(errors).toEqual([]);
 });

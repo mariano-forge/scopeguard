@@ -26,11 +26,11 @@ export default async function InvitationPage({ params }: PageProps<"/invitation/
     </AuthShell>
   );
 
-  if (!invitation || !user) return message("Invitation introuvable", "Ce lien d’invitation n’existe pas. Demandez à votre agence de vous inviter à nouveau.");
+  if (!invitation || !user) return message("Invitation introuvable", "Ce lien d’invitation n’existe pas. Demandez à votre organisation de vous inviter à nouveau.");
   if (invitation.status === "accepted" && user.organizations.some((agency) => agency.name === invitation.organizationName))
     return message("Déjà membre", `Vous faites déjà partie de ${invitation.organizationName}.`);
   if (invitation.status !== "pending" || invitation.expired)
-    return message("Invitation expirée", "Cette invitation n’est plus valable. Demandez à votre agence de vous en envoyer une nouvelle.");
+    return message("Invitation expirée", "Cette invitation n’est plus valable. Demandez à votre organisation de vous en envoyer une nouvelle.");
   if (invitation.email.toLowerCase() !== user.email.toLowerCase())
     return (
       <AuthShell>
@@ -51,7 +51,7 @@ export default async function InvitationPage({ params }: PageProps<"/invitation/
         <div className="grid gap-1">
           <h1 className="font-heading text-lg font-bold">Rejoindre {invitation.organizationName}</h1>
           <p className="text-sm text-[var(--graphite)]">
-            {invitation.inviterName} vous invite à rejoindre l’agence <b>{invitation.organizationName}</b> sur Kora.
+            {invitation.inviterName} vous invite à rejoindre l’organisation <b>{invitation.organizationName}</b> sur Kora.
           </p>
         </div>
         <InvitationActions invitationId={id} mode="answer" />

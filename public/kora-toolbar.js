@@ -3,10 +3,11 @@
 //   <script src="https://<kora>/kora-toolbar.js" data-site="<the deliverable's key>" defer></script>
 //
 // and sends its client the site's address with ?kora. The toolbar then shows on that device, with Kora in
-// a frame on Kora's origin (/review/<token>/site), where the visitor verifies their address by code. The
-// frame takes two shapes: a bubble next to a pin or a click, where a comment is written or read, as on
-// Kora's canvas; or the list of the page's comments on the right (the « Commentaires » button). Kora's
-// logo unfolds the bar; once the visitor is in, without the list, which would hide the page. As on the
+// two frames on Kora's origin (/review/<token>/site), used apart: the list of the page's comments on the
+// right (the « Commentaires » button), where the visitor first verifies their address by code; and, once
+// they are in, a bubble next to a pin or a click, where a comment is written or read, as on Kora's canvas.
+// Opening one never closes the other. Kora's logo unfolds the bar; once the visitor is in, without the
+// list, which would hide the page. As on the
 // canvas, the bar has two tools: « Naviguer » (V, the site works as usual) and « Commenter » (C, every
 // click on an element opens a comment, until « Naviguer » or Escape); a first-time help says so.
 //
@@ -66,13 +67,13 @@
       /* Folded, the bar is the « Kora » pill alone; Kora open, it unfolds with the tools. */
       .tools { display: flex; align-items: center; gap: 2px; max-width: 0; overflow: hidden; opacity: 0; visibility: hidden;
         transition: max-width .2s ease-out, opacity .2s ease-out, visibility .2s; }
-      .bar.expanded .tools { max-width: 160px; opacity: 1; visibility: visible; }
+      .bar.expanded .tools { max-width: 320px; opacity: 1; visibility: visible; }
       .bar button { display: grid; place-items: center; height: 34px; min-width: 34px; padding: 0 12px; border: 0; border-radius: 999px;
         background: transparent; color: ${colors.paper}; }
       .bar button:hover { background: rgb(255 255 255 / .16); }
       /* The tool in use, the list shown: in Kora's blue, as on Kora's canvas. */
       .bar button[aria-pressed="true"] { color: ${colors.action}; }
-      .bar .list svg[hidden] { display: none; }
+      .bar .list svg[hidden], .bar .eye svg[hidden] { display: none; }
       .bar svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
       /* Kora's logo (src/components/KoraMark.tsx): a third of a turn as the bar unfolds, back as it folds. */
       .bar .launcher { display: inline-flex; align-items: center; gap: 6px; padding: 0 12px 0 9px; }
@@ -91,7 +92,7 @@
       .coach p { margin: 0; }
       .coach b { font-weight: 650; }
       .coach button { justify-self: end; height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: ${colors.focus}; color: ${colors.paper}; }
-      /* Kora's frame: the list on the right, or a bubble next to the pin or the click (placed by placeFrame()). */
+      /* Kora's frames: the list on the right, and the bubble next to the pin or the click (placed by placeBubble()). */
       .panel { position: fixed; top: 0; right: 0; box-sizing: border-box; width: min(380px, 100vw); height: 100vh; display: none; background: ${colors.paper};
         border-left: 1px solid ${colors.border}; box-shadow: -8px 0 24px rgb(0 0 0 / .12); }
       .panel.open { display: block; }
@@ -101,7 +102,7 @@
       /* Kora's pins (globals.css .canvas-pin): a tag pointing at its spot, by status, in a solid color with a
          white ring and a fine dark outline, readable on any page. The agency in blue, the client in coral. */
       .pin { position: absolute; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 2px solid ${colors.paper};
-        border-radius: 8px 8px 8px 0; box-shadow: 0 0 0 1px rgb(17 17 17 / .32), 0 3px 10px rgb(17 17 17 / .28); font: 700 11px/1 system-ui, sans-serif;
+        border-radius: 8px 8px 8px 0; box-shadow: 0 0 0 1px rgb(17 17 17 / .32), 0 3px 10px rgb(17 17 17 / .28); font: 700 14px/1 system-ui, sans-serif;
         transform: translateY(-100%); transform-origin: bottom left; transition: transform .12s ease-out; background: ${colors.attention}; color: ${colors.ink}; }
       .pin:hover { transform: translateY(-100%) scale(1.1); }
       .pin.is-comment.is-agency { background: ${colors.focus}; color: ${colors.paper}; }
@@ -126,6 +127,7 @@
         <button class="tool" data-tool="move" type="button" aria-label="Naviguer" title="Naviguer · V" aria-pressed="true"></button>
         <button class="tool" data-tool="remark" type="button" aria-label="Commenter" title="Commenter : cliquez sur un élément · C" aria-pressed="false"></button>
         <button class="list" type="button" aria-label="Commentaires" title="Commentaires de la page" aria-pressed="false"></button>
+        <button class="eye" type="button" aria-label="Masquer les commentaires" title="Masquer les commentaires · H" aria-pressed="false"></button>
         <button class="help" type="button" aria-label="Aide" title="Aide" aria-expanded="false"></button>
         <span class="sep" aria-hidden="true"></span>
       </span>
@@ -139,18 +141,39 @@
         Kora
       </button>
     </div>
-    <div class="panel" role="dialog" aria-label="Kora">
+    <div class="panel list-panel" role="dialog" aria-label="Kora">
       <iframe title="Kora"></iframe>
+    </div>
+    <div class="panel bubble" role="dialog" aria-label="Commentaire Kora">
+      <iframe title="Commentaire Kora"></iframe>
     </div>`;
-  const panel = root.querySelector(".panel");
-  const frame = root.querySelector("iframe");
+  const panel = root.querySelector(".list-panel");
+  const frame = panel.querySelector("iframe");
+  const bubblePanel = root.querySelector(".panel.bubble");
+  const bubbleFrame = bubblePanel.querySelector("iframe");
   const highlight = root.querySelector(".highlight");
   const pinsLayer = root.querySelector(".pins");
-  frame.src = siteKey
+  const panelUrl = siteKey
     ? `${kora}/review/site/${encodeURIComponent(siteKey)}?parent=${encodeURIComponent(location.origin)}`
     : `${kora}/review/${encodeURIComponent(token)}/site?parent=${encodeURIComponent(location.origin)}`;
+  frame.src = panelUrl;
 
   const tell = (message) => frame.contentWindow && frame.contentWindow.postMessage(message, kora);
+  // The bubble's frame loads once the visitor is in (the list's frame says so), then holds what it is sent
+  // until it listens: a pin clicked as it loads opens once it is ready.
+  let bubbleReady = false;
+  let bubbleQueue = [];
+  const tellBubble = (message) => {
+    if (bubbleReady && bubbleFrame.contentWindow) bubbleFrame.contentWindow.postMessage(message, kora);
+    else if (bubbleFrame.src) bubbleQueue.push(message);
+  };
+  const tellBoth = (message) => (tell(message), tellBubble(message));
+  /** Loads the bubble's frame afresh: it then reads who is in, as the list's frame just did. */
+  function loadBubble() {
+    bubbleReady = false;
+    bubbleQueue = [];
+    bubbleFrame.src = `${panelUrl}&frame=bubble`;
+  }
   /** The page, as requests are filed under: path and query, without the toolbar's own ?kora. */
   const pageUrl = () => {
     const url = new URL(location.href);
@@ -160,7 +183,7 @@
   const bar = root.querySelector(".bar");
   const launcher = root.querySelector(".launcher");
 
-  // ——— Kora's frame: the list, or a bubble ———
+  // ——— Kora's frames: the list, and a bubble ———
 
   /** The bar unfolded by Kora's logo. */
   let barOpen = false;
@@ -173,14 +196,14 @@
   /** Where the next bubble goes: set by the click or the pin that asks for it, used when Kora opens it. */
   let nextAnchor = null;
   let bubbleHeight = 240;
-  /** The frame as Kora's state wants it: shown, as the list or as a bubble beside its pin or click. */
-  function placeFrame() {
-    panel.classList.toggle("open", listOpen || Boolean(bubble));
-    panel.classList.toggle("bubble", Boolean(bubble));
-    if (!bubble) {
-      panel.removeAttribute("style");
-      return;
-    }
+  /** The list's frame, shown or not. */
+  function placeList() {
+    panel.classList.toggle("open", listOpen);
+  }
+  /** The bubble's frame beside its pin or click while Kora shows a comment, beside the list when it is open. */
+  function placeBubble() {
+    bubblePanel.classList.toggle("open", Boolean(bubble));
+    if (!bubble) return;
     let point = null;
     if (bubble.pin !== undefined) {
       const pin = pinsLayer.querySelector(`[data-id="${Number(bubble.pin)}"]`);
@@ -193,10 +216,13 @@
     if (!point) point = { x: window.innerWidth / 2, y: 72 };
     const width = Math.min(340, window.innerWidth - 16);
     const height = Math.min(bubbleHeight, window.innerHeight - 16);
+    // The list open, the bubble keeps to its left when the window leaves room for both.
+    const listWidth = Math.min(380, window.innerWidth);
+    const end = listOpen && window.innerWidth - listWidth >= width + 16 ? window.innerWidth - listWidth : window.innerWidth;
     let left = point.x + 12;
-    if (left + width > window.innerWidth - 8) left = Math.max(8, point.x - 12 - width);
+    if (left + width > end - 8) left = Math.max(8, Math.min(point.x - 12, end - 8) - width);
     const top = Math.min(Math.max(8, point.y - 16), window.innerHeight - height - 8);
-    Object.assign(panel.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
+    Object.assign(bubblePanel.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
   }
   /** The bar unfolds with its tools while Kora is used: opened, its list, a bubble, or the comment tool. */
   const unfolded = () => barOpen || listOpen || Boolean(bubble) || tool === "remark";
@@ -213,13 +239,11 @@
     if (on) showHelpOnce();
     layout();
   }
-  /** The list shown or put away; the bar stays as it is. Shown, an open comment moves into it; put away, it closes. */
+  /** The list shown or put away; the bar stays as it is, and so does an open comment (feedback of 26 October 2026). */
   function showList(on) {
     listOpen = on;
-    if (on) bubble = null;
-    else tell({ type: "kora:dismiss" });
-    tell({ type: "kora:docked", on });
-    placeFrame();
+    placeList();
+    placeBubble();
     refreshBar();
   }
   /** Kora's logo: unfolds the bar (with the panel while the visitor is not in), or folds everything back. */
@@ -227,6 +251,7 @@
     barOpen = on;
     if (on) return showList(listOpen || !signedIn);
     bubble = null;
+    tellBubble({ type: "kora:dismiss" });
     setTool("move");
     showList(false);
   }
@@ -275,6 +300,16 @@
   closeIcon.setAttribute("hidden", "");
   listButton.append(listIcon, closeIcon);
   helpButton.append(svgOf([["circle", { cx: "12", cy: "12", r: "10" }], ["path", { d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" }], ["path", { d: "M12 17h.01" }]]));
+  // Lucide's Eye and EyeOff.
+  const eyeIcon = svgOf([["path", { d: "M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" }], ["circle", { cx: "12", cy: "12", r: "3" }]]);
+  const eyeOffIcon = svgOf([
+    ["path", { d: "M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" }],
+    ["path", { d: "M14.084 14.158a3 3 0 0 1-4.242-4.242" }],
+    ["path", { d: "M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" }],
+    ["path", { d: "m2 2 20 20" }],
+  ]);
+  eyeOffIcon.setAttribute("hidden", "");
+  root.querySelector(".eye").append(eyeIcon, eyeOffIcon);
 
   // ——— Picking an element ———
 
@@ -331,11 +366,11 @@
     // Where the click falls on the capture of the window, which follows once made.
     const pick = ++picks;
     anchor.view = { x: clamp((event.clientX / window.innerWidth) * 100), y: clamp((event.clientY / window.innerHeight) * 100) };
-    tell({ type: "kora:pick", pick, anchor, label: labelOf(element) });
+    tellBubble({ type: "kora:pick", pick, anchor, label: labelOf(element) });
     // What the visitor pointed at, drawn on the capture: the element's frame and the click.
     captureWindow({ left: box.left, top: box.top, width: box.width, height: box.height, x: event.clientX, y: event.clientY }).then(
-      (blob) => tell({ type: "kora:capture", pick, blob }),
-      () => tell({ type: "kora:capture", pick, blob: null }),
+      (blob) => tellBubble({ type: "kora:capture", pick, blob }),
+      () => tellBubble({ type: "kora:capture", pick, blob: null }),
     );
   }
 
@@ -421,13 +456,30 @@
     } else document.documentElement.style.cursor = savedCursor;
     refreshBar();
   }
-  // C and V, as on Kora's canvas, unless the visitor is typing.
+  // C and V, as on Kora's canvas, unless the visitor is typing; H hides the comments, as there.
   document.addEventListener("keydown", (event) => {
     const typing = event.target instanceof HTMLElement && (event.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName));
     if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.key.toLowerCase() === "c") setTool("remark");
     else if (event.key.toLowerCase() === "v") setTool("move");
+    else if (event.key.toLowerCase() === "h") hidePins(!pinsHidden);
   });
+
+  // ——— The page's comments hidden (feedback of 26 October 2026) ———
+
+  // The pins out of sight until shown again, nothing else changes.
+  let pinsHidden = false;
+  const eyeButton = root.querySelector(".eye");
+  function hidePins(on) {
+    pinsHidden = on;
+    pinsLayer.style.display = on ? "none" : "";
+    eyeButton.setAttribute("aria-pressed", String(on));
+    eyeButton.setAttribute("aria-label", on ? "Afficher les commentaires" : "Masquer les commentaires");
+    eyeButton.title = on ? "Afficher les commentaires · H" : "Masquer les commentaires · H";
+    eyeIcon.toggleAttribute("hidden", on);
+    eyeOffIcon.toggleAttribute("hidden", !on);
+  }
+  eyeButton.addEventListener("click", () => hidePins(!pinsHidden));
 
   // ——— Pins ———
 
@@ -475,7 +527,7 @@
     }
     if (JSON.stringify(missing) !== reported) {
       reported = JSON.stringify(missing);
-      tell({ type: "kora:missing", ids: missing });
+      tellBoth({ type: "kora:missing", ids: missing });
     }
     if (JSON.stringify(placed) === drawn) return;
     drawn = JSON.stringify(placed);
@@ -486,55 +538,69 @@
       button.className = `pin is-${pin.kind}${pin.agency ? " is-agency" : ""}`;
       button.dataset.id = String(pin.id);
       // As in Kora: the author's initials on a comment, the status's icon on a request.
-      if (pin.kind === "comment") button.textContent = String(pin.initials || "").slice(0, 3);
+      if (pin.kind === "comment") button.textContent = String(pin.initials || "").trim().charAt(0).toLocaleUpperCase("fr-FR");
       else button.append(icon(pin.kind));
       button.setAttribute("aria-label", `${pin.label} #${pin.id}`);
       button.style.left = `${pin.left}px`;
       button.style.top = `${pin.top}px`;
+      // A pin clicked on the site: its comment opens beside it.
       button.addEventListener("click", () => {
         nextAnchor = { pin: pin.id };
-        tell({ type: "kora:open", id: pin.id });
+        tellBubble({ type: "kora:open", id: pin.id });
       });
       pinsLayer.append(button);
     }
   }
 
   window.addEventListener("message", (event) => {
-    if (event.origin !== kora || event.source !== frame.contentWindow || !event.data || typeof event.data !== "object") return;
+    if (event.origin !== kora || !event.data || typeof event.data !== "object") return;
+    const fromList = event.source === frame.contentWindow;
+    const fromBubble = Boolean(bubbleFrame.src) && event.source === bubbleFrame.contentWindow;
+    if (!fromList && !fromBubble) return;
     const data = event.data;
+    const reply = fromList ? tell : (message) => bubbleFrame.contentWindow.postMessage(message, kora);
     if (data.type === "kora:ready") {
-      // A panel (re)loaded: it knows nothing yet of the page nor of missing elements.
-      reported = "";
-      tell({ type: "kora:page", url: pageUrl() });
-      tell({ type: "kora:docked", on: listOpen });
-      drawPins();
-    }
-    else if (data.type === "kora:signed") {
-      signedIn = data.in === true;
-      // Out (a session ended): no comment tool until the address is verified again.
-      if (!signedIn) setTool("move");
+      // A frame (re)loaded: it knows nothing yet of the page nor of missing elements.
+      reply({ type: "kora:page", url: pageUrl() });
+      reply({ type: "kora:missing", ids: JSON.parse(reported || "[]") });
+      if (fromBubble) {
+        bubbleReady = true;
+        for (const message of bubbleQueue.splice(0)) reply(message);
+      }
     } else if (data.type === "kora:pins" && Array.isArray(data.pins)) {
+      // From either frame: the bubble's knows first of a comment it just wrote.
       pins = data.pins;
       drawPins();
-    } else if (data.type === "kora:focus") {
-      // A comment chosen in the list: its pin comes into view, its bubble opens beside it.
-      nextAnchor = { pin: Number(data.id) };
-      const button = pinsLayer.querySelector(`[data-id="${Number(data.id)}"]`);
-      if (button) {
-        button.scrollIntoView({ block: "center", behavior: "smooth" });
-        button.classList.add("flash");
-        setTimeout(() => button.classList.remove("flash"), 1500);
-      }
+    } else if (fromList) {
+      if (data.type === "kora:signed") {
+        const was = signedIn;
+        signedIn = data.in === true;
+        // In: the bubble's frame (re)loads, and finds the visitor in. Out (a session ended): no comment tool
+        // until the address is verified again.
+        if (signedIn && (!was || !bubbleFrame.src)) loadBubble();
+        if (!signedIn) setTool("move");
+      } else if (data.type === "kora:focus") {
+        // A comment chosen in the list: its pin comes into view, its bubble opens beside it; the list stays.
+        nextAnchor = { pin: Number(data.id) };
+        const button = pinsLayer.querySelector(`[data-id="${Number(data.id)}"]`);
+        if (button) {
+          button.scrollIntoView({ block: "center", behavior: "smooth" });
+          button.classList.add("flash");
+          setTimeout(() => button.classList.remove("flash"), 1500);
+        }
+        tellBubble({ type: "kora:open", id: Number(data.id) });
+      } else if (data.type === "kora:close") showList(false);
     } else if (data.type === "kora:bubble") {
-      // The list open, the comment shows in it: no bubble over the page.
-      bubble = data.open && !listOpen ? nextAnchor || bubble || { x: window.innerWidth / 2 + window.scrollX, y: window.scrollY + 72 } : null;
+      // A comment is never read in the list (feedback of 26 October 2026): beside its pin or the click, as on
+      // any deliverable.
+      bubble = data.open ? nextAnchor || bubble || { x: window.innerWidth / 2 + window.scrollX, y: window.scrollY + 72 } : null;
       if (!data.open) nextAnchor = null;
-      placeFrame();
+      placeBubble();
       refreshBar();
     } else if (data.type === "kora:size" && Number.isFinite(data.height)) {
       bubbleHeight = Math.max(120, Math.min(Number(data.height) + 2, 2000));
-      placeFrame();
-    } else if (data.type === "kora:close") showList(false);
+      placeBubble();
+    }
   });
 
   // Pages of a single-page site change without reloading; images move elements as they load.
@@ -542,13 +608,13 @@
   setInterval(() => {
     if (pageUrl() !== lastUrl) {
       lastUrl = pageUrl();
-      tell({ type: "kora:page", url: lastUrl });
+      tellBoth({ type: "kora:page", url: lastUrl });
     }
     drawPins();
-    if (bubble) placeFrame();
+    if (bubble) placeBubble();
   }, 1000);
-  window.addEventListener("resize", () => (drawPins(), placeFrame(), layout()));
-  window.addEventListener("scroll", () => bubble && placeFrame(), { passive: true });
+  window.addEventListener("resize", () => (drawPins(), placeBubble(), layout()));
+  window.addEventListener("scroll", () => bubble && placeBubble(), { passive: true });
 
   // ——— Moving the bar ———
 
@@ -570,7 +636,7 @@
     let right = Math.min(Math.max(place.right, margin), Math.max(margin, window.innerWidth - width - margin));
     const bottom = Math.min(Math.max(place.bottom, margin), Math.max(margin, window.innerHeight - height - margin));
     const panelWidth = Math.min(380, window.innerWidth);
-    if (listOpen && !bubble && right < panelWidth + 16) right = panelWidth + 16;
+    if (listOpen && right < panelWidth + 16) right = panelWidth + 16;
     Object.assign(bar.style, { right: `${right}px`, bottom: `${bottom}px` });
     Object.assign(hint.style, { right: `${right}px`, bottom: `${bottom + height + 8}px` });
     Object.assign(coach.style, { right: `${right}px`, bottom: `${bottom + height + 8}px` });

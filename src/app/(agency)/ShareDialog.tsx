@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { EmailChipsInput } from "@/components/EmailChipsInput";
 import type { ClientRole } from "@/lib/clientRoles";
 import { InviteList, type Invite } from "./InviteList";
+import { roleOfInvite } from "@/lib/clientRoles";
 
 type ShareLink = { active: boolean; expiresAt: string; autoExpire?: boolean; invites?: Invite[] };
 type AccessRequest = { email: string; message: string | null };
@@ -71,6 +72,8 @@ export function ShareDialog({
   // A day between reminders, measured from when the page opened (the server has the last word).
   const [openedAt] = useState(() => Date.now());
   const reminderBlocked = lastReminderAt !== null && openedAt - lastReminderAt < 24 * 60 * 60 * 1000;
+  // The reminder asks deciders to validate and decide: with none invited, there is no one to remind.
+  const hasDecider = invites.some((invite) => roleOfInvite(invite) === "decider");
   return (
     <Modal
       open={open}
@@ -86,7 +89,7 @@ export function ShareDialog({
               variant="destructive"
               className="sm:mr-auto"
               disabled={!canManage}
-              title={canManage ? undefined : "Réservé aux administrateurs de l’agence"}
+              title={canManage ? undefined : "Réservé aux administrateurs de l’organisation"}
               onClick={onRevoke}
             >
               Révoquer ce lien
@@ -140,8 +143,8 @@ export function ShareDialog({
                   Personnes invitées <span>{invites.length}</span>
                 </h3>
                 {/* Once a day per link (the server says so too, 429): their personal link mailed again. */}
-                <Hint label="Leur renvoyer leur lien personnel par e-mail">
-                  <Button variant="outline" size="sm" onClick={onRemind} disabled={reminderBlocked || readOnly}>
+                <Hint label={hasDecider ? "Renvoyer aux décideurs leur lien personnel par e-mail" : "Invitez d’abord un décideur : la relance lui est adressée"}>
+                  <Button variant="outline" size="sm" onClick={onRemind} disabled={reminderBlocked || readOnly || !hasDecider}>
                     <BellRing /> {reminderBlocked ? "Relance déjà envoyée" : "Relancer le client"}
                   </Button>
                 </Hint>

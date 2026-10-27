@@ -14,16 +14,17 @@ const lifetimeMs = 10 * 60 * 1000;
 export const figmaAttemptCookie = "kora_figma_attempt";
 export const figmaAttemptPath = "/api/integrations/figma";
 
-type Claim = { userId: string; organizationId: string; nonce: string };
+// `back`: the page of Kora the member left, signed with the attempt so that no one else's link chooses it.
+type Claim = { userId: string; organizationId: string; nonce: string; back?: string | null };
 
 const random = () => randomBytes(32).toString("base64url");
 
 /** A new attempt: the `state` for Figma, the cookie for this browser, and the PKCE challenge. */
-export function startFigmaAttempt(userId: string, organizationId: string) {
+export function startFigmaAttempt(userId: string, organizationId: string, back: string | null = null) {
   const nonce = random();
   const verifier = random();
   return {
-    state: signClaim(scope, { userId, organizationId, nonce }, lifetimeMs),
+    state: signClaim(scope, { userId, organizationId, nonce, back }, lifetimeMs),
     cookie: `${nonce}.${verifier}`,
     codeChallenge: createHash("sha256").update(verifier).digest("base64url"),
     maxAge: lifetimeMs / 1000,
@@ -37,5 +38,5 @@ export function finishFigmaAttempt(state: unknown, cookie: string | undefined): 
   const claim = readClaim<Claim>(scope, state);
   const [nonce, verifier] = (cookie ?? "").split(".");
   if (!claim || !nonce || !verifier || typeof claim.nonce !== "string" || !same(claim.nonce, nonce)) return null;
-  return { userId: claim.userId, organizationId: claim.organizationId, nonce: claim.nonce, verifier };
+  return { userId: claim.userId, organizationId: claim.organizationId, nonce: claim.nonce, back: typeof claim.back === "string" ? claim.back : null, verifier };
 }

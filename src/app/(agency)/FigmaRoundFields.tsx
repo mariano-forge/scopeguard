@@ -10,17 +10,18 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/modal";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { FigmaPage, FigmaVersion } from "@/lib/figmaLink";
+import { FigmaConnectNote, figmaNotConnected } from "./FigmaConnect";
 
 export type FigmaFileInfo = { name: string; pages: FigmaPage[]; versions: FigmaVersion[] };
 type Tree = { name: string; pages: FigmaPage[] };
-type TreeRead = { key: string; tree: (Tree & { receipt: string }) | null; error: string | null };
-type HistoryRead = { key: string; attempt: number; versions: FigmaVersion[] | null; error: string | null };
+type TreeRead = { key: string; tree: (Tree & { receipt: string }) | null; error: string | null; code?: string };
+type HistoryRead = { key: string; attempt: number; versions: FigmaVersion[] | null; error: string | null; code?: string };
 
 const failed = "Le fichier Figma n’a pas pu être lu. Réessayez.";
 async function getJson<T>(url: string) {
   const response = await fetch(url, { cache: "no-store" }).catch(() => null);
-  const body = (await response?.json().catch(() => null)) as (T & { error?: string }) | null;
-  return response?.ok && body ? { body, error: null } : { body: null, error: body?.error ?? failed };
+  const body = (await response?.json().catch(() => null)) as (T & { error?: string; code?: string }) | null;
+  return response?.ok && body ? { body, error: null } : { body: null, error: body?.error ?? failed, code: body?.code };
 }
 
 /**
@@ -39,10 +40,10 @@ export function useFigmaFile(key: string | null, known?: Tree) {
     let cancelled = false;
     // A link typed letter by letter names a new file at each one: read the one it settles on.
     const timer = setTimeout(async () => {
-      const { body, error } = await getJson<Tree & { versions: FigmaVersion[]; receipt: string }>(`/api/integrations/figma/files/${key}`);
+      const { body, error, code } = await getJson<Tree & { versions: FigmaVersion[]; receipt: string }>(`/api/integrations/figma/files/${key}`);
       if (cancelled) return;
-      setTreeRead({ key, tree: body ? { name: body.name, pages: body.pages, receipt: body.receipt } : null, error });
-      setHistory({ key, attempt: 0, versions: body?.versions ?? null, error });
+      setTreeRead({ key, tree: body ? { name: body.name, pages: body.pages, receipt: body.receipt } : null, error, code });
+      setHistory({ key, attempt: 0, versions: body?.versions ?? null, error, code });
     }, 500);
     return () => {
       cancelled = true;
@@ -54,8 +55,8 @@ export function useFigmaFile(key: string | null, known?: Tree) {
     if (!key || (!fromRound && attempt === 0)) return;
     let cancelled = false;
     void (async () => {
-      const { body, error } = await getJson<{ versions: FigmaVersion[] }>(`/api/integrations/figma/files/${key}/versions`);
-      if (!cancelled) setHistory({ key, attempt, versions: body?.versions ?? null, error });
+      const { body, error, code } = await getJson<{ versions: FigmaVersion[] }>(`/api/integrations/figma/files/${key}/versions`);
+      if (!cancelled) setHistory({ key, attempt, versions: body?.versions ?? null, error, code });
     })();
     return () => {
       cancelled = true;
@@ -67,11 +68,13 @@ export function useFigmaFile(key: string | null, known?: Tree) {
   const treeError = !known && treeRead?.key === key ? treeRead.error : null;
   const current = history?.key === key && history.attempt === attempt ? history : null;
   const error = treeError ?? current?.error ?? null;
+  const code = (!known && treeRead?.key === key ? treeRead.code : undefined) ?? current?.code;
   const file = tree && current?.versions ? { name: tree.name, pages: tree.pages, versions: current.versions } : null;
   return {
     file,
     receipt: treeRead?.key === key ? (treeRead.tree?.receipt ?? null) : null,
     error,
+    notConnected: code === figmaNotConnected,
     loading: Boolean(key) && !file && !error,
     reload: () => setAttempt((count) => count + 1),
   };
@@ -90,6 +93,7 @@ export function roundChoice(file: FigmaFileInfo, pages: string[] | null, version
 export function FigmaRoundFields({
   file,
   error,
+  notConnected,
   loading,
   reload,
   reviewed,
@@ -108,6 +112,7 @@ export function FigmaRoundFields({
         Lecture du fichier Figma…
       </p>
     );
+  if (notConnected) return <FigmaConnectNote />;
   if (error || !file)
     return (
       <p role="alert" className="rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-sm text-[var(--status-medium-text)]">

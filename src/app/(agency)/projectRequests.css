@@ -1,0 +1,195 @@
+/* The « Demandes » tab (ProjectRequests.tsx): as tall as the window under Kora's tab bar, the board taking
+   what the page's header leaves; it scrolls sideways in its own frame, each column downwards in its own. */
+.content:has(.request-board-page) {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--tab-bar-height));
+}
+.content:has(.request-board-page) > .browser {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.request-board-page {
+  display: grid;
+  flex: 1;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--s-4);
+  min-width: 0;
+  min-height: 0;
+}
+.request-board {
+  display: grid;
+  grid-auto-columns: 240px;
+  grid-auto-flow: column;
+  gap: var(--s-3);
+  min-height: 0;
+  overflow-x: auto;
+  padding-bottom: var(--s-2);
+  scroll-snap-type: x proximity;
+}
+.request-board:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+  border-radius: var(--r-panel);
+}
+.board-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-height: 0;
+  padding: var(--s-2);
+  border-radius: var(--r-panel);
+  background: var(--canvas);
+  scroll-snap-align: start;
+}
+.board-column-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-2);
+}
+.board-column-head h2 {
+  margin: 0;
+  color: var(--ink);
+  font: 600 var(--t-ui) var(--font-ui);
+}
+.board-column-count {
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--mist);
+  color: var(--graphite);
+  font: 600 var(--t-caption) var(--font-ui);
+}
+.board-column-empty {
+  margin: 0;
+  padding: var(--s-3) var(--s-2);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-button);
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.board-cards {
+  display: grid;
+  flex: 1;
+  align-content: start;
+  gap: var(--s-2);
+  min-height: 0;
+  margin: 0;
+  /* Room for a card's focus ring inside the scrolling list. */
+  padding: 2px;
+  overflow-y: auto;
+  list-style: none;
+}
+/* The whole card opens its request: the title's link covers it, the buttons stay above it. */
+.board-card {
+  position: relative;
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-button);
+  background: var(--paper);
+  transition: border-color var(--d-fast) var(--ease-out);
+}
+.board-card:hover {
+  border-color: var(--border-input);
+}
+.board-card-link {
+  color: var(--ink);
+  text-decoration: none;
+}
+.board-card-link::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  content: "";
+}
+.board-card-link:focus-visible {
+  outline: none;
+}
+.board-card:has(.board-card-link:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* The board's scrollbars: thin, and nearly invisible until the pointer is over the board, so they never
+   draw the eye away from the cards (feedback of 25 October 2026). */
+.request-board,
+.board-cards {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color var(--d-base) var(--ease-out);
+}
+.request-board:hover,
+.request-board:focus-within,
+.board-cards:hover {
+  scrollbar-color: var(--border) transparent;
+}
+
+/* A card as the editor's panel draws it (EditorInspector.tsx RequestCardLines, feedback of 26 October 2026):
+   its lines at the panel's sizes; the whole card a link (its ::after covers it). */
+.board-card {
+  gap: 6px;
+  padding: var(--s-3) var(--s-3) 14px;
+}
+.board-card .thread-row-status {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-width: 0;
+}
+.board-card-context {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.board-card .thread-row-status + .thread-row-text {
+  margin-top: 2px;
+}
+.board-card .thread-row-text {
+  color: var(--ink);
+  font: 500 var(--t-ui) var(--font-ui);
+}
+.board-card .thread-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  color: var(--graphite);
+  font: 400 var(--t-caption) var(--font-ui);
+}
+.board-card .thread-row-meta .thread-avatar {
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+}
+.board-card .thread-row-meta .thread-row-source {
+  display: inline-flex;
+  margin-left: auto;
+  line-height: 0;
+}
+.board-card .thread-row-replies {
+  color: var(--graphite);
+}
+/* The link covers the card without taking a line of it; the name's line packed at its start. */
+.board-card .board-card-link {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+.board-card .thread-row-meta {
+  justify-content: flex-start;
+}
+
+/* A deliverable's board: its title, at the head of the page (AgencyApp.tsx « pane »). */
+.board-title {
+  margin: 0;
+  color: var(--ink);
+  font: 600 var(--t-h3) var(--font-heading);
+}

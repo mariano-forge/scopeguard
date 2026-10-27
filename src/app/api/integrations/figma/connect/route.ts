@@ -1,17 +1,18 @@
 // « Connecter mon compte Figma »: a navigation of a member, sent on to Figma's consent page with an attempt
-// bound to this member and this browser (src/lib/figmaOAuth.ts).
+// bound to this member and this browser (src/lib/figmaOAuth.ts), and the page of Kora to come back to.
 
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { figmaAuthorizeUrl, figmaAvailable } from "@/lib/figma";
 import { figmaAttemptCookie, figmaAttemptPath, startFigmaAttempt } from "@/lib/figmaOAuth";
-import { figmaReturn } from "@/lib/figmaReturn";
+import { figmaBackParam, figmaReturn, readFigmaBack } from "@/lib/figmaReturn";
 import { requireAgencyUser } from "@/lib/session";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const auth = await requireAgencyUser();
   if ("response" in auth) return auth.response;
-  if (!figmaAvailable()) return NextResponse.redirect(figmaReturn("unavailable"));
-  const attempt = startFigmaAttempt(auth.user.id, auth.user.organizationId);
+  const back = readFigmaBack(request.nextUrl.searchParams.get(figmaBackParam));
+  if (!figmaAvailable()) return NextResponse.redirect(figmaReturn("unavailable", back));
+  const attempt = startFigmaAttempt(auth.user.id, auth.user.organizationId, back);
   const response = NextResponse.redirect(figmaAuthorizeUrl(attempt.state, attempt.codeChallenge));
   response.cookies.set(figmaAttemptCookie, attempt.cookie, {
     httpOnly: true,

@@ -74,10 +74,10 @@ export async function reviewActionResponse(
   try {
     const viewer = await getReviewViewer(token);
     if (!viewer) return reviewNotFound();
-    if (viewer.mode === "preview" || viewer.mode === "agency") return Response.json({ error: "Aperçu agence : lecture seule" }, { status: 403 });
+    if (viewer.mode === "preview" || viewer.mode === "agency") return Response.json({ error: "Aperçu de l’organisation : lecture seule" }, { status: 403 });
     if (viewer.mode === "none") return Response.json({ error: "Vérification de votre adresse requise" }, { status: 401 });
     if (deciderActions.has(type) && viewer.role !== "decider")
-      return Response.json({ error: "Seul un décideur désigné par l’agence peut prendre cette décision.", code: "DECIDER_ONLY" }, { status: 403 });
+      return Response.json({ error: "Seul un décideur désigné par l’organisation peut prendre cette décision.", code: "DECIDER_ONLY" }, { status: 403 });
     const db = getDb();
     if (!(await withinLimit(db, `client-write:${viewer.email}`, requestLimit.writes()))) return tooManyRequests();
     const result = await runReviewAction(db, viewer.access, viewer.email, requestOrigin(request), action);

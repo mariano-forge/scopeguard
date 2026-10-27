@@ -47,7 +47,7 @@ export function EntitySettings({
       <DropdownMenu>
         <Hint label="Réglages">
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" aria-label={`Réglages de ${label}`}>
+            <Button variant="outline" size="icon-lg" aria-label={`Réglages de ${label}`}>
               <Settings />
             </Button>
           </DropdownMenuTrigger>
@@ -61,7 +61,7 @@ export function EntitySettings({
             <Trash2 />
             <span className="grid">
               Supprimer {label}
-              {deleteLocked && <small className="text-xs font-normal">Réservé aux administrateurs de l’agence</small>}
+              {deleteLocked && <small className="text-xs font-normal">Réservé aux administrateurs de l’organisation</small>}
             </span>
           </DropdownMenuItem>
         </DropdownMenuContent>

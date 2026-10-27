@@ -1,8 +1,9 @@
 "use client";
 
-// What helps the agency qualify a request against the project's active scope (US-045): the line of the
-// scope an « Inclus » cites, and the AI's suggestion (src/lib/qualificationSuggestion.ts), which only
-// pre-fills the form: the agency decides, nothing of the suggestion is stored, the client never sees it.
+// What helps the agency qualify a request against the project's active scope (US-045): the AI's suggestion
+// (src/lib/qualificationSuggestion.ts), which only pre-fills the form: the agency decides, nothing of the
+// suggestion is stored, the client never sees it. No line of the scope is cited from the form any more
+// (decided 25 October 2026).
 // Used by the bubble's qualifying form and by « + Demande ».
 
 import { useState } from "react";
@@ -36,51 +37,43 @@ export function useSuggestion(path: string | undefined, onReady: (suggestion: Su
   return { state, ask, offered };
 }
 
-/** What the AI said, or that it is reading; nothing when it has nothing to say. */
+/** The tone of a qualification, as on the requests' badges (globals.css .decision-*). */
+const decisionTones: Record<Qualification, string> = { Inclus: "is-included", "Hors périmètre": "is-outside", "À qualifier": "is-clarify" };
+
+/**
+ * What the AI said, or that it is reading; nothing when it has nothing to say. Neutral, as a note (feedback of
+ * 25 October 2026: « trop de bleu »): the suggestion in a line, its reason under it, folded on demand; the
+ * agency's part said once, in a line.
+ */
 export function SuggestionNote({ state }: { state: SuggestionState }) {
   if (state.status === "idle" || state.status === "off") return null;
+  const status = (text: string) => (
+    <p className="qualify-suggestion-status">
+      <Sparkles aria-hidden="true" /> {text}
+    </p>
+  );
   return (
     <section className="qualify-suggestion" aria-label="Suggestion de l’IA" aria-live="polite">
       {state.status === "asking" ? (
-        <p>
+        <p className="qualify-suggestion-status">
           <Loader2 className="animate-spin" aria-hidden="true" /> L’IA compare la demande au périmètre…
         </p>
       ) : state.status === "no-scope" ? (
-        <p>
-          <Sparkles aria-hidden="true" /> Activez le périmètre du projet pour que l’IA suggère une qualification.
-        </p>
+        status("Activez le périmètre du projet pour recevoir une suggestion de l’IA.")
       ) : state.status === "none" ? (
-        <p>
-          <Sparkles aria-hidden="true" /> L’IA n’a pas de suggestion pour cette demande.
-        </p>
+        status("L’IA n’a pas de suggestion pour cette demande.")
       ) : (
         <>
-          <p>
-            <Sparkles aria-hidden="true" /> <b>Suggestion : {decisionLabels[state.suggestion.decision]}</b>
-          </p>
-          {state.suggestion.line && <p className="qualify-suggestion-line">Ligne « {state.suggestion.line.title} »</p>}
-          <p className="qualify-suggestion-reason">{state.suggestion.reason}</p>
-          <small>Le formulaire est pré-rempli : vérifiez avant d’enregistrer, la décision reste la vôtre.</small>
+          <details open>
+            <summary>
+              <Sparkles aria-hidden="true" /> Suggestion de l’IA :{" "}
+              <b className={decisionTones[state.suggestion.decision]}>{decisionLabels[state.suggestion.decision]}</b>
+            </summary>
+            <p className="qualify-suggestion-reason">{state.suggestion.reason}</p>
+          </details>
+          <small>Vérifiez chaque ligne du formulaire pré-rempli avant d’enregistrer.</small>
         </>
       )}
     </section>
-  );
-}
-
-/** The line of the active scope an « Inclus » cites; « Aucune » is always possible. */
-export function CitedLineField({ id, lines, value, onChange }: { id: string; lines: CitedLine[]; value: number | undefined; onChange: (value: number | undefined) => void }) {
-  if (!lines.length) return null;
-  return (
-    <label htmlFor={id} className="qualify-line-field">
-      Ligne du périmètre
-      <select id={id} className="qualify-line" value={value ?? ""} onChange={(event) => onChange(event.target.value ? Number(event.target.value) : undefined)}>
-        <option value="">Aucune</option>
-        {lines.map((line) => (
-          <option key={line.id} value={line.id}>
-            {line.title}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }

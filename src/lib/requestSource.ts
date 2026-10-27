@@ -7,6 +7,8 @@ export type RequestChannel = keyof typeof requestChannels;
 
 export type RequestSource = {
   channel: RequestChannel;
+  /** « Autre »: the channel named by the agency (« WhatsApp », « LinkedIn »…). Shown to the client. */
+  channelName?: string;
   /** Day the client made it, "YYYY-MM-DD" (the request may be entered later). */
   receivedAt?: string;
   /** The client's words, pasted (an e-mail, a message). Shown to the client. */
@@ -16,19 +18,29 @@ export type RequestSource = {
 };
 
 export const excerptMaxLength = 5000;
+export const channelNameMaxLength = 40;
 const capturePattern = /^\/api\/files\/[0-9a-f-]{36}$/;
 
 /** The source a page sends, or undefined when there is none; null when malformed. */
 export function readRequestSource(value: unknown): RequestSource | undefined | null {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== "object" || Array.isArray(value)) return null;
-  const { channel, receivedAt, excerpt, capture } = value as Record<string, unknown>;
+  const { channel, channelName, receivedAt, excerpt, capture } = value as Record<string, unknown>;
   if (typeof channel !== "string" || !Object.hasOwn(requestChannels, channel)) return null;
+  // A name only for « Autre », bounded.
+  if (channelName !== undefined && (channel !== "other" || typeof channelName !== "string" || channelName.length > channelNameMaxLength)) return null;
   if (receivedAt !== undefined && (typeof receivedAt !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(receivedAt) || Number.isNaN(Date.parse(receivedAt)))) return null;
   if (excerpt !== undefined && (typeof excerpt !== "string" || excerpt.length > excerptMaxLength)) return null;
   if (capture !== undefined && (typeof capture !== "string" || !capturePattern.test(capture))) return null;
   const words = typeof excerpt === "string" ? excerpt.trim() : "";
-  return { channel: channel as RequestChannel, ...(receivedAt ? { receivedAt } : {}), ...(words ? { excerpt: words } : {}), ...(capture ? { capture } : {}) };
+  const name = typeof channelName === "string" ? channelName.trim() : "";
+  return {
+    channel: channel as RequestChannel,
+    ...(name ? { channelName: name } : {}),
+    ...(receivedAt ? { receivedAt } : {}),
+    ...(words ? { excerpt: words } : {}),
+    ...(capture ? { capture } : {}),
+  };
 }
 
 const channelPhrases: Record<RequestChannel, string> = {
@@ -43,7 +55,7 @@ const channelPhrases: Record<RequestChannel, string> = {
 
 /** "Demande reçue par e-mail le 14/10/2026, saisie par Alice Martin". */
 export function sourceLine(source: RequestSource, enteredBy?: string) {
-  const channel = channelPhrases[source.channel];
+  const channel = source.channel === "other" && source.channelName ? `par ${source.channelName}` : channelPhrases[source.channel];
   const day = source.receivedAt ? ` le ${source.receivedAt.split("-").reverse().join("/")}` : "";
   return `Demande reçue ${channel}${day}${enteredBy ? `, saisie par ${enteredBy}` : ""}`;
 }

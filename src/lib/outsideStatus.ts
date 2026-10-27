@@ -5,10 +5,13 @@
 // status at all (the draft's amount never leaves the server, src/db/reviewAccess.ts). A proposal waiting
 // for them is « À valider », in the tone the agency gives to what is still to be done.
 
-export type OutsideStatus = "unquoted" | "quoted" | "sent" | "counter" | "accepted" | "refused";
+//
+// An offered request (src/lib/requestOffer.ts) is « Offerte » for both: done for free, nothing to decide.
+
+export type OutsideStatus = "unquoted" | "quoted" | "sent" | "counter" | "accepted" | "refused" | "offered";
 export type StatusTone = "pending" | "ready" | "waiting" | "attention" | "accepted" | "refused";
 
-export const outsideStatuses: OutsideStatus[] = ["unquoted", "quoted", "sent", "counter", "accepted", "refused"];
+export const outsideStatuses: OutsideStatus[] = ["unquoted", "quoted", "sent", "counter", "accepted", "refused", "offered"];
 
 const agencyLabels: Record<OutsideStatus, string> = {
   unquoted: "À chiffrer",
@@ -17,6 +20,7 @@ const agencyLabels: Record<OutsideStatus, string> = {
   counter: "Contre-proposition reçue",
   accepted: "Acceptée",
   refused: "Refusée",
+  offered: "Offerte",
 };
 const clientLabels: Record<OutsideStatus, string | null> = {
   unquoted: null,
@@ -25,6 +29,7 @@ const clientLabels: Record<OutsideStatus, string | null> = {
   counter: "Contre-proposition envoyée",
   accepted: "Acceptée",
   refused: "Refusée",
+  offered: "Offerte",
 };
 const tones: Record<OutsideStatus, StatusTone> = {
   unquoted: "pending",
@@ -33,6 +38,7 @@ const tones: Record<OutsideStatus, StatusTone> = {
   counter: "attention",
   accepted: "accepted",
   refused: "refused",
+  offered: "accepted",
 };
 
 const clientTones: Partial<Record<OutsideStatus, StatusTone>> = { sent: "pending" };
@@ -47,18 +53,22 @@ export function outsideStatusView(status: OutsideStatus, reader: "agency" | "cli
 export const outsideFilters = (reader: "agency" | "client") => (reader === "agency" ? outsideStatuses : outsideStatuses.filter((status) => clientLabels[status] !== null));
 
 /**
- * From the proposal's state: not quoted, a draft, or sent; then the client's decision on the proposal,
- * and on the adaptation they asked for (a counter-proposal), when there is one.
+ * Offered first (whatever quote came before it); otherwise from the proposal's state: not quoted, a draft,
+ * or sent; then the client's decision on the proposal, and on the adaptation they asked for (a
+ * counter-proposal), when there is one.
  */
 export function outsideStatusOf({
   state,
   decision,
   adaptation,
+  offered = false,
 }: {
   state: "none" | "draft" | "sent";
   decision: "none" | "accepted" | "refused";
   adaptation?: { decision?: "accepted" | "refused" } | null;
+  offered?: boolean;
 }): OutsideStatus {
+  if (offered) return "offered";
   if (state === "none") return "unquoted";
   if (state === "draft") return "quoted";
   if (decision === "accepted" || adaptation?.decision === "accepted") return "accepted";

@@ -3,7 +3,7 @@
 // database with its audit event.
 
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { call, createAgency, newPerson, seedState, signInPage, signUp, sql, unique } from "./helpers";
+import { call, createAgency, mailsTo, newPerson, seedState, signInPage, signUp, sql, unique } from "./helpers";
 
 const quote = (commentId: number, status: string, extra: Record<string, unknown> = {}) => ({ id: commentId * 10, version: 1, commentId, description: `Devis ${commentId}`, amount: 900, deadline: 3, status, createdAt: "x", ...extra });
 const request = (id: number, title: string) => ({
@@ -23,7 +23,7 @@ const request = (id: number, title: string) => ({
 });
 
 /** The editor of a version shared with a decider (who receives the proposals), or with a contributor only. */
-async function editor(browser: Browser, role: "decider" | "contributor" = "decider") {
+async function editor(browser: Browser, role: "decider" | "contributor" = "decider", others: string[] = []) {
   const alice = await signUp("Alice Martin");
   const decider = `${unique("claire")}@northwind.test`;
   await createAgency(alice, "Studio Devis");
@@ -36,7 +36,7 @@ async function editor(browser: Browser, role: "decider" | "contributor" = "decid
     },
     maps: {
       reviewLinks: {
-        upsert: { "1:1": { token: unique("tok-devis"), active: true, expiresAt: "01/01/2099", autoExpire: true, deliverableId: 1, version: 1, invites: [{ email: decider, at: "14/10/2026 10:00", role }] } },
+        upsert: { "1:1": { token: unique("tok-devis"), active: true, expiresAt: "01/01/2099", autoExpire: true, deliverableId: 1, version: 1, invites: [{ email: decider, at: "14/10/2026 10:00", role }, ...others.map((email) => ({ email, at: "14/10/2026 10:00", role: "decider" }))] } },
         remove: [],
       },
       proposalStates: { upsert: { "31": "draft", "32": "sent", "33": "sent", "34": "sent" }, remove: [] },
@@ -73,9 +73,14 @@ test("an administrator sends a drafted quote, after confirming it", async ({ bro
   const { org, page, errors, writes, decider } = await editor(browser);
   await page.locator('[data-pin="31"]').click();
   await thread(page).getByRole("button", { name: "Envoyer la proposition" }).click();
-  // The dialog names who receives it: the version's decider, not the space.
+  // Who is told by e-mail: the version's decider, not the space; folded at the foot of the dialog.
   const confirm = page.getByRole("alertdialog");
-  await expect(confirm).toContainText(`Envoyée à ${decider}`);
+  const notify = confirm.getByRole("button", { name: /Prévenir par e-mail/ });
+  await expect(notify).toHaveAttribute("aria-expanded", "false");
+  await expect(notify).toContainText("1 décideur");
+  await expect(confirm.getByRole("checkbox")).toHaveCount(0);
+  await notify.click();
+  await expect(confirm.getByRole("checkbox", { name: decider })).toBeChecked();
   await expect(confirm).not.toContainText("Northwind");
   await confirm.getByRole("button", { name: "Envoyer la proposition" }).click();
   await expect.poll(async () => (await proposal(org, 31))?.state).toBe("sent");
@@ -85,11 +90,46 @@ test("an administrator sends a drafted quote, after confirming it", async ({ bro
   expect(errors).toEqual([]);
 });
 
+test("the agency chooses which deciders are told by e-mail, all by default; never anyone else", async ({ browser }) => {
+  const other = `${unique("marc")}@northwind.test`;
+  const { alice, org, page, errors, decider } = await editor(browser, "decider", [other]);
+  await page.locator('[data-pin="31"]').click();
+  await thread(page).getByRole("button", { name: "Envoyer la proposition" }).click();
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm.getByRole("button", { name: /Prévenir par e-mail/ })).toContainText("2 décideurs");
+  await confirm.getByRole("button", { name: /Prévenir par e-mail/ }).click();
+  await expect(confirm.getByRole("checkbox", { name: decider })).toBeChecked();
+  await confirm.getByRole("checkbox", { name: other }).click();
+  await expect(confirm.getByRole("button", { name: /Prévenir par e-mail/ })).toContainText("1 décideur sur 2");
+  await confirm.getByRole("button", { name: "Envoyer la proposition" }).click();
+  await expect.poll(async () => (await proposal(org, 31))?.state).toBe("sent");
+  await expect.poll(() => mailsTo(decider).length).toBe(1);
+  expect(mailsTo(other)).toHaveLength(0);
+
+  // The server only narrows the deciders: an address that is not one is never written to.
+  const stranger = `${unique("intrus")}@ailleurs.test`;
+  await seedState(alice, { maps: { proposalStates: { upsert: { "31": "draft" }, remove: [] }, proposalVersions: { upsert: { "31": [quote(31, "draft")] }, remove: [] } } });
+  expect((await call("/api/comments/31/proposal/send", { method: "POST", person: alice, body: { notify: [stranger, other] } })).status).toBe(200);
+  await expect.poll(() => mailsTo(other).length).toBe(1);
+  expect(mailsTo(stranger)).toHaveLength(0);
+  expect(errors).toEqual([]);
+});
+
 test("an administrator accepts the client's counter-proposal", async ({ browser }) => {
   const { org, page, errors, writes } = await editor(browser);
+  // A laptop's window: the dialog holds everything, its figures and its three answers (feedback of 26 October 2026).
+  await page.setViewportSize({ width: 1048, height: 660 });
   await page.locator('[data-pin="32"]').click();
   await thread(page).getByRole("button", { name: "Répondre à l’adaptation" }).click();
-  await page.getByRole("button", { name: "Accepter l’adaptation" }).click();
+  const dialog = page.getByRole("dialog", { name: "Proposition · demande n°32" });
+  await expect(dialog).toBeVisible();
+  const frame = (await dialog.boundingBox())!;
+  for (const shown of [dialog.getByText("900 € HT"), dialog.getByText(/envoyée le/), ...["Refuser l’adaptation", "Accepter l’adaptation", "Répondre par une nouvelle version"].map((name) => dialog.getByRole("button", { name }))]) {
+    const box = (await shown.boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(frame.x + frame.width);
+  }
+  expect(await dialog.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
+  await dialog.getByRole("button", { name: "Accepter l’adaptation" }).click();
   await expect.poll(async () => (await proposal(org, 32))?.adaptation).toMatchObject({ message: "Moins cher ?", budget: 600, decision: "accepted", decisionBy: "Alice Martin" });
   await expect.poll(() => events(org, 32)).toEqual(["proposal.adaptation-decision"]);
   expect(writes.filter((write) => write === "PATCH /api/state")).toEqual([]);

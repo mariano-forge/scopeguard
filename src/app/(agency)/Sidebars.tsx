@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Bell,
   ChevronDown,
+  ChevronRight,
   Clock,
   CircleHelp,
   FileText,
@@ -18,6 +19,7 @@ import {
   Plus,
   Search,
   Share2,
+  SquareKanban,
   Trash2,
   Users,
 } from "lucide-react";
@@ -30,6 +32,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { timeLabel, useNow } from "./editor/CanvasComments";
 import { AccountMenu, useCurrentUser } from "./CurrentUser";
+import { avatarLetter } from "@/lib/authors";
 
 /** `href`: the page it is about (src/app/(agency)/routes.ts notificationHref); none for older ones. */
 type Notification = { id: number; message: string; href?: string };
@@ -69,14 +72,25 @@ function readSeenActivity(key: string) {
  * The bell: what is new (the client's messages not opened yet, the activity not seen yet), then what was
  * already seen. Activity counts as seen once the bell is closed; a message, once its thread is opened.
  */
+/** Notices the bell leaves out: a reminder the agency sent itself tells it nothing new (feedback of 25 October 2026). */
+const leftOut = (notification: Notification) => notification.message.startsWith("Relance envoyée");
+/** When a notice came: its id is its time for every recent one; an older one goes last. */
+const noticeTime = (notification: Notification) => (notification.id > 1e12 ? notification.id : 0);
+/** At most this many read notices, the latest. */
+const readShown = 15;
+
 export function Notifications({
   notifications,
   feedback,
+  readFeedback = [],
   onMarkAllRead,
   compact,
 }: {
   notifications: Notification[];
+  /** The client's messages not read yet, and the changes they asked for. */
   feedback: ClientFeedback[];
+  /** The client's messages already read: they stay, under « Déjà lus ». */
+  readFeedback?: ClientFeedback[];
   onMarkAllRead: () => void;
   compact?: boolean;
 }) {
@@ -86,8 +100,9 @@ export function Notifications({
   const key = seenActivityKey(organizationId ?? "");
   // Everything seen while rendered on the server: the browser then says what is new.
   const seenUpTo = useSyncExternalStore(subscribeToStorage, () => readSeenActivity(key), () => Number.MAX_SAFE_INTEGER);
-  const freshActivity = notifications.filter((notification) => notification.id > seenUpTo);
-  const pastActivity = notifications.filter((notification) => notification.id <= seenUpTo).slice(0, 6);
+  const shownActivity = notifications.filter((notification) => !leftOut(notification));
+  const freshActivity = shownActivity.filter((notification) => notification.id > seenUpTo);
+  const pastActivity = shownActivity.filter((notification) => notification.id <= seenUpTo);
   const unread = feedback.length + freshActivity.length;
 
   function markActivitySeen() {
@@ -115,6 +130,32 @@ export function Notifications({
       <span className={`notification-item ${fresh ? "is-new" : ""}`}>{content}</span>
     );
   };
+  const message = (item: ClientFeedback, fresh: boolean) => (
+    <Link className={`notification-message ${fresh ? "is-new" : ""}`} href={item.href} onClick={() => setOpen(false)}>
+      <span className="thread-avatar" aria-hidden="true">
+        {avatarLetter(item.initials)}
+      </span>
+      <span className="grid min-w-0 gap-0.5">
+        <span className="flex items-baseline gap-2 text-sm">
+          <b className="truncate font-medium">{item.author}</b>
+          {timeLabel(item, now) && <small className="ml-auto shrink-0 text-xs text-muted-foreground">{timeLabel(item, now)}</small>}
+        </span>
+        <span className={`line-clamp-2 text-sm ${item.kind === "changes" ? "font-medium" : ""}`}>{item.message}</span>
+        <small className="truncate text-xs text-muted-foreground">{item.context}</small>
+      </span>
+    </Link>
+  );
+  // The client's messages and the activity together, the newest first; asked changes (a state, undated) on top.
+  type Entry = { key: string; at: number; node: React.ReactNode; padded: boolean };
+  const newestFirst = (entries: Entry[]) => [...entries].sort((left, right) => right.at - left.at);
+  const fresh = newestFirst([
+    ...feedback.map((item) => ({ key: item.key, at: item.kind === "changes" ? Number.MAX_SAFE_INTEGER : (item.createdAt ?? 0), node: message(item, true), padded: false })),
+    ...freshActivity.map((notification) => ({ key: `a-${notification.id}`, at: noticeTime(notification), node: activity(notification, true), padded: true })),
+  ]);
+  const read = newestFirst([
+    ...readFeedback.map((item) => ({ key: item.key, at: item.createdAt ?? 0, node: message(item, false), padded: false })),
+    ...pastActivity.map((notification) => ({ key: `a-${notification.id}`, at: noticeTime(notification), node: activity(notification, false), padded: true })),
+  ]).slice(0, readShown);
 
   return (
     <div className={`notifications ${compact ? "is-compact" : ""}`}>
@@ -151,40 +192,25 @@ export function Notifications({
           </div>
           <div className="max-h-[min(480px,calc(100vh-8rem))] overflow-y-auto">
             <p className="notification-section">Nouveaux{unread ? ` · ${unread}` : ""}</p>
-            {unread === 0 ? (
+            {fresh.length === 0 ? (
               <p className="notification-empty">Rien de nouveau.</p>
             ) : (
               <ul className="notification-list">
-                {feedback.map((item) => (
-                  <li key={item.key}>
-                    <Link className="notification-message is-new" href={item.href} onClick={() => setOpen(false)}>
-                      <span className="thread-avatar" aria-hidden="true">
-                        {item.initials}
-                      </span>
-                      <span className="grid min-w-0 gap-0.5">
-                        <span className="flex items-baseline gap-2 text-sm">
-                          <b className="truncate font-medium">{item.author}</b>
-                          {timeLabel(item, now) && <small className="ml-auto shrink-0 text-xs text-muted-foreground">{timeLabel(item, now)}</small>}
-                        </span>
-                        <span className={`line-clamp-2 text-sm ${item.kind === "changes" ? "font-medium" : ""}`}>{item.message}</span>
-                        <small className="truncate text-xs text-muted-foreground">{item.context}</small>
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-                {freshActivity.map((notification) => (
-                  <li key={notification.id} className="px-4">
-                    {activity(notification, true)}
+                {fresh.map((entry) => (
+                  <li key={entry.key} className={entry.padded ? "px-4" : undefined}>
+                    {entry.node}
                   </li>
                 ))}
               </ul>
             )}
-            {pastActivity.length > 0 && (
+            {read.length > 0 && (
               <>
                 <p className="notification-section">Déjà lus</p>
-                <ul className="notification-list is-read grid gap-2 px-4 pb-3">
-                  {pastActivity.map((notification) => (
-                    <li key={notification.id}>{activity(notification, false)}</li>
+                <ul className="notification-list is-read grid gap-2 pb-3">
+                  {read.map((entry) => (
+                    <li key={entry.key} className={entry.padded ? "px-4" : undefined}>
+                      {entry.node}
+                    </li>
                   ))}
                 </ul>
               </>
@@ -196,6 +222,52 @@ export function Notifications({
   );
 }
 
+/** A space in the sidebar, its projects one click away: its chevron opens them under it (open for the space one is in). */
+function SpaceNavItem({ client, projects, view }: { client: Client; projects: SidebarProject[]; view: AgencyView }) {
+  const inside = (view.kind === "client" && view.clientId === client.id) || ("projectId" in view && projects.some((project) => project.id === view.projectId));
+  const [open, setOpen] = useState(inside);
+  return (
+    <li>
+      <div className="nav-row">
+        <Link className={`nav-item ${view.kind === "client" && view.clientId === client.id ? "active" : ""}`} href={href.client(client.id)} title={client.name}>
+          <SpaceAvatar client={client} size="sm" />
+          <span className="nav-label">{client.name}</span>
+        </Link>
+        {projects.length > 0 && (
+          <button
+            type="button"
+            className="nav-toggle"
+            aria-expanded={open}
+            aria-label={`${open ? "Masquer" : "Afficher"} les projets de ${client.name}`}
+            onClick={() => setOpen((current) => !current)}
+          >
+            <ChevronRight aria-hidden="true" className={open ? "rotate-90" : undefined} />
+          </button>
+        )}
+      </div>
+      {open && projects.length > 0 && (
+        <ul aria-label={`Projets de ${client.name}`}>
+          {projects.map((project) => {
+            const active = "projectId" in view && view.projectId === project.id;
+            return (
+              <li key={project.id}>
+                <Link className={`nav-item nav-sub ${active ? "active" : ""}`} href={href.project(project.id)} aria-current={active ? "page" : undefined}>
+                  <span className="nav-icon">
+                    <FolderClosed />
+                  </span>
+                  <span className="nav-label">{project.name}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+export type SidebarProject = { id: number; name: string; clientId?: number };
+
 /** Home pages (Figma home): account, search, shortcuts, starred, all client spaces. */
 export type SidebarFavorite = { key: string; label: string; href: string; kind: "project" | "livrable" };
 
@@ -205,15 +277,20 @@ export function HomeSidebar({
   favorites,
   notifications,
   feedback,
+  readFeedback,
   onMarkAllRead,
   onSearch,
   onNewClient,
+  projects,
 }: {
   view: AgencyView;
   clients: Client[];
+  /** The projects, under their space when it is opened. */
+  projects: SidebarProject[];
   favorites: SidebarFavorite[];
   notifications: Notification[];
   feedback: ClientFeedback[];
+  readFeedback: ClientFeedback[];
   onMarkAllRead: () => void;
   onSearch: () => void;
   onNewClient: () => void;
@@ -229,7 +306,7 @@ export function HomeSidebar({
     <aside className="sidebar home-sidebar" aria-label="Navigation">
       <div className="sidebar-account">
         <AccountMenu />
-        <Notifications notifications={notifications} feedback={feedback} onMarkAllRead={onMarkAllRead} />
+        <Notifications notifications={notifications} feedback={feedback} readFeedback={readFeedback} onMarkAllRead={onMarkAllRead} />
       </div>
       <button className="sidebar-search" onClick={onSearch}>
         <Search />
@@ -246,7 +323,7 @@ export function HomeSidebar({
           <span>Favoris</span>
         </div>
         {favorites.length === 0 ? (
-          <p className="nav-empty">Survolez un projet ou un livrable et cliquez sur l’étoile pour le retrouver ici.</p>
+          <p className="nav-empty">Vos projets et livrables ajoutés en favoris s’affichent ici.</p>
         ) : (
           <ul className="nav-tree">
             {favorites.map((favorite) => (
@@ -272,28 +349,13 @@ export function HomeSidebar({
         </div>
         <ul className="nav-tree">
           {clients.map((client) => (
-            <li key={client.id}>
-              <Link
-                className={`nav-item ${view.kind === "client" && view.clientId === client.id ? "active" : ""}`}
-                href={href.client(client.id)}
-                title={client.name}
-              >
-                <SpaceAvatar client={client} size="sm" />
-                <span className="nav-label">{client.name}</span>
-              </Link>
-            </li>
+            <SpaceNavItem key={client.id} client={client} projects={projects.filter((project) => (project.clientId ?? 1) === client.id)} view={view} />
           ))}
         </ul>
       </nav>
       <div className="sidebar-bottom">
-        <a className="nav-item" href="#equipe">
-          <span className="nav-icon"><Users /></span>
-          <span className="nav-label">Équipe</span>
-        </a>
-        <a className="nav-item" href="#aide">
-          <span className="nav-icon"><CircleHelp /></span>
-          <span className="nav-label">Aide</span>
-        </a>
+        {navLink(href.team(), view.kind === "team", <Users />, "Équipe")}
+        {navLink(href.help(), view.kind === "help", <CircleHelp />, "Aide")}
       </div>
     </aside>
   );
@@ -350,6 +412,7 @@ export function ProjectSidebar({
   panel,
   onPanel,
   canvasHref,
+  requestsHref,
   onNavigate,
   panelWidth,
   onPanelResize,
@@ -369,8 +432,10 @@ export function ProjectSidebar({
   /** Panel content, or null when collapsed. */
   panel: PanelMode | null;
   onPanel: (mode: PanelMode | null) => void;
-  /** Canvas of the deliverable (from the proposals page). */
+  /** Canvas of the deliverable (from its requests' board). */
   canvasHref: string;
+  /** The board of the deliverable's requests, inside it (its rail stays). */
+  requestsHref: string;
   /** Switches view inside the deliverable's tab. */
   onNavigate: (target: string) => void;
   panelWidth: number;
@@ -397,7 +462,7 @@ export function ProjectSidebar({
             {panel ? <PanelLeftClose /> : <PanelLeftOpen />}
           </button>
         </Hint>
-        {view.kind === "deliverable" ? (
+        {view.kind === "deliverable" && !view.pane ? (
           <Hint label="Versions" side="right">
             <button
               className={`rail-button ${panel ? "is-active" : ""}`}
@@ -420,6 +485,17 @@ export function ProjectSidebar({
             <Layers />
           </button>
         )}
+        {/* The board of this deliverable's requests, in the deliverable (feedback of 26 October 2026). */}
+        <Hint label="Pipeline des demandes" side="right">
+          <button
+            className={`rail-button ${view.kind === "deliverable" && view.pane === "requests" ? "is-active" : ""}`}
+            onClick={() => onNavigate(view.kind === "deliverable" && view.pane === "requests" ? canvasHref : requestsHref)}
+            aria-label="Pipeline des demandes"
+            aria-pressed={view.kind === "deliverable" && view.pane === "requests"}
+          >
+            <SquareKanban />
+          </button>
+        </Hint>
         <MenuButton
           className="rail-logo"
           label="Menu principal"

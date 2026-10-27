@@ -224,6 +224,52 @@ export function ReviewCanvas({
   };
   const panelRef = useRef<HTMLElement>(null);
   const [zoom, setZoom] = useState(100);
+  /**
+   * While the canvas zooms, an open bubble stays where it is on screen, at its size: only the background moves
+   * (feedback of 25 October 2026). Set on the bubble itself at each step of the zoom (React would come a frame
+   * late, the bubble growing then shrinking back), then let go once the zoom stops: back by its pin.
+   */
+  const held = useRef<{ places: Map<HTMLElement, { left: number; top: number }>; release?: ReturnType<typeof setTimeout> } | null>(null);
+  /** The canvas's transform before this step: where each bubble was is read from it, not after the step moved it. */
+  const lastTransform = useRef<{ scale: number; x: number; y: number } | null>(null);
+  const holdBubbles = (state: { scale: number; positionX: number; positionY: number }) => {
+    const before = lastTransform.current;
+    lastTransform.current = { scale: state.scale, x: state.positionX, y: state.positionY };
+    // A pan alone moves the bubble with its pin, as it always did; only a zoom holds it.
+    if (!before || (!held.current && Math.abs(state.scale - before.scale) < 1e-6)) return;
+    const bubbles = [...(panelRef.current?.querySelectorAll<HTMLElement>(".canvas-page .thread") ?? [])];
+    if (!held.current) {
+      // Where each bubble was before this first step: the step moved the page (its origin) and scaled it.
+      const page = panelRef.current?.querySelector(".artboard-transform-content")?.getBoundingClientRect();
+      if (!page) return;
+      const [left, top] = [page.left - state.positionX + before.x, page.top - state.positionY + before.y];
+      const ratio = before.scale / state.scale;
+      held.current = {
+        places: new Map(
+          bubbles.map((bubble) => {
+            const box = bubble.getBoundingClientRect();
+            return [bubble, { left: left + (box.left - page.left) * ratio, top: top + (box.top - page.top) * ratio }];
+          }),
+        ),
+      };
+    }
+    for (const bubble of bubbles) {
+      const place = held.current.places.get(bubble);
+      if (!place) continue;
+      bubble.style.setProperty("--inv-zoom", String(1 / state.scale));
+      bubble.style.setProperty("--fx", "0px");
+      bubble.style.setProperty("--fy", "0px");
+      const now = bubble.getBoundingClientRect();
+      // In the zoomed page's units: a step there is `scale` steps on screen.
+      bubble.style.setProperty("--fx", `${(place.left - now.left) / state.scale}px`);
+      bubble.style.setProperty("--fy", `${(place.top - now.top) / state.scale}px`);
+    }
+    clearTimeout(held.current.release);
+    held.current.release = setTimeout(() => {
+      for (const bubble of held.current?.places.keys() ?? []) for (const name of ["--fx", "--fy", "--inv-zoom"]) bubble.style.removeProperty(name);
+      held.current = null;
+    }, 300);
+  };
   // The zoom once it stops moving: PDF pages are drawn finer for it (SharpPdfPage), not at each turn of the wheel.
   const [settledZoom, setSettledZoom] = useState(100);
   useEffect(() => {
@@ -422,7 +468,8 @@ export function ReviewCanvas({
   }
 
   function pointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    if (moving || fullScreenVideo()) return;
+    // The video's bar, under it on the artboard: its own controls, never a pin, a zone or a pan.
+    if (moving || fullScreenVideo() || (event.target as Element).closest(".video-bar")) return;
     pointerStart.current = { x: event.clientX, y: event.clientY };
     moved.current = false;
     setDragging(false);
@@ -512,6 +559,8 @@ export function ReviewCanvas({
   /** Capture phase, so the deliverable's own buttons don't swallow the click. */
   function click(event: React.MouseEvent<HTMLDivElement>) {
     if (fullScreenVideo()) return;
+    // React brings a portal's clicks here too (a bubble's ⋯ menu, drawn over the page): only the canvas's own are its.
+    if (!event.currentTarget.contains(event.target as Node)) return;
     if (moving) {
       event.preventDefault();
       event.stopPropagation();
@@ -519,7 +568,7 @@ export function ReviewCanvas({
       setMoving(null);
       return;
     }
-    if ((event.target as Element).closest(".thread, .canvas-pin")) return;
+    if ((event.target as Element).closest(".thread, .canvas-pin, .video-bar")) return;
     if (moved.current) {
       moved.current = false;
       return;
@@ -636,9 +685,12 @@ export function ReviewCanvas({
           wheel={{ step: 0.08, wheelDisabled: true, excluded: ["thread"] }}
           trackPadPanning={{ disabled: false, velocityDisabled: true, excluded: ["thread"] }}
           // The hand pans with the left button; the wheel button pans whatever the tool, as in Figma.
-          panning={{ allowLeftClickPan: tool === "move", allowMiddleClickPan: true, allowRightClickPan: false, excluded: ["thread", "canvas-pin"], velocityDisabled: true }}
+          panning={{ allowLeftClickPan: tool === "move", allowMiddleClickPan: true, allowRightClickPan: false, excluded: ["thread", "canvas-pin", "video-bar"], velocityDisabled: true }}
           onInit={() => requestAnimationFrame(fitWidth)}
-          onTransform={(_, state) => setZoom(Math.round(state.scale * 100))}
+          onTransform={(_, state) => {
+            holdBubbles(state);
+            setZoom(Math.round(state.scale * 100));
+          }}
         >
           <TransformComponent wrapperClass={`artboard-transform-wrapper ${dragging ? "dragging" : ""}`} contentClass="artboard-transform-content">
             <div
@@ -664,6 +716,21 @@ export function ReviewCanvas({
               ) : (
                 <CanvasZoom.Provider value={settledZoom / 100}>
                   <DeliverableContent deliverable={deliverable} renderPage={renderPage} video={video ? videoEvents : undefined} />
+                  {/* Right under the video, as wide as it: zoomed and moved with it, outside its page (a pin's place is a share of the page). */}
+                  {video && (
+                    <VideoBar
+                      controls={videoControls}
+                      {...playback}
+                      marks={comments
+                        .filter((comment) => comment.timecode !== undefined && !comment.closed)
+                        .map((comment) => ({ id: comment.id, timecode: comment.timecode!, kind: requestKind(comment), agency: sideOf(comment) === "agency", label: itemLabel(comment) }))}
+                      selectedId={threadOpen ? selectedId : null}
+                      onOpen={(id) => {
+                        const comment = comments.find((item) => item.id === id);
+                        if (comment) onPinClick(comment);
+                      }}
+                    />
+                  )}
                 </CanvasZoom.Provider>
               )}
             </div>
@@ -676,20 +743,6 @@ export function ReviewCanvas({
         <div ref={dockedRef} className="canvas-docked-thread">
           {renderThread(selected)}
         </div>
-      )}
-      {video && (
-        <VideoBar
-          controls={videoControls}
-          {...playback}
-          marks={comments
-            .filter((comment) => comment.timecode !== undefined && !comment.closed)
-            .map((comment) => ({ id: comment.id, timecode: comment.timecode!, kind: requestKind(comment), agency: sideOf(comment) === "agency", label: itemLabel(comment) }))}
-          selectedId={threadOpen ? selectedId : null}
-          onOpen={(id) => {
-            const comment = comments.find((item) => item.id === id);
-            if (comment) onPinClick(comment);
-          }}
-        />
       )}
       {moving && (
         <p className="canvas-hint" role="status">

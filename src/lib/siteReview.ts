@@ -160,9 +160,7 @@ export type ToolbarMessage =
   | { type: "kora:open"; id: number }
   | { type: "kora:missing"; ids: number[] }
   /** Kora closed from the toolbar: the bubble's comment is put away. */
-  | { type: "kora:dismiss" }
-  /** The list is open on the right: a comment then opens in it, not in a bubble that would take its place. */
-  | { type: "kora:docked"; on: boolean };
+  | { type: "kora:dismiss" };
 /** From the Kora window that recognised an agency member, to the panel that opened it (same origin). */
 export type TicketMessage = { type: "kora:agency-ticket"; ticket: string };
 /** Between the panel and the review tab it opened, without a second code (src/lib/siteHandoff.ts). */
@@ -172,8 +170,9 @@ export type PanelMessage =
   /** Whether the visitor is in (a verified client with a name, or the agency): the bar then opens without the list. */
   | { type: "kora:signed"; in: boolean }
   | { type: "kora:pins"; pins: SitePin[] }
+  /** A comment chosen in the list: the toolbar opens it in the bubble's frame, beside its pin. */
   | { type: "kora:focus"; id: number }
-  /** The frame as a bubble next to the pin or the click (a comment written or read), or back to the list. */
+  /** The bubble's frame shown next to the pin or the click (a comment written or read), or put away. */
   | { type: "kora:bubble"; open: boolean }
   /** The bubble's height, as tall as what it holds. */
   | { type: "kora:size"; height: number }

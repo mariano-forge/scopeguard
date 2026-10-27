@@ -1,30 +1,31 @@
-/* The bar of a video on the review canvas (VideoBar.tsx): above the canvas's tools, as wide as it can be
-   on a phone. Its marks are the pins' colours (.canvas-pin in globals.css). */
+/* The bar of a video on the review canvas (VideoBar.tsx): right under the video on the artboard, as wide as
+   it, zoomed and moved with it, like the controls of a player. Its marks are the pins' colours (.canvas-pin
+   in globals.css). */
 
 .video-bar {
-  position: absolute;
-  bottom: 76px;
-  left: 50%;
-  z-index: 6;
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--s-2);
-  width: min(720px, calc(100% - 2 * var(--s-4)));
-  height: 44px;
-  padding: 0 var(--s-2);
-  border: 1px solid var(--border);
-  border-radius: var(--r-panel);
+  gap: var(--s-1);
+  width: 100%;
+  height: 40px;
+  padding: 0 var(--s-1);
+  border-top: 1px solid var(--border);
   background: var(--paper);
-  box-shadow: var(--shadow);
-  transform: translateX(-50%);
+  /* The page's own shadow (.canvas-page): one piece with the video above it. */
+  box-shadow:
+    0 1px 3px rgba(17, 17, 17, 0.12),
+    0 12px 32px rgba(17, 17, 17, 0.06);
+  cursor: default;
 }
 
 .video-bar-button {
   display: grid;
   place-items: center;
   flex: none;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
   border: 0;
   border-radius: var(--r-button);
   background: transparent;
@@ -34,17 +35,18 @@
   background: var(--mist);
 }
 .video-bar-button:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 .video-bar-button .lucide {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .video-bar-time {
   flex: none;
-  min-width: 84px;
+  min-width: 76px;
+  padding-right: var(--s-1);
   color: var(--graphite);
   font-size: var(--t-caption-size);
   font-variant-numeric: tabular-nums;
@@ -61,7 +63,7 @@
   position: absolute;
   top: 50%;
   left: 0;
-  height: 4px;
+  height: 3px;
   border-radius: 2px;
   transform: translateY(-50%);
   content: "";
@@ -97,9 +99,16 @@
   border-radius: var(--r-full);
   background: var(--ink);
 }
+/* Chrome treats a range clicked with the mouse as focused by the keyboard: a frame around the whole track at
+   each click. The focus shows on the thumb instead, a ring of Kora's blue, for the keyboard as for the mouse. */
 .video-bar-track input[type="range"]:focus-visible {
-  outline: 2px solid var(--action-ui);
-  outline-offset: 2px;
+  outline: none;
+}
+.video-bar-track input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--focus);
+}
+.video-bar-track input[type="range"]:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--focus);
 }
 
 .video-bar-marks {
@@ -144,7 +153,7 @@
   box-shadow: 0 0 0 2px var(--ink);
 }
 .video-mark:focus-visible {
-  outline: 2px solid var(--action-ui);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 

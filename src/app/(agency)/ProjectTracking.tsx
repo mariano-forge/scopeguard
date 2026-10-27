@@ -184,8 +184,8 @@ export function ProjectTracking({ input }: { input: TrackingInput }) {
   );
 }
 
-/** Above each column, what it counts, then what it is worth: on two lines (Recharts' own label wraps at the column's width). */
-function ColumnLabel({ x, y, width, value }: { x?: number | string; y?: number | string; width?: number | string; value?: unknown }) {
+/** Above each column, what it counts, then what it is worth: on two lines (Recharts' own label wraps at the column's width). Also the home's charts. */
+export function ColumnLabel({ x, y, width, value }: { x?: number | string; y?: number | string; width?: number | string; value?: unknown }) {
   const [count, amount] = String(value ?? "").split("|");
   const center = Number(x) + Number(width) / 2;
   return (
@@ -264,6 +264,11 @@ function OutsideFunnel({ input, now, livrables, budget }: { input: TrackingInput
             <div>
               <dt>Refusés</dt>
               <dd>{outside.refused.count ? euros(outside.refused.amount) : "Aucun"}</dd>
+            </div>
+            {/* What the agency gave: done for free, valued (src/lib/requestOffer.ts). */}
+            <div>
+              <dt>Offertes au client</dt>
+              <dd>{outside.offered.count ? `${plural(outside.offered.count, "demande")} · ${euros(outside.offered.amount)}` : "Aucune"}</dd>
             </div>
           </dl>
         </div>

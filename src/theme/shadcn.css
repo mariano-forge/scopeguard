@@ -26,7 +26,7 @@
   --accent-foreground: var(--ink);
   --destructive: var(--danger);
   --input: var(--border-input);
-  --ring: var(--action-ui);
+  --ring: var(--focus);
   --radius: var(--r-button);
 }
 
@@ -72,6 +72,7 @@
   --color-canvas: var(--canvas);
   --color-paper: var(--paper);
   --color-mist: var(--mist);
+  --color-announce: var(--surface-announce);
   --color-graphite: var(--graphite);
   --color-border-input: var(--border-input);
   --color-action-fill: var(--action-fill);

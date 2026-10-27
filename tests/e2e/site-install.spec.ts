@@ -43,7 +43,7 @@ async function board(browser: Browser, alice: Member) {
   const { page, errors } = await newPerson(browser);
   await signInPage(page, alice.email);
   await page.goto("/projets/1/livrables/1");
-  const step = page.getByRole("listitem").filter({ has: page.getByRole("heading", { name: "Installez la barre Kora" }) });
+  const step = page.getByRole("listitem").filter({ has: page.getByRole("heading", { name: "Ajoutez la barre Kora à votre site" }) });
   await expect(step).toBeVisible();
   return { page, errors, step };
 }

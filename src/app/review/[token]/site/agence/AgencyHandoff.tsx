@@ -29,7 +29,7 @@ export function AgencyHandoff({ token, name, deliverable }: { token: string; nam
 
   return (
     <div className="gate-form">
-      <GateHeading deliverable={deliverable} title="Annoter le site au nom de l’agence">
+      <GateHeading deliverable={deliverable} title="Annoter le site au nom de l’organisation">
         Le panneau Kora du site de recette s’ouvrira en tant que <b>{name}</b>, pour 12 heures, sur ce site seulement.
       </GateHeading>
       {error && (

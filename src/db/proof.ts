@@ -14,6 +14,7 @@ import { auditEvents, clients, commentProposals, comments, deliverables, files, 
 import { deciderEventTypes } from "@/lib/clientRoles";
 import { sourceLine, type RequestSource } from "@/lib/requestSource";
 import { readCitedLine } from "@/lib/scopeCitation";
+import { sentOfferOf } from "@/lib/requestOffer";
 
 type Data = Record<string, unknown>;
 
@@ -41,7 +42,7 @@ async function identities(db: Db, values: (string | null)[]) {
     if (value.startsWith("client:")) return { kind: "client", label: `Client vérifié : ${value.slice(7)}` };
     if (value.startsWith("review-request:")) return { kind: "request", label: "Demande d’accès (adresse non vérifiée)" };
     const member = byId.get(value);
-    return { kind: "agency", label: member ? `Agence : ${member.name} <${member.email}>` : "Agence : membre retiré" };
+    return { kind: "agency", label: member ? `Organisation : ${member.name} <${member.email}>` : "Organisation : membre retiré" };
   };
 }
 
@@ -153,6 +154,8 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
     const data = row.data as Data;
     const source = sourceOf(data);
     const proposal = proposals.find((candidate) => candidate.commentId === row.id);
+    // Only an offer sent: one prepared is the agency's draft, as a draft quote is.
+    const offer = sentOfferOf(data);
     return {
       id: row.id,
       // A client's remark: their name and the address the server verified.
@@ -184,6 +187,8 @@ export async function buildProof(db: Db, org: string, deliverableId: number, gen
         }),
       decision: proposal?.decision && proposal.decision !== "none" ? proposal.decision : null,
       decisionEvent: last("proposal.decision", row.id),
+      // Offered to the client (src/lib/requestOffer.ts): what it is worth, and when and by whom (its event).
+      offer: offer ? { amount: offer.amount, days: offer.days, event: last("proposal.offered", row.id) } : null,
       adaptation: (proposal?.adaptation as Data | null) ?? null,
     };
   });

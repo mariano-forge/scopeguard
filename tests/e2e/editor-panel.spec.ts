@@ -102,6 +102,32 @@ test("the eye of the canvas's toolbar (or H) puts the pins away and brings them 
   expect(errors).toEqual([]);
 });
 
+test("a request opened from the panel brings its pin and its bubble to the middle of the canvas, whole", async ({ browser }) => {
+  const { page, errors } = await editor(browser);
+  // A pin, its card and its bubble show one letter of its author, large enough to read (the data keeps « CD »).
+  await expect(page.locator('[data-pin="30"] > span').first()).toHaveText("C");
+  await expect(page.locator('[data-pin="30"]')).toHaveCSS("font-size", "14px");
+  const canvas = page.locator(".react-transform-wrapper").first();
+  // The canvas moved away first: the pin out of view.
+  await canvas.hover();
+  await page.mouse.wheel(0, 2500);
+  const panel = page.getByRole("complementary", { name: "Demandes" });
+  await panel.getByRole("tab", { name: /^À clarifier/ }).click();
+  await panel.getByRole("tabpanel").getByRole("button", { name: /#30$/ }).click();
+  const bubble = page.getByRole("dialog", { name: /#30$/ });
+  await expect(bubble).toBeVisible();
+  await expect(bubble.locator(".thread-avatar").first()).toHaveText("C");
+  await expect(page.getByRole("complementary", { name: "Demandes" }).locator(".thread-row-meta .thread-avatar").first()).toHaveText("C");
+  // Whole inside the canvas, its foot clear of the toolbar.
+  await expect
+    .poll(async () => {
+      const [view, box] = [await canvas.boundingBox(), await bubble.boundingBox()];
+      return box!.y >= view!.y && box!.y + box!.height <= view!.y + view!.height - 80 && box!.x >= view!.x && box!.x + box!.width <= view!.x + view!.width;
+    })
+    .toBe(true);
+  expect(errors).toEqual([]);
+});
+
 test("at its narrowest, the requests panel's header keeps its actions in view, none cut on the right", async ({ browser }) => {
   const { page, errors } = await editor(browser);
   const handle = page.getByRole("separator", { name: "Largeur du panneau des demandes" });
@@ -132,9 +158,9 @@ test("drafts and closed discussions sit in « Commentaires »; out-of-scope requ
   await expect(list).not.toContainText("Vérifier les marges");
   await expect(panel.getByRole("tab", { name: /^Mes brouillons/ })).toHaveCount(0);
   // « Commentaires »: its drafts, and the closed discussions.
-  await views.getByRole("tab", { name: /^Commentaires/ }).click();
+  await views.getByRole("tab", { name: /^Discussions/ }).click();
   await expect(panel.getByRole("tab", { name: /^Mes brouillons\s*1/ })).toBeVisible();
-  await expect(panel.getByRole("tab", { name: /^Discussions clôturées\s*0/ })).toBeVisible();
+  await expect(panel.getByRole("tab", { name: /^Clôturées\s*0/ })).toBeVisible();
   await expect(list).toContainText("Vérifier les marges");
 
   // Qualified « À clarifier » with a title, the draft becomes a request to clarify.
@@ -155,16 +181,19 @@ test("drafts and closed discussions sit in « Commentaires »; out-of-scope requ
   await expect(list.getByRole("listitem").filter({ hasText: "Page FAQ" })).toContainText("À chiffrer");
   await expect(list.getByRole("listitem").filter({ hasText: "Version anglaise" })).toContainText("Prête pour l’envoi");
   await expect(list.getByRole("listitem").filter({ hasText: "Blog" })).toContainText("En attente du client");
-  // The quote's figures, each with its label.
-  await expect(list.getByRole("listitem").filter({ hasText: "Blog" }).locator(".client-proposal-line")).toContainText("Montant900 € HT");
-  await expect(list.getByRole("listitem").filter({ hasText: "Blog" }).locator(".client-proposal-line")).toContainText("Délai supplémentaire+ 3 jours");
-  // A click beside the action buttons selects the card too.
-  await list.getByRole("listitem").filter({ hasText: "Blog" }).getByText("Délai supplémentaire").click();
-  await expect(list.getByRole("listitem").filter({ hasText: "Blog" })).toHaveClass(/is-selected/);
+  // One card for every tab (feedback of 26 October 2026): its status and, out of scope, its amount on the same
+  // line; then its title; no button, every gesture is in its bubble.
+  const blog = list.getByRole("listitem").filter({ hasText: "Blog" });
+  await expect(blog.locator(".thread-row-status")).toHaveText(/^En attente du client\s*900\s€ HT$/);
+  await expect(list.getByRole("listitem").filter({ hasText: "Page FAQ" }).locator(".thread-row-amount")).toHaveCount(0);
+  // Its mark says what the amount is: a quote's.
+  await expect(blog.locator(".thread-row-amount .lucide-receipt-text")).toBeVisible();
+  await expect(list.getByRole("listitem").getByRole("button")).toHaveCount(await list.getByRole("listitem").count());
+  // Its amount opens it, as the rest of the card.
+  await blog.locator(".thread-row-amount").click();
+  await expect(blog).toHaveClass(/is-selected/);
+  await expect(page.getByRole("dialog", { name: /#42$/ }).getByRole("button", { name: "Voir la proposition envoyée" })).toBeVisible();
   await expect(list.getByRole("listitem").filter({ hasText: "Newsletter" })).toContainText("Acceptée");
-  // Only the actions that can be done: no « Envoyer » on a request not quoted yet.
-  await expect(list.getByRole("listitem").filter({ hasText: "Page FAQ" }).getByRole("button", { name: "Envoyer la proposition" })).toHaveCount(0);
-  await expect(list.getByRole("listitem").filter({ hasText: "Version anglaise" }).getByRole("button", { name: "Envoyer la proposition" })).toBeVisible();
   await panel.getByRole("combobox", { name: "Filtrer par statut" }).click();
   await page.getByRole("option", { name: "En attente du client · 1" }).click();
   await expect(list.getByRole("listitem")).toHaveCount(1);
@@ -222,7 +251,7 @@ test("a closed discussion is read-only for both sides until the agency reopens i
   await expect(bubble).toContainText("Discussion close. Rouvrez-la pour répondre.");
   await expect(bubble.getByRole("textbox", { name: "Répondre" })).toHaveCount(0);
   const panel = page.getByRole("complementary", { name: "Demandes" });
-  await expect(panel.getByRole("tab", { name: /^Discussions clôturées\s*1/ })).toHaveAttribute("aria-selected", "true");
+  await expect(panel.getByRole("tab", { name: /^Clôturées\s*1/ })).toHaveAttribute("aria-selected", "true");
   await expect(panel.getByRole("tabpanel")).toContainText("Le logo plus grand");
 
   // Nobody replies to it; the client still reads it, marked closed.
@@ -287,7 +316,7 @@ test("qualifying: a required field left empty says so in red, under it", async (
   await page.getByRole("button", { name: /^Commentaire #30 :/ }).click();
   await page.getByRole("button", { name: "Qualifier", exact: true }).click();
   await page.getByRole("radio", { name: /^Hors scope/ }).click();
-  await page.getByRole("switch", { name: /Chiffrer maintenant/ }).click();
+  await page.getByRole("switch", { name: /Préparer la proposition/ }).click();
   await page.getByRole("button", { name: "Créer la demande" }).click();
   const title = page.getByLabel(/Titre de la demande/);
   await expect(title).toHaveAttribute("aria-invalid", "true");

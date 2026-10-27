@@ -103,8 +103,10 @@ test("on the page: a contributor sees no approval nor quote decision, and why", 
   await expect(page.getByText("Contributeur · vos retours sont transmis")).toBeVisible();
   await expect(page.getByRole("button", { name: "Valider cette version" })).toHaveCount(0);
   await page.getByRole("tab", { name: /Hors scope/ }).click();
-  await page.locator(".client-side-panel li.inspector-row").filter({ hasText: "Témoignages" }).getByRole("button", { name: "Voir la proposition" }).click();
-  await expect(page.getByText("Seul le décideur désigné par l’agence peut accepter ou refuser cette proposition.")).toBeVisible();
+  // The card opens its bubble; the proposal opens from there.
+  await page.locator(".client-side-panel li.inspector-row").filter({ hasText: "Témoignages" }).getByRole("button").click();
+  await page.getByRole("dialog", { name: /Demande hors scope/ }).getByRole("button", { name: "Voir la proposition" }).click();
+  await expect(page.getByText("Seul le décideur désigné par l’organisation peut accepter ou refuser cette proposition.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Accepter" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Refuser" })).toHaveCount(0);
   expect(errors).toEqual([]);

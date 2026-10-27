@@ -36,14 +36,20 @@ test("the agency frames a project from its quote: the PDF to read, imported or d
   // The tab names the section, without a state: the scope's header says it.
   await expect(sections.getByRole("link", { name: /Périmètre/ })).toHaveText("Périmètre");
 
-  // Two ways in, either one: the AI reads a document (faster), or the agency types it. The signed quote first.
-  await expect(page.getByRole("region", { name: "Saisir à la main" }).getByRole("button", { name: "Commencer la saisie" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Extraire avec l’IA" }).getByRole("button", { name: "Coller un texte" })).toBeVisible();
+  // The form at once: first the AI's reading, a PDF or a pasted text (one or the other), then typing it by hand.
+  const intake = page.getByRole("region", { name: "Extraire le périmètre avec l’IA" });
+  await expect(intake.getByRole("tab")).toHaveText(["Importer un PDF", "Coller un texte"]);
+  await expect(page.getByText("ou saisissez le périmètre à la main")).toBeVisible();
+  await expect(page.getByLabel("Désignation de la ligne 1")).toBeVisible();
+  // Shown, not written: nothing to save before something is typed, and nothing in the base.
+  await expect(page.getByRole("button", { name: "Enregistrer" })).toHaveCount(0);
+  expect(await scopeOf(org)).toBeUndefined();
   await page.getByLabel("Document de référence").setInputFiles({ name: "devis-signe.pdf", mimeType: "application/pdf", buffer: makePdf("Devis") });
-  const intake = page.getByRole("region", { name: "Extraire avec l’IA" });
   await expect(intake).toContainText("devis-signe.pdf");
   // A PDF dropped on the zone takes its place, as « Modifier » would.
-  await expect(intake.getByRole("button", { name: "Modifier le PDF à lire (devis-signe.pdf)" })).toBeVisible();
+  // Named, to replace or take away in words.
+  await expect(intake.getByRole("button", { name: "Remplacer le PDF à lire (devis-signe.pdf)" })).toHaveText("Remplacer");
+  await expect(intake.getByRole("button", { name: "Retirer le PDF à lire (devis-signe.pdf)" })).toHaveText("Retirer");
   const bytes = [...makePdf("Cahier")];
   const dropped = await page.evaluateHandle((content) => {
     const transfer = new DataTransfer();
@@ -56,10 +62,15 @@ test("the agency frames a project from its quote: the PDF to read, imported or d
   await zone.dispatchEvent("drop", { dataTransfer: dropped });
   await expect(intake).toContainText("cahier-des-charges.pdf");
   await expect(intake).not.toContainText("devis-signe.pdf");
-  // An empty section says what to put in it.
-  await expect(page.getByRole("region", { name: "Non inclus", exact: true })).toContainText("Ce que le devis exclut");
-  // Its sections, and nothing else: the AI's reading, what is included, what is not, the amendments.
-  expect((await page.locator(".scope-card h2").allInnerTexts()).map((title) => title.replace(/\s+/g, " ").trim())).toEqual(["Extraire avec l’IA", "Inclus 0", "Non inclus 0", "Avenants 0"]);
+  // An empty section says what to do, in a sentence.
+  await expect(page.getByRole("region", { name: "Exclu du devis", exact: true })).toContainText("Ajoutez ce que le devis exclut.");
+  // Its sections, and nothing else: the AI's reading, then what is included, what is not, the amendments.
+  expect((await page.locator(".scope-hero h2, .scope-card h2").allInnerTexts()).map((title) => title.replace(/\s+/g, " ").trim())).toEqual([
+    "Extraire le périmètre avec l’IA",
+    "Prévu au devis 0",
+    "Exclu du devis 0",
+    "Avenants 0",
+  ]);
 
   // Saved: the PDF to read, in the project's scope folder; still a draft.
   await page.getByRole("button", { name: "Enregistrer" }).click();
@@ -67,8 +78,12 @@ test("the agency frames a project from its quote: the PDF to read, imported or d
   expect((await scopeOf(org))!.activatedAt).toBeUndefined();
   const [file] = await sql<{ path: string; mime_type: string }>("select path, mime_type from stored_files where organization_id = $1", [org]);
   expect(file).toMatchObject({ mime_type: "application/pdf", path: expect.stringMatching(/^projets\/1\/perimetre\//) });
-  // Nothing included yet: the draft says what to do before it can be activated.
-  await expect(page.getByRole("status").filter({ hasText: "Brouillon · Remplissez ce qui est inclus, puis activez-le" })).toBeVisible();
+  // Nothing included yet: a draft, its activation waiting for an included line, said on its button.
+  await expect(page.getByRole("status").filter({ hasText: /^Brouillon$/ })).toBeVisible();
+  const activation = page.getByRole("button", { name: "Activer le périmètre" });
+  await expect(activation).toBeDisabled();
+  await activation.locator("..").hover();
+  await expect(page.getByRole("tooltip")).toContainText("Ajoutez au moins un élément inclus pour l’activer");
   expect(errors).toEqual([]);
 });
 
@@ -77,28 +92,23 @@ test("the agency types what is included and not, then activates it as the refere
   const { page, errors } = await newPerson(browser);
   await signInPage(page, alice.email);
   await page.goto("/projets/1/perimetre");
-  await page.getByRole("region", { name: "Saisir à la main" }).getByRole("button", { name: "Commencer la saisie" }).click();
+  // The form is there at once: its first line ready to type in.
+  await page.getByLabel("Désignation de la ligne 1").click();
   await expect(page.getByLabel("Désignation de la ligne 1")).toBeFocused();
 
-  // One line per item, typed as in a spreadsheet: Enter goes to a new line, its title ready; a line duplicates.
-  await page.getByLabel("Désignation de la ligne 1").fill("Pages intérieures");
-  await page.getByLabel("Quantité de la ligne 1").fill("5");
-  await page.getByLabel("Unité de la ligne 1").click();
-  await page.getByRole("option", { name: "pages", exact: true }).click();
-  // The list of units closed first: closing, it gives the focus back to its button, which on a loaded
-  // machine came after Enter and took the focus from the new line.
-  await expect(page.getByRole("listbox")).toBeHidden();
-  await expect(page.getByLabel("Unité de la ligne 1")).toBeFocused();
-  await page.getByLabel("Quantité de la ligne 1").press("Enter");
+  // One line per item, its quantity in its words, typed as in a spreadsheet: Enter goes to a new line, its
+  // title ready; a line duplicates. No column for a quantity or a unit (decided 25 October 2026).
+  await expect(page.getByLabel("Quantité de la ligne 1")).toHaveCount(0);
+  await expect(page.getByLabel("Unité de la ligne 1")).toHaveCount(0);
+  await page.getByLabel("Désignation de la ligne 1").fill("5 pages intérieures");
+  await page.getByLabel("Désignation de la ligne 1").press("Enter");
   await expect(page.getByLabel("Désignation de la ligne 2")).toBeFocused();
   await page.keyboard.type("Formulaire de contact");
+  // Typed right after Enter made the line: every key kept.
+  await expect(page.getByLabel("Désignation de la ligne 2")).toHaveValue("Formulaire de contact");
   await page.getByRole("button", { name: "Dupliquer la ligne 1" }).click();
-  await expect(page.getByLabel("Désignation de la ligne 2")).toHaveValue("Pages intérieures");
-  await expect(page.getByLabel("Quantité de la ligne 2")).toHaveValue("5");
-  await page.getByLabel("Désignation de la ligne 2").fill("Page d’accueil");
-  await page.getByLabel("Quantité de la ligne 2").fill("1");
-  await page.getByLabel("Unité de la ligne 2").click();
-  await page.getByRole("option", { name: "Aucune" }).click();
+  await expect(page.getByLabel("Désignation de la ligne 2")).toHaveValue("5 pages intérieures");
+  await page.getByLabel("Désignation de la ligne 2").fill("1 page d’accueil");
 
   // What is not included.
   await page.getByRole("button", { name: "Ajouter une exclusion" }).click();
@@ -106,36 +116,32 @@ test("the agency types what is included and not, then activates it as the refere
 
   await page.getByRole("button", { name: "Enregistrer" }).click();
   await expect.poll(() => scopeOf(org)).toMatchObject({
-    lines: [
-      { title: "Pages intérieures", quantity: 5, unit: "pages" },
-      { title: "Page d’accueil", quantity: 1 },
-      { title: "Formulaire de contact" },
-    ],
+    lines: [{ title: "5 pages intérieures" }, { title: "1 page d’accueil" }, { title: "Formulaire de contact" }],
     exclusions: [{ title: "Rédaction des textes" }],
   });
   expect((await scopeOf(org))!.activatedAt).toBeUndefined();
-  // Filled in: only its activation is left to recommend.
-  await expect(page.getByRole("status").filter({ hasText: "Brouillon · Activez-le pour qu’il serve de référence à chaque demande du client." })).toBeVisible();
+  // Filled in: still a draft, its activation now open.
+  await expect(page.getByRole("status").filter({ hasText: /^Brouillon$/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Activer le périmètre" })).toBeEnabled();
 
   // Activated: the reference, signed by the server, in the journal; then read.
   await page.getByRole("button", { name: "Activer le périmètre" }).click();
   await expect.poll(async () => (await scopeOf(org))?.activatedBy).toBe("Alice Martin");
   await expect(page.getByRole("status").filter({ hasText: /Actif · activé par Alice Martin le/ })).toBeVisible();
   expect((await sql("select 1 from audit_events where organization_id = $1 and type = 'project.scope.activated'", [org])).length).toBe(1);
-  const included = page.getByRole("region", { name: "Inclus", exact: true });
-  await expect(included).toContainText("Pages intérieures");
-  await expect(included).toContainText("5 pages");
+  const included = page.getByRole("region", { name: "Prévu au devis", exact: true });
+  await expect(included).toContainText("5 pages intérieures");
 
   // Changed afterwards with « Modifier »: still the reference, as activated.
   await page.getByRole("button", { name: "Modifier" }).click();
-  await page.getByLabel("Quantité de la ligne 1").fill("6");
+  await page.getByLabel("Désignation de la ligne 1").fill("6 pages intérieures");
   await page.getByRole("button", { name: "Annuler" }).click();
-  await expect(included).toContainText("5 pages");
+  await expect(included).toContainText("5 pages intérieures");
   await page.getByRole("button", { name: "Modifier" }).click();
-  await page.getByLabel("Quantité de la ligne 1").fill("6");
+  await page.getByLabel("Désignation de la ligne 1").fill("6 pages intérieures");
   await page.getByRole("button", { name: "Enregistrer" }).click();
-  await expect.poll(async () => ((await scopeOf(org))?.lines as { quantity?: number }[])[0].quantity).toBe(6);
-  await expect(included).toContainText("6 pages");
+  await expect.poll(async () => ((await scopeOf(org))?.lines as { title: string }[])[0].title).toBe("6 pages intérieures");
+  await expect(included).toContainText("6 pages intérieures");
   expect((await scopeOf(org))!.activatedBy).toBe("Alice Martin");
 
   // No longer the reference: back to a draft, in the journal too.
@@ -198,7 +204,7 @@ test("an accepted out-of-scope quote is an amendment of the scope, and an open d
   await page.getByRole("complementary", { name: "Demandes" }).getByRole("button", { name: "Périmètre du projet" }).click();
   const dialog = page.getByRole("dialog", { name: "Périmètre du projet" });
   await expect(dialog).toContainText("Activé par Alice Martin");
-  await expect(dialog.getByRole("region", { name: "Inclus", exact: true })).toContainText("Pages intérieures");
+  await expect(dialog.getByRole("region", { name: "Prévu au devis", exact: true })).toContainText("Pages intérieures");
   await expect(dialog.getByRole("region", { name: "Avenants" })).toContainText("+600 € · +3 j");
   await expect(dialog.getByRole("link", { name: "Ouvrir le périmètre" })).toHaveAttribute("href", "/projets/1/perimetre");
   expect(errors).toEqual([]);
@@ -210,10 +216,15 @@ test("a project's deliverables recommend completing and activating its scope, un
   await signInPage(page, alice.email);
   const advice = page.getByRole("note", { name: "Recommandation sur le périmètre" });
 
-  // No scope yet: to complete, then activate, from its tab.
+  // No scope yet: to complete, then activate, from its tab, for the AI to suggest how to qualify each request.
   await page.goto("/projets/1");
-  await expect(advice).toContainText("Recommandé : complétez et activez le périmètre du projet");
-  await expect(advice).toContainText("ce qui dépasse le devis devient un avenant chiffré");
+  await expect(advice.getByRole("heading", { level: 2 })).toHaveText("Activez les suggestions IA");
+  await expect(advice).toContainText("Complétez et activez votre périmètre initial afin de recevoir les suggestions IA sur chaque demande client.");
+  // The page's actions, one size: the settings as tall as « Ajouter un livrable ».
+  const actionHeights = await Promise.all(
+    [page.getByRole("button", { name: /^Réglages de/ }), page.getByRole("button", { name: "Ajouter un livrable" })].map(async (button) => (await button.boundingBox())?.height),
+  );
+  expect(actionHeights[0]).toBe(actionHeights[1]);
   await advice.getByRole("link", { name: "Compléter le périmètre" }).click();
   await expect(page).toHaveURL(/\/projets\/1\/perimetre$/);
   // Only on the deliverables: not on the scope it leads to.
@@ -222,7 +233,7 @@ test("a project's deliverables recommend completing and activating its scope, un
   // A draft with what is included: only its activation is left.
   expect((await saveScope(alice, { lines: [{ id: 1, title: "Pages intérieures", quantity: 5 }] })).status).toBe(200);
   await page.goto("/projets/1");
-  await expect(advice).toContainText("Recommandé : activez le périmètre du projet");
+  await expect(advice).toContainText("Activez votre périmètre initial afin de recevoir les suggestions IA");
   await expect(advice.getByRole("link", { name: "Finaliser le périmètre" })).toHaveAttribute("href", "/projets/1/perimetre");
 
   // Active: nothing left to recommend.
@@ -234,27 +245,45 @@ test("a project's deliverables recommend completing and activating its scope, un
   expect(errors).toEqual([]);
 });
 
+test("a line saved with its quantity apart reads with it, and is saved with it in its words", async ({ browser }) => {
+  const { alice, org } = await agencyWithProject();
+  expect((await saveScope(alice, { lines: [{ id: 1, title: "Pages intérieures", quantity: 5, unit: "pages" }] })).status).toBe(200);
+  expect((await call("/api/projects/1/scope/activation", { method: "POST", person: alice })).status).toBe(200);
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, alice.email);
+  await page.goto("/projets/1/perimetre");
+  // Read: one column, the quantity in the words.
+  await expect(page.getByRole("region", { name: "Prévu au devis", exact: true }).getByRole("listitem")).toHaveText(["Pages intérieures · 5 pages"]);
+  // Edited: the same words; nothing changed, nothing to save.
+  await page.getByRole("button", { name: "Modifier" }).click();
+  await expect(page.getByLabel("Désignation de la ligne 1")).toHaveValue("Pages intérieures · 5 pages");
+  await expect(page.getByRole("button", { name: "Enregistrer" })).toBeDisabled();
+  await page.getByLabel("Désignation de la ligne 1").fill("Pages intérieures · 6 pages");
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await expect.poll(async () => (await scopeOf(org))?.lines).toEqual([{ id: 1, title: "Pages intérieures · 6 pages" }]);
+  expect(errors).toEqual([]);
+});
+
 test("« Extraire avec l’IA »: a pasted text or a PDF read into items, reviewed one by one, then added to the draft", async ({ browser }) => {
   const { alice, org } = await agencyWithProject();
   const { page, errors } = await newPerson(browser);
   await signInPage(page, alice.email);
   await page.goto("/projets/1/perimetre");
-  await page.getByRole("region", { name: "Extraire avec l’IA" }).getByRole("button", { name: "Coller un texte" }).click();
+  const intake = page.getByRole("region", { name: "Extraire le périmètre avec l’IA" });
+  await intake.getByRole("tab", { name: "Coller un texte" }).click();
 
   // A text: one item a line, those after « Non inclus » excluded (the tests' engine, src/lib/scopeExtractor.ts).
-  const intake = page.getByRole("region", { name: "Extraire avec l’IA" });
   await intake.getByLabel("Texte du devis ou du cahier des charges").fill("Pages intérieures — 5 pages\nFormulaire de contact\nNon inclus :\nRédaction des textes\nPhotos");
   await intake.getByRole("button", { name: "Lancer l’extraction" }).click();
   const proposed = intake.getByRole("group", { name: "Éléments proposés" });
   await expect(proposed.getByRole("listitem")).toHaveCount(4);
-  // Reviewed: one set aside, one moved to « Non inclus »; only what is kept is added.
+  // Reviewed: one set aside, one moved to « Exclu »; only what is kept is added.
   await proposed.getByRole("checkbox", { name: "Garder « Photos »" }).click();
-  await proposed.getByRole("combobox", { name: "Inclus ou non : « Formulaire de contact »" }).click();
-  await page.getByRole("option", { name: "Non inclus" }).click();
+  await proposed.getByRole("combobox", { name: "Prévu ou exclu : « Formulaire de contact »" }).click();
+  await page.getByRole("option", { name: "Exclu" }).click();
   await proposed.getByRole("button", { name: "Ajouter 3 éléments au périmètre" }).click();
-  await expect(page.getByLabel("Désignation de la ligne 1")).toHaveValue("Pages intérieures");
-  await expect(page.getByLabel("Quantité de la ligne 1")).toHaveValue("5");
-  await expect(page.getByLabel("Unité de la ligne 1")).toContainText("pages");
+  // The quantity the AI read apart, back in the line's words.
+  await expect(page.getByLabel("Désignation de la ligne 1")).toHaveValue("Pages intérieures · 5 pages");
   await expect(page.getByLabel("Désignation de la ligne 2")).toHaveCount(0);
   // In the order proposed.
   await expect(page.getByLabel("Désignation de l’exclusion 1", { exact: true })).toHaveValue("Formulaire de contact");
@@ -263,12 +292,12 @@ test("« Extraire avec l’IA »: a pasted text or a PDF read into items, review
   expect(await scopeOf(org)).toBeUndefined();
   await page.getByRole("button", { name: "Enregistrer" }).click();
   await expect.poll(() => scopeOf(org)).toMatchObject({
-    lines: [{ title: "Pages intérieures", quantity: 5, unit: "pages" }],
+    lines: [{ title: "Pages intérieures · 5 pages" }],
     exclusions: [{ title: "Formulaire de contact" }, { title: "Rédaction des textes" }],
   });
 
   // A PDF: imported into the reference documents, then read.
-  await intake.getByRole("tab", { name: "Un PDF" }).click();
+  await intake.getByRole("tab", { name: "Importer un PDF" }).click();
   await page.getByLabel("Document de référence").setInputFiles({ name: "devis-signe.pdf", mimeType: "application/pdf", buffer: makePdf("Devis") });
   await expect(intake).toContainText("devis-signe.pdf");
   await intake.getByRole("button", { name: "Lancer l’extraction" }).click();
@@ -277,7 +306,7 @@ test("« Extraire avec l’IA »: a pasted text or a PDF read into items, review
   await intake.getByRole("button", { name: "Ignorer" }).click();
   // The PDF taken away: the zone is free again; the draft is back to what is saved (no document), nothing to save.
   await intake.getByRole("button", { name: "Retirer le PDF à lire (devis-signe.pdf)" }).click();
-  await expect(intake).toContainText("Glissez le devis ou le cahier des charges ici");
+  await expect(intake).toContainText("Glissez le PDF ici");
   await expect(page.getByRole("button", { name: "Enregistrer" })).toHaveCount(0);
   expect((await scopeOf(org))?.sources).toEqual([]);
   expect(errors).toEqual([]);

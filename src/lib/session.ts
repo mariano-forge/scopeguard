@@ -54,7 +54,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 export async function requireAgencyUser(): Promise<{ user: AgencyUser } | { response: Response }> {
   const user = await getCurrentUser();
   if (!user) return { response: Response.json({ error: "Connexion requise" }, { status: 401 }) };
-  if (!user.organizationId || !user.role) return { response: Response.json({ error: "Aucune agence", code: "NO_AGENCY" }, { status: 403 }) };
+  if (!user.organizationId || !user.role) return { response: Response.json({ error: "Aucune organisation", code: "NO_AGENCY" }, { status: 403 }) };
   return { user: user as AgencyUser };
 }
 

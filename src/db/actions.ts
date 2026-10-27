@@ -83,6 +83,12 @@ export async function decisionLocked(db: Db, org: string, commentId: number) {
   return (proposal.decision !== null && proposal.decision !== "none") || Boolean((proposal.adaptation as Data | null)?.decision);
 }
 
+/** The client accepted this request's proposal, or the counter-proposal they asked for. */
+export async function proposalAccepted(db: Db, org: string, commentId: number) {
+  const [proposal] = await db.select().from(commentProposals).where(and(eq(commentProposals.organizationId, org), eq(commentProposals.commentId, commentId))).limit(1);
+  return proposal?.decision === "accepted" || (proposal?.adaptation as Data | null | undefined)?.decision === "accepted";
+}
+
 /** A proposal sent for this request still waits for the client's answer. */
 export async function proposalAwaiting(db: Db, org: string, commentId: number) {
   const [proposal] = await db.select().from(commentProposals).where(and(eq(commentProposals.organizationId, org), eq(commentProposals.commentId, commentId))).limit(1);

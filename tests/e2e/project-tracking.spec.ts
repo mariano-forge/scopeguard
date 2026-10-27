@@ -57,8 +57,8 @@ test("« Suivi » shows what Kora brings: the out-of-scope work paid, the round 
   await page.goto("/projets/1");
   await page.getByRole("navigation", { name: "Sections du projet" }).getByRole("link", { name: /Suivi/ }).click();
   await expect(page).toHaveURL(/\/projets\/1\/suivi$/);
-  // Three sections: the client tab is gone, its page and its route with it.
-  await expect(page.getByRole("navigation", { name: "Sections du projet" }).getByRole("link")).toHaveText([/Livrables/, /Périmètre/, /Suivi/]);
+  // Four sections: the client tab is gone, its page and its route with it; « Demandes » is the requests' board.
+  await expect(page.getByRole("navigation", { name: "Sections du projet" }).getByRole("link")).toHaveText([/Livrables/, /Demandes/, /Périmètre/, /Suivi/]);
 
   // The figures, each a value: the accepted 600 € quote; 1 request of 5 out of scope; 2 versions of the
   // mock-up and 1 of the logo; the agency answered the client in 2 hours.
@@ -72,7 +72,7 @@ test("« Suivi » shows what Kora brings: the out-of-scope work paid, the round 
   const funnel = page.getByRole("region", { name: "Du hors scope au devis accepté" });
   await expect(funnel.getByRole("img")).toHaveAttribute("aria-label", "Repérées : 1 demande ; Chiffrées : 1 demande, 600 € ; Envoyées : 1 demande, 600 € ; Acceptées : 1 demande, 600 €");
   await expect(funnel).toContainText("600 € de travail en plus payé, +5 % du budget");
-  await expect(funnel.getByRole("definition")).toHaveText(["0 demande", "0 €", "Aucun"]);
+  await expect(funnel.getByRole("definition")).toHaveText(["0 demande", "0 €", "Aucun", "Aucune"]);
   // Round trips: each deliverable's versions, the most revised first.
   const rounds = page.getByRole("region", { name: "Allers-retours par livrable" });
   await expect(rounds).toContainText("Chaque nouvelle version d’un livrable est un aller-retour avec le client");

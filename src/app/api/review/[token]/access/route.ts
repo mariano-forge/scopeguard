@@ -9,10 +9,12 @@
 // newerVersion: { version, href } of a later version shared with this client, if any; null otherwise.
 // agency: { name, href } of the member in the panel on the staging site ("agency"), href opening the
 // version in Kora (quotes and sharing are done there); null otherwise.
+// organization: the agency's name, for a verified client or the agency's preview (their invitation already
+// says it; decided with the product owner on 26 October 2026); null otherwise.
 
 import type { NextRequest } from "next/server";
 import { getDb } from "@/db/client";
-import { invitationEmail, maskEmail, newerSharedVersion, reviewedDeliverableName, reviewProfileName } from "@/db/reviewAuth";
+import { invitationEmail, maskEmail, newerSharedVersion, reviewedAgencyName, reviewedDeliverableName, reviewProfileName } from "@/db/reviewAuth";
 import { agencyHref } from "@/db/mailTargets";
 import { databaseFailure } from "@/lib/api";
 import { getReviewViewer, reviewNotFound } from "@/lib/reviewViewer";
@@ -33,6 +35,7 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/revi
       role: viewer.mode === "client" ? viewer.role : null,
       newerVersion: viewer.mode === "client" ? await newerSharedVersion(db, viewer.access, viewer.email) : null,
       agency: viewer.mode === "agency" ? { name: viewer.member.name, href: await agencyHref(db, viewer.access.organizationId, viewer.access.deliverableId) } : null,
+      organization: viewer.mode === "client" || viewer.mode === "preview" ? await reviewedAgencyName(db, viewer.access) : null,
     });
   } catch (error) {
     return databaseFailure("api/review/access", error);

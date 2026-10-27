@@ -104,7 +104,7 @@ test("the client's bell: the agency's reply, the quote to decide, their request 
   await expect(list.getByRole("listitem")).toContainText([
     "La V02 vous a été partagéeOuvrir la nouvelle version",
     "Demande qualifiée : Inclusil y a 30 minLogo plus grand",
-    "Réponse de l’agenceil y a 1 h« C’est noté, on l’agrandit. » · Logo plus grand",
+    "Réponse de l’organisationil y a 1 h« C’est noté, on l’agrandit. » · Logo plus grand",
     "Devis à valideril y a 2 hPage Équipe · 900 € HT",
   ]);
   // Opening one: the quote, to decide; everything shown is then seen.
@@ -125,7 +125,20 @@ test("the client's bell: the agency's reply, the quote to decide, their request 
 test("from the review page, the client opens the project's scope once active: included, not included, the amendments", async ({ browser }) => {
   const { alice, token, client } = await review();
   expect((await saveScope(alice, { lines: [{ id: 1, title: "Pages intérieures", quantity: 5, unit: "pages" }], exclusions: [{ id: 2, title: "Rédaction des textes" }] })).status).toBe(200);
+  // An offer sent to the client: an amendment too (feedback of 26 October 2026), unlike one only prepared.
+  await seedState(alice, {
+    lists: {
+      comments: {
+        upsert: [
+          { id: 24, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", location: "", time: "t", kind: "request", message: "Animer le logo", title: "Animation du logo", decision: "Hors périmètre", offer: { amount: 300, days: 2, sentAt: 1, sentBy: "Alice Martin" } },
+          { id: 25, deliverableId: 1, author: "Alice Martin", initials: "AM", from: "agency", location: "", time: "t", kind: "request", message: "Une vidéo", title: "Vidéo d’accueil", decision: "Hors périmètre", offer: { amount: 500, days: 0 } },
+        ],
+        remove: [],
+      },
+    },
+  });
   const { page, errors } = await openAsClient(browser, token, client.cookie);
+  await page.setViewportSize({ width: 1100, height: 480 });
   const panel = page.getByRole("complementary", { name: "Vos retours" });
   // A draft: no scope to open.
   await expect(panel.getByRole("button", { name: "Périmètre du projet" })).toHaveCount(0);
@@ -134,12 +147,22 @@ test("from the review page, the client opens the project's scope once active: in
   await expect(panel.getByRole("button", { name: "Périmètre du projet" })).toBeVisible();
   await panel.getByRole("button", { name: "Périmètre du projet" }).click();
   const dialog = page.getByRole("dialog", { name: "Périmètre du projet" });
-  await expect(dialog.getByRole("region", { name: "Inclus", exact: true })).toContainText("Pages intérieures");
-  await expect(dialog.getByRole("region", { name: "Inclus", exact: true })).toContainText("5 pages");
-  await expect(dialog.getByRole("region", { name: "Non inclus", exact: true })).toContainText("Rédaction des textes");
+  await expect(dialog.getByRole("region", { name: "Prévu au devis", exact: true })).toContainText("Pages intérieures");
+  await expect(dialog.getByRole("region", { name: "Prévu au devis", exact: true })).toContainText("5 pages");
+  await expect(dialog.getByRole("region", { name: "Exclu du devis", exact: true })).toContainText("Rédaction des textes");
   // The amendments: the quotes this client accepted on the version, with what they add.
   await expect(dialog.getByRole("region", { name: "Avenants" })).toContainText("Page Carrières");
   await expect(dialog.getByRole("region", { name: "Avenants" })).toContainText("+600 € · +2 j");
   await expect(dialog.getByRole("region", { name: "Avenants" })).not.toContainText("Page Équipe");
+  await expect(dialog.getByRole("region", { name: "Avenants" })).toContainText("Animation du logo");
+  await expect(dialog.getByRole("region", { name: "Avenants" })).toContainText(/Offert · 300\s€ · \+2 j/);
+  await expect(dialog.getByRole("region", { name: "Avenants" })).not.toContainText("Vidéo d’accueil");
+  // Its head and its close button stay while its content scrolls.
+  const title = dialog.getByRole("heading", { name: "Périmètre du projet" });
+  const before = await title.boundingBox();
+  await dialog.locator(".scope-in-dialog").evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+  await expect.poll(() => dialog.locator(".scope-in-dialog").evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  expect((await title.boundingBox())!.y).toBe(before!.y);
+  await expect(dialog.getByRole("button", { name: "Close" }).or(dialog.getByRole("button", { name: "Fermer" })).first()).toBeInViewport();
   expect(errors).toEqual([]);
 });

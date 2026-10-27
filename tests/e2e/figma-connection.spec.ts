@@ -4,7 +4,7 @@
 // way in is refused. Figma is the run's stand-in (figmaStandIn.ts); its consent page is intercepted here.
 
 import { expect, test, type Page } from "@playwright/test";
-import { addColleague, call, createAgency, newPerson, signInPage, signUp, sql, unique, type Member } from "./helpers";
+import { addColleague, call, createAgency, figmaLink, newPerson, seedState, signInPage, signUp, sql, unique, type Member } from "./helpers";
 import { figmaClient } from "./figmaStandIn";
 import { baseURL } from "../../playwright.config";
 
@@ -21,7 +21,7 @@ const userIdOf = async (email: string) => (await sql<{ id: string }>("select id 
  */
 async function figmaAccepts(page: Page, handle: string) {
   const asked: URL[] = [];
-  await page.route("**/api/integrations/figma/connect", async (route) => {
+  await page.route(/\/api\/integrations\/figma\/connect(\?|$)/, async (route) => {
     const kora = await route.fetch({ maxRedirects: 0 });
     const consent = new URL(kora.headers().location);
     asked.push(consent);
@@ -39,8 +39,8 @@ async function openFigmaAccount(page: Page, name: string) {
 }
 
 /** Starts an attempt through the API: Figma's address Kora sends to, and the attempt's cookie. */
-async function startAttempt(member: Member) {
-  const started = await call("/api/integrations/figma/connect", { person: member });
+async function startAttempt(member: Member, back?: string) {
+  const started = await call(`/api/integrations/figma/connect${back === undefined ? "" : `?${new URLSearchParams({ back })}`}`, { person: member });
   expect(started.status).toBe(307);
   const figma = new URL(started.response.headers.get("location")!);
   const attempt = started.response.headers.getSetCookie().find((cookie) => cookie.startsWith("kora_figma_attempt="))!.split(";")[0];
@@ -90,6 +90,53 @@ test("a member connects their own Figma account from the account menu, sees it, 
   await expect(dialog.getByRole("button", { name: "Connecter mon compte Figma" })).toBeVisible();
   await expect.poll(() => connectionOf(org)).toBeUndefined();
   expect(errors).toEqual([]);
+});
+
+test("a dialog that reads a Figma file, without a connected account, connects it in one click and comes back to its page", async ({ browser }) => {
+  const owner = await signUp("Alice Martin");
+  await createAgency(owner, "Studio Raccourci");
+  await seedState(owner, {
+    lists: {
+      clients: { upsert: [{ id: 1, name: "Northwind" }], remove: [] },
+      projects: { upsert: [{ id: 7, name: "Refonte", clientId: 1, client: "Northwind", status: "En cours" }], remove: [] },
+    },
+  });
+  const { page, errors } = await newPerson(browser);
+  await signInPage(page, owner.email);
+  const asked = await figmaAccepts(page, unique("alice"));
+  await page.goto("/projets/7");
+  await page.getByRole("button", { name: "Ajouter un livrable", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Nouveau livrable" });
+  await dialog.locator(".kind-option").filter({ hasText: /^Figma$/ }).click();
+  await dialog.getByRole("radio", { name: /Dans Figma/ }).check();
+  await dialog.getByLabel("Lien du fichier Figma").fill(figmaLink(`File${unique("k").replace(/[^A-Za-z0-9]/g, "")}`));
+
+  // What to do, and the way to do it, right where it is needed.
+  const note = dialog.getByRole("note");
+  await expect(note).toContainText("Connectez votre compte Figma pour lire ce fichier");
+  await note.getByRole("button", { name: "Connecter mon compte Figma" }).click();
+
+  // Back on the same page, connected.
+  await expect(page.getByText("Votre compte Figma est connecté")).toBeVisible();
+  await expect(page).toHaveURL(/\/projets\/7$/);
+  expect(asked).toHaveLength(1);
+  expect(errors).toEqual([]);
+});
+
+test("after Figma, the member comes back only to a page of Kora: any other address goes to the home page", async () => {
+  const owner = await signUp("Alice Martin");
+  await createAgency(owner, "Studio Retour");
+  const returnOf = async (back: string) => {
+    const attempt = await startAttempt(owner, back);
+    const done = await finish(owner, { code: `ok:${unique("retour")}:${attempt.challenge}`, state: attempt.state }, attempt.attempt);
+    return new URL(done.response.headers.get("location")!);
+  };
+  const local = await returnOf("/projets/7/livrables/12");
+  expect([local.origin, local.pathname, local.search]).toEqual([baseURL, "/projets/7/livrables/12", "?figma=connected"]);
+  for (const elsewhere of ["//evil.test/x", "https://evil.test/", "/\\evil.test", "projets/7", "/projets/7?next=//evil.test", "javascript:alert(1)"]) {
+    const landed = await returnOf(elsewhere);
+    expect([landed.origin, landed.pathname]).toEqual([baseURL, "/"]);
+  }
 });
 
 test("each member has their own connection: sees only theirs, disconnects only theirs; one Figma account serves one member", async () => {

@@ -35,8 +35,8 @@ test("the first steps create the agency's first space and project, go back to co
   await back.click();
   await expect(page.getByLabel("Nom de l’espace")).toHaveValue("Marketing");
   await back.click();
-  await expect(page.getByLabel("Nom de votre agence")).toHaveValue("Studio Garnier");
-  await page.getByLabel("Nom de votre agence").fill("Studio Garnier & Co");
+  await expect(page.getByLabel("Nom de votre organisation")).toHaveValue("Studio Garnier");
+  await page.getByLabel("Nom de votre organisation").fill("Studio Garnier & Co");
   await next.click();
   await page.getByLabel("Nom de l’espace").fill("Marketing digital");
   await next.click();

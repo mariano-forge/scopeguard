@@ -52,7 +52,7 @@ export function GettingStarted({
   const hidden = useSyncExternalStore(subscribe, () => readHidden(key), () => true);
 
   const steps: Step[] = [
-    { id: "agency", label: "Créer votre agence", text: "", done: true },
+    { id: "agency", label: "Créer votre organisation", text: "", done: true },
     { id: "space", label: "Créer votre premier espace", text: "Un client, une marque ou une équipe interne : il regroupe vos projets.", done: spaces > 0, action: { label: "Créer un espace", run: onNewClient } },
     { id: "project", label: "Créer un projet", text: "Il regroupe les livrables d’une même mission.", done: projects > 0, action: { label: "Créer un projet", run: onNewProject } },
     { id: "deliverable", label: "Importer un livrable", text: "Une maquette, un PDF, une vidéo ou l’adresse d’un site.", done: deliverables > 0, action: { label: "Importer un livrable", run: onNewDeliverable } },

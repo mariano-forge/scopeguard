@@ -18,7 +18,7 @@ export function InvitationActions({ invitationId, mode }: { invitationId: string
       setPending(false);
       setError(
         failed?.code === "ORGANIZATION_MEMBERSHIP_LIMIT_REACHED"
-          ? "Cette agence a atteint son nombre maximal de membres."
+          ? "Cette organisation a atteint son nombre maximal de membres."
           : "L’invitation n’a pas pu être acceptée. Elle a peut-être expiré.",
       );
       return;
@@ -57,7 +57,7 @@ export function InvitationActions({ invitationId, mode }: { invitationId: string
         </p>
       )}
       <Button size="lg" disabled={pending} onClick={() => void accept()}>
-        Rejoindre l’agence
+        Rejoindre l’organisation
       </Button>
       <Button variant="ghost" disabled={pending} onClick={() => void decline()}>
         Refuser

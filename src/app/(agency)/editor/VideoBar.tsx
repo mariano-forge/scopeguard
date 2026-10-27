@@ -2,7 +2,8 @@
 
 // The bar of a video on the review canvas (US-052), agency and client alike: play, pause, the time, and the
 // timeline with a mark for each comment at its moment, in its pin's colour. A mark opens its comment, which
-// brings the video to that moment (ReviewCanvas). Outside the zoomed pages: a click on it pins nothing.
+// brings the video to that moment (ReviewCanvas). Under the video on the artboard, outside its page: a click
+// on it pins nothing, draws nothing and pans nothing (ReviewCanvas excludes `.video-bar`).
 
 import { Fullscreen, Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { Hint } from "@/components/hint";

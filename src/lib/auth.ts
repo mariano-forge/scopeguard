@@ -159,10 +159,10 @@ function createAuth() {
               preheader: `Rejoignez l’équipe de ${agency.name}`,
               heading: `Rejoignez ${agency.name}`,
               paragraphs: [
-                `${inviter.user.name} vous invite à rejoindre l’agence ${agency.name} sur Kora.`,
+                `${inviter.user.name} vous invite à rejoindre l’organisation ${agency.name} sur Kora.`,
                 `Connectez-vous ou créez votre compte avec cette adresse (${email}). L’invitation est valable 7 jours.`,
               ],
-              action: { label: "Rejoindre l’agence", href: `${appUrl()}/invitation/${id}` },
+              action: { label: "Rejoindre l’organisation", href: `${appUrl()}/invitation/${id}` },
               footer: `Vous recevez cet e-mail parce que ${inviter.user.name} vous a invité sur Kora. Répondez à cet e-mail pour lui écrire.`,
             }),
           });

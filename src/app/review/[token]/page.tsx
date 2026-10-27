@@ -5,9 +5,11 @@ import { areaFromPin } from "@/lib/pinArea";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import type { ReactZoomPanPinchRef } from "react-zoom-pan-pinch";
+import { centerThread } from "@/app/(agency)/editor/centerThread";
 import { ArrowRight, Check, Clock, Loader2, Lock, PenLine } from "lucide-react";
 import type { DeliverableType } from "@/components/deliverableKinds";
-import { Composer, ThreadPopover, requestKind, type Area, type ThreadComment } from "@/app/(agency)/editor/CanvasComments";
+import { Composer, ThreadPopover, requestKind, type Area, type ProposalStage, type ThreadComment, type ThreadView } from "@/app/(agency)/editor/CanvasComments";
+import { offerOf, offerValue } from "@/lib/requestOffer";
 import { RequestPanel, type InspectorTab } from "@/app/(agency)/editor/EditorInspector";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -155,6 +157,8 @@ export default function ClientReviewPage() {
     role: ClientRole | null;
     /** A later version shared with this client (src/db/reviewAuth.ts newerSharedVersion); none otherwise. */
     newerVersion?: { version: number; href: string } | null;
+    /** The agency's name, as their invitation says it. */
+    organization?: string | null;
   } | null>(null);
   const viewerMode = viewer?.mode;
   const contributor = viewerMode === "client" && viewer?.role === "contributor";
@@ -463,16 +467,16 @@ export default function ClientReviewPage() {
   }
 
   /** Opens a thread from the side list and brings its pin into view. */
-  function focusThread(commentId: number) {
+  // The tab a card's click opens its bubble on (its messages, its source), a new one at each click.
+  const [threadView, setThreadView] = useState<{ id: number; view?: ThreadView; at: number } | null>(null);
+  function focusThread(commentId: number, view?: ThreadView) {
+    setThreadView((current) => ({ id: commentId, view, at: (current?.at ?? 0) + 1 }));
     readThread(commentId);
     setSelectedCommentId(commentId);
     setComposer(null);
     setThreadOpen(true);
-    requestAnimationFrame(() => {
-      const pin = document.querySelector<HTMLElement>(`[data-pin="${commentId}"]`);
-      const zoom = transformRef.current;
-      if (pin && zoom) void zoom.zoomToElement(pin, zoom.state.scale, 300);
-    });
+    // Its pin and its bubble to the middle of the canvas, as at the agency.
+    centerThread(transformRef.current, commentId);
   }
 
   function deleteComment(commentId: number) {
@@ -581,6 +585,16 @@ export default function ClientReviewPage() {
     return proposalVersions[commentId]?.find((proposal) => proposal.status === "sent" || proposal.status === "accepted") ?? proposalVersions[commentId]?.at(-1);
   }
 
+  // A draft quote is never sent here: for the client, nothing is said before a proposal is sent. An offer
+  // is said at once, with its value (src/lib/requestOffer.ts).
+  const clientOutsideStatus = (comment: ThreadComment) =>
+    outsideStatusOf({ state: proposalStates[comment.id] === "sent" ? "sent" : "none", decision: proposalDecisions[comment.id] ?? "none", adaptation: adaptationRequests[comment.id], offered: Boolean(offerOf(comment)) });
+  const clientProposalStage = (comment: ThreadComment): ProposalStage | null => {
+    const offer = offerOf(comment);
+    if (offer) return { stage: "offered", value: offerValue(offer) };
+    return proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : null;
+  };
+
   function isCommercialDecisionLocked(commentId: number) {
     return proposalDecisions[commentId] !== undefined && proposalDecisions[commentId] !== "none"
       || Boolean(adaptationRequests[commentId]?.decision);
@@ -624,7 +638,7 @@ export default function ClientReviewPage() {
   const previousUnread = useRef<number | null>(null);
   useEffect(() => {
     if (seen === null) return;
-    if (previousUnread.current !== null && unreadCount > previousUnread.current) toast("Nouvelle réponse de l’agence", { description: "Un point marqué d’un rond orange vous attend dans « Vos retours »." });
+    if (previousUnread.current !== null && unreadCount > previousUnread.current) toast("Nouvelle réponse de l’organisation", { description: "Un point marqué d’un rond orange vous attend dans « Vos retours »." });
     previousUnread.current = unreadCount;
   }, [unreadCount, seen]);
   /** Opening a thread marks the agency's replies as read. */
@@ -702,7 +716,7 @@ export default function ClientReviewPage() {
     return (
       <AuthShell plain>
         <GateHeading title="Lien indisponible">
-          Ce lien de revue est inconnu, expiré ou a été révoqué par l’agence. Demandez-lui un nouveau lien.
+          Ce lien de revue est inconnu, expiré ou a été révoqué par l’organisation. Demandez-lui un nouveau lien.
         </GateHeading>
       </AuthShell>
     );
@@ -715,7 +729,7 @@ export default function ClientReviewPage() {
     reviewStatus === "approved"
       ? { tone: "approved", icon: <Check />, label: "Validée", hint: approvedAt ? `Validée le ${approvedAt}` : "Version validée" }
       : reviewStatus === "changes-requested"
-        ? { tone: "changes", icon: <PenLine />, label: "Modifications demandées", hint: "En attente d’une nouvelle version de l’agence" }
+        ? { tone: "changes", icon: <PenLine />, label: "Modifications demandées", hint: "En attente d’une nouvelle version de l’organisation" }
         : deliverable.status === "Remplacée"
           ? // A version still in preparation at the agency stays unknown to the client.
             newerVersion
@@ -746,7 +760,7 @@ export default function ClientReviewPage() {
         .map((reply) => ({
           key: `r${reply.id}`,
           at: reply.createdAt ?? (reply.id > 1e12 ? reply.id : undefined),
-          title: "Réponse de l’agence",
+          title: "Réponse de l’organisation",
           detail: `« ${excerpt(reply.message)} » · ${requestName(comment)}`,
           onOpen: () => focusThread(comment.id),
         })),
@@ -763,9 +777,12 @@ export default function ClientReviewPage() {
     ...(newerVersion ? [{ key: `v${newerVersion.version}`, title: `La ${versionName(newerVersion.version)} vous a été partagée`, detail: "Ouvrir la nouvelle version", onOpen: () => window.location.assign(newerVersion.href) }] : []),
   ];
   // The scope's amendments, as the client sees them: the accepted out-of-scope quotes of this version.
+  // The amendments: the quotes they accepted, and the offers made to them (only sent ones reach them).
   const amendments: ScopeAmendment[] = sharedComments
-    .filter((comment) => comment.decision === "Hors périmètre" && proposalDecisions[comment.id] === "accepted")
+    .filter((comment) => comment.decision === "Hors périmètre" && (proposalDecisions[comment.id] === "accepted" || offerOf(comment)))
     .map((comment) => {
+      const offer = offerOf(comment);
+      if (offer) return { commentId: comment.id, title: requestName(comment), deliverable: `${deliverable.name} · ${versionLabel}`, amount: offer.amount, days: offer.days, offered: true };
       const proposal = activeProposalFor(comment.id);
       return { commentId: comment.id, title: requestName(comment), deliverable: `${deliverable.name} · ${versionLabel}`, amount: parseNumericAmount(proposal?.amount), days: parseNumericDays(proposal?.deadline) };
     });
@@ -781,7 +798,7 @@ export default function ClientReviewPage() {
             <h1 className="client-topbar-title">
               <span className="truncate">{deliverable.name}</span>
             </h1>
-            {contributor && <p className="client-topbar-context">Contributeur · vos retours sont transmis, la validation revient au décideur désigné par l’agence</p>}
+            {contributor && <p className="client-topbar-context">Contributeur · vos retours sont transmis, la validation revient au décideur désigné par l’organisation</p>}
           </div>
         </div>
         <div className="client-topbar-actions">
@@ -839,12 +856,7 @@ export default function ClientReviewPage() {
               title={`${deliverable.name} — ${versionLabel}`}
               comments={canvasComments}
               statusOf={(comment) =>
-                comment.decision === "Hors périmètre"
-                  ? outsideStatusView(
-                      outsideStatusOf({ state: proposalStates[comment.id] === "sent" ? "sent" : "none", decision: proposalDecisions[comment.id] ?? "none", adaptation: adaptationRequests[comment.id] }),
-                      "client",
-                    ).label
-                  : null
+                comment.decision === "Hors périmètre" ? outsideStatusView(clientOutsideStatus(comment), "client").label : null
               }
               file={deliverable.fileData}
             />
@@ -883,11 +895,18 @@ export default function ClientReviewPage() {
             const locked = isCommercialDecisionLocked(comment.id);
             return (
               <ThreadPopover
-                key={`${comment.id}-${comment.decision}`}
+                key={`${comment.id}-${comment.decision}-${threadView?.id === comment.id ? threadView.at : 0}`}
+                openOn={threadView?.id === comment.id ? threadView.view : undefined}
                 comment={comment}
                 readOnly={isReadOnlyVersion()}
                 locked={locked}
-                proposal={proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : undefined}
+                proposal={clientProposalStage(comment) ?? undefined}
+                // An offer they received: its figures as the agency reads them (only a sent one reaches them).
+                prepared={(() => {
+                  const offer = offerOf(comment);
+                  return offer ? { offer: { amount: offer.amount, days: offer.days }, sent: true } : undefined;
+                })()}
+                agencyName={viewer?.organization ?? undefined}
                 onReply={(message) => replyTo(comment.id, message)}
                 me="client"
                 onEditMessage={(messageId, message) => editMessage(comment.id, messageId, message)}
@@ -942,27 +961,14 @@ export default function ClientReviewPage() {
             tab={panelTab}
             onTab={setPanelTab}
             onFocus={focusThread}
-            proposalStage={(comment) => (proposalStates[comment.id] === "sent" ? { stage: "sent", label: "Voir la proposition" } : null)}
-            onOpenProposal={openProposalModal}
             unread={(comment) => isUnread(comment as ClientComment)}
-            // A draft quote is never sent here: for the client, nothing is said before a proposal is sent.
-            outsideStatus={(comment) =>
-              outsideStatusOf({ state: proposalStates[comment.id] === "sent" ? "sent" : "none", decision: proposalDecisions[comment.id] ?? "none", adaptation: adaptationRequests[comment.id] })
-            }
-            proposalSummary={(comment) => {
+            outsideStatus={clientOutsideStatus}
+            proposalAmount={(comment) => {
+              // Offered: its value, not an earlier quote's; nothing before a proposal reaches the client.
+              const offer = offerOf(comment);
+              if (offer) return { label: `${formatProposalAmount(offer.amount)} HT`, offer: true };
               const proposal = activeProposalFor(comment.id);
-              return (
-                <span className="client-proposal-line">
-                  <span className="proposal-figure">
-                    <small>Montant</small>
-                    <b>{formatProposalAmount(proposal?.amount)} HT</b>
-                  </span>
-                  <span className="proposal-figure">
-                    <small>Délai supplémentaire</small>
-                    <b>{parseNumericDays(proposal?.deadline) ? formatProposalDeadline(proposal?.deadline) : "aucun"}</b>
-                  </span>
-                </span>
-              );
+              return proposal ? { label: `${formatProposalAmount(proposal.amount)} HT`, offer: false } : null;
             }}
             // Comments are written on the deliverable (canvas); no general comment from the panel.
             adding={false}
@@ -1038,10 +1044,10 @@ export default function ClientReviewPage() {
               <span className="text-muted-foreground">Version {previewProposal.version} de la proposition</span>
             </p>
             {contributor && proposalStatus(proposalPreviewCommentId).label === "À décider" && (
-              <p className="text-sm text-muted-foreground">Seul le décideur désigné par l’agence peut accepter ou refuser cette proposition.</p>
+              <p className="text-sm text-muted-foreground">Seul le décideur désigné par l’organisation peut accepter ou refuser cette proposition.</p>
             )}
             {!canCounter(proposalPreviewCommentId) && canDecide(proposalPreviewCommentId) && (
-              <p className="text-sm text-muted-foreground">L’agence ne propose pas de contre-proposition sur ce devis : un refus est définitif.</p>
+              <p className="text-sm text-muted-foreground">L’organisation ne propose pas de contre-proposition sur ce devis : un refus est définitif.</p>
             )}
             {previewAdaptationRequest && (
               <div className="adaptation-request-summary">
@@ -1056,7 +1062,7 @@ export default function ClientReviewPage() {
         open={adaptationCommentId !== null}
         onClose={() => setAdaptationCommentId(null)}
         title="Faire une contre-proposition"
-        description="L’agence reste responsable du chiffrage. Décrivez votre besoin et, si vous le souhaitez, indiquez un budget ou un délai cible."
+        description="L’organisation reste responsable du chiffrage. Décrivez votre besoin et, si vous le souhaitez, indiquez un budget ou un délai cible."
         onSubmit={submitAdaptationRequest}
         footer={
           <>
@@ -1085,7 +1091,7 @@ export default function ClientReviewPage() {
         open={changesRequestOpen}
         onClose={() => setChangesRequestOpen(false)}
         title="Demander des modifications"
-        description="Cette version ne sera pas approuvable tant que l’agence n’aura pas soumis une nouvelle version."
+        description="Cette version ne sera pas approuvable tant que l’organisation n’aura pas soumis une nouvelle version."
         onSubmit={submitChangesRequest}
         footer={
           <>
@@ -1110,7 +1116,7 @@ export default function ClientReviewPage() {
         description={
           quotesToDecide.length
             ? "Avant de valider, décidez de chaque proposition en attente : une fois validée, la version est verrouillée."
-            : "L’agence en est informée et la version passe en lecture seule."
+            : "L’organisation en est informée et la version passe en lecture seule."
         }
         footer={
           <>
@@ -1151,7 +1157,7 @@ export default function ClientReviewPage() {
         {remarksToClarify.length > 0 && (
           <div className="grid gap-2 text-sm">
             <p role="note" className="rounded-[var(--r-field)] bg-[var(--status-medium-bg)] px-3 py-2 text-[var(--status-medium-text)]">
-              <b>Certaines remarques n’ont pas encore été clarifiées avec l’agence.</b> En validant, vous y renoncez : elles ne seront pas traitées dans cette version.
+              <b>Certaines remarques n’ont pas encore été clarifiées avec l’organisation.</b> En validant, vous y renoncez : elles ne seront pas traitées dans cette version.
             </p>
             <ul className="grid gap-1 text-muted-foreground" aria-label="Remarques auxquelles vous renoncez">
               {remarksToClarify.map((comment) => (
